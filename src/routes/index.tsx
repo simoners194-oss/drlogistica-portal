@@ -16,7 +16,7 @@ function Index() {
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-background">
       <div className="hidden lg:flex flex-col justify-between p-12 text-primary-foreground" style={{ background: "var(--gradient-hero)" }}>
-        <Logo variant="light" />
+        <Logo variant="light" size={64} />
         <div>
           <h1 className="text-4xl font-semibold tracking-tight leading-tight">
             Gestisci le presenze<br />in modo semplice.
@@ -30,7 +30,7 @@ function Index() {
 
       <div className="flex items-center justify-center p-6 lg:p-12">
         <div className="w-full max-w-sm">
-          <div className="lg:hidden mb-8 flex justify-center"><Logo size={44} /></div>
+          <div className="lg:hidden mb-10 flex justify-center"><Logo size={72} /></div>
           <h2 className="text-2xl font-semibold text-foreground">Accedi</h2>
           <p className="text-sm text-muted-foreground mt-1">Usa il tuo account aziendale Microsoft 365</p>
 
