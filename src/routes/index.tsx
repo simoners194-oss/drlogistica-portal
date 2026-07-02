@@ -16,7 +16,7 @@ function Index() {
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-background">
       <div className="hidden lg:flex flex-col justify-between p-12 text-primary-foreground" style={{ background: "var(--gradient-hero)" }}>
-        <Logo />
+        <Logo variant="light" />
         <div>
           <h1 className="text-4xl font-semibold tracking-tight leading-tight">
             Gestisci le presenze<br />in modo semplice.
