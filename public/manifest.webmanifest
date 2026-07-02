@@ -1,0 +1,12 @@
+{
+  "name": "DR Portal - Presenze DR Logistica",
+  "short_name": "DR Portal",
+  "description": "Gestione presenze dipendenti DR Logistica",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f8fb",
+  "theme_color": "#1e40af",
+  "icons": [
+    { "src": "/favicon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
