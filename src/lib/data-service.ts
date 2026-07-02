@@ -18,6 +18,13 @@ import {
   type SedeId,
   type Timbratura,
 } from "./mock-data";
+import {
+  currentIntegrationMode,
+  isSharePointConfigured,
+  missingSharePointFields,
+  sharepointConfig,
+  type IntegrationMode,
+} from "./sharepoint-config";
 
 // Stato in memoria (mock). In produzione verrà rimpiazzato da chiamate a
 // SharePoint. Cloniamo l'array per poter mutare le timbrature durante la
@@ -31,12 +38,54 @@ export interface DataService {
   timbra(dipendenteId: string, tipo: Timbratura["tipo"]): Promise<Dipendente>;
 }
 
-export const dataService: DataService = {
+// ---------------------------------------------------------------------------
+// Diagnostica integrazione — usata dalla pagina Amministrazione.
+// ---------------------------------------------------------------------------
+
+export interface IntegrationStatus {
+  mode: IntegrationMode;
+  dipendentiCaricati: number;
+  ultimoAggiornamento: Date | null;
+  ultimoErrore: string | null;
+  campiMancanti: string[];
+}
+
+const integrationStatus: IntegrationStatus = {
+  mode: currentIntegrationMode(),
+  dipendentiCaricati: 0,
+  ultimoAggiornamento: null,
+  ultimoErrore: null,
+  campiMancanti: missingSharePointFields(),
+};
+
+export function getIntegrationStatus(): IntegrationStatus {
+  return { ...integrationStatus, campiMancanti: [...integrationStatus.campiMancanti] };
+}
+
+function markSuccess(count: number) {
+  integrationStatus.dipendentiCaricati = count;
+  integrationStatus.ultimoAggiornamento = new Date();
+  integrationStatus.ultimoErrore = null;
+}
+
+function markError(err: unknown) {
+  integrationStatus.ultimoErrore =
+    err instanceof Error ? err.message : String(err ?? "Errore sconosciuto");
+  integrationStatus.ultimoAggiornamento = new Date();
+}
+
+// ---------------------------------------------------------------------------
+// Implementazione MOCK (attuale)
+// ---------------------------------------------------------------------------
+
+const mockDataService: DataService = {
   async getSedi() {
     return SEDI;
   },
   async getDipendenti() {
-    return state.map((d) => ({ ...d }));
+    const list = state.map((d) => ({ ...d }));
+    markSuccess(list.length);
+    return list;
   },
   async getDipendente(id) {
     const d = state.find((x) => x.id === id);
@@ -59,6 +108,44 @@ export const dataService: DataService = {
     return { ...state[idx] };
   },
 };
+
+// ---------------------------------------------------------------------------
+// Implementazione SHAREPOINT (placeholder — verrà attivata nel prossimo step)
+//
+// Quando la configurazione sarà completa e verranno implementate le chiamate
+// a Microsoft Graph, questa costante userà `sharepointConfig` per leggere le
+// liste `LIST_DIPENDENTI_ID` e `LIST_TIMBRATURE_ID` del sito `SITE_ID`.
+// Per ora ogni metodo delega ai mock per non rompere l'esperienza utente.
+// ---------------------------------------------------------------------------
+
+const sharepointDataService: DataService = {
+  async getSedi() {
+    return mockDataService.getSedi();
+  },
+  async getDipendenti() {
+    try {
+      // TODO(step successivo): GET /sites/{SITE_ID}/lists/{LIST_DIPENDENTI_ID}/items?expand=fields
+      void sharepointConfig;
+      const list = await mockDataService.getDipendenti();
+      return list;
+    } catch (err) {
+      markError(err);
+      throw err;
+    }
+  },
+  async getDipendente(id) {
+    return mockDataService.getDipendente(id);
+  },
+  async timbra(id, tipo) {
+    // TODO(step successivo): POST /sites/{SITE_ID}/lists/{LIST_TIMBRATURE_ID}/items
+    return mockDataService.timbra(id, tipo);
+  },
+};
+
+// Selettore: usa SharePoint solo se completamente configurato.
+export const dataService: DataService = isSharePointConfigured()
+  ? sharepointDataService
+  : mockDataService;
 
 // Filtra per sede senza duplicare la logica nelle pagine.
 export function bySede(list: Dipendente[], sede: SedeId) {
