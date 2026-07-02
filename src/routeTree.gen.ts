@@ -9,18 +9,36 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as HrRouteImport } from './routes/hr'
-import { Route as DipendenteRouteImport } from './routes/dipendente'
+import { Route as RichiesteRouteImport } from './routes/richieste'
+import { Route as ReportRouteImport } from './routes/report'
+import { Route as PresenzeRouteImport } from './routes/presenze'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as AmministrazioneRouteImport } from './routes/amministrazione'
 import { Route as IndexRouteImport } from './routes/index'
 
-const HrRoute = HrRouteImport.update({
-  id: '/hr',
-  path: '/hr',
+const RichiesteRoute = RichiesteRouteImport.update({
+  id: '/richieste',
+  path: '/richieste',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DipendenteRoute = DipendenteRouteImport.update({
-  id: '/dipendente',
-  path: '/dipendente',
+const ReportRoute = ReportRouteImport.update({
+  id: '/report',
+  path: '/report',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PresenzeRoute = PresenzeRouteImport.update({
+  id: '/presenze',
+  path: '/presenze',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AmministrazioneRoute = AmministrazioneRouteImport.update({
+  id: '/amministrazione',
+  path: '/amministrazione',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -31,48 +49,100 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/dipendente': typeof DipendenteRoute
-  '/hr': typeof HrRoute
+  '/amministrazione': typeof AmministrazioneRoute
+  '/dashboard': typeof DashboardRoute
+  '/presenze': typeof PresenzeRoute
+  '/report': typeof ReportRoute
+  '/richieste': typeof RichiesteRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/dipendente': typeof DipendenteRoute
-  '/hr': typeof HrRoute
+  '/amministrazione': typeof AmministrazioneRoute
+  '/dashboard': typeof DashboardRoute
+  '/presenze': typeof PresenzeRoute
+  '/report': typeof ReportRoute
+  '/richieste': typeof RichiesteRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/dipendente': typeof DipendenteRoute
-  '/hr': typeof HrRoute
+  '/amministrazione': typeof AmministrazioneRoute
+  '/dashboard': typeof DashboardRoute
+  '/presenze': typeof PresenzeRoute
+  '/report': typeof ReportRoute
+  '/richieste': typeof RichiesteRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dipendente' | '/hr'
+  fullPaths:
+    | '/'
+    | '/amministrazione'
+    | '/dashboard'
+    | '/presenze'
+    | '/report'
+    | '/richieste'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dipendente' | '/hr'
-  id: '__root__' | '/' | '/dipendente' | '/hr'
+  to:
+    | '/'
+    | '/amministrazione'
+    | '/dashboard'
+    | '/presenze'
+    | '/report'
+    | '/richieste'
+  id:
+    | '__root__'
+    | '/'
+    | '/amministrazione'
+    | '/dashboard'
+    | '/presenze'
+    | '/report'
+    | '/richieste'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  DipendenteRoute: typeof DipendenteRoute
-  HrRoute: typeof HrRoute
+  AmministrazioneRoute: typeof AmministrazioneRoute
+  DashboardRoute: typeof DashboardRoute
+  PresenzeRoute: typeof PresenzeRoute
+  ReportRoute: typeof ReportRoute
+  RichiesteRoute: typeof RichiesteRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/hr': {
-      id: '/hr'
-      path: '/hr'
-      fullPath: '/hr'
-      preLoaderRoute: typeof HrRouteImport
+    '/richieste': {
+      id: '/richieste'
+      path: '/richieste'
+      fullPath: '/richieste'
+      preLoaderRoute: typeof RichiesteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dipendente': {
-      id: '/dipendente'
-      path: '/dipendente'
-      fullPath: '/dipendente'
-      preLoaderRoute: typeof DipendenteRouteImport
+    '/report': {
+      id: '/report'
+      path: '/report'
+      fullPath: '/report'
+      preLoaderRoute: typeof ReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/presenze': {
+      id: '/presenze'
+      path: '/presenze'
+      fullPath: '/presenze'
+      preLoaderRoute: typeof PresenzeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/amministrazione': {
+      id: '/amministrazione'
+      path: '/amministrazione'
+      fullPath: '/amministrazione'
+      preLoaderRoute: typeof AmministrazioneRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -87,19 +157,12 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  DipendenteRoute: DipendenteRoute,
-  HrRoute: HrRoute,
+  AmministrazioneRoute: AmministrazioneRoute,
+  DashboardRoute: DashboardRoute,
+  PresenzeRoute: PresenzeRoute,
+  ReportRoute: ReportRoute,
+  RichiesteRoute: RichiesteRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

@@ -36,14 +36,14 @@ function Index() {
 
           <div className="mt-8 space-y-3">
             <Link
-              to="/dipendente"
+              to="/presenze"
               className="w-full flex items-center justify-center gap-3 h-11 rounded-md border border-border bg-card hover:bg-secondary transition-colors text-sm font-medium text-foreground shadow-sm"
             >
               <MicrosoftLogo />
               Accedi come Dipendente
             </Link>
             <Link
-              to="/hr"
+              to="/dashboard"
               className="w-full flex items-center justify-center gap-3 h-11 rounded-md text-primary-foreground text-sm font-medium shadow-[var(--shadow-elegant)] transition-transform hover:scale-[1.01]"
               style={{ background: "var(--gradient-primary)" }}
             >
