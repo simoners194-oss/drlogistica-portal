@@ -8,9 +8,9 @@ export function AppShell({ children, role }: { children: ReactNode; role: "dipen
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <header className="border-b border-border bg-card/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 h-28 flex items-center justify-between">
           <Link to="/dipendente" className="flex items-center gap-2">
-            <Logo size={56} />
+            <Logo size={120} />
           </Link>
           <nav className="flex items-center gap-1 text-sm">
             <Link
