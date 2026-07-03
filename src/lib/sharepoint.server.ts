@@ -461,6 +461,89 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Login locale (Codice + PIN) — verifica lato server contro la lista
+// SharePoint "Dipendenti". Non espone MAI il PIN al client.
+// ---------------------------------------------------------------------------
+export interface LoginResult {
+  ok: boolean;
+  dipendente?: SpDipendente;
+  error?: string;
+}
+
+function normalizeCodice(v: unknown): string {
+  return String(v ?? "").trim().toUpperCase();
+}
+
+function normalizePin(v: unknown): string {
+  return String(v ?? "").trim();
+}
+
+export async function loginByCodicePin(
+  codiceInput: string,
+  pinInput: string,
+): Promise<LoginResult> {
+  const started = Date.now();
+  const codice = normalizeCodice(codiceInput);
+  const pin = normalizePin(pinInput);
+  if (!codice || !pin) {
+    return { ok: false, error: "Codice o PIN non validi." };
+  }
+  const cfg = await discoverSharePoint();
+  const F = cfg.dipendentiFields;
+  const codiceField = F.Codice;
+  const pinField = F.PIN;
+  if (!codiceField || !pinField) {
+    logSp(
+      "error",
+      "login",
+      `Colonne login mancanti su Dipendenti (Codice=${!!codiceField}, PIN=${!!pinField}).`,
+    );
+    return {
+      ok: false,
+      error:
+        'Login non configurato: aggiungere le colonne "Codice" e "PIN" alla lista SharePoint "Dipendenti".',
+    };
+  }
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items?expand=fields&$top=999`,
+    ),
+  );
+  const attivoField = F.Attivo;
+  const match = res.value.find((it) => {
+    const f = it.fields ?? {};
+    const c = normalizeCodice(f[codiceField]);
+    const p = normalizePin(f[pinField]);
+    const attivo = attivoField ? Boolean(f[attivoField]) : true;
+    return attivo && c === codice && p === pin;
+  });
+  if (!match) {
+    logSp("warn", "login", `Tentativo fallito per codice="${codice}"`, {
+      durataMs: Date.now() - started,
+    });
+    return { ok: false, error: "Codice o PIN non validi." };
+  }
+  const f = match.fields ?? {};
+  const nome = String(f[F.Nome ?? ""] ?? "").trim();
+  const cognome = String(f[F.Cognome ?? ""] ?? "").trim();
+  const dipendente: SpDipendente = {
+    id: String(match.id),
+    nome,
+    cognome,
+    nomeCompleto:
+      String(f[F.NomeCompleto ?? ""] ?? `${nome} ${cognome}`).trim(),
+    email: String(f[F.Email ?? ""] ?? "").trim(),
+    sede: normalizeSede((F.Sede ? f[F.Sede] : undefined) as SedeRaw),
+    attivo: true,
+    ruolo: String(f[F.Ruolo ?? ""] ?? "").trim(),
+  };
+  logSp("info", "login", `Login ok per ${codice} (id=${dipendente.id})`, {
+    durataMs: Date.now() - started,
+  });
+  return { ok: true, dipendente };
+}
+
+// ---------------------------------------------------------------------------
 // Timbrature
 // ---------------------------------------------------------------------------
 export type EventoTimbratura = "entrata" | "inizio-pausa" | "fine-pausa" | "uscita";
