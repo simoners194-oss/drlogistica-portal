@@ -30,7 +30,7 @@ export const Route = createFileRoute("/amministrazione")({
     if (!s) {
       throw redirect({ to: "/", search: { redirect: location.href } });
     }
-    if (s.ruolo !== "amministratore") {
+    if (s.ruolo !== "amministratore_sistema") {
       // Fallback pulito: rimanda alla landing del ruolo (Presenze o Dashboard).
       throw redirect({ to: s.ruolo === "dipendente" ? "/presenze" : "/dashboard" });
     }

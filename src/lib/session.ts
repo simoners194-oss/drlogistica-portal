@@ -8,29 +8,49 @@
 
 import type { SedeId } from "./mock-data";
 
-export type Ruolo = "dipendente" | "responsabile" | "amministratore";
+// I tre ruoli ufficiali di DR Portal.
+// - `dipendente`             — utente operativo, vede solo le proprie presenze
+// - `responsabile`           — vede in sola lettura tutte le sedi
+// - `amministratore_sistema` — accesso completo, gestione tecnica del portale
+export type Ruolo = "dipendente" | "responsabile" | "amministratore_sistema";
 
 export const RUOLO_LABEL: Record<Ruolo, string> = {
   dipendente: "Dipendente",
   responsabile: "Responsabile",
-  amministratore: "Amministratore",
+  amministratore_sistema: "Amministratore di sistema",
 };
 
 // Normalizza il valore SharePoint "Ruolo" in uno dei ruoli gestiti.
-// Tollerante a maiuscole, spazi e varianti (es. "Resp.", "Admin").
+// Tollerante a maiuscole, spazi e varianti (es. "Resp.", "Admin",
+// "Amministratore di sistema").
 export function normalizeRuolo(raw: string | null | undefined): Ruolo {
   const s = (raw ?? "").toString().trim().toLowerCase();
   if (!s) return "dipendente";
-  if (s.startsWith("ammin") || s.startsWith("admin")) return "amministratore";
+  if (
+    s.includes("sistema") ||
+    s.startsWith("ammin") ||
+    s.startsWith("admin") ||
+    s === "sysadmin" ||
+    s === "system"
+  ) {
+    return "amministratore_sistema";
+  }
   if (s.startsWith("resp")) return "responsabile";
   return "dipendente";
 }
+
+// La sede della sessione può assumere il valore speciale "tutte" per
+// l'account Amministratore di sistema (ADM001), che non è vincolato ad una
+// sede operativa.
+export type SessionSede = SedeId | "tutte";
+
+export const SEDE_LABEL_TUTTE = "Tutte le sedi";
 
 export interface SessionUser {
   id: string;
   nome: string;
   cognome: string;
-  sede: SedeId;
+  sede: SessionSede;
   ruolo: Ruolo;
 }
 
@@ -47,7 +67,7 @@ export function readSession(): SessionUser | null {
       id: String(parsed.id),
       nome: parsed.nome ?? "",
       cognome: parsed.cognome ?? "",
-      sede: (parsed.sede as SedeId) ?? "roma",
+      sede: (parsed.sede as SessionSede) ?? "roma",
       ruolo: normalizeRuolo(parsed.ruolo),
     };
   } catch {

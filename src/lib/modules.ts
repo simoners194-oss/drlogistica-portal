@@ -45,7 +45,7 @@ export const MODULES: readonly AppModule[] = [
     icon: LayoutDashboard,
     ready: true,
     description: "Panoramica live delle presenze per sede.",
-    roles: ["responsabile", "amministratore"],
+    roles: ["responsabile", "amministratore_sistema"],
   },
   {
     id: "presenze",
@@ -54,7 +54,7 @@ export const MODULES: readonly AppModule[] = [
     icon: Clock,
     ready: true,
     description: "Timbrature, pause e stato personale.",
-    roles: ["dipendente", "responsabile", "amministratore"],
+    roles: ["dipendente", "responsabile", "amministratore_sistema"],
   },
   {
     id: "richieste",
@@ -63,7 +63,7 @@ export const MODULES: readonly AppModule[] = [
     icon: FileText,
     ready: false,
     description: "Ferie, permessi e giustificativi.",
-    roles: ["dipendente", "responsabile", "amministratore"],
+    roles: ["dipendente", "responsabile", "amministratore_sistema"],
   },
   {
     id: "report",
@@ -72,7 +72,7 @@ export const MODULES: readonly AppModule[] = [
     icon: BarChart3,
     ready: false,
     description: "Reportistica mensile e annuale.",
-    roles: ["responsabile", "amministratore"],
+    roles: ["responsabile", "amministratore_sistema"],
   },
   {
     id: "amministrazione",
@@ -81,6 +81,6 @@ export const MODULES: readonly AppModule[] = [
     icon: Settings,
     ready: true,
     description: "Configurazione integrazioni e utenti.",
-    roles: ["amministratore"],
+    roles: ["amministratore_sistema"],
   },
 ] as const;
