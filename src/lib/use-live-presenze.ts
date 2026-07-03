@@ -1,20 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { dataService, getIntegrationStatus } from "./data-service";
 import type { Dipendente } from "./mock-data";
 
-// Hook di polling: rilegge i dipendenti ogni `intervalMs` millisecondi.
-// Quando l'origine dati sarà SharePoint sarà sufficiente sostituire
-// `dataService.getDipendenti()` con una subscription reale (Graph webhooks).
 export function useLivePresenze(intervalMs = 15000) {
   const [data, setData] = useState<Dipendente[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  const mountedRef = useRef(true);
+
+  const refresh = useCallback(async () => {
+    setTick((t) => t + 1);
+    const list = await dataService.getDipendenti();
+    if (!mountedRef.current) return;
+    setData(list);
+    setLastUpdate(new Date());
+    setError(getIntegrationStatus().ultimoErrore);
+  }, []);
 
   useEffect(() => {
-    let mounted = true;
+    mountedRef.current = true;
     const load = async () => {
       const list = await dataService.getDipendenti();
-      if (!mounted) return;
+      if (!mountedRef.current) return;
       setData(list);
       setLastUpdate(new Date());
       setError(getIntegrationStatus().ultimoErrore);
@@ -22,10 +30,10 @@ export function useLivePresenze(intervalMs = 15000) {
     load();
     const t = setInterval(load, intervalMs);
     return () => {
-      mounted = false;
+      mountedRef.current = false;
       clearInterval(t);
     };
-  }, [intervalMs]);
+  }, [intervalMs, tick]);
 
-  return { data, lastUpdate, error };
+  return { data, lastUpdate, error, refresh };
 }
