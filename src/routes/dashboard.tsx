@@ -255,6 +255,7 @@ function DashboardPage() {
           if (!o) setSelected(null);
         }}
       />
+      <QuickAccess items={quickItems} />
     </AppShell>
   );
 }

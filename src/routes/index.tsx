@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { spLogin } from "@/lib/sharepoint.functions";
 import { APP_NAME, APP_TAGLINE } from "@/lib/modules";
 import { defaultLandingFor, normalizeRuolo, writeSession } from "@/lib/session";
+import { AppFooter } from "@/components/AppFooter";
+import { APP_INFO } from "@/lib/version";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -60,7 +62,8 @@ function Index() {
   };
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-background">
+    <div className="min-h-screen flex flex-col bg-background">
+      <div className="flex-1 grid lg:grid-cols-2">
       <div className="hidden lg:flex flex-col justify-between p-12 text-primary-foreground" style={{ background: "var(--gradient-hero)" }}>
         <Logo variant="light" size={144} subtitle={APP_TAGLINE} />
         <div>
@@ -72,7 +75,9 @@ function Index() {
             Una piattaforma modulare che unisce Presenze, Richieste, Report e Amministrazione in un'unica esperienza integrata.
           </p>
         </div>
-        <div className="text-xs text-white/60">© DR Logistica — Powered by Microsoft 365</div>
+        <div className="text-xs text-white/60">
+          {APP_INFO.copyright} — Powered by Microsoft 365 · v{APP_INFO.version}
+        </div>
       </div>
 
       <div className="flex items-center justify-center p-6 lg:p-12">
@@ -126,6 +131,8 @@ function Index() {
           </p>
         </div>
       </div>
+      </div>
+      <AppFooter />
     </div>
   );
 }
