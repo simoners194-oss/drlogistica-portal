@@ -9,6 +9,7 @@ import { dataService, displayStato, DISPLAY_DOT, DISPLAY_LABEL } from "@/lib/dat
 import {
   computeOreOggi,
   formatDurata,
+  GIORNATA_CHIUSA_MESSAGE,
   isTransitionAllowed,
   lastEvento,
   reasonNotAllowed,
@@ -76,8 +77,12 @@ function PresenzePage() {
     if (!me || busy) return;
     const last = lastEvento(me.eventiOggi ?? []);
     if (!isTransitionAllowed(tipo, last)) {
+      const chiusa = last === "uscita";
       const motivo = reasonNotAllowed(tipo, last) ?? "Timbratura non consentita in questo momento.";
-      toast.error("Timbratura non consentita in questo momento.", { description: motivo });
+      toast.error(
+        chiusa ? "Giornata lavorativa chiusa" : "Timbratura non consentita in questo momento.",
+        { description: motivo },
+      );
       return;
     }
     setBusy(true);
