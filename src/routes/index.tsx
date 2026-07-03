@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { spLogin } from "@/lib/sharepoint.functions";
 import { APP_NAME, APP_TAGLINE } from "@/lib/modules";
+import { defaultLandingFor, normalizeRuolo, writeSession } from "@/lib/session";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -41,16 +42,16 @@ function Index() {
         return;
       }
       const d = res.dipendente;
-      try {
-        sessionStorage.setItem(
-          "dr:currentUser",
-          JSON.stringify({ id: d.id, nome: d.nome, cognome: d.cognome }),
-        );
-      } catch {
-        /* ignore */
-      }
+      const ruolo = normalizeRuolo(d.ruolo);
+      writeSession({
+        id: d.id,
+        nome: d.nome,
+        cognome: d.cognome,
+        sede: d.sede,
+        ruolo,
+      });
       toast.success(`Benvenuto ${d.nome}`);
-      navigate({ to: "/presenze" });
+      navigate({ to: defaultLandingFor(ruolo) });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Codice o PIN non validi.");
     } finally {
