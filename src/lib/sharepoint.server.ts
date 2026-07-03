@@ -489,6 +489,41 @@ export async function loginByCodicePin(
   if (!codice || !pin) {
     return { ok: false, error: "Codice o PIN non validi." };
   }
+
+  // -------------------------------------------------------------------------
+  // Account speciale "Amministratore di sistema" (ADM001).
+  // Separato dai dipendenti operativi SharePoint: viene usato esclusivamente
+  // per amministrare DR Portal (configurazione, diagnostica, log, gestione
+  // utenti/sedi, future correzioni timbrature). Il PIN è configurabile via
+  // secret `DR_ADMIN_PIN`; se non definito viene usato un default operativo
+  // che l'utente può ruotare in Amministrazione.
+  // -------------------------------------------------------------------------
+  if (codice === "ADM001") {
+    const adminPin = (process.env.DR_ADMIN_PIN ?? "9999").trim();
+    if (pin !== adminPin) {
+      logSp("warn", "login", `Tentativo Amministratore di sistema fallito`, {
+        durataMs: Date.now() - started,
+      });
+      return { ok: false, error: "Codice o PIN non validi." };
+    }
+    logSp("info", "login", `Login Amministratore di sistema (ADM001)`, {
+      durataMs: Date.now() - started,
+    });
+    return {
+      ok: true,
+      dipendente: {
+        id: "ADM001",
+        nome: "Admin",
+        cognome: "",
+        nomeCompleto: "Admin",
+        email: "",
+        sede: "tutte",
+        attivo: true,
+        ruolo: "Amministratore di sistema",
+      },
+    };
+  }
+
   const cfg = await discoverSharePoint();
   const F = cfg.dipendentiFields;
   const codiceField = F.Codice;
