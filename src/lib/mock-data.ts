@@ -19,6 +19,12 @@ export interface Dipendente {
   entrataOra?: string; // ISO — timbratura di entrata effettiva (per calcolo ore)
   ritardoMinuti?: number;
   straordinariMinuti?: number;
+  // Eventi di oggi ordinati per orario crescente. Usati dal Modulo Presenze
+  // per la timeline e dalla macchina a stati.
+  eventiOggi?: Timbratura[];
+  oreLavorateMinuti?: number;
+  pausaMinuti?: number;
+  oltreOrarioMinuti?: number;
 }
 
 export const SEDI: { id: SedeId; nome: string }[] = [

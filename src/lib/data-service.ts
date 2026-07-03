@@ -17,6 +17,7 @@ import {
   type SedeId,
   type Timbratura,
 } from "./mock-data";
+import { computeOreOggi } from "./presenze-logic";
 import {
   spCreateTimbratura,
   spGetDiagnostics,
@@ -141,6 +142,11 @@ function mergeDipendentiTimbrature(
     const ultimaTimbratura: Timbratura | undefined = last
       ? { tipo: last.evento, ora: last.dataOra }
       : undefined;
+    const eventiOggi: Timbratura[] = eventi.map((e) => ({
+      tipo: e.evento,
+      ora: e.dataOra,
+    }));
+    const ore = computeOreOggi(eventiOggi);
     return {
       id: d.id,
       nome: d.nome,
@@ -151,6 +157,11 @@ function mergeDipendentiTimbrature(
       stato,
       entrataOra: entrata?.dataOra,
       ultimaTimbratura,
+      eventiOggi,
+      oreLavorateMinuti: ore.oreLavorateMinuti,
+      pausaMinuti: ore.pausaMinuti,
+      oltreOrarioMinuti: ore.oltreOrarioMinuti,
+      straordinariMinuti: ore.oltreOrarioMinuti,
     };
   });
 }
@@ -208,11 +219,9 @@ export function aggregate(list: Dipendente[]) {
   const pausa = list.filter((d) => d.stato === "pausa").length;
   const usciti = list.filter((d) => d.stato === "uscito").length;
   const assenti = list.filter((d) => d.stato === "non-timbrato").length;
-  const straordinari = list.filter(
-    (d) => (d.straordinariMinuti ?? 0) > 0 && d.stato !== "uscito",
-  ).length;
+  const oltre = list.filter((d) => (d.oltreOrarioMinuti ?? 0) > 0).length;
   const ritardi = list.filter((d) => (d.ritardoMinuti ?? 0) > 0).length;
-  return { attivi, presenti, pausa, usciti, assenti, straordinari, ritardi };
+  return { attivi, presenti, pausa, usciti, assenti, oltre, ritardi };
 }
 
 // Stato "visivo" richiesto dalla dashboard live:
@@ -222,7 +231,7 @@ export type DisplayStato = "presente" | "pausa" | "assente" | "oltre";
 export function displayStato(d: Dipendente): DisplayStato {
   if (d.stato === "pausa") return "pausa";
   if (d.stato === "non-timbrato" || d.stato === "uscito") return "assente";
-  if ((d.straordinariMinuti ?? 0) > 0) return "oltre";
+  if ((d.oltreOrarioMinuti ?? 0) > 0) return "oltre";
   return "presente";
 }
 

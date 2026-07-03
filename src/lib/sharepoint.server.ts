@@ -653,6 +653,25 @@ export async function createTimbratura(input: CreateTimbraturaInput): Promise<Sp
   const dipInt = Number(input.dipendenteId);
   if (!Number.isFinite(dipInt))
     throw new Error("dipendenteId non valido per SharePoint (atteso ID intero della lista).");
+
+  // Validazione macchina a stati lato server: rifiuta transizioni non valide
+  // anche se il client fosse aggirato. Legge le timbrature odierne del
+  // dipendente e determina l'ultimo evento.
+  const oggi = await fetchTimbratureOggi();
+  const eventiDip = oggi
+    .filter((t) => t.dipendenteId === input.dipendenteId)
+    .sort((a, b) => a.dataOra.localeCompare(b.dataOra));
+  const last = eventiDip.length ? eventiDip[eventiDip.length - 1].evento : null;
+  const allowed = nextAllowedSp(last);
+  if (!allowed.includes(input.evento)) {
+    logSp(
+      "warn",
+      "create.timbratura",
+      `Transizione non ammessa per dip=${input.dipendenteId}: ${last ?? "nessuna"} → ${input.evento}`,
+    );
+    throw new Error("Timbratura non consentita in questo momento.");
+  }
+
   const dataOra = new Date().toISOString();
   const fields: Record<string, unknown> = {
     [lookupIdFieldName(dipendenteField)]: dipInt,
@@ -684,6 +703,23 @@ export async function createTimbratura(input: CreateTimbraturaInput): Promise<Sp
     posizione: input.posizione,
     note: input.note,
   };
+}
+
+// Macchina a stati identica a src/lib/presenze-logic.ts. Duplicata qui
+// perché sharepoint.server.ts non può importare moduli client-safe che
+// verrebbero comunque bundlati insieme; la logica è banale e stabile.
+function nextAllowedSp(last: EventoTimbratura | null): EventoTimbratura[] {
+  switch (last) {
+    case null:
+      return ["entrata"];
+    case "entrata":
+    case "fine-pausa":
+      return ["inizio-pausa", "uscita"];
+    case "inizio-pausa":
+      return ["fine-pausa"];
+    case "uscita":
+      return [];
+  }
 }
 
 export async function deleteTimbratura(id: string): Promise<void> {

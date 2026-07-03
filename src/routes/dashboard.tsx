@@ -7,6 +7,7 @@ import {
   Coffee,
   UserX,
   TrendingUp,
+  LogOut,
   RefreshCw,
   AlertTriangle,
   Clock,
@@ -22,6 +23,7 @@ import {
 } from "@/lib/data-service";
 import { SEDI, formatOra, labelTipo, type SedeId, type Dipendente } from "@/lib/mock-data";
 import { useLivePresenze } from "@/lib/use-live-presenze";
+import { formatDurata } from "@/lib/presenze-logic";
 import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
 
 export const Route = createFileRoute("/dashboard")({
@@ -143,12 +145,13 @@ function DashboardPage() {
       </section>
 
       {/* Top KPI cards */}
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
-        <KpiCard label="Dipendenti attivi" value={totals.attivi} Icon={Users} tone="primary" />
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-6">
+        <KpiCard label="Non timbrati" value={totals.assenti} Icon={UserX} tone="absent" />
         <KpiCard label="Presenti" value={totals.presenti} Icon={UserCheck} tone="present" />
         <KpiCard label="In pausa" value={totals.pausa} Icon={Coffee} tone="break" />
-        <KpiCard label="Assenti" value={totals.assenti} Icon={UserX} tone="absent" />
-        <KpiCard label="Straordinari" value={totals.straordinari} Icon={TrendingUp} tone="out" className="col-span-2 md:col-span-1" />
+        <KpiCard label="Usciti" value={totals.usciti} Icon={LogOut} tone="primary" />
+        <KpiCard label="Oltre 8 ore" value={totals.oltre} Icon={TrendingUp} tone="out" />
+        <KpiCard label="Dipendenti attivi" value={totals.attivi} Icon={Users} tone="primary" className="col-span-2 md:col-span-1" />
       </div>
 
 
@@ -172,10 +175,10 @@ function DashboardPage() {
         <AlertPanel
           Icon={TrendingUp}
           tone="ok"
-          title="Straordinari"
-          items={data.filter((d) => (d.straordinariMinuti ?? 0) > 0)}
+          title="Oltre 8 ore"
+          items={data.filter((d) => (d.oltreOrarioMinuti ?? 0) > 0)}
           renderMeta={(d) => `${d.ruolo} · ${sedeLabel(d.sede)}`}
-          renderValue={(d) => `+${d.straordinariMinuti} min`}
+          renderValue={(d) => `+${formatDurata(d.oltreOrarioMinuti ?? 0)}`}
         />
         <AlertPanel
           Icon={UserX}
