@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { Logo } from "./Logo";
 import { PageProgress } from "./PageProgress";
+import { AppFooter } from "./AppFooter";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { clearSession, readSession, RUOLO_LABEL, type SessionUser } from "@/lib/session";
 
@@ -76,6 +77,7 @@ export function AppShell({
             </div>
             {children}
           </main>
+          <AppFooter />
         </div>
       </div>
     </SidebarProvider>

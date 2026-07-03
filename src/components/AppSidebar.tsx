@@ -50,28 +50,44 @@ export function AppSidebar() {
             <SidebarMenu>
               {visibleModules.map((item) => {
                 const active = pathname === item.url;
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={active} tooltip={item.title}>
-                      <Link
-                        to={item.url}
-                        className="flex items-center gap-2"
-                        aria-disabled={!item.ready}
-                        onClick={(e) => {
-                          if (!item.ready) return; // le pagine placeholder mostrano comunque un messaggio
-                        }}
+                // Voci "In arrivo": non cliccabili, aspetto attenuato.
+                if (!item.ready) {
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        tooltip={`${item.title} — In arrivo`}
+                        aria-disabled="true"
+                        className="opacity-60 cursor-not-allowed hover:bg-transparent"
+                        onClick={(e) => e.preventDefault()}
                       >
                         <item.icon className="h-4 w-4 shrink-0" />
                         {!collapsed && (
                           <span className="flex-1 flex items-center justify-between">
                             {item.title}
-                            {!item.ready && (
-                              <span className="text-[9px] font-medium uppercase tracking-wider text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded-full">
-                                In arrivo
-                              </span>
-                            )}
+                            <span className="text-[9px] font-medium uppercase tracking-wider text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded-full">
+                              In arrivo
+                            </span>
                           </span>
                         )}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                }
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={active}
+                      tooltip={item.title}
+                      className={
+                        active
+                          ? "bg-primary/10 text-primary font-medium border-l-2 border-primary rounded-l-none pl-[calc(0.5rem-2px)]"
+                          : ""
+                      }
+                    >
+                      <Link to={item.url} className="flex items-center gap-2">
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!collapsed && <span className="flex-1">{item.title}</span>}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
