@@ -155,7 +155,7 @@ function PresenzePage() {
               <span className="text-white/90">Stato: <strong>{DISPLAY_LABEL[ds]}</strong></span>
             </span>
             <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-white/90">
-              <Timer className="h-4 w-4" /> Ore oggi: <strong className="tabular-nums">{oreLavorateOggi(me, now)}</strong>
+              <Timer className="h-4 w-4" /> Ore oggi: <strong className="tabular-nums">{formatDurata(ore.oreLavorateMinuti)}</strong>
             </span>
           </div>
         </div>
