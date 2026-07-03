@@ -6,6 +6,7 @@ export function useLivePresenze(intervalMs = 15000) {
   const [data, setData] = useState<Dipendente[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
   const mountedRef = useRef(true);
 
@@ -26,6 +27,7 @@ export function useLivePresenze(intervalMs = 15000) {
       setData(list);
       setLastUpdate(new Date());
       setError(getIntegrationStatus().ultimoErrore);
+      setLoading(false);
     };
     load();
     const t = setInterval(load, intervalMs);
@@ -35,5 +37,5 @@ export function useLivePresenze(intervalMs = 15000) {
     };
   }, [intervalMs, tick]);
 
-  return { data, lastUpdate, error, refresh };
+  return { data, lastUpdate, error, refresh, loading };
 }
