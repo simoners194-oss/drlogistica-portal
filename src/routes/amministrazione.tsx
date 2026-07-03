@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { PlaceholderSection } from "@/components/PlaceholderSection";
 import { Settings, CheckCircle2, AlertTriangle, RefreshCw, KeyRound, Loader2, PlayCircle, XCircle } from "lucide-react";
@@ -23,6 +23,21 @@ import {
 
 export const Route = createFileRoute("/amministrazione")({
   head: () => ({ meta: [{ title: "Modulo Amministrazione — DR Portal" }] }),
+  beforeLoad: ({ location }) => {
+    if (typeof window === "undefined") return;
+    // Import dinamico per evitare qualunque dipendenza SSR: readSession legge
+    // solo sessionStorage lato client.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { readSession } = require("@/lib/session") as typeof import("@/lib/session");
+    const s = readSession();
+    if (!s) {
+      throw redirect({ to: "/", search: { redirect: location.href } });
+    }
+    if (s.ruolo !== "amministratore") {
+      // Fallback pulito: rimanda alla landing del ruolo (Presenze o Dashboard).
+      throw redirect({ to: s.ruolo === "dipendente" ? "/presenze" : "/dashboard" });
+    }
+  },
   component: AmministrazionePage,
 });
 
