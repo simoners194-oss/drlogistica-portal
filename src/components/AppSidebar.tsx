@@ -1,4 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -13,11 +14,25 @@ import {
 } from "@/components/ui/sidebar";
 import { Logo } from "./Logo";
 import { MODULES } from "@/lib/modules";
+import { canAccess, readSession, type Ruolo } from "@/lib/session";
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // Il ruolo viene letto client-side (sessionStorage) dopo il mount per
+  // evitare mismatch di hydration con SSR/prerender.
+  const [ruolo, setRuolo] = useState<Ruolo | null>(null);
+  useEffect(() => {
+    const s = readSession();
+    setRuolo(s?.ruolo ?? null);
+  }, [pathname]);
+
+  // Finché il ruolo non è noto, mostra solo le voci pubbliche a tutti i
+  // ruoli (Presenze, Richieste) per evitare "flash" del menu completo.
+  const visibleModules = MODULES.filter((m) =>
+    ruolo ? canAccess(m, ruolo) : canAccess(m, "dipendente"),
+  );
 
   return (
     <Sidebar collapsible="icon">
@@ -33,7 +48,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Moduli</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {MODULES.map((item) => {
+              {visibleModules.map((item) => {
                 const active = pathname === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>
