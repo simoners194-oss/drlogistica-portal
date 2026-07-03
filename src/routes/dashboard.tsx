@@ -237,28 +237,28 @@ function SedePanel({
 
   return (
     <section className="rounded-xl border border-border bg-card shadow-[var(--shadow-card)] flex flex-col">
-      <header className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">Sede {sedeName}</h2>
+      <header className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-border">
+        <div className="min-w-0">
+          <h2 className="text-[15px] sm:text-base font-semibold text-foreground truncate">Sede {sedeName}</h2>
           <p className="text-xs text-muted-foreground">{dipendenti.length} dipendenti totali</p>
         </div>
-        <div className="text-right">
-          <div className="text-2xl font-semibold tabular-nums text-foreground">
+        <div className="text-right shrink-0">
+          <div className="text-2xl font-semibold tabular-nums text-foreground leading-none">
             {presenti}<span className="text-muted-foreground text-base">/{dipendenti.length}</span>
           </div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">In sede</div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">In sede</div>
         </div>
       </header>
 
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-border overflow-x-auto">
+      <div className="flex items-center gap-1.5 px-3 py-2.5 border-b border-border overflow-x-auto scrollbar-none">
         {(["tutti", "presente", "pausa", "oltre", "assente"] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`text-xs px-2.5 py-1 rounded-md whitespace-nowrap transition-colors ${
+            className={`text-xs px-3 py-1.5 min-h-8 rounded-full whitespace-nowrap transition-colors touch-manipulation ${
               filter === f
-                ? "bg-secondary text-secondary-foreground font-medium"
-                : "text-muted-foreground hover:bg-secondary/60"
+                ? "bg-primary text-primary-foreground font-medium shadow-sm"
+                : "text-muted-foreground bg-secondary/50 hover:bg-secondary"
             }`}
           >
             {f === "tutti" ? "Tutti" : DISPLAY_LABEL[f]}
@@ -270,24 +270,25 @@ function SedePanel({
         {filtered.map((d) => {
           const ds = displayStato(d);
           return (
-            <li key={d.id} className="flex items-center gap-3 px-5 py-3 hover:bg-secondary/40">
-              <div className="h-9 w-9 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center shrink-0">
+            <li key={d.id} className="flex items-center gap-3 px-4 sm:px-5 py-3.5 hover:bg-secondary/40 transition-colors">
+              <div className="h-10 w-10 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center shrink-0">
                 {d.nome[0]}{d.cognome[0]}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-foreground truncate">
+                <div className="text-[14px] font-medium text-foreground truncate">
                   {d.nome} {d.cognome}
                 </div>
-                <div className="text-xs text-muted-foreground truncate">
+                <div className="text-[12px] text-muted-foreground truncate mt-0.5">
                   {d.ruolo}
                   {d.ultimaTimbratura && (
                     <> · {labelTipo(d.ultimaTimbratura.tipo)} {formatOra(d.ultimaTimbratura.ora)}</>
                   )}
                 </div>
               </div>
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground`}>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-medium bg-secondary text-secondary-foreground shrink-0`}>
                 <span className={`h-2 w-2 rounded-full ${DISPLAY_DOT[ds]}`} />
-                {DISPLAY_LABEL[ds]}
+                <span className="hidden sm:inline">{DISPLAY_LABEL[ds]}</span>
+                <span className="sm:hidden">{DISPLAY_LABEL[ds].slice(0, 3)}.</span>
               </span>
             </li>
           );
@@ -297,9 +298,9 @@ function SedePanel({
         )}
       </ul>
 
-      <footer className="px-5 py-3 border-t border-border bg-secondary/30 text-xs text-muted-foreground flex items-center justify-between">
+      <footer className="px-4 sm:px-5 py-3 border-t border-border bg-secondary/30 text-xs text-muted-foreground flex items-center justify-between gap-2">
         <span>Presenti <strong className="text-foreground tabular-nums">{presenti}</strong> / Totale <strong className="text-foreground tabular-nums">{dipendenti.length}</strong></span>
-        <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {sedeId}</span>
+        <span className="flex items-center gap-1 shrink-0"><Clock className="h-3 w-3" /> {sedeId}</span>
       </footer>
     </section>
   );
@@ -324,24 +325,24 @@ function AlertPanel({
   const bg = tone === "warn" ? "bg-status-break/10" : tone === "ok" ? "bg-status-present/10" : "bg-status-absent/10";
   return (
     <div className="rounded-xl border border-border bg-card shadow-[var(--shadow-card)]">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <div className="flex items-center gap-2">
-          <span className={`h-8 w-8 rounded-lg ${bg} ${color} flex items-center justify-center`}><Icon className="h-4 w-4" /></span>
-          <h3 className="font-semibold text-foreground">{title}</h3>
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-border">
+        <div className="flex items-center gap-2.5">
+          <span className={`h-9 w-9 rounded-lg ${bg} ${color} flex items-center justify-center`}><Icon className="h-4 w-4" /></span>
+          <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
         </div>
-        <span className="text-xs text-muted-foreground tabular-nums">{items.length}</span>
+        <span className="text-xs font-medium text-muted-foreground tabular-nums bg-secondary rounded-full px-2 py-0.5 min-w-6 text-center">{items.length}</span>
       </div>
       <div className="p-2">
         {items.length === 0 ? (
           <div className="px-3 py-6 text-center text-sm text-muted-foreground">Nessun elemento</div>
         ) : (
           items.map((d) => (
-            <div key={d.id} className="flex items-center justify-between px-2 py-2 rounded-md hover:bg-secondary/50">
-              <div>
-                <div className="text-sm font-medium text-foreground">{d.nome} {d.cognome}</div>
-                <div className="text-xs text-muted-foreground">{renderMeta(d)}</div>
+            <div key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-secondary/50 transition-colors">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-foreground truncate">{d.nome} {d.cognome}</div>
+                <div className="text-xs text-muted-foreground truncate">{renderMeta(d)}</div>
               </div>
-              <div className={`text-sm font-semibold tabular-nums ${color}`}>{renderValue(d)}</div>
+              <div className={`text-sm font-semibold tabular-nums shrink-0 ${color}`}>{renderValue(d)}</div>
             </div>
           ))
         )}
