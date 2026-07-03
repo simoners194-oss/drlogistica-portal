@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import {
@@ -25,6 +25,25 @@ import { useLivePresenze } from "@/lib/use-live-presenze";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard HR — DR Portal" }] }),
+  beforeLoad: ({ location }) => {
+    if (typeof window === "undefined") return;
+    let hasSession = false;
+    try {
+      const raw = window.sessionStorage.getItem("dr:currentUser");
+      if (raw) {
+        const parsed = JSON.parse(raw) as { id?: string } | null;
+        hasSession = Boolean(parsed?.id);
+      }
+    } catch {
+      hasSession = false;
+    }
+    if (!hasSession) {
+      throw redirect({
+        to: "/",
+        search: { redirect: location.href },
+      });
+    }
+  },
   component: DashboardPage,
 });
 
