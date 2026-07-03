@@ -31,6 +31,8 @@ export const SP_DISPLAY = {
     Sede: "Sede",
     Attivo: "Attivo",
     Ruolo: "Responsabile",
+    Codice: "Codice",
+    PIN: "PIN",
   },
   timbrature: {
     Dipendente: "Dipendente",
