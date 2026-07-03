@@ -15,6 +15,7 @@ import {
   Settings,
   type LucideIcon,
 } from "lucide-react";
+import type { Ruolo } from "./session";
 
 export type AppModule = {
   /** Identificatore stabile del modulo. */
@@ -29,6 +30,8 @@ export type AppModule = {
   ready: boolean;
   /** Descrizione breve, usabile in tooltip o pagine sommario. */
   description?: string;
+  /** Ruoli abilitati a vedere il modulo. Se omesso: visibile a tutti. */
+  roles?: readonly Ruolo[];
 };
 
 export const APP_NAME = "DR Portal";
@@ -42,6 +45,7 @@ export const MODULES: readonly AppModule[] = [
     icon: LayoutDashboard,
     ready: true,
     description: "Panoramica live delle presenze per sede.",
+    roles: ["responsabile", "amministratore"],
   },
   {
     id: "presenze",
@@ -50,6 +54,7 @@ export const MODULES: readonly AppModule[] = [
     icon: Clock,
     ready: true,
     description: "Timbrature, pause e stato personale.",
+    roles: ["dipendente", "responsabile", "amministratore"],
   },
   {
     id: "richieste",
@@ -58,6 +63,7 @@ export const MODULES: readonly AppModule[] = [
     icon: FileText,
     ready: false,
     description: "Ferie, permessi e giustificativi.",
+    roles: ["dipendente", "responsabile", "amministratore"],
   },
   {
     id: "report",
@@ -66,13 +72,15 @@ export const MODULES: readonly AppModule[] = [
     icon: BarChart3,
     ready: false,
     description: "Reportistica mensile e annuale.",
+    roles: ["responsabile", "amministratore"],
   },
   {
     id: "amministrazione",
     title: "Amministrazione",
     url: "/amministrazione",
     icon: Settings,
-    ready: false,
+    ready: true,
     description: "Configurazione integrazioni e utenti.",
+    roles: ["amministratore"],
   },
 ] as const;
