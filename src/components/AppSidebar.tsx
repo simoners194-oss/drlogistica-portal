@@ -65,8 +65,8 @@ export function AppSidebar() {
                           <span className="flex-1 flex items-center justify-between">
                             {item.title}
                             {!item.ready && (
-                              <span className="text-[9px] uppercase tracking-wider text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                Presto
+                              <span className="text-[9px] font-medium uppercase tracking-wider text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded-full">
+                                In arrivo
                               </span>
                             )}
                           </span>
@@ -81,8 +81,12 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {!collapsed && (
-          <div className="mt-auto px-4 py-3 text-[10px] text-muted-foreground border-t border-sidebar-border">
-            Dati sincronizzati da Microsoft 365 · SharePoint
+          <div className="mt-auto px-4 py-3 text-[10px] text-muted-foreground border-t border-sidebar-border flex items-center gap-2">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-present opacity-70" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-status-present" />
+            </span>
+            Connesso a Microsoft 365
           </div>
         )}
       </SidebarContent>
