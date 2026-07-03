@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import {
   Users,
@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Clock,
   Building2,
+  ChevronRight,
 } from "lucide-react";
 import {
   aggregate,
@@ -25,26 +26,24 @@ import { SEDI, formatOra, labelTipo, type SedeId, type Dipendente } from "@/lib/
 import { useLivePresenze } from "@/lib/use-live-presenze";
 import { formatDurata } from "@/lib/presenze-logic";
 import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
+import { DettaglioDipendenteDialog } from "@/components/DettaglioDipendenteDialog";
+import { readSession, type Ruolo, type SessionUser } from "@/lib/session";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — DR Portal" }] }),
   beforeLoad: ({ location }) => {
     if (typeof window === "undefined") return;
-    let hasSession = false;
-    try {
-      const raw = window.sessionStorage.getItem("dr:currentUser");
-      if (raw) {
-        const parsed = JSON.parse(raw) as { id?: string } | null;
-        hasSession = Boolean(parsed?.id);
-      }
-    } catch {
-      hasSession = false;
-    }
-    if (!hasSession) {
+    const session = readSession();
+    if (!session) {
       throw redirect({
         to: "/",
         search: { redirect: location.href },
       });
+    }
+    // Dashboard riservata a Responsabili e Amministratori: il Dipendente
+    // viene reindirizzato alle proprie Presenze.
+    if (session.ruolo === "dipendente") {
+      throw redirect({ to: "/presenze" });
     }
   },
   component: DashboardPage,
@@ -52,18 +51,51 @@ export const Route = createFileRoute("/dashboard")({
 
 function DashboardPage() {
   const { data, lastUpdate, error, refresh, loading } = useLivePresenze(15000);
-  const totals = useMemo(() => aggregate(data), [data]);
   const [refreshing, setRefreshing] = useState(false);
+  const [session, setSession] = useState<SessionUser | null>(null);
+  const [selected, setSelected] = useState<Dipendente | null>(null);
+  useEffect(() => {
+    setSession(readSession());
+  }, []);
+
+  const ruolo: Ruolo = session?.ruolo ?? "amministratore";
+  const isResponsabile = ruolo === "responsabile";
+
+  // Scope dei dati in base al ruolo: il Responsabile vede solo la propria
+  // sede, l'Amministratore vede tutte le sedi.
+  const scopedData = useMemo(() => {
+    if (isResponsabile && session) return data.filter((d) => d.sede === session.sede);
+    return data;
+  }, [data, isResponsabile, session]);
+
+  const totals = useMemo(() => aggregate(scopedData), [scopedData]);
+  // Mantiene sincronizzato il dettaglio con l'ultimo snapshot: chi è aperto
+  // vede gli aggiornamenti live delle proprie timbrature.
+  const selectedLive = useMemo(
+    () => (selected ? scopedData.find((d) => d.id === selected.id) ?? selected : null),
+    [scopedData, selected],
+  );
 
   const sediStats = useMemo(
     () =>
-      SEDI.map((s) => {
+      SEDI.filter((s) => !isResponsabile || s.id === session?.sede).map((s) => {
         const dip = bySede(data, s.id);
         const presenti = dip.filter((d) => displayStato(d) !== "assente").length;
         return { ...s, presenti, totale: dip.length };
       }),
-    [data],
+    [data, isResponsabile, session],
   );
+
+  const visibleSedi = useMemo(
+    () => (isResponsabile && session ? SEDI.filter((s) => s.id === session.sede) : SEDI),
+    [isResponsabile, session],
+  );
+
+  const title = isResponsabile ? "Dashboard di sede" : "Dashboard presenze";
+  const sedeCorrente = session ? SEDI.find((s) => s.id === session.sede)?.nome : null;
+  const subtitle = isResponsabile
+    ? `Sede ${sedeCorrente ?? ""} · monitoraggio live`
+    : "Monitoraggio live sedi DR Logistica";
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -72,7 +104,7 @@ function DashboardPage() {
   };
 
   return (
-    <AppShell title="Dashboard presenze" subtitle="Monitoraggio live sedi DR Logistica">
+    <AppShell title={title} subtitle={subtitle}>
       {error && (
         <div className="mb-4 rounded-lg border border-status-absent/40 bg-status-absent/5 p-3 flex items-start gap-2">
           <AlertTriangle className="h-4 w-4 text-status-absent mt-0.5 shrink-0" />
@@ -86,7 +118,7 @@ function DashboardPage() {
         </div>
       )}
 
-      {loading && data.length === 0 ? (
+      {loading && scopedData.length === 0 ? (
         <DashboardSkeleton />
       ) : (
         <>
@@ -94,7 +126,9 @@ function DashboardPage() {
       <section className="mb-6 rounded-2xl border border-border bg-card p-4 sm:p-5 md:p-6 shadow-[var(--shadow-card)] animate-fade-in">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 mb-5 sm:flex sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h2 className="text-[17px] sm:text-lg md:text-xl font-semibold text-foreground tracking-tight leading-tight">Sintesi presenze per sede</h2>
+            <h2 className="text-[17px] sm:text-lg md:text-xl font-semibold text-foreground tracking-tight leading-tight">
+              {isResponsabile ? "Sintesi presenze della tua sede" : "Sintesi presenze per sede"}
+            </h2>
             <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
               <span className="relative flex h-1.5 w-1.5 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-present opacity-70" />
@@ -118,7 +152,7 @@ function DashboardPage() {
           </button>
         </div>
 
-        <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2">
+        <div className={`grid gap-3 md:gap-4 grid-cols-1 ${isResponsabile ? "" : "sm:grid-cols-2"}`}>
           {sediStats.map((s) => (
             <div
               key={s.id}
@@ -144,31 +178,37 @@ function DashboardPage() {
         </div>
       </section>
 
-      {/* Top KPI cards */}
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-6">
-        <KpiCard label="Non timbrati" value={totals.assenti} Icon={UserX} tone="absent" />
+      {/* KPI: presenti, in pausa, usciti, non timbrati, oltre 8 ore */}
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
         <KpiCard label="Presenti" value={totals.presenti} Icon={UserCheck} tone="present" />
         <KpiCard label="In pausa" value={totals.pausa} Icon={Coffee} tone="break" />
         <KpiCard label="Usciti" value={totals.usciti} Icon={LogOut} tone="primary" />
-        <KpiCard label="Oltre 8 ore" value={totals.oltre} Icon={TrendingUp} tone="out" />
-        <KpiCard label="Dipendenti attivi" value={totals.attivi} Icon={Users} tone="primary" className="col-span-2 md:col-span-1" />
+        <KpiCard label="Non timbrati" value={totals.assenti} Icon={UserX} tone="absent" />
+        <KpiCard label="Oltre 8 ore" value={totals.oltre} Icon={TrendingUp} tone="out" className="col-span-2 md:col-span-1" />
       </div>
 
 
-      {/* Live view: two side-by-side sede panels */}
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        {SEDI.map((s) => (
-          <SedePanel key={s.id} sedeId={s.id} sedeName={s.nome} dipendenti={bySede(data, s.id)} />
+      {/* Elenco dipendenti — clic su una riga apre il dettaglio giornaliero */}
+      <div className={`mt-6 grid gap-4 ${visibleSedi.length > 1 ? "lg:grid-cols-2" : ""}`}>
+        {visibleSedi.map((s) => (
+          <SedePanel
+            key={s.id}
+            sedeId={s.id}
+            sedeName={s.nome}
+            dipendenti={bySede(scopedData, s.id)}
+            onSelect={setSelected}
+          />
         ))}
       </div>
 
-      {/* Alerts */}
+      {/* Alerts: nascosti al Responsabile per mantenere il focus operativo */}
+      {!isResponsabile && (
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <AlertPanel
           Icon={AlertTriangle}
           tone="warn"
           title="Ritardi"
-          items={data.filter((d) => (d.ritardoMinuti ?? 0) > 0)}
+          items={scopedData.filter((d) => (d.ritardoMinuti ?? 0) > 0)}
           renderMeta={(d) => `Atteso ${d.orarioAtteso} · ${sedeLabel(d.sede)}`}
           renderValue={(d) => `+${d.ritardoMinuti} min`}
         />
@@ -176,7 +216,7 @@ function DashboardPage() {
           Icon={TrendingUp}
           tone="ok"
           title="Oltre 8 ore"
-          items={data.filter((d) => (d.oltreOrarioMinuti ?? 0) > 0)}
+          items={scopedData.filter((d) => (d.oltreOrarioMinuti ?? 0) > 0)}
           renderMeta={(d) => `${d.ruolo} · ${sedeLabel(d.sede)}`}
           renderValue={(d) => `+${formatDurata(d.oltreOrarioMinuti ?? 0)}`}
         />
@@ -184,13 +224,22 @@ function DashboardPage() {
           Icon={UserX}
           tone="danger"
           title="Non timbrati"
-          items={data.filter((d) => d.stato === "non-timbrato")}
+          items={scopedData.filter((d) => d.stato === "non-timbrato")}
           renderMeta={(d) => `${d.ruolo} · ${sedeLabel(d.sede)}`}
           renderValue={(d) => `orario ${d.orarioAtteso}`}
         />
       </div>
+      )}
         </>
       )}
+
+      <DettaglioDipendenteDialog
+        dipendente={selectedLive}
+        open={selected !== null}
+        onOpenChange={(o) => {
+          if (!o) setSelected(null);
+        }}
+      />
     </AppShell>
   );
 }
