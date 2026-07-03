@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
@@ -8,6 +8,27 @@ import { dataService, oreLavorateOggi, displayStato, DISPLAY_DOT, DISPLAY_LABEL 
 
 export const Route = createFileRoute("/presenze")({
   head: () => ({ meta: [{ title: "Le mie presenze — DR Portal" }] }),
+  beforeLoad: ({ location }) => {
+    // La sessione vive in sessionStorage (client-only): su SSR/prerender
+    // non c'è nulla da controllare, la guardia scatta solo nel browser.
+    if (typeof window === "undefined") return;
+    let hasSession = false;
+    try {
+      const raw = window.sessionStorage.getItem("dr:currentUser");
+      if (raw) {
+        const parsed = JSON.parse(raw) as { id?: string } | null;
+        hasSession = Boolean(parsed?.id);
+      }
+    } catch {
+      hasSession = false;
+    }
+    if (!hasSession) {
+      throw redirect({
+        to: "/",
+        search: { redirect: location.href },
+      });
+    }
+  },
   component: PresenzePage,
 });
 
