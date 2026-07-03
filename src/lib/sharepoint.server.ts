@@ -193,7 +193,7 @@ export async function fetchTimbratureOggi(): Promise<SpTimbratura[]> {
   }
   const startMs = new Date(todayIsoStart()).getTime();
   return res.value
-    .map((it) => {
+    .map((it): SpTimbratura | null => {
       const f = it.fields ?? {};
       const evento = parseEvento(f[F.Evento]);
       const dataOra = String(f[F.DataOra] ?? "");
@@ -211,7 +211,9 @@ export async function fetchTimbratureOggi(): Promise<SpTimbratura[]> {
           }
         : null;
     })
-    .filter((x): x is SpTimbratura => x !== null && new Date(x.dataOra).getTime() >= startMs)
+    .filter(
+      (x): x is SpTimbratura => x !== null && new Date(x.dataOra).getTime() >= startMs,
+    )
     .sort((a, b) => a.dataOra.localeCompare(b.dataOra));
 }
 
