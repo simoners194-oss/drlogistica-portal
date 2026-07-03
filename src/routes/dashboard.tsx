@@ -58,15 +58,13 @@ function DashboardPage() {
     setSession(readSession());
   }, []);
 
-  const ruolo: Ruolo = session?.ruolo ?? "amministratore";
+  const ruolo: Ruolo = session?.ruolo ?? "amministratore_sistema";
   const isResponsabile = ruolo === "responsabile";
 
-  // Scope dei dati in base al ruolo: il Responsabile vede solo la propria
-  // sede, l'Amministratore vede tutte le sedi.
-  const scopedData = useMemo(() => {
-    if (isResponsabile && session) return data.filter((d) => d.sede === session.sede);
-    return data;
-  }, [data, isResponsabile, session]);
+  // Sia il Responsabile sia l'Amministratore di sistema vedono i dati di
+  // TUTTE le sedi. Il Responsabile mantiene però una vista in sola lettura
+  // (niente pannelli operativi di alert azionabili).
+  const scopedData = data;
 
   const totals = useMemo(() => aggregate(scopedData), [scopedData]);
   // Mantiene sincronizzato il dettaglio con l'ultimo snapshot: chi è aperto
@@ -78,23 +76,19 @@ function DashboardPage() {
 
   const sediStats = useMemo(
     () =>
-      SEDI.filter((s) => !isResponsabile || s.id === session?.sede).map((s) => {
+      SEDI.map((s) => {
         const dip = bySede(data, s.id);
         const presenti = dip.filter((d) => displayStato(d) !== "assente").length;
         return { ...s, presenti, totale: dip.length };
       }),
-    [data, isResponsabile, session],
+    [data],
   );
 
-  const visibleSedi = useMemo(
-    () => (isResponsabile && session ? SEDI.filter((s) => s.id === session.sede) : SEDI),
-    [isResponsabile, session],
-  );
+  const visibleSedi = SEDI;
 
-  const title = isResponsabile ? "Dashboard di sede" : "Dashboard presenze";
-  const sedeCorrente = session ? SEDI.find((s) => s.id === session.sede)?.nome : null;
+  const title = isResponsabile ? "Dashboard responsabili" : "Dashboard presenze";
   const subtitle = isResponsabile
-    ? `Sede ${sedeCorrente ?? ""} · monitoraggio live`
+    ? "Panoramica live · sola lettura · tutte le sedi"
     : "Monitoraggio live sedi DR Logistica";
 
   const handleRefresh = async () => {
@@ -152,7 +146,7 @@ function DashboardPage() {
           </button>
         </div>
 
-        <div className={`grid gap-3 md:gap-4 grid-cols-1 ${isResponsabile ? "" : "sm:grid-cols-2"}`}>
+        <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2">
           {sediStats.map((s) => (
             <div
               key={s.id}
