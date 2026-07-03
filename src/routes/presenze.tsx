@@ -2,6 +2,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
+import { PresenzeSkeleton } from "@/components/skeletons/PresenzeSkeleton";
 import { LogIn, Coffee, PlayCircle, LogOut, Clock, Timer } from "lucide-react";
 import { formatOra, labelTipo, type Dipendente, type Timbratura } from "@/lib/mock-data";
 import { dataService, oreLavorateOggi, displayStato, DISPLAY_DOT, DISPLAY_LABEL } from "@/lib/data-service";
@@ -91,8 +92,8 @@ function PresenzePage() {
 
   if (!me) {
     return (
-      <AppShell title="Le mie presenze">
-        <div className="text-sm text-muted-foreground">Caricamento…</div>
+      <AppShell title="Le mie presenze" subtitle="Caricamento in corso…">
+        <PresenzeSkeleton />
       </AppShell>
     );
   }
