@@ -30,6 +30,9 @@ export function AppShell({
   const user = useMemo(() => getCurrentUser(), []);
 
   const handleLogout = () => {
+    if (typeof window !== "undefined" && !window.confirm("Sei sicuro di voler uscire?")) {
+      return;
+    }
     try {
       window.sessionStorage.removeItem("dr:currentUser");
     } catch {
