@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
@@ -11,27 +11,62 @@ export const Route = createFileRoute("/presenze")({
   component: PresenzePage,
 });
 
-// In un'app reale l'utente arriva dal login Microsoft 365 / SharePoint.
-// Per ora usiamo l'ID 1 (Marco Rossi) del mock.
-const CURRENT_USER_ID = "1";
-
 function PresenzePage() {
+  const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
   const [me, setMe] = useState<Dipendente | undefined>(undefined);
+  const [errore, setErrore] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    dataService.getDipendente(CURRENT_USER_ID).then((d) => d && setMe(d));
+    let currentId: string | null = null;
+    try {
+      const raw = sessionStorage.getItem("dr:currentUser");
+      if (raw) currentId = (JSON.parse(raw) as { id?: string }).id ?? null;
+    } catch {
+      /* ignore */
+    }
+    if (!currentId) {
+      toast.error("Sessione scaduta. Effettua di nuovo l'accesso.");
+      navigate({ to: "/" });
+      return;
+    }
+    dataService
+      .getDipendente(currentId)
+      .then((d) => {
+        if (d) setMe(d);
+        else setErrore("Dipendente non trovato su SharePoint.");
+      })
+      .catch((err) => setErrore(err instanceof Error ? err.message : String(err)));
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [navigate]);
 
   const timbra = async (tipo: Timbratura["tipo"]) => {
-    const updated = await dataService.timbra(CURRENT_USER_ID, tipo);
-    setMe(updated);
-    toast.success(`Timbratura registrata: ${labelTipo(tipo)}`, {
-      description: `Ore ${formatOra(updated.ultimaTimbratura?.ora)} · Stato: ${DISPLAY_LABEL[displayStato(updated)]}`,
-    });
+    if (!me || busy) return;
+    setBusy(true);
+    try {
+      const updated = await dataService.timbra(me.id, tipo);
+      setMe(updated);
+      toast.success(`Timbratura registrata: ${labelTipo(tipo)}`, {
+        description: `Ore ${formatOra(updated.ultimaTimbratura?.ora)} · Stato: ${DISPLAY_LABEL[displayStato(updated)]}`,
+      });
+    } catch (err) {
+      toast.error("Timbratura non salvata", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setBusy(false);
+    }
   };
+
+  if (errore) {
+    return (
+      <AppShell title="Le mie presenze">
+        <div className="text-sm text-status-absent">{errore}</div>
+      </AppShell>
+    );
+  }
 
   if (!me) {
     return (
@@ -98,7 +133,7 @@ function PresenzePage() {
         {azioni.map((a) => (
           <button
             key={a.tipo}
-            disabled={!a.enabled}
+            disabled={!a.enabled || busy}
             onClick={() => timbra(a.tipo)}
             className={`group relative rounded-2xl border p-6 text-left transition-all min-h-[160px] flex flex-col justify-between
               disabled:opacity-40 disabled:cursor-not-allowed
