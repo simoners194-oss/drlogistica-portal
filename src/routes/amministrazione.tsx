@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { PlaceholderSection } from "@/components/PlaceholderSection";
-import { Settings, CheckCircle2, AlertTriangle, RefreshCw, KeyRound, Loader2 } from "lucide-react";
+import { Settings, CheckCircle2, AlertTriangle, RefreshCw, KeyRound, Loader2, PlayCircle, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,10 @@ import {
   dataService,
   getIntegrationStatus,
   refreshIntegrationDiagnostics,
+  runSpSelfTest,
   type IntegrationStatus,
 } from "@/lib/data-service";
+import type { SpSelfTestResult, SpHealth } from "@/lib/sharepoint.server";
 import {
   microsoftAuthConfig,
   isMicrosoftAuthConfigured,
@@ -27,6 +29,8 @@ export const Route = createFileRoute("/amministrazione")({
 function AmministrazionePage() {
   const [status, setStatus] = useState<IntegrationStatus>(() => getIntegrationStatus());
   const [loading, setLoading] = useState(false);
+  const [selfTest, setSelfTest] = useState<SpSelfTestResult | null>(null);
+  const [selfTestLoading, setSelfTestLoading] = useState(false);
 
   const refresh = useCallback(async (force = false) => {
     setLoading(true);
@@ -45,9 +49,22 @@ function AmministrazionePage() {
     refresh();
   }, [refresh]);
 
+  const runTest = async () => {
+    setSelfTestLoading(true);
+    try {
+      const r = (await runSpSelfTest()) as SpSelfTestResult;
+      setSelfTest(r);
+      setStatus(getIntegrationStatus());
+    } finally {
+      setSelfTestLoading(false);
+    }
+  };
+
   const discovered = status.diagnostics?.discovered ?? null;
   const spError = status.diagnostics?.error ?? status.ultimoErrore;
   const connected = Boolean(discovered) && !spError;
+  const health: SpHealth | null = status.diagnostics?.health ?? null;
+  const lastSyncAt = status.diagnostics?.lastSyncAt ?? null;
 
   return (
     <AppShell title="Amministrazione" subtitle="Configurazione sedi, ruoli e integrazioni">
@@ -169,6 +186,14 @@ function AmministrazionePage() {
           </CardContent>
         </Card>
 
+        <HealthCard
+          health={health}
+          lastSyncAt={lastSyncAt}
+          onSelfTest={runTest}
+          selfTest={selfTest}
+          selfTestLoading={selfTestLoading}
+        />
+
         <PlaceholderSection
           Icon={Settings}
           title="Pannello amministrativo in arrivo"
@@ -178,6 +203,148 @@ function AmministrazionePage() {
         <MicrosoftAuthTestCard />
       </div>
     </AppShell>
+  );
+}
+
+function HealthCard({
+  health,
+  lastSyncAt,
+  onSelfTest,
+  selfTest,
+  selfTestLoading,
+}: {
+  health: SpHealth | null;
+  lastSyncAt: string | null;
+  onSelfTest: () => void;
+  selfTest: SpSelfTestResult | null;
+  selfTestLoading: boolean;
+}) {
+  const items: { label: string; ok: boolean; detail?: string }[] = health
+    ? [
+        { label: "Connessione Graph", ok: health.graphOk },
+        { label: "Token valido", ok: health.tokenOk },
+        { label: "Permessi Sites.Read", ok: health.permissionsOk },
+        { label: "Sito trovato", ok: health.siteFound, detail: health.siteName ?? undefined },
+        { label: "Lista Dipendenti", ok: health.dipendentiListFound },
+        { label: "Lista Timbrature", ok: health.timbratureListFound },
+        {
+          label: "Colonne Dipendenti",
+          ok: health.dipendentiColumnsOk,
+          detail: health.dipendentiMissing.length
+            ? `mancanti: ${health.dipendentiMissing.join(", ")}`
+            : undefined,
+        },
+        {
+          label: "Colonne Timbrature",
+          ok: health.timbratureColumnsOk,
+          detail: health.timbratureMissing.length
+            ? `mancanti: ${health.timbratureMissing.join(", ")}`
+            : undefined,
+        },
+      ]
+    : [];
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+        <div>
+          <CardTitle className="text-base flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-primary" />
+            Salute integrazione
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Checklist automatica + self-test end-to-end con rollback.
+          </p>
+        </div>
+        <Button size="sm" onClick={onSelfTest} disabled={selfTestLoading}>
+          {selfTestLoading ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <PlayCircle className="h-4 w-4 mr-2" />
+          )}
+          Esegui test integrazione
+        </Button>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2 grid gap-1.5">
+          {items.map((i) => (
+            <div key={i.label} className="flex items-center gap-2 text-sm">
+              {i.ok ? (
+                <CheckCircle2 className="h-4 w-4 text-status-present shrink-0" />
+              ) : (
+                <XCircle className="h-4 w-4 text-status-absent shrink-0" />
+              )}
+              <span className="text-foreground">{i.label}</span>
+              {i.detail && <span className="text-xs text-muted-foreground">· {i.detail}</span>}
+            </div>
+          ))}
+          {!health && (
+            <p className="text-xs text-muted-foreground">In attesa dei dati diagnostici…</p>
+          )}
+        </div>
+        <InfoRow label="Ultima sincronizzazione">
+          <span className="text-sm">
+            {lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString("it-IT") : "—"}
+          </span>
+        </InfoRow>
+        <InfoRow label="Tempo risposta Graph">
+          <span className="text-sm tabular-nums">
+            {health?.graphResponseMs ? `${health.graphResponseMs} ms` : "—"}
+          </span>
+        </InfoRow>
+        <InfoRow label="Scadenza cache discovery">
+          <span className="text-sm">
+            {health?.cacheExpiresAt
+              ? new Date(health.cacheExpiresAt).toLocaleTimeString("it-IT")
+              : "—"}
+          </span>
+        </InfoRow>
+        <InfoRow label="Site ID">
+          <span className="font-mono text-[10px] break-all text-muted-foreground">
+            {health?.siteId ?? "—"}
+          </span>
+        </InfoRow>
+
+        {selfTest && (
+          <div className="sm:col-span-2 rounded-md border border-border p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium">Risultato self-test</p>
+              <Badge
+                className={
+                  selfTest.score === 100
+                    ? "bg-status-present text-white"
+                    : selfTest.score >= 70
+                      ? "bg-status-break text-white"
+                      : "bg-status-absent text-white"
+                }
+              >
+                Salute {selfTest.score}%
+              </Badge>
+            </div>
+            <ul className="space-y-1 text-xs">
+              {selfTest.checks.map((c) => (
+                <li key={c.key} className="flex items-start gap-2">
+                  {c.ok ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-status-present mt-0.5 shrink-0" />
+                  ) : (
+                    <XCircle className="h-3.5 w-3.5 text-status-absent mt-0.5 shrink-0" />
+                  )}
+                  <span className="font-medium text-foreground w-56 shrink-0">{c.label}</span>
+                  <span className="text-muted-foreground tabular-nums shrink-0">
+                    {c.durataMs ? `${c.durataMs}ms` : ""}
+                  </span>
+                  {c.message && (
+                    <span className={c.ok ? "text-muted-foreground" : "text-status-absent break-all"}>
+                      {c.message}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
