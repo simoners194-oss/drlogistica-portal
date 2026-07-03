@@ -5,7 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { PresenzeSkeleton } from "@/components/skeletons/PresenzeSkeleton";
 import { LogIn, Coffee, PlayCircle, LogOut, Clock, Timer, ListChecks, Hourglass, TrendingUp } from "lucide-react";
 import { formatOra, labelTipo, type Dipendente, type Timbratura } from "@/lib/mock-data";
-import { dataService, oreLavorateOggi, displayStato, DISPLAY_DOT, DISPLAY_LABEL } from "@/lib/data-service";
+import { dataService, displayStato, DISPLAY_DOT, DISPLAY_LABEL } from "@/lib/data-service";
 import {
   computeOreOggi,
   formatDurata,
