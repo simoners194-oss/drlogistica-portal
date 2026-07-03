@@ -78,7 +78,7 @@ export interface SpLogEvent {
   operation: string;
   message: string;
   durataMs?: number;
-  details?: Record<string, unknown>;
+  details?: string;
 }
 const LOG_MAX = 100;
 const spLog: SpLogEvent[] = [];
@@ -103,7 +103,7 @@ export function logSp(
     operation,
     message: sanitize(message),
     durataMs: extra?.durataMs,
-    details: extra?.details,
+    details: extra?.details ? sanitize(JSON.stringify(extra.details)) : undefined,
   });
   if (spLog.length > LOG_MAX) spLog.length = LOG_MAX;
 }
