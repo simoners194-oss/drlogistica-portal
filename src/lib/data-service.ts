@@ -21,6 +21,7 @@ import {
   spCreateTimbratura,
   spGetDiagnostics,
   spGetSnapshot,
+  spRunSelfTest,
   type SpDiagnostics,
 } from "./sharepoint.functions";
 import type { SpDipendente, SpTimbratura } from "./sharepoint.server";
@@ -64,47 +65,46 @@ const integrationStatus: IntegrationStatus = {
 export function getIntegrationStatus(): IntegrationStatus {
   return {
     ...integrationStatus,
-    log: [...integrationStatus.log],
+    log: (integrationStatus.diagnostics?.log ?? []).map((e) => ({
+      ts: new Date(e.ts),
+      level: e.level,
+      operation: e.operation,
+      message: e.message + (e.durataMs ? ` (${e.durataMs}ms)` : ""),
+    })),
   };
 }
 
 export async function refreshIntegrationDiagnostics(force = false) {
   try {
-    integrationStatus.diagnostics = await spGetDiagnostics({ data: { force } });
-    if (integrationStatus.diagnostics.error) {
-      log("error", "discover", integrationStatus.diagnostics.error);
-    } else {
-      log(
-        "info",
-        "discover",
-        `Sito "${integrationStatus.diagnostics.discovered?.siteName}" — liste "${integrationStatus.diagnostics.discovered?.listDipendentiName}" + "${integrationStatus.diagnostics.discovered?.listTimbratureName}"`,
-      );
-    }
+    const d = (await spGetDiagnostics({ data: { force } })) as SpDiagnostics;
+    integrationStatus.diagnostics = d;
+    if (d.error) integrationStatus.ultimoErrore = d.error;
+    else integrationStatus.ultimoErrore = null;
   } catch (err) {
-    log("error", "discover", err instanceof Error ? err.message : String(err));
+    integrationStatus.ultimoErrore = err instanceof Error ? err.message : String(err);
   }
   return integrationStatus.diagnostics;
 }
 
-function log(level: IntegrationLogEntry["level"], operation: string, message: string) {
-  integrationStatus.log = [
-    { ts: new Date(), level, operation, message },
-    ...integrationStatus.log,
-  ].slice(0, 30);
+export async function runSpSelfTest() {
+  const result = await spRunSelfTest();
+  // Refresh diagnostics after test to pick up newly logged events on server.
+  await refreshIntegrationDiagnostics(false);
+  return result;
 }
 
 function markSuccess(count: number, operation = "getDipendenti") {
   integrationStatus.dipendentiCaricati = count;
   integrationStatus.ultimoAggiornamento = new Date();
   integrationStatus.ultimoErrore = null;
-  log("info", operation, `OK — ${count} elementi`);
+  void operation;
 }
 
 function markError(err: unknown, operation: string) {
   const msg = err instanceof Error ? err.message : String(err ?? "Errore sconosciuto");
   integrationStatus.ultimoErrore = msg;
   integrationStatus.ultimoAggiornamento = new Date();
-  log("error", operation, msg);
+  void operation;
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +163,7 @@ const sharepointDataService: DataService = {
   },
   async getDipendenti() {
     try {
-      const snap = await spGetSnapshot();
+      const snap = (await spGetSnapshot()) as { dipendenti: SpDipendente[]; timbrature: SpTimbratura[] };
       const list = mergeDipendentiTimbrature(snap.dipendenti, snap.timbrature);
       cachedSnapshot = list;
       markSuccess(list.length, "getDipendenti");
@@ -181,7 +181,6 @@ const sharepointDataService: DataService = {
   },
   async timbra(id, tipo) {
     await spCreateTimbratura({ data: { dipendenteId: id, evento: tipo, origine: "Web" } });
-    log("info", "timbra", `Registrata "${tipo}" per dipendente ${id}`);
     const list = await sharepointDataService.getDipendenti();
     const updated = list.find((d) => d.id === id);
     if (updated) return updated;

@@ -28,11 +28,24 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function DashboardPage() {
-  const { data, lastUpdate } = useLivePresenze(15000);
+  const { data, lastUpdate, error } = useLivePresenze(15000);
   const totals = useMemo(() => aggregate(data), [data]);
 
   return (
     <AppShell title="Dashboard presenze" subtitle="Monitoraggio live sedi DR Logistica">
+      {error && (
+        <div className="mb-4 rounded-lg border border-status-absent/40 bg-status-absent/5 p-3 flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-status-absent mt-0.5 shrink-0" />
+          <div className="text-xs">
+            <p className="font-medium text-status-absent">Sistema momentaneamente non disponibile</p>
+            <p className="text-muted-foreground mt-0.5">
+              Impossibile leggere i dati da SharePoint. Le timbrature sono temporaneamente
+              disabilitate. Dettagli tecnici in Amministrazione.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
           <span className="relative flex h-2 w-2">

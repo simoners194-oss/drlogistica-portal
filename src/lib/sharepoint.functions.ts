@@ -6,12 +6,20 @@
 import { createServerFn } from "@tanstack/react-start";
 import {
   clearSpDiscoveryCache,
+  computeHealth,
   createTimbratura,
   discoverSharePoint,
   fetchDipendenti,
   fetchTimbratureOggi,
+  getLastSyncAt,
+  getSpLog,
+  markSync,
+  runSelfTest,
   type CreateTimbraturaInput,
   type EventoTimbratura,
+  type SpHealth,
+  type SpLogEvent,
+  type SpSelfTestResult,
   type SpDipendente,
   type SpDiscovered,
   type SpTimbratura,
@@ -22,6 +30,9 @@ export interface SpDiagnostics {
   hasConnectionKey: boolean;
   discovered: SpDiscovered | null;
   error: string | null;
+  health: SpHealth | null;
+  log: SpLogEvent[];
+  lastSyncAt: string | null;
 }
 
 export const spGetDiagnostics = createServerFn({ method: "GET" })
@@ -36,18 +47,34 @@ export const spGetDiagnostics = createServerFn({ method: "GET" })
         discovered: null,
         error:
           "Credenziali del connettore SharePoint mancanti sul server (LOVABLE_API_KEY / MICROSOFT_SHAREPOINT_API_KEY).",
+        health: null,
+        log: getSpLog(),
+        lastSyncAt: getLastSyncAt(),
       };
     }
     try {
       if (data.force) clearSpDiscoveryCache();
       const discovered = await discoverSharePoint(data.force);
-      return { hasLovableKey, hasConnectionKey, discovered, error: null };
+      const health = await computeHealth();
+      return {
+        hasLovableKey,
+        hasConnectionKey,
+        discovered,
+        error: null,
+        health,
+        log: getSpLog(),
+        lastSyncAt: getLastSyncAt(),
+      };
     } catch (err) {
+      const health = await computeHealth().catch(() => null);
       return {
         hasLovableKey,
         hasConnectionKey,
         discovered: null,
         error: err instanceof Error ? err.message : String(err),
+        health,
+        log: getSpLog(),
+        lastSyncAt: getLastSyncAt(),
       };
     }
   });
@@ -59,10 +86,14 @@ export interface SpSnapshot {
 
 export const spGetSnapshot = createServerFn({ method: "GET" }).handler(
   async (): Promise<SpSnapshot> => {
+    // Garantisce discovery prima delle chiamate in parallelo (evita doppia
+    // esecuzione della discovery quando la cache è fredda).
+    await discoverSharePoint();
     const [dipendenti, timbrature] = await Promise.all([
       fetchDipendenti(),
       fetchTimbratureOggi(),
     ]);
+    markSync();
     return { dipendenti, timbrature };
   },
 );
@@ -75,3 +106,7 @@ export const spCreateTimbratura = createServerFn({ method: "POST" })
     return input;
   })
   .handler(async ({ data }) => createTimbratura(data));
+
+export const spRunSelfTest = createServerFn({ method: "POST" }).handler(
+  async (): Promise<SpSelfTestResult> => runSelfTest(),
+);
