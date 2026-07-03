@@ -669,7 +669,11 @@ export async function createTimbratura(input: CreateTimbraturaInput): Promise<Sp
       "create.timbratura",
       `Transizione non ammessa per dip=${input.dipendenteId}: ${last ?? "nessuna"} → ${input.evento}`,
     );
-    throw new Error("Timbratura non consentita in questo momento.");
+    throw new Error(
+      last === "uscita"
+        ? "La giornata lavorativa è già stata chiusa. Per eventuali correzioni contatta il tuo responsabile."
+        : "Timbratura non consentita in questo momento.",
+    );
   }
 
   const dataOra = new Date().toISOString();

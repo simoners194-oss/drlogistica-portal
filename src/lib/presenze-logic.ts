@@ -42,8 +42,7 @@ export function reasonNotAllowed(
   last: EventoTimbratura | null,
 ): string | null {
   if (isTransitionAllowed(evento, last)) return null;
-  if (last === "uscita")
-    return "Giornata già chiusa: nessuna altra timbratura ordinaria è consentita oggi.";
+  if (last === "uscita") return GIORNATA_CHIUSA_MESSAGE;
   switch (evento) {
     case "entrata":
       return last === null
@@ -68,6 +67,12 @@ export function reasonNotAllowed(
 }
 
 export const BLOCK_MESSAGE = "Timbratura non consentita in questo momento.";
+
+// Messaggio ufficiale mostrato quando la giornata lavorativa è già stata
+// chiusa con l'Uscita: qualunque ulteriore timbratura è vietata al
+// dipendente e va gestita dal modulo amministrativo.
+export const GIORNATA_CHIUSA_MESSAGE =
+  "La giornata lavorativa è già stata chiusa. Per eventuali correzioni contatta il tuo responsabile.";
 
 // ---------------------------------------------------------------------------
 // Calcolo ore lavorate

@@ -4,11 +4,13 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { PresenzeSkeleton } from "@/components/skeletons/PresenzeSkeleton";
 import { LogIn, Coffee, PlayCircle, LogOut, Clock, Timer, ListChecks, Hourglass, TrendingUp } from "lucide-react";
+import { Lock } from "lucide-react";
 import { formatOra, labelTipo, type Dipendente, type Timbratura } from "@/lib/mock-data";
 import { dataService, displayStato, DISPLAY_DOT, DISPLAY_LABEL } from "@/lib/data-service";
 import {
   computeOreOggi,
   formatDurata,
+  GIORNATA_CHIUSA_MESSAGE,
   isTransitionAllowed,
   lastEvento,
   reasonNotAllowed,
@@ -76,8 +78,12 @@ function PresenzePage() {
     if (!me || busy) return;
     const last = lastEvento(me.eventiOggi ?? []);
     if (!isTransitionAllowed(tipo, last)) {
+      const chiusa = last === "uscita";
       const motivo = reasonNotAllowed(tipo, last) ?? "Timbratura non consentita in questo momento.";
-      toast.error("Timbratura non consentita in questo momento.", { description: motivo });
+      toast.error(
+        chiusa ? "Giornata lavorativa chiusa" : "Timbratura non consentita in questo momento.",
+        { description: motivo },
+      );
       return;
     }
     setBusy(true);
@@ -176,6 +182,23 @@ function PresenzePage() {
       </div>
 
       {/* Riepilogo ore */}
+      {ore.chiusa && (
+        <div
+          role="status"
+          className="mt-5 md:mt-6 flex items-start gap-3 rounded-2xl border border-status-out/40 bg-status-out/5 p-4 sm:p-5 animate-fade-in"
+        >
+          <span className="h-9 w-9 shrink-0 rounded-lg bg-status-out/15 text-status-out flex items-center justify-center">
+            <Lock className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm sm:text-[15px] font-semibold text-foreground">Giornata lavorativa chiusa</div>
+            <p className="text-[13px] text-muted-foreground mt-0.5 leading-snug">
+              {GIORNATA_CHIUSA_MESSAGE}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="mt-5 md:mt-6 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <RiepilogoCard Icon={LogIn} label="Entrata" value={ore.entrataOra ? formatOra(ore.entrataOra) : "—"} />
         <RiepilogoCard Icon={Coffee} label="Pausa totale" value={formatDurata(ore.pausaMinuti)} hint={ore.inPausa ? "In corso" : undefined} />
@@ -192,18 +215,18 @@ function PresenzePage() {
         {azioni.map((a) => (
           <button
             key={a.tipo}
-            disabled={!a.enabled || busy}
+            disabled={!a.enabled || busy || ore.chiusa}
             onClick={() => timbra(a.tipo)}
-            title={a.reason ?? undefined}
-            aria-label={`${a.label}${a.reason ? ` — ${a.reason}` : ""}`}
+            title={ore.chiusa ? GIORNATA_CHIUSA_MESSAGE : a.reason ?? undefined}
+            aria-label={`${a.label}${ore.chiusa ? ` — ${GIORNATA_CHIUSA_MESSAGE}` : a.reason ? ` — ${a.reason}` : ""}`}
             className={`group relative rounded-2xl border p-4 sm:p-6 text-left transition-all min-h-[156px] sm:min-h-[176px] flex flex-col justify-between touch-manipulation
               disabled:cursor-not-allowed
-              ${a.enabled ? "border-border bg-card shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-elegant)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.98]" : "border-dashed border-border/70 bg-muted/50 opacity-70"}
+              ${a.enabled && !ore.chiusa ? "border-border bg-card shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-elegant)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.98]" : "border-dashed border-border/70 bg-muted/50 opacity-70"}
             `}
           >
             <div
               className={`inline-flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl text-white shadow-sm ${
-                !a.enabled ? "bg-muted-foreground/50" :
+                !a.enabled || ore.chiusa ? "bg-muted-foreground/50" :
                 a.tone === "primary" ? "bg-primary" :
                 a.tone === "warn" ? "bg-status-break" :
                 a.tone === "ok" ? "bg-status-present" :
@@ -215,7 +238,7 @@ function PresenzePage() {
             <div>
               <div className="text-base sm:text-lg font-semibold text-foreground leading-tight">{a.label}</div>
               <div className={`text-[11px] sm:text-xs mt-1 leading-snug ${a.enabled ? "text-muted-foreground" : "text-muted-foreground/90"}`}>
-                {a.enabled ? "Tocca per registrare" : a.reason ?? "Non disponibile ora"}
+                {ore.chiusa ? "Giornata chiusa" : a.enabled ? "Tocca per registrare" : a.reason ?? "Non disponibile ora"}
               </div>
             </div>
           </button>
