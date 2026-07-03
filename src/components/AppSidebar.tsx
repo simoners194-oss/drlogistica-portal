@@ -1,12 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard,
-  Clock,
-  FileText,
-  BarChart3,
-  Settings,
-} from "lucide-react";
-import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
@@ -19,14 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Logo } from "./Logo";
-
-const items = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, ready: true },
-  { title: "Presenze", url: "/presenze", icon: Clock, ready: true },
-  { title: "Richieste", url: "/richieste", icon: FileText, ready: false },
-  { title: "Report", url: "/report", icon: BarChart3, ready: false },
-  { title: "Amministrazione", url: "/amministrazione", icon: Settings, ready: false },
-] as const;
+import { MODULES } from "@/lib/modules";
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -44,10 +30,10 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Menu</SidebarGroupLabel>
+          <SidebarGroupLabel>Moduli</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => {
+              {MODULES.map((item) => {
                 const active = pathname === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>
