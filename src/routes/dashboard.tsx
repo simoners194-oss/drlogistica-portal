@@ -83,59 +83,50 @@ function DashboardPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-4">
-        <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-present opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-status-present" />
-          </span>
-          Live · aggiornato alle {lastUpdate.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-        </div>
-        <button
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => window.location.reload()}
-        >
-          <RefreshCw className="h-3.5 w-3.5" /> Aggiorna
-        </button>
-      </div>
-
-      {/* Demo domani — riepilogo pulito per riunione */}
-      <section className="mb-6 rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">Demo domani</h2>
-            <p className="text-xs text-muted-foreground">
-              Presenze per sede · aggiornato alle{" "}
-              {lastUpdate.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+      {/* Sintesi presenze — riepilogo pulito per la direzione */}
+      <section className="mb-6 rounded-2xl border border-border bg-card p-5 md:p-6 shadow-[var(--shadow-card)] animate-fade-in">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 mb-5 sm:flex sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-lg md:text-xl font-semibold text-foreground tracking-tight">Sintesi presenze per sede</h2>
+            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-present opacity-70" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-status-present" />
+              </span>
+              <span className="truncate">
+                Aggiornato alle{" "}
+                {lastUpdate.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+              </span>
             </p>
           </div>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="shrink-0 inline-flex items-center gap-2 rounded-full bg-primary px-4 h-9 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-[var(--shadow-elegant)] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-            Aggiorna ora
+            <span className="hidden sm:inline">Aggiorna ora</span>
+            <span className="sm:hidden">Aggiorna</span>
           </button>
         </div>
 
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+        <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2">
           {sediStats.map((s) => (
             <div
               key={s.id}
-              className="rounded-lg border border-border bg-secondary/40 p-4 flex items-center justify-between"
+              className="rounded-xl border border-border bg-secondary/40 p-4 flex items-center justify-between transition-all hover:bg-secondary/70 hover:shadow-sm"
             >
-              <div className="flex items-center gap-3">
-                <span className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="h-11 w-11 shrink-0 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
                   <Building2 className="h-5 w-5" />
                 </span>
-                <div>
-                  <div className="text-sm font-medium text-foreground">Sede {s.nome}</div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-foreground truncate">Sede {s.nome}</div>
                   <div className="text-xs text-muted-foreground">{s.totale} dipendenti totali</div>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-3xl font-semibold tabular-nums text-foreground">
+              <div className="text-right shrink-0 pl-3">
+                <div className="text-3xl font-semibold tabular-nums text-foreground tracking-tight">
                   {s.presenti}<span className="text-muted-foreground text-lg font-normal">/{s.totale}</span>
                 </div>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Presenti</div>
