@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { dataService } from "./data-service";
+import { dataService, getIntegrationStatus } from "./data-service";
 import type { Dipendente } from "./mock-data";
 
 // Hook di polling: rilegge i dipendenti ogni `intervalMs` millisecondi.
@@ -8,6 +8,7 @@ import type { Dipendente } from "./mock-data";
 export function useLivePresenze(intervalMs = 15000) {
   const [data, setData] = useState<Dipendente[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -16,6 +17,7 @@ export function useLivePresenze(intervalMs = 15000) {
       if (!mounted) return;
       setData(list);
       setLastUpdate(new Date());
+      setError(getIntegrationStatus().ultimoErrore);
     };
     load();
     const t = setInterval(load, intervalMs);
@@ -25,5 +27,5 @@ export function useLivePresenze(intervalMs = 15000) {
     };
   }, [intervalMs]);
 
-  return { data, lastUpdate };
+  return { data, lastUpdate, error };
 }
