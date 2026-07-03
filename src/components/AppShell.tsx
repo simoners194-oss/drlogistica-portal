@@ -79,9 +79,9 @@ export function AppShell({
               </button>
             </div>
           </header>
-          <main className="flex-1 w-full max-w-[1400px] mx-auto px-4 md:px-8 py-5 md:py-8 animate-fade-in">
+          <main className="flex-1 w-full max-w-[1400px] mx-auto px-5 md:px-8 py-6 md:py-8 animate-fade-in">
             <div className="md:hidden mb-5">
-              <h1 className="text-[22px] font-semibold text-foreground tracking-tight">{title}</h1>
+              <h1 className="text-[26px] leading-tight font-semibold text-foreground tracking-tight">{title}</h1>
               {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
             </div>
             {children}

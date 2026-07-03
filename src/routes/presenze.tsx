@@ -113,67 +113,67 @@ function PresenzePage() {
 
   return (
     <AppShell title="Le mie presenze" subtitle={`${me.nome} ${me.cognome} · ${me.ruolo}`}>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:gap-5 lg:grid-cols-3">
         <div
-          className="lg:col-span-2 rounded-2xl p-6 text-primary-foreground shadow-[var(--shadow-elegant)]"
+          className="lg:col-span-2 rounded-2xl p-5 sm:p-6 text-primary-foreground shadow-[var(--shadow-elegant)]"
           style={{ background: "var(--gradient-hero)" }}
         >
-          <div className="text-sm text-white/80 capitalize">
+          <div className="text-[13px] sm:text-sm text-white/80 capitalize">
             {now.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </div>
-          <div className="mt-1 text-6xl font-semibold tabular-nums tracking-tight">
+          <div className="mt-1 text-[3.5rem] leading-none sm:text-6xl font-semibold tabular-nums tracking-tight">
             {now.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-            <span className="inline-flex items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] sm:text-sm">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1">
               <span className={`h-2.5 w-2.5 rounded-full ${DISPLAY_DOT[ds]} ring-2 ring-white/30`} />
               <span className="text-white/90">Stato: <strong>{DISPLAY_LABEL[ds]}</strong></span>
             </span>
-            <span className="inline-flex items-center gap-2 text-white/90">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-white/90">
               <Timer className="h-4 w-4" /> Ore oggi: <strong className="tabular-nums">{oreLavorateOggi(me, now)}</strong>
             </span>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm">
+        <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
+          <div className="flex items-center gap-2 text-muted-foreground text-[13px] sm:text-sm">
             <Clock className="h-4 w-4" /> Ultima timbratura
           </div>
           {me.ultimaTimbratura ? (
             <div className="mt-3">
               <div className="text-lg font-semibold text-foreground">{labelTipo(me.ultimaTimbratura.tipo)}</div>
-              <div className="text-4xl font-semibold tabular-nums mt-1 text-primary">{formatOra(me.ultimaTimbratura.ora)}</div>
+              <div className="text-[2.5rem] sm:text-4xl leading-none font-semibold tabular-nums mt-1 text-primary">{formatOra(me.ultimaTimbratura.ora)}</div>
             </div>
           ) : (
-            <div className="mt-6 text-sm text-muted-foreground">Nessuna timbratura registrata oggi.</div>
+            <div className="mt-4 text-sm text-muted-foreground">Nessuna timbratura registrata oggi.</div>
           )}
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="mt-5 md:mt-6 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         {azioni.map((a) => (
           <button
             key={a.tipo}
             disabled={!a.enabled || busy}
             onClick={() => timbra(a.tipo)}
-            className={`group relative rounded-2xl border p-6 text-left transition-all min-h-[160px] flex flex-col justify-between
+            className={`group relative rounded-2xl border p-4 sm:p-6 text-left transition-all min-h-[148px] sm:min-h-[168px] flex flex-col justify-between touch-manipulation
               disabled:opacity-40 disabled:cursor-not-allowed
-              ${a.enabled ? "border-border bg-card hover:shadow-[var(--shadow-elegant)] hover:-translate-y-1 active:translate-y-0" : "border-border bg-muted"}
+              ${a.enabled ? "border-border bg-card shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-elegant)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.98]" : "border-border bg-muted"}
             `}
           >
             <div
-              className={`inline-flex h-14 w-14 items-center justify-center rounded-xl text-white ${
+              className={`inline-flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl text-white shadow-sm ${
                 a.tone === "primary" ? "bg-primary" :
                 a.tone === "warn" ? "bg-status-break" :
                 a.tone === "ok" ? "bg-status-present" :
                 "bg-status-absent"
               }`}
             >
-              <a.Icon className="h-7 w-7" />
+              <a.Icon className="h-6 w-6 sm:h-7 sm:w-7" />
             </div>
             <div>
-              <div className="text-lg font-semibold text-foreground">{a.label}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">
+              <div className="text-base sm:text-lg font-semibold text-foreground leading-tight">{a.label}</div>
+              <div className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">
                 {a.enabled ? "Tocca per registrare" : "Non disponibile"}
               </div>
             </div>
