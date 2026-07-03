@@ -22,6 +22,7 @@ import {
 } from "@/lib/data-service";
 import { SEDI, formatOra, labelTipo, type SedeId, type Dipendente } from "@/lib/mock-data";
 import { useLivePresenze } from "@/lib/use-live-presenze";
+import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — DR Portal" }] }),
@@ -48,7 +49,7 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function DashboardPage() {
-  const { data, lastUpdate, error, refresh } = useLivePresenze(15000);
+  const { data, lastUpdate, error, refresh, loading } = useLivePresenze(15000);
   const totals = useMemo(() => aggregate(data), [data]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -83,6 +84,10 @@ function DashboardPage() {
         </div>
       )}
 
+      {loading && data.length === 0 ? (
+        <DashboardSkeleton />
+      ) : (
+        <>
       {/* Sintesi presenze — riepilogo pulito per la direzione */}
       <section className="mb-6 rounded-2xl border border-border bg-card p-4 sm:p-5 md:p-6 shadow-[var(--shadow-card)] animate-fade-in">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 mb-5 sm:flex sm:items-center sm:justify-between">
