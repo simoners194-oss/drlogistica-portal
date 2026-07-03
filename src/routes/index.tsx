@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Logo } from "@/components/Logo";
-import { useMemo, useState } from "react";
-import { DIPENDENTI } from "@/lib/mock-data";
+import { useEffect, useState } from "react";
+import type { Dipendente } from "@/lib/mock-data";
+import { dataService } from "@/lib/data-service";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -23,14 +24,46 @@ export const Route = createFileRoute("/")({
 function Index() {
   const navigate = useNavigate();
   const msConfigured = isMicrosoftAuthConfigured();
-  const dipendenti = useMemo(() => DIPENDENTI, []);
-  const [empId, setEmpId] = useState<string>(dipendenti[0]?.id ?? "");
+  const [dipendenti, setDipendenti] = useState<Dipendente[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [empId, setEmpId] = useState<string>("");
   const [pin, setPin] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    dataService
+      .getDipendenti()
+      .then((list) => {
+        if (!mounted) return;
+        setDipendenti(list);
+        setEmpId(list[0]?.id ?? "");
+        if (list.length === 0)
+          setLoadError("Nessun dipendente trovato su SharePoint. Verifica la configurazione in Amministrazione.");
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        setLoadError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => mounted && setLoading(false));
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleSimpleLogin = () => {
     if (!empId) return toast.error("Seleziona un dipendente");
     if (pin.length < 4) return toast.error("PIN richiesto (min. 4 cifre)");
     const d = dipendenti.find((x) => x.id === empId);
+    if (!d) return toast.error("Dipendente non trovato");
+    try {
+      sessionStorage.setItem(
+        "dr:currentUser",
+        JSON.stringify({ id: d.id, nome: d.nome, cognome: d.cognome }),
+      );
+    } catch {
+      /* ignore */
+    }
     toast.success(`Benvenuto ${d?.nome ?? ""}`);
     navigate({ to: "/presenze" });
   };
@@ -68,8 +101,12 @@ function Index() {
             <TabsContent value="simple" className="mt-4 space-y-3">
               <p className="text-xs text-muted-foreground">
                 Accesso semplificato: seleziona il tuo nome e inserisci il PIN aziendale.
+                {loading && " Caricamento dipendenti da SharePoint…"}
               </p>
-              <Select value={empId} onValueChange={setEmpId}>
+              {loadError && (
+                <p className="text-[11px] text-status-absent">{loadError}</p>
+              )}
+              <Select value={empId} onValueChange={setEmpId} disabled={loading || dipendenti.length === 0}>
                 <SelectTrigger><SelectValue placeholder="Seleziona dipendente" /></SelectTrigger>
                 <SelectContent>
                   {dipendenti.map((d) => (
@@ -86,7 +123,7 @@ function Index() {
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
               />
-              <Button className="w-full h-11" onClick={handleSimpleLogin}>
+              <Button className="w-full h-11" onClick={handleSimpleLogin} disabled={loading || !empId}>
                 Accedi
               </Button>
             </TabsContent>
