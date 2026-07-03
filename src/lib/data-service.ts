@@ -12,29 +12,18 @@
 // -----------------------------------------------------------------------------
 
 import {
-  DIPENDENTI as MOCK_DIPENDENTI,
   SEDI,
   type Dipendente,
   type SedeId,
   type Timbratura,
 } from "./mock-data";
 import {
-  currentIntegrationMode,
-  isSharePointConfigured,
-  missingSharePointFields,
-  sharepointConfig,
-  type IntegrationMode,
-} from "./sharepoint-config";
-import {
   spCreateTimbratura,
+  spGetDiagnostics,
   spGetSnapshot,
+  type SpDiagnostics,
 } from "./sharepoint.functions";
 import type { SpDipendente, SpTimbratura } from "./sharepoint.server";
-
-// Stato in memoria (mock). In produzione verrà rimpiazzato da chiamate a
-// SharePoint. Cloniamo l'array per poter mutare le timbrature durante la
-// sessione.
-let state: Dipendente[] = MOCK_DIPENDENTI.map((d) => ({ ...d }));
 
 export interface DataService {
   getSedi(): Promise<typeof SEDI>;
@@ -48,13 +37,12 @@ export interface DataService {
 // ---------------------------------------------------------------------------
 
 export interface IntegrationStatus {
-  mode: IntegrationMode;
+  mode: "sharepoint";
   dipendentiCaricati: number;
   ultimoAggiornamento: Date | null;
   ultimoErrore: string | null;
-  campiMancanti: string[];
-  fallbackAttivo: boolean;
   log: IntegrationLogEntry[];
+  diagnostics: SpDiagnostics | null;
 }
 
 export interface IntegrationLogEntry {
@@ -65,21 +53,37 @@ export interface IntegrationLogEntry {
 }
 
 const integrationStatus: IntegrationStatus = {
-  mode: currentIntegrationMode(),
+  mode: "sharepoint",
   dipendentiCaricati: 0,
   ultimoAggiornamento: null,
   ultimoErrore: null,
-  campiMancanti: missingSharePointFields(),
-  fallbackAttivo: false,
   log: [],
+  diagnostics: null,
 };
 
 export function getIntegrationStatus(): IntegrationStatus {
   return {
     ...integrationStatus,
-    campiMancanti: [...integrationStatus.campiMancanti],
     log: [...integrationStatus.log],
   };
+}
+
+export async function refreshIntegrationDiagnostics(force = false) {
+  try {
+    integrationStatus.diagnostics = await spGetDiagnostics({ data: { force } });
+    if (integrationStatus.diagnostics.error) {
+      log("error", "discover", integrationStatus.diagnostics.error);
+    } else {
+      log(
+        "info",
+        "discover",
+        `Sito "${integrationStatus.diagnostics.discovered?.siteName}" — liste "${integrationStatus.diagnostics.discovered?.listDipendentiName}" + "${integrationStatus.diagnostics.discovered?.listTimbratureName}"`,
+      );
+    }
+  } catch (err) {
+    log("error", "discover", err instanceof Error ? err.message : String(err));
+  }
+  return integrationStatus.diagnostics;
 }
 
 function log(level: IntegrationLogEntry["level"], operation: string, message: string) {
@@ -93,52 +97,15 @@ function markSuccess(count: number, operation = "getDipendenti") {
   integrationStatus.dipendentiCaricati = count;
   integrationStatus.ultimoAggiornamento = new Date();
   integrationStatus.ultimoErrore = null;
-  integrationStatus.fallbackAttivo = false;
   log("info", operation, `OK — ${count} elementi`);
 }
 
-function markError(err: unknown, operation: string, fallback: boolean) {
+function markError(err: unknown, operation: string) {
   const msg = err instanceof Error ? err.message : String(err ?? "Errore sconosciuto");
   integrationStatus.ultimoErrore = msg;
   integrationStatus.ultimoAggiornamento = new Date();
-  integrationStatus.fallbackAttivo = fallback;
   log("error", operation, msg);
 }
-
-// ---------------------------------------------------------------------------
-// Implementazione MOCK (attuale)
-// ---------------------------------------------------------------------------
-
-const mockDataService: DataService = {
-  async getSedi() {
-    return SEDI;
-  },
-  async getDipendenti() {
-    const list = state.map((d) => ({ ...d }));
-    markSuccess(list.length);
-    return list;
-  },
-  async getDipendente(id) {
-    const d = state.find((x) => x.id === id);
-    return d ? { ...d } : undefined;
-  },
-  async timbra(dipendenteId, tipo) {
-    const idx = state.findIndex((d) => d.id === dipendenteId);
-    if (idx < 0) throw new Error("Dipendente non trovato");
-    const nuova: Timbratura = { tipo, ora: new Date().toISOString() };
-    const prev = state[idx];
-    const stato =
-      tipo === "entrata" || tipo === "fine-pausa"
-        ? "presente"
-        : tipo === "inizio-pausa"
-          ? "pausa"
-          : "uscito";
-    const entrataOra =
-      tipo === "entrata" ? nuova.ora : prev.entrataOra;
-    state[idx] = { ...prev, stato, ultimaTimbratura: nuova, entrataOra };
-    return { ...state[idx] };
-  },
-};
 
 // ---------------------------------------------------------------------------
 // Implementazione SHAREPOINT — via server functions e Lovable Connector Gateway.
@@ -178,7 +145,7 @@ function mergeDipendentiTimbrature(
       id: d.id,
       nome: d.nome,
       cognome: d.cognome,
-      ruolo: d.ruolo || "—",
+      ruolo: d.ruolo || "Dipendente",
       sede: d.sede,
       orarioAtteso: "09:00",
       stato,
@@ -192,50 +159,43 @@ let cachedSnapshot: Dipendente[] = [];
 
 const sharepointDataService: DataService = {
   async getSedi() {
-    return mockDataService.getSedi();
+    return SEDI;
   },
   async getDipendenti() {
     try {
-      void sharepointConfig;
       const snap = await spGetSnapshot();
       const list = mergeDipendentiTimbrature(snap.dipendenti, snap.timbrature);
       cachedSnapshot = list;
       markSuccess(list.length, "getDipendenti");
       return list;
     } catch (err) {
-      markError(err, "getDipendenti", true);
-      return mockDataService.getDipendenti();
+      markError(err, "getDipendenti");
+      return [];
     }
   },
   async getDipendente(id) {
     const hit = cachedSnapshot.find((d) => d.id === id);
     if (hit) return { ...hit };
-    try {
-      const list = await sharepointDataService.getDipendenti();
-      return list.find((d) => d.id === id);
-    } catch {
-      return mockDataService.getDipendente(id);
-    }
+    const list = await sharepointDataService.getDipendenti();
+    return list.find((d) => d.id === id);
   },
   async timbra(id, tipo) {
-    try {
-      await spCreateTimbratura({ data: { dipendenteId: id, evento: tipo, origine: "web" } });
-      log("info", "timbra", `Registrata "${tipo}" per dipendente ${id}`);
-      const list = await sharepointDataService.getDipendenti();
-      const updated = list.find((d) => d.id === id);
-      if (updated) return updated;
-      throw new Error("Timbratura salvata ma dipendente non trovato dopo il refresh.");
-    } catch (err) {
-      markError(err, "timbra", true);
-      return mockDataService.timbra(id, tipo);
-    }
+    await spCreateTimbratura({ data: { dipendenteId: id, evento: tipo, origine: "Web" } });
+    log("info", "timbra", `Registrata "${tipo}" per dipendente ${id}`);
+    const list = await sharepointDataService.getDipendenti();
+    const updated = list.find((d) => d.id === id);
+    if (updated) return updated;
+    throw new Error("Timbratura salvata ma dipendente non trovato dopo il refresh.");
   },
 };
 
-// Selettore: usa SharePoint solo se completamente configurato.
-export const dataService: DataService = isSharePointConfigured()
-  ? sharepointDataService
-  : mockDataService;
+// L'app usa esclusivamente dati reali da SharePoint. In caso di errore
+// vengono restituiti array vuoti e l'errore è visibile in Amministrazione.
+export const dataService: DataService = sharepointDataService;
+
+// La variabile `Timbratura` era importata per la vecchia implementazione mock:
+// la manteniamo referenziata per evitare warning di unused import in TS strict.
+void ({} as Timbratura);
 
 // Filtra per sede senza duplicare la logica nelle pagine.
 export function bySede(list: Dipendente[], sede: SedeId) {
