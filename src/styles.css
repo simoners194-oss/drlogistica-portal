@@ -157,3 +157,27 @@
     color: var(--color-foreground);
   }
 }
+
+/* Barra di avanzamento durante le transizioni tra pagine */
+@keyframes pageProgress {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(120%); }
+  100% { transform: translateX(300%); }
+}
+
+/* Shimmer usato dagli skeleton eleganti */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+@utility skeleton-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--muted) 60%, transparent) 0%,
+    color-mix(in oklab, var(--muted-foreground) 12%, transparent) 50%,
+    color-mix(in oklab, var(--muted) 60%, transparent) 100%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s linear infinite;
+}

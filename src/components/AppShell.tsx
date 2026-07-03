@@ -3,6 +3,7 @@ import { LogOut } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { Logo } from "./Logo";
+import { PageProgress } from "./PageProgress";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 
 function getCurrentUser() {
@@ -48,6 +49,7 @@ export function AppShell({
 
   return (
     <SidebarProvider>
+      <PageProgress />
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
