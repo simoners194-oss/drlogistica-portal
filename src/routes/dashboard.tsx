@@ -285,10 +285,12 @@ function SedePanel({
   sedeId,
   sedeName,
   dipendenti,
+  onSelect,
 }: {
   sedeId: SedeId;
   sedeName: string;
   dipendenti: Dipendente[];
+  onSelect?: (d: Dipendente) => void;
 }) {
   const [filter, setFilter] = useState<DisplayStato | "tutti">("tutti");
   const filtered = filter === "tutti" ? dipendenti : dipendenti.filter((d) => displayStato(d) === filter);
@@ -328,27 +330,37 @@ function SedePanel({
       <ul className="divide-y divide-border flex-1">
         {filtered.map((d) => {
           const ds = displayStato(d);
+          const clickable = Boolean(onSelect);
           return (
-            <li key={d.id} className="flex items-center gap-3 px-4 sm:px-5 py-3.5 hover:bg-secondary/40 transition-colors">
-              <div className="h-10 w-10 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center shrink-0">
-                {d.nome[0]}{d.cognome[0]}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-medium text-foreground truncate">
-                  {d.nome} {d.cognome}
+            <li key={d.id}>
+              <button
+                type="button"
+                onClick={() => onSelect?.(d)}
+                disabled={!clickable}
+                aria-label={clickable ? `Apri dettaglio giornaliero di ${d.nome} ${d.cognome}` : undefined}
+                className={`w-full flex items-center gap-3 px-4 sm:px-5 py-3.5 text-left transition-colors ${clickable ? "hover:bg-secondary/60 focus-visible:bg-secondary/70 focus:outline-none active:bg-secondary" : ""}`}
+              >
+                <div className="h-10 w-10 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center shrink-0">
+                  {d.nome[0]}{d.cognome[0]}
                 </div>
-                <div className="text-[12px] text-muted-foreground truncate mt-0.5">
-                  {d.ruolo}
-                  {d.ultimaTimbratura && (
-                    <> · {labelTipo(d.ultimaTimbratura.tipo)} {formatOra(d.ultimaTimbratura.ora)}</>
-                  )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-medium text-foreground truncate">
+                    {d.nome} {d.cognome}
+                  </div>
+                  <div className="text-[12px] text-muted-foreground truncate mt-0.5">
+                    {d.ruolo}
+                    {d.ultimaTimbratura && (
+                      <> · {labelTipo(d.ultimaTimbratura.tipo)} {formatOra(d.ultimaTimbratura.ora)}</>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-medium bg-secondary text-secondary-foreground shrink-0`}>
-                <span className={`h-2 w-2 rounded-full ${DISPLAY_DOT[ds]}`} />
-                <span className="hidden sm:inline">{DISPLAY_LABEL[ds]}</span>
-                <span className="sm:hidden">{DISPLAY_LABEL[ds].slice(0, 3)}.</span>
-              </span>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-medium bg-secondary text-secondary-foreground shrink-0`}>
+                  <span className={`h-2 w-2 rounded-full ${DISPLAY_DOT[ds]}`} />
+                  <span className="hidden sm:inline">{DISPLAY_LABEL[ds]}</span>
+                  <span className="sm:hidden">{DISPLAY_LABEL[ds].slice(0, 3)}.</span>
+                </span>
+                {clickable && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+              </button>
             </li>
           );
         })}
