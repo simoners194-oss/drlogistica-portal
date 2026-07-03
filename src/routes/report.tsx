@@ -4,7 +4,7 @@ import { PlaceholderSection } from "@/components/PlaceholderSection";
 import { BarChart3 } from "lucide-react";
 
 export const Route = createFileRoute("/report")({
-  head: () => ({ meta: [{ title: "Report — DR Portal" }] }),
+  head: () => ({ meta: [{ title: "Modulo Report — DR Portal" }] }),
   component: () => (
     <AppShell title="Report" subtitle="Statistiche presenze, ritardi e straordinari">
       <PlaceholderSection
