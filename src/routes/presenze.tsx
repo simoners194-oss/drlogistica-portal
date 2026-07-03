@@ -182,6 +182,23 @@ function PresenzePage() {
       </div>
 
       {/* Riepilogo ore */}
+      {ore.chiusa && (
+        <div
+          role="status"
+          className="mt-5 md:mt-6 flex items-start gap-3 rounded-2xl border border-status-out/40 bg-status-out/5 p-4 sm:p-5 animate-fade-in"
+        >
+          <span className="h-9 w-9 shrink-0 rounded-lg bg-status-out/15 text-status-out flex items-center justify-center">
+            <Lock className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm sm:text-[15px] font-semibold text-foreground">Giornata lavorativa chiusa</div>
+            <p className="text-[13px] text-muted-foreground mt-0.5 leading-snug">
+              {GIORNATA_CHIUSA_MESSAGE}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="mt-5 md:mt-6 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <RiepilogoCard Icon={LogIn} label="Entrata" value={ore.entrataOra ? formatOra(ore.entrataOra) : "—"} />
         <RiepilogoCard Icon={Coffee} label="Pausa totale" value={formatDurata(ore.pausaMinuti)} hint={ore.inPausa ? "In corso" : undefined} />
