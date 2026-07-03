@@ -226,9 +226,12 @@ function resolveInternalNames(
   columns: GraphColumn[],
   desired: Record<string, string>,
 ): { map: Record<string, string>; missing: string[] } {
+  // Escludi colonne di sistema (hidden o readOnly) come LinkFilename2/LinkTitle
+  // che condividono display name "Nome"/"Titolo" con colonne custom reali.
+  const usable = columns.filter((c) => !c.hidden && !c.readOnly);
   const byDisplay = new Map<string, GraphColumn>();
   const byName = new Map<string, GraphColumn>();
-  for (const c of columns) {
+  for (const c of usable) {
     if (c.displayName) byDisplay.set(c.displayName.toLowerCase(), c);
     if (c.name) byName.set(c.name.toLowerCase(), c);
   }
