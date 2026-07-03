@@ -4,7 +4,8 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { PresenzeSkeleton } from "@/components/skeletons/PresenzeSkeleton";
 import { LogIn, Coffee, PlayCircle, LogOut, Clock, Timer, ListChecks, Hourglass, TrendingUp } from "lucide-react";
-import { Lock } from "lucide-react";
+import { Lock, FileText, History, User } from "lucide-react";
+import { QuickAccess } from "@/components/QuickAccess";
 import { formatOra, labelTipo, type Dipendente, type Timbratura } from "@/lib/mock-data";
 import { dataService, displayStato, DISPLAY_DOT, DISPLAY_LABEL } from "@/lib/data-service";
 import {
@@ -266,6 +267,16 @@ function PresenzePage() {
           </ol>
         )}
       </div>
+
+      {/* Accesso rapido — link ai moduli disponibili per il Dipendente */}
+      <QuickAccess
+        items={[
+          { label: "Presenze", to: "/presenze", Icon: Clock, ready: true, description: "Le mie timbrature" },
+          { label: "Richieste", to: "/richieste", Icon: FileText, ready: false },
+          { label: "Storico", Icon: History, ready: false },
+          { label: "Profilo", Icon: User, ready: false },
+        ]}
+      />
     </AppShell>
   );
 }

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as RichiesteRouteImport } from './routes/richieste'
 import { Route as ReportRouteImport } from './routes/report'
 import { Route as PresenzeRouteImport } from './routes/presenze'
+import { Route as NovitaRouteImport } from './routes/novita'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AmministrazioneRouteImport } from './routes/amministrazione'
 import { Route as IndexRouteImport } from './routes/index'
@@ -29,6 +30,11 @@ const ReportRoute = ReportRouteImport.update({
 const PresenzeRoute = PresenzeRouteImport.update({
   id: '/presenze',
   path: '/presenze',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NovitaRoute = NovitaRouteImport.update({
+  id: '/novita',
+  path: '/novita',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
   '/dashboard': typeof DashboardRoute
+  '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
   '/dashboard': typeof DashboardRoute
+  '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
@@ -68,6 +76,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
   '/dashboard': typeof DashboardRoute
+  '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
@@ -78,6 +87,7 @@ export interface FileRouteTypes {
     | '/'
     | '/amministrazione'
     | '/dashboard'
+    | '/novita'
     | '/presenze'
     | '/report'
     | '/richieste'
@@ -86,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/amministrazione'
     | '/dashboard'
+    | '/novita'
     | '/presenze'
     | '/report'
     | '/richieste'
@@ -94,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/amministrazione'
     | '/dashboard'
+    | '/novita'
     | '/presenze'
     | '/report'
     | '/richieste'
@@ -103,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AmministrazioneRoute: typeof AmministrazioneRoute
   DashboardRoute: typeof DashboardRoute
+  NovitaRoute: typeof NovitaRoute
   PresenzeRoute: typeof PresenzeRoute
   ReportRoute: typeof ReportRoute
   RichiesteRoute: typeof RichiesteRoute
@@ -129,6 +142,13 @@ declare module '@tanstack/react-router' {
       path: '/presenze'
       fullPath: '/presenze'
       preLoaderRoute: typeof PresenzeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/novita': {
+      id: '/novita'
+      path: '/novita'
+      fullPath: '/novita'
+      preLoaderRoute: typeof NovitaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -159,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AmministrazioneRoute: AmministrazioneRoute,
   DashboardRoute: DashboardRoute,
+  NovitaRoute: NovitaRoute,
   PresenzeRoute: PresenzeRoute,
   ReportRoute: ReportRoute,
   RichiesteRoute: RichiesteRoute,

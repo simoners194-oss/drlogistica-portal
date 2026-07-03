@@ -13,6 +13,10 @@ import {
   Clock,
   Building2,
   ChevronRight,
+  BarChart3,
+  FileText,
+  Settings,
+  Activity,
 } from "lucide-react";
 import {
   aggregate,
@@ -28,6 +32,7 @@ import { formatDurata } from "@/lib/presenze-logic";
 import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
 import { DettaglioDipendenteDialog } from "@/components/DettaglioDipendenteDialog";
 import { readSession, type Ruolo, type SessionUser } from "@/lib/session";
+import { QuickAccess, type QuickAccessItem } from "@/components/QuickAccess";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — DR Portal" }] }),
@@ -60,6 +65,22 @@ function DashboardPage() {
 
   const ruolo: Ruolo = session?.ruolo ?? "amministratore_sistema";
   const isResponsabile = ruolo === "responsabile";
+  const isAdmin = ruolo === "amministratore_sistema";
+
+  const quickItems: QuickAccessItem[] = isAdmin
+    ? [
+        { label: "Presenze", to: "/presenze", Icon: Clock, ready: true },
+        { label: "Report", to: "/report", Icon: BarChart3, ready: false },
+        { label: "Dipendenti", Icon: Users, ready: false },
+        { label: "Amministrazione", to: "/amministrazione", Icon: Settings, ready: true },
+        { label: "Diagnostica", to: "/amministrazione", Icon: Activity, ready: true, description: "Health & self-test" },
+      ]
+    : [
+        { label: "Presenze", to: "/presenze", Icon: Clock, ready: true },
+        { label: "Report", to: "/report", Icon: BarChart3, ready: false },
+        { label: "Dipendenti", Icon: Users, ready: false },
+        { label: "Richieste", to: "/richieste", Icon: FileText, ready: false },
+      ];
 
   // Sia il Responsabile sia l'Amministratore di sistema vedono i dati di
   // TUTTE le sedi. Il Responsabile mantiene però una vista in sola lettura
@@ -234,6 +255,7 @@ function DashboardPage() {
           if (!o) setSelected(null);
         }}
       />
+      <QuickAccess items={quickItems} />
     </AppShell>
   );
 }

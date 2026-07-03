@@ -13,6 +13,7 @@ import {
   FileText,
   BarChart3,
   Settings,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import type { Ruolo } from "./session";
@@ -82,5 +83,13 @@ export const MODULES: readonly AppModule[] = [
     ready: true,
     description: "Configurazione integrazioni e utenti.",
     roles: ["amministratore_sistema"],
+  },
+  {
+    id: "novita",
+    title: "Novità",
+    url: "/novita",
+    icon: Sparkles,
+    ready: true,
+    description: "Registro delle versioni e delle novità di DR Portal.",
   },
 ] as const;
