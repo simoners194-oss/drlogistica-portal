@@ -14,6 +14,7 @@ import {
   type IntegrationStatus,
 } from "@/lib/data-service";
 import type { SpSelfTestResult, SpHealth } from "@/lib/sharepoint.server";
+import { readSession } from "@/lib/session";
 import {
   microsoftAuthConfig,
   isMicrosoftAuthConfigured,
@@ -25,10 +26,6 @@ export const Route = createFileRoute("/amministrazione")({
   head: () => ({ meta: [{ title: "Modulo Amministrazione — DR Portal" }] }),
   beforeLoad: ({ location }) => {
     if (typeof window === "undefined") return;
-    // Import dinamico per evitare qualunque dipendenza SSR: readSession legge
-    // solo sessionStorage lato client.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { readSession } = require("@/lib/session") as typeof import("@/lib/session");
     const s = readSession();
     if (!s) {
       throw redirect({ to: "/", search: { redirect: location.href } });
