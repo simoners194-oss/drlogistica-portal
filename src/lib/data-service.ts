@@ -152,7 +152,7 @@ function mergeDipendentiTimbrature(
       nome: d.nome,
       cognome: d.cognome,
       ruolo: d.ruolo || "Dipendente",
-      sede: d.sede,
+      sede: d.sede === "tutte" ? "roma" : d.sede,
       orarioAtteso: "09:00",
       stato,
       entrataOra: entrata?.dataOra,
