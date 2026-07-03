@@ -6,7 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState, useCallback } from "react";
-import { dataService, getIntegrationStatus, type IntegrationStatus } from "@/lib/data-service";
+import {
+  dataService,
+  getIntegrationStatus,
+  refreshIntegrationDiagnostics,
+  type IntegrationStatus,
+} from "@/lib/data-service";
 import {
   microsoftAuthConfig,
   isMicrosoftAuthConfigured,
@@ -23,9 +28,10 @@ function AmministrazionePage() {
   const [status, setStatus] = useState<IntegrationStatus>(() => getIntegrationStatus());
   const [loading, setLoading] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force = false) => {
     setLoading(true);
     try {
+      await refreshIntegrationDiagnostics(force);
       await dataService.getDipendenti();
     } catch {
       /* già tracciato in integrationStatus */
@@ -39,7 +45,9 @@ function AmministrazionePage() {
     refresh();
   }, [refresh]);
 
-  const isSharePoint = status.mode === "sharepoint";
+  const discovered = status.diagnostics?.discovered ?? null;
+  const spError = status.diagnostics?.error ?? status.ultimoErrore;
+  const connected = Boolean(discovered) && !spError;
 
   return (
     <AppShell title="Amministrazione" subtitle="Configurazione sedi, ruoli e integrazioni">
@@ -48,38 +56,61 @@ function AmministrazionePage() {
           <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
-                {isSharePoint ? (
+                {connected ? (
                   <CheckCircle2 className="h-5 w-5 text-status-present" />
                 ) : (
-                  <AlertTriangle className="h-5 w-5 text-status-break" />
+                  <AlertTriangle className="h-5 w-5 text-status-absent" />
                 )}
                 Stato integrazione SharePoint
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                Origine dati corrente di DR Portal e diagnostica connessione a Microsoft 365.
+                Sito e liste rilevati automaticamente tramite il connettore Microsoft SharePoint.
               </p>
             </div>
-            <Button size="sm" variant="outline" onClick={refresh} disabled={loading}>
+            <Button size="sm" variant="outline" onClick={() => refresh(true)} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-              Aggiorna
+              Riscopri
             </Button>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <InfoRow label="Modalità attuale">
               <Badge
-                variant={isSharePoint ? "default" : "secondary"}
-                className={isSharePoint ? "bg-status-present text-white" : ""}
+                variant={connected ? "default" : "secondary"}
+                className={connected ? "bg-status-present text-white" : ""}
               >
-                {isSharePoint ? "SharePoint" : "Mock (dati di esempio)"}
+                {connected ? "SharePoint (live)" : "Non connesso"}
               </Badge>
-              {status.fallbackAttivo && (
-                <Badge variant="outline" className="ml-2 text-status-break border-status-break/50">
-                  Fallback mock attivo
-                </Badge>
-              )}
             </InfoRow>
             <InfoRow label="Dipendenti caricati">
               <span className="font-semibold">{status.dipendentiCaricati}</span>
+            </InfoRow>
+            <InfoRow label="Sito SharePoint">
+              {discovered ? (
+                <a
+                  href={discovered.siteWebUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm underline underline-offset-2 hover:text-primary"
+                >
+                  {discovered.siteName}
+                </a>
+              ) : (
+                <span className="text-sm text-muted-foreground">—</span>
+              )}
+            </InfoRow>
+            <InfoRow label="Liste rilevate">
+              {discovered ? (
+                <div className="flex flex-wrap gap-1">
+                  <Badge variant="secondary" className="font-mono text-[10px]">
+                    {discovered.listDipendentiName}
+                  </Badge>
+                  <Badge variant="secondary" className="font-mono text-[10px]">
+                    {discovered.listTimbratureName}
+                  </Badge>
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">—</span>
+              )}
             </InfoRow>
             <InfoRow label="Ultimo aggiornamento">
               <span className="text-sm">
@@ -89,22 +120,21 @@ function AmministrazionePage() {
               </span>
             </InfoRow>
             <InfoRow label="Errori integrazione">
-              {status.ultimoErrore ? (
-                <span className="text-sm text-status-absent">{status.ultimoErrore}</span>
+              {spError ? (
+                <span className="text-sm text-status-absent break-all">{spError}</span>
               ) : (
                 <span className="text-sm text-muted-foreground">Nessuno</span>
               )}
             </InfoRow>
-            {!isSharePoint && status.campiMancanti.length > 0 && (
-              <div className="sm:col-span-2 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-                <p className="font-medium text-foreground mb-1">
-                  Configurazione SharePoint incompleta
-                </p>
-                Variabili mancanti:{" "}
-                <span className="font-mono">{status.campiMancanti.join(", ")}</span>.
-                <br />
-                Impostale nel file <span className="font-mono">.env</span> (prefisso{" "}
-                <span className="font-mono">VITE_SP_*</span>) per attivare la modalità reale.
+            {status.diagnostics && (!status.diagnostics.hasLovableKey || !status.diagnostics.hasConnectionKey) && (
+              <div className="sm:col-span-2 rounded-md border border-dashed border-status-absent/50 p-3 text-xs text-status-absent">
+                <p className="font-medium mb-1">Credenziali connettore mancanti sul server</p>
+                <ul className="list-disc list-inside space-y-0.5">
+                  {!status.diagnostics.hasLovableKey && <li>LOVABLE_API_KEY non disponibile</li>}
+                  {!status.diagnostics.hasConnectionKey && (
+                    <li>MICROSOFT_SHAREPOINT_API_KEY non disponibile — riconnetti il connettore.</li>
+                  )}
+                </ul>
               </div>
             )}
             {status.log.length > 0 && (

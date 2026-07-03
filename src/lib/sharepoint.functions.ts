@@ -5,39 +5,52 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import {
+  clearSpDiscoveryCache,
   createTimbratura,
+  discoverSharePoint,
   fetchDipendenti,
   fetchTimbratureOggi,
-  isSpReady,
-  loadSpConfig,
   type CreateTimbraturaInput,
   type EventoTimbratura,
   type SpDipendente,
+  type SpDiscovered,
   type SpTimbratura,
 } from "./sharepoint.server";
 
 export interface SpDiagnostics {
-  configured: boolean;
-  siteId: string;
-  listDipendenti: string;
-  listTimbrature: string;
   hasLovableKey: boolean;
   hasConnectionKey: boolean;
+  discovered: SpDiscovered | null;
+  error: string | null;
 }
 
-export const spGetDiagnostics = createServerFn({ method: "GET" }).handler(
-  async (): Promise<SpDiagnostics> => {
-    const cfg = loadSpConfig();
-    return {
-      configured: isSpReady(cfg),
-      siteId: cfg.siteId,
-      listDipendenti: cfg.listDipendenti,
-      listTimbrature: cfg.listTimbrature,
-      hasLovableKey: Boolean(process.env.LOVABLE_API_KEY),
-      hasConnectionKey: Boolean(process.env.MICROSOFT_SHAREPOINT_API_KEY),
-    };
-  },
-);
+export const spGetDiagnostics = createServerFn({ method: "GET" })
+  .inputValidator((input?: { force?: boolean }) => ({ force: Boolean(input?.force) }))
+  .handler(async ({ data }): Promise<SpDiagnostics> => {
+    const hasLovableKey = Boolean(process.env.LOVABLE_API_KEY);
+    const hasConnectionKey = Boolean(process.env.MICROSOFT_SHAREPOINT_API_KEY);
+    if (!hasLovableKey || !hasConnectionKey) {
+      return {
+        hasLovableKey,
+        hasConnectionKey,
+        discovered: null,
+        error:
+          "Credenziali del connettore SharePoint mancanti sul server (LOVABLE_API_KEY / MICROSOFT_SHAREPOINT_API_KEY).",
+      };
+    }
+    try {
+      if (data.force) clearSpDiscoveryCache();
+      const discovered = await discoverSharePoint(data.force);
+      return { hasLovableKey, hasConnectionKey, discovered, error: null };
+    } catch (err) {
+      return {
+        hasLovableKey,
+        hasConnectionKey,
+        discovered: null,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
 
 export interface SpSnapshot {
   dipendenti: SpDipendente[];
