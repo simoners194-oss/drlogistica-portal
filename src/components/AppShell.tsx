@@ -5,18 +5,7 @@ import { AppSidebar } from "./AppSidebar";
 import { Logo } from "./Logo";
 import { PageProgress } from "./PageProgress";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-
-function getCurrentUser() {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem("dr:currentUser");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { id?: string; nome?: string; cognome?: string } | null;
-    return parsed?.id ? parsed : null;
-  } catch {
-    return null;
-  }
-}
+import { clearSession, readSession, RUOLO_LABEL, type SessionUser } from "@/lib/session";
 
 export function AppShell({
   children,
@@ -30,20 +19,16 @@ export function AppShell({
   const navigate = useNavigate();
   // Deferred to client only to avoid SSR/CSR hydration mismatch on the
   // user pill (sessionStorage is not available during prerender).
-  const [user, setUser] = useState<ReturnType<typeof getCurrentUser>>(null);
+  const [user, setUser] = useState<SessionUser | null>(null);
   useEffect(() => {
-    setUser(getCurrentUser());
+    setUser(readSession());
   }, []);
 
   const handleLogout = () => {
     if (typeof window !== "undefined" && !window.confirm("Sei sicuro di voler uscire?")) {
       return;
     }
-    try {
-      window.sessionStorage.removeItem("dr:currentUser");
-    } catch {
-      /* ignore */
-    }
+    clearSession();
     navigate({ to: "/", replace: true });
   };
 
@@ -68,6 +53,9 @@ export function AppShell({
                     {user.nome?.[0] ?? ""}{user.cognome?.[0] ?? ""}
                   </div>
                   <span className="text-secondary-foreground">{user.nome} {user.cognome}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground border-l border-border pl-2 ml-0.5">
+                    {RUOLO_LABEL[user.ruolo]}
+                  </span>
                 </div>
               )}
               <button
