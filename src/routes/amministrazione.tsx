@@ -72,6 +72,11 @@ function AmministrazionePage() {
               >
                 {isSharePoint ? "SharePoint" : "Mock (dati di esempio)"}
               </Badge>
+              {status.fallbackAttivo && (
+                <Badge variant="outline" className="ml-2 text-status-break border-status-break/50">
+                  Fallback mock attivo
+                </Badge>
+              )}
             </InfoRow>
             <InfoRow label="Dipendenti caricati">
               <span className="font-semibold">{status.dipendentiCaricati}</span>
@@ -100,6 +105,35 @@ function AmministrazionePage() {
                 <br />
                 Impostale nel file <span className="font-mono">.env</span> (prefisso{" "}
                 <span className="font-mono">VITE_SP_*</span>) per attivare la modalità reale.
+              </div>
+            )}
+            {status.log.length > 0 && (
+              <div className="sm:col-span-2 rounded-md border border-border p-3">
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
+                  Log integrazione (ultime {status.log.length} operazioni)
+                </p>
+                <ul className="space-y-1 max-h-56 overflow-auto text-xs font-mono">
+                  {status.log.map((entry, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="text-muted-foreground shrink-0">
+                        {entry.ts.toLocaleTimeString("it-IT")}
+                      </span>
+                      <span
+                        className={
+                          entry.level === "error"
+                            ? "text-status-absent shrink-0"
+                            : entry.level === "warn"
+                              ? "text-status-break shrink-0"
+                              : "text-status-present shrink-0"
+                        }
+                      >
+                        {entry.level.toUpperCase()}
+                      </span>
+                      <span className="text-foreground shrink-0">{entry.operation}</span>
+                      <span className="text-muted-foreground break-all">{entry.message}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </CardContent>
