@@ -186,6 +186,8 @@ function DashboardPage() {
           renderValue={(d) => `orario ${d.orarioAtteso}`}
         />
       </div>
+        </>
+      )}
     </AppShell>
   );
 }
