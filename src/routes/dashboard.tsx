@@ -121,7 +121,7 @@ function DashboardPage() {
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 mb-5 sm:flex sm:items-center sm:justify-between">
           <div className="min-w-0">
             <h2 className="text-[17px] sm:text-lg md:text-xl font-semibold text-foreground tracking-tight leading-tight">
-              {isResponsabile ? "Sintesi presenze della tua sede" : "Sintesi presenze per sede"}
+              Sintesi presenze per sede
             </h2>
             <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
               <span className="relative flex h-1.5 w-1.5 shrink-0">
