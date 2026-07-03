@@ -10,6 +10,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Clock,
+  Building2,
 } from "lucide-react";
 import {
   aggregate,
@@ -28,8 +29,25 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function DashboardPage() {
-  const { data, lastUpdate, error } = useLivePresenze(15000);
+  const { data, lastUpdate, error, refresh } = useLivePresenze(15000);
   const totals = useMemo(() => aggregate(data), [data]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const sediStats = useMemo(
+    () =>
+      SEDI.map((s) => {
+        const dip = bySede(data, s.id);
+        const presenti = dip.filter((d) => displayStato(d) !== "assente").length;
+        return { ...s, presenti, totale: dip.length };
+      }),
+    [data],
+  );
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  };
 
   return (
     <AppShell title="Dashboard presenze" subtitle="Monitoraggio live sedi DR Logistica">
@@ -62,6 +80,52 @@ function DashboardPage() {
         </button>
       </div>
 
+      {/* Demo domani — riepilogo pulito per riunione */}
+      <section className="mb-6 rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+        <div className="flex items-start justify-between gap-4 mb-5">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Demo domani</h2>
+            <p className="text-xs text-muted-foreground">
+              Presenze per sede · aggiornato alle{" "}
+              {lastUpdate.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </p>
+          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            Aggiorna ora
+          </button>
+        </div>
+
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+          {sediStats.map((s) => (
+            <div
+              key={s.id}
+              className="rounded-lg border border-border bg-secondary/40 p-4 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <span className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                  <Building2 className="h-5 w-5" />
+                </span>
+                <div>
+                  <div className="text-sm font-medium text-foreground">Sede {s.nome}</div>
+                  <div className="text-xs text-muted-foreground">{s.totale} dipendenti totali</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-semibold tabular-nums text-foreground">
+                  {s.presenti}<span className="text-muted-foreground text-lg font-normal">/{s.totale}</span>
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Presenti</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* Top KPI cards */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
         <KpiCard label="Dipendenti attivi" value={totals.attivi} Icon={Users} tone="primary" />
@@ -70,6 +134,7 @@ function DashboardPage() {
         <KpiCard label="Assenti" value={totals.assenti} Icon={UserX} tone="absent" />
         <KpiCard label="Straordinari" value={totals.straordinari} Icon={TrendingUp} tone="out" />
       </div>
+
 
       {/* Live view: two side-by-side sede panels */}
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
