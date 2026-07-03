@@ -26,6 +26,7 @@ import {
   type SpDiagnostics,
 } from "./sharepoint.functions";
 import type { SpDipendente, SpTimbratura } from "./sharepoint.server";
+import { setSpStatus } from "./use-sp-status";
 
 export interface DataService {
   getSedi(): Promise<typeof SEDI>;
@@ -98,6 +99,7 @@ function markSuccess(count: number, operation = "getDipendenti") {
   integrationStatus.dipendentiCaricati = count;
   integrationStatus.ultimoAggiornamento = new Date();
   integrationStatus.ultimoErrore = null;
+  setSpStatus("online");
   void operation;
 }
 
@@ -105,6 +107,7 @@ function markError(err: unknown, operation: string) {
   const msg = err instanceof Error ? err.message : String(err ?? "Errore sconosciuto");
   integrationStatus.ultimoErrore = msg;
   integrationStatus.ultimoAggiornamento = new Date();
+  setSpStatus("offline", msg);
   void operation;
 }
 
