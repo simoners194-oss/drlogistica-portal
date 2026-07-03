@@ -399,8 +399,9 @@ interface GraphListResponse<F> {
 }
 
 type SedeRaw = string | undefined | null;
-function normalizeSede(v: SedeRaw): "roma" | "san-giuliano" {
+function normalizeSede(v: SedeRaw): "roma" | "san-giuliano" | "tutte" {
   const s = (v ?? "").toString().trim().toLowerCase().replace(/\s+/g, "-");
+  if (s === "tutte" || s === "all" || s === "*") return "tutte";
   if (s.startsWith("san")) return "san-giuliano";
   return "roma";
 }
@@ -420,7 +421,7 @@ export interface SpDipendente {
   cognome: string;
   nomeCompleto: string;
   email: string;
-  sede: "roma" | "san-giuliano";
+  sede: "roma" | "san-giuliano" | "tutte";
   attivo: boolean;
   ruolo: string;
 }
