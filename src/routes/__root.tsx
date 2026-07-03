@@ -83,9 +83,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "author", content: "DR Logistica" },
       { name: "theme-color", content: "#1e40af" },
       { property: "og:title", content: "DR Portal — Il portale aziendale di DR Logistica" },
-      { property: "og:description", content: "La piattaforma modulare di DR Logistica per presenze, richieste, report e amministrazione." },
+      { property: "og:description", content: "DR Portal è la piattaforma aziendale di DR Logistica: presenze, richieste, report e amministrazione in un'unica esperienza integrata." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "DR Portal — Il portale aziendale di DR Logistica" },
+      { name: "twitter:description", content: "DR Portal è la piattaforma aziendale di DR Logistica: presenze, richieste, report e amministrazione in un'unica esperienza integrata." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/6fcae871-1cde-4411-860e-fb44355c615d" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/6fcae871-1cde-4411-860e-fb44355c615d" },
     ],
     links: [
       {
