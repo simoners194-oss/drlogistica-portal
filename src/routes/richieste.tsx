@@ -4,7 +4,7 @@ import { PlaceholderSection } from "@/components/PlaceholderSection";
 import { FileText } from "lucide-react";
 
 export const Route = createFileRoute("/richieste")({
-  head: () => ({ meta: [{ title: "Richieste — DR Portal" }] }),
+  head: () => ({ meta: [{ title: "Modulo Richieste — DR Portal" }] }),
   component: () => (
     <AppShell title="Richieste" subtitle="Ferie, permessi e giustificativi">
       <PlaceholderSection

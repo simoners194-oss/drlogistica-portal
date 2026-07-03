@@ -24,7 +24,7 @@ import { SEDI, formatOra, labelTipo, type SedeId, type Dipendente } from "@/lib/
 import { useLivePresenze } from "@/lib/use-live-presenze";
 
 export const Route = createFileRoute("/dashboard")({
-  head: () => ({ meta: [{ title: "Dashboard HR — DR Portal" }] }),
+  head: () => ({ meta: [{ title: "Dashboard — DR Portal" }] }),
   beforeLoad: ({ location }) => {
     if (typeof window === "undefined") return;
     let hasSession = false;

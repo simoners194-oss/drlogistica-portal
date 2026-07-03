@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { spLogin } from "@/lib/sharepoint.functions";
+import { APP_NAME, APP_TAGLINE } from "@/lib/modules";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "DR Portal — Accedi" },
-      { name: "description", content: "Portale presenze DR Logistica. Accedi con codice dipendente e PIN." },
+      { name: "description", content: "DR Portal — il portale aziendale di DR Logistica. Accedi con codice dipendente e PIN." },
     ],
   }),
   component: Index,
@@ -60,13 +61,14 @@ function Index() {
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-background">
       <div className="hidden lg:flex flex-col justify-between p-12 text-primary-foreground" style={{ background: "var(--gradient-hero)" }}>
-        <Logo variant="light" size={144} />
+        <Logo variant="light" size={144} subtitle={APP_TAGLINE} />
         <div>
           <h1 className="text-4xl font-semibold tracking-tight leading-tight">
-            Gestisci le presenze<br />in modo semplice.
+            {APP_NAME}
           </h1>
-          <p className="mt-4 text-white/80 max-w-md">
-            DR Portal centralizza timbrature, pause e reportistica per tutte le sedi DR Logistica.
+          <p className="mt-3 text-lg text-white/90 max-w-md">{APP_TAGLINE}</p>
+          <p className="mt-4 text-sm text-white/70 max-w-md">
+            Una piattaforma modulare che unisce Presenze, Richieste, Report e Amministrazione in un'unica esperienza integrata.
           </p>
         </div>
         <div className="text-xs text-white/60">© DR Logistica — Powered by Microsoft 365</div>

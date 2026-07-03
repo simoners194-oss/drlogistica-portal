@@ -7,7 +7,7 @@ import { formatOra, labelTipo, type Dipendente, type Timbratura } from "@/lib/mo
 import { dataService, oreLavorateOggi, displayStato, DISPLAY_DOT, DISPLAY_LABEL } from "@/lib/data-service";
 
 export const Route = createFileRoute("/presenze")({
-  head: () => ({ meta: [{ title: "Le mie presenze — DR Portal" }] }),
+  head: () => ({ meta: [{ title: "Modulo Presenze — DR Portal" }] }),
   beforeLoad: ({ location }) => {
     // La sessione vive in sessionStorage (client-only): su SSR/prerender
     // non c'è nulla da controllare, la guardia scatta solo nel browser.

@@ -22,7 +22,7 @@ import {
 } from "@/lib/auth-config";
 
 export const Route = createFileRoute("/amministrazione")({
-  head: () => ({ meta: [{ title: "Amministrazione — DR Portal" }] }),
+  head: () => ({ meta: [{ title: "Modulo Amministrazione — DR Portal" }] }),
   component: AmministrazionePage,
 });
 
