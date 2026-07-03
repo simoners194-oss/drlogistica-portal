@@ -25,6 +25,11 @@ import {
   sharepointConfig,
   type IntegrationMode,
 } from "./sharepoint-config";
+import {
+  spCreateTimbratura,
+  spGetSnapshot,
+} from "./sharepoint.functions";
+import type { SpDipendente, SpTimbratura } from "./sharepoint.server";
 
 // Stato in memoria (mock). In produzione verrà rimpiazzato da chiamate a
 // SharePoint. Cloniamo l'array per poter mutare le timbrature durante la
@@ -48,6 +53,15 @@ export interface IntegrationStatus {
   ultimoAggiornamento: Date | null;
   ultimoErrore: string | null;
   campiMancanti: string[];
+  fallbackAttivo: boolean;
+  log: IntegrationLogEntry[];
+}
+
+export interface IntegrationLogEntry {
+  ts: Date;
+  level: "info" | "warn" | "error";
+  operation: string;
+  message: string;
 }
 
 const integrationStatus: IntegrationStatus = {
@@ -56,22 +70,39 @@ const integrationStatus: IntegrationStatus = {
   ultimoAggiornamento: null,
   ultimoErrore: null,
   campiMancanti: missingSharePointFields(),
+  fallbackAttivo: false,
+  log: [],
 };
 
 export function getIntegrationStatus(): IntegrationStatus {
-  return { ...integrationStatus, campiMancanti: [...integrationStatus.campiMancanti] };
+  return {
+    ...integrationStatus,
+    campiMancanti: [...integrationStatus.campiMancanti],
+    log: [...integrationStatus.log],
+  };
 }
 
-function markSuccess(count: number) {
+function log(level: IntegrationLogEntry["level"], operation: string, message: string) {
+  integrationStatus.log = [
+    { ts: new Date(), level, operation, message },
+    ...integrationStatus.log,
+  ].slice(0, 30);
+}
+
+function markSuccess(count: number, operation = "getDipendenti") {
   integrationStatus.dipendentiCaricati = count;
   integrationStatus.ultimoAggiornamento = new Date();
   integrationStatus.ultimoErrore = null;
+  integrationStatus.fallbackAttivo = false;
+  log("info", operation, `OK — ${count} elementi`);
 }
 
-function markError(err: unknown) {
-  integrationStatus.ultimoErrore =
-    err instanceof Error ? err.message : String(err ?? "Errore sconosciuto");
+function markError(err: unknown, operation: string, fallback: boolean) {
+  const msg = err instanceof Error ? err.message : String(err ?? "Errore sconosciuto");
+  integrationStatus.ultimoErrore = msg;
   integrationStatus.ultimoAggiornamento = new Date();
+  integrationStatus.fallbackAttivo = fallback;
+  log("error", operation, msg);
 }
 
 // ---------------------------------------------------------------------------
@@ -110,13 +141,54 @@ const mockDataService: DataService = {
 };
 
 // ---------------------------------------------------------------------------
-// Implementazione SHAREPOINT (placeholder — verrà attivata nel prossimo step)
-//
-// Quando la configurazione sarà completa e verranno implementate le chiamate
-// a Microsoft Graph, questa costante userà `sharepointConfig` per leggere le
-// liste `LIST_DIPENDENTI_ID` e `LIST_TIMBRATURE_ID` del sito `SITE_ID`.
-// Per ora ogni metodo delega ai mock per non rompere l'esperienza utente.
+// Implementazione SHAREPOINT — via server functions e Lovable Connector Gateway.
+// Se una chiamata fallisce (config incompleta, credenziali mancanti, errore di
+// rete o SharePoint down) si ripiega automaticamente sul mock service in modo
+// che l'app resti sempre funzionante. L'errore viene tracciato in
+// integrationStatus e mostrato in Amministrazione.
 // ---------------------------------------------------------------------------
+
+function mergeDipendentiTimbrature(
+  dips: SpDipendente[],
+  tims: SpTimbratura[],
+): Dipendente[] {
+  const byEmp = new Map<string, SpTimbratura[]>();
+  for (const t of tims) {
+    const arr = byEmp.get(t.dipendenteId) ?? [];
+    arr.push(t);
+    byEmp.set(t.dipendenteId, arr);
+  }
+  return dips.map((d) => {
+    const eventi = (byEmp.get(d.id) ?? []).sort((a, b) => a.dataOra.localeCompare(b.dataOra));
+    const entrata = eventi.find((e) => e.evento === "entrata");
+    const last = eventi[eventi.length - 1];
+    let stato: Dipendente["stato"] = "non-timbrato";
+    if (last) {
+      stato =
+        last.evento === "entrata" || last.evento === "fine-pausa"
+          ? "presente"
+          : last.evento === "inizio-pausa"
+            ? "pausa"
+            : "uscito";
+    }
+    const ultimaTimbratura: Timbratura | undefined = last
+      ? { tipo: last.evento, ora: last.dataOra }
+      : undefined;
+    return {
+      id: d.id,
+      nome: d.nome,
+      cognome: d.cognome,
+      ruolo: d.ruolo || "—",
+      sede: d.sede,
+      orarioAtteso: "09:00",
+      stato,
+      entrataOra: entrata?.dataOra,
+      ultimaTimbratura,
+    };
+  });
+}
+
+let cachedSnapshot: Dipendente[] = [];
 
 const sharepointDataService: DataService = {
   async getSedi() {
@@ -124,21 +196,39 @@ const sharepointDataService: DataService = {
   },
   async getDipendenti() {
     try {
-      // TODO(step successivo): GET /sites/{SITE_ID}/lists/{LIST_DIPENDENTI_ID}/items?expand=fields
       void sharepointConfig;
-      const list = await mockDataService.getDipendenti();
+      const snap = await spGetSnapshot();
+      const list = mergeDipendentiTimbrature(snap.dipendenti, snap.timbrature);
+      cachedSnapshot = list;
+      markSuccess(list.length, "getDipendenti");
       return list;
     } catch (err) {
-      markError(err);
-      throw err;
+      markError(err, "getDipendenti", true);
+      return mockDataService.getDipendenti();
     }
   },
   async getDipendente(id) {
-    return mockDataService.getDipendente(id);
+    const hit = cachedSnapshot.find((d) => d.id === id);
+    if (hit) return { ...hit };
+    try {
+      const list = await sharepointDataService.getDipendenti();
+      return list.find((d) => d.id === id);
+    } catch {
+      return mockDataService.getDipendente(id);
+    }
   },
   async timbra(id, tipo) {
-    // TODO(step successivo): POST /sites/{SITE_ID}/lists/{LIST_TIMBRATURE_ID}/items
-    return mockDataService.timbra(id, tipo);
+    try {
+      await spCreateTimbratura({ data: { dipendenteId: id, evento: tipo, origine: "web" } });
+      log("info", "timbra", `Registrata "${tipo}" per dipendente ${id}`);
+      const list = await sharepointDataService.getDipendenti();
+      const updated = list.find((d) => d.id === id);
+      if (updated) return updated;
+      throw new Error("Timbratura salvata ma dipendente non trovato dopo il refresh.");
+    } catch (err) {
+      markError(err, "timbra", true);
+      return mockDataService.timbra(id, tipo);
+    }
   },
 };
 
