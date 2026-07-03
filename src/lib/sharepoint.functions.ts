@@ -13,10 +13,12 @@ import {
   fetchTimbratureOggi,
   getLastSyncAt,
   getSpLog,
+  loginByCodicePin,
   markSync,
   runSelfTest,
   type CreateTimbraturaInput,
   type EventoTimbratura,
+  type LoginResult,
   type SpHealth,
   type SpLogEvent,
   type SpSelfTestResult,
@@ -110,3 +112,14 @@ export const spCreateTimbratura = createServerFn({ method: "POST" })
 export const spRunSelfTest = createServerFn({ method: "POST" }).handler(
   async (): Promise<SpSelfTestResult> => runSelfTest(),
 );
+
+export const spLogin = createServerFn({ method: "POST" })
+  .inputValidator((input: { codice: string; pin: string }) => {
+    if (typeof input?.codice !== "string" || typeof input?.pin !== "string") {
+      throw new Error("Codice o PIN non validi.");
+    }
+    return { codice: input.codice, pin: input.pin };
+  })
+  .handler(async ({ data }): Promise<LoginResult> =>
+    loginByCodicePin(data.codice, data.pin),
+  );
