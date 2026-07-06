@@ -11,12 +11,7 @@
 //      (per esempio in base a import.meta.env.VITE_DR_DATA_SOURCE).
 // -----------------------------------------------------------------------------
 
-import {
-  SEDI,
-  type Dipendente,
-  type SedeId,
-  type Timbratura,
-} from "./mock-data";
+import { SEDI, type Dipendente, type SedeId, type Timbratura } from "./mock-data";
 import { computeOreOggi } from "./presenze-logic";
 import {
   spCreateTimbratura,
@@ -119,10 +114,7 @@ function markError(err: unknown, operation: string) {
 // integrationStatus e mostrato in Amministrazione.
 // ---------------------------------------------------------------------------
 
-function mergeDipendentiTimbrature(
-  dips: SpDipendente[],
-  tims: SpTimbratura[],
-): Dipendente[] {
+function mergeDipendentiTimbrature(dips: SpDipendente[], tims: SpTimbratura[]): Dipendente[] {
   const byEmp = new Map<string, SpTimbratura[]>();
   for (const t of tims) {
     const arr = byEmp.get(t.dipendenteId) ?? [];
@@ -169,7 +161,11 @@ function mergeDipendentiTimbrature(
   });
 }
 
+// Snapshot filtrato (solo visibili) — alimenta dashboard, elenchi e conteggi.
 let cachedSnapshot: Dipendente[] = [];
+// Snapshot completo (inclusi i nascosti) — usato SOLO per l'auto-lettura del
+// proprio record in getDipendente, mai per viste aggregate.
+let cachedFull: Dipendente[] = [];
 
 const sharepointDataService: DataService = {
   async getSedi() {
@@ -177,8 +173,22 @@ const sharepointDataService: DataService = {
   },
   async getDipendenti() {
     try {
-      const snap = (await spGetSnapshot()) as { dipendenti: SpDipendente[]; timbrature: SpTimbratura[] };
-      const list = mergeDipendentiTimbrature(snap.dipendenti, snap.timbrature);
+      const snap = (await spGetSnapshot()) as {
+        dipendenti: SpDipendente[];
+        timbrature: SpTimbratura[];
+      };
+      // Filtro di VISIBILITÀ (unico punto di verità per tutte le viste
+      // operative: dashboard, elenco sede, conteggi, dettaglio, statistiche
+      // e — in futuro — report). Escludiamo i dipendenti con visibile=false
+      // PRIMA del merge, così ogni aggregato a valle è automaticamente
+      // corretto senza toccare le route. Il filtro non tocca l'accesso:
+      // l'autenticazione dipende solo da `attivo` (gestita altrove).
+      const visibili = snap.dipendenti.filter((d) => d.visibile);
+      const list = mergeDipendentiTimbrature(visibili, snap.timbrature);
+      // Cache dello snapshot COMPLETO (non filtrato) per l'auto-lettura del
+      // proprio record: un utente nascosto deve poter vedere le proprie
+      // presenze anche se non compare nelle viste operative (regola 2).
+      cachedFull = mergeDipendentiTimbrature(snap.dipendenti, snap.timbrature);
       cachedSnapshot = list;
       markSuccess(list.length, "getDipendenti");
       return list;
@@ -188,15 +198,24 @@ const sharepointDataService: DataService = {
     }
   },
   async getDipendente(id) {
+    // Auto-lettura per id: cerca nello snapshot COMPLETO (include i nascosti),
+    // così chi ha visibile=false carica comunque le proprie presenze.
+    const hitFull = cachedFull.find((d) => d.id === id);
+    if (hitFull) return { ...hitFull };
     const hit = cachedSnapshot.find((d) => d.id === id);
     if (hit) return { ...hit };
-    const list = await sharepointDataService.getDipendenti();
-    return list.find((d) => d.id === id);
+    // Cache fredda: popola entrambe le cache e ricerca nella completa.
+    await sharepointDataService.getDipendenti();
+    return cachedFull.find((d) => d.id === id);
   },
   async timbra(id, tipo) {
     await spCreateTimbratura({ data: { dipendenteId: id, evento: tipo, origine: "Web" } });
-    const list = await sharepointDataService.getDipendenti();
-    const updated = list.find((d) => d.id === id);
+    // Refresh dello snapshot, poi cerca nella cache COMPLETA: un utente
+    // nascosto (visibile=false) timbra le proprie presenze e deve comunque
+    // ricevere il proprio record aggiornato, pur non essendo nella lista
+    // filtrata.
+    await sharepointDataService.getDipendenti();
+    const updated = cachedFull.find((d) => d.id === id);
     if (updated) return updated;
     throw new Error("Timbratura salvata ma dipendente non trovato dopo il refresh.");
   },
