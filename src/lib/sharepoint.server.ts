@@ -33,6 +33,8 @@ export const SP_DISPLAY = {
     Ruolo: "Responsabile",
     Codice: "Codice",
     PIN: "PIN",
+    Visibile: "Visibile",
+    Autorizza: "Autorizza",
   },
   timbrature: {
     Dipendente: "Dipendente",
@@ -170,7 +172,11 @@ async function gatewayFetch(path: string, init: RequestInit = {}): Promise<Respo
 }
 
 export class SpHttpError extends Error {
-  constructor(public status: number, message: string, public path: string) {
+  constructor(
+    public status: number,
+    message: string,
+    public path: string,
+  ) {
     super(message);
   }
 }
@@ -254,9 +260,7 @@ function resolveInternalNames(
 async function tryResolveTargetSite(): Promise<GraphSite | null> {
   // 1) Tentativo diretto per path canonico DRPORTAL.
   try {
-    const site = await gatewayJson<GraphSite>(
-      `/sites/${TARGET_HOST}:/sites/${TARGET_SITE_PATH}`,
-    );
+    const site = await gatewayJson<GraphSite>(`/sites/${TARGET_HOST}:/sites/${TARGET_SITE_PATH}`);
     if (site?.id) {
       logSp("info", "discover.site", `Sito canonico trovato: ${site.displayName ?? site.name}`);
       return site;
@@ -406,9 +410,14 @@ function normalizeSede(v: SedeRaw): "roma" | "san-giuliano" | "tutte" {
   return "roma";
 }
 
-function requireField(map: Record<string, string>, key: string, list: "Dipendenti" | "Timbrature"): string {
+function requireField(
+  map: Record<string, string>,
+  key: string,
+  list: "Dipendenti" | "Timbrature",
+): string {
   const v = map[key];
-  if (!v) throw new Error(`Colonna obbligatoria "${key}" mancante nella lista ${list} su SharePoint.`);
+  if (!v)
+    throw new Error(`Colonna obbligatoria "${key}" mancante nella lista ${list} su SharePoint.`);
   return v;
 }
 
@@ -424,6 +433,22 @@ export interface SpDipendente {
   sede: "roma" | "san-giuliano" | "tutte";
   attivo: boolean;
   ruolo: string;
+  // Visibilità nelle viste operative (dashboard, elenchi, conteggi, report).
+  // Fail-open: se la colonna manca o è vuota il dipendente è considerato
+  // VISIBILE, così una dimenticanza di backfill non svuota la dashboard.
+  // NB: `visibile` NON governa l'accesso — l'autenticazione dipende solo da
+  // `attivo`. Sono due assi ortogonali.
+  visibile: boolean;
+  // Flag per la futura autorizzazione di ferie/permessi/straordinari
+  // (modulo Richieste, non ancora implementato). Default: false.
+  autorizza: boolean;
+}
+
+// Parsing tollerante di un campo booleano SharePoint (Sì/No).
+// `undefined` (colonna assente/mai valorizzata) → valore di default fornito.
+function parseSpBool(raw: unknown, whenMissing: boolean): boolean {
+  if (raw === undefined || raw === null || raw === "") return whenMissing;
+  return Boolean(raw);
 }
 
 export async function fetchDipendenti(): Promise<SpDipendente[]> {
@@ -452,6 +477,9 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
         sede: normalizeSede((F.Sede ? f[F.Sede] : undefined) as SedeRaw),
         attivo,
         ruolo: String(f[F.Ruolo ?? ""] ?? "").trim(),
+        // Fail-open sulla visibilità; autorizza default false.
+        visibile: parseSpBool(F.Visibile ? f[F.Visibile] : undefined, true),
+        autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
       };
     })
     .filter((d) => d.attivo);
@@ -472,7 +500,9 @@ export interface LoginResult {
 }
 
 function normalizeCodice(v: unknown): string {
-  return String(v ?? "").trim().toUpperCase();
+  return String(v ?? "")
+    .trim()
+    .toUpperCase();
 }
 
 function normalizePin(v: unknown): string {
@@ -531,12 +561,15 @@ export async function loginByCodicePin(
     id: String(match.id),
     nome,
     cognome,
-    nomeCompleto:
-      String(f[F.NomeCompleto ?? ""] ?? `${nome} ${cognome}`).trim(),
+    nomeCompleto: String(f[F.NomeCompleto ?? ""] ?? `${nome} ${cognome}`).trim(),
     email: String(f[F.Email ?? ""] ?? "").trim(),
     sede: normalizeSede((F.Sede ? f[F.Sede] : undefined) as SedeRaw),
     attivo: true,
     ruolo: String(f[F.Ruolo ?? ""] ?? "").trim(),
+    // Popolati per coerenza del modello. NON influenzano l'esito del login:
+    // un utente con visibile=false può comunque autenticarsi (regola 2).
+    visibile: parseSpBool(F.Visibile ? f[F.Visibile] : undefined, true),
+    autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
   };
   logSp("info", "login", `Login ok per ${codice} (id=${dipendente.id})`, {
     durataMs: Date.now() - started,
@@ -567,13 +600,20 @@ function todayIsoStart(): string {
 }
 
 function parseEvento(v: unknown): EventoTimbratura | null {
-  const s = String(v ?? "").toLowerCase().replace(/\s+/g, "-");
+  const s = String(v ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, "-");
   if (s === "entrata" || s === "inizio-pausa" || s === "fine-pausa" || s === "uscita") return s;
   return null;
 }
 
 function eventoToSharePoint(e: EventoTimbratura): string {
-  return { entrata: "Entrata", "inizio-pausa": "Inizio Pausa", "fine-pausa": "Fine Pausa", uscita: "Uscita" }[e];
+  return {
+    entrata: "Entrata",
+    "inizio-pausa": "Inizio Pausa",
+    "fine-pausa": "Fine Pausa",
+    uscita: "Uscita",
+  }[e];
 }
 
 // Costruisce il nome del lookup id partendo dall'internal name della colonna.
@@ -625,9 +665,7 @@ export async function fetchTimbratureOggi(): Promise<SpTimbratura[]> {
           }
         : null;
     })
-    .filter(
-      (x): x is SpTimbratura => x !== null && new Date(x.dataOra).getTime() >= startMs,
-    )
+    .filter((x): x is SpTimbratura => x !== null && new Date(x.dataOra).getTime() >= startMs)
     .sort((a, b) => a.dataOra.localeCompare(b.dataOra));
   logSp("info", "fetch.timbrature", `${out.length} timbrature oggi`, {
     durataMs: Date.now() - started,
