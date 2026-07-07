@@ -28,7 +28,7 @@ export interface Dipendente {
 }
 
 export const SEDI: { id: SedeId; nome: string }[] = [
-  { id: "roma", nome: "Roma" },
+  { id: "roma", nome: "Fiano Romano" },
   { id: "san-giuliano", nome: "San Giuliano" },
 ];
 
