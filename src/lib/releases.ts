@@ -34,7 +34,7 @@ export const RELEASES: readonly Release[] = [
       { tag: "feature", title: "Dashboard Responsabili", description: "Vista live in sola lettura di tutte le sedi con KPI e dettaglio dipendente." },
       { tag: "feature", title: "Login con Codice e PIN", description: "Autenticazione unificata per Dipendenti, Responsabili e Amministratori di sistema." },
       { tag: "feature", title: "Integrazione Microsoft SharePoint", description: "Dati letti e scritti direttamente sulle liste Dipendenti e Timbrature." },
-      { tag: "feature", title: "Dashboard live Roma e San Giuliano", description: "Monitoraggio in tempo reale delle sedi operative DR Logistica." },
+      { tag: "feature", title: "Dashboard live Fiano Romano e San Giuliano", description: "Monitoraggio in tempo reale delle sedi operative DR Logistica." },
     ],
   },
 ] as const;
