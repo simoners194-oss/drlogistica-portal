@@ -227,16 +227,34 @@ export class SpHttpError extends Error {
 }
 
 async function gatewayJson<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await gatewayFetch(path, init);
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new SpHttpError(
-      res.status,
-      `SharePoint ${init.method ?? "GET"} ${path.split("?")[0]} → ${res.status} ${sanitize(body)}`,
-      path,
-    );
+  // Retry transitorio su 5xx/429: il gateway a volte risponde 503
+  // "upstream connect error" per pochi secondi. Ritentiamo con backoff
+  // esponenziale prima di propagare l'errore alla UI.
+  const maxAttempts = 3;
+  let lastStatus = 0;
+  let lastBody = "";
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let res: Response;
+    try {
+      res = await gatewayFetch(path, init);
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      await new Promise((r) => setTimeout(r, 300 * attempt));
+      continue;
+    }
+    if (res.ok) return (await res.json()) as T;
+    lastStatus = res.status;
+    lastBody = await res.text().catch(() => "");
+    const retriable = res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504;
+    if (!retriable || attempt === maxAttempts) break;
+    logSp("warn", "gateway", `Retry ${attempt}/${maxAttempts - 1} dopo ${res.status} su ${path.split("?")[0]}`);
+    await new Promise((r) => setTimeout(r, 400 * attempt));
   }
-  return (await res.json()) as T;
+  throw new SpHttpError(
+    lastStatus,
+    `SharePoint ${init.method ?? "GET"} ${path.split("?")[0]} → ${lastStatus} ${sanitize(lastBody)}`,
+    path,
+  );
 }
 
 // ---------------------------------------------------------------------------
