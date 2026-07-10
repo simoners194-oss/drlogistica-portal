@@ -22,6 +22,8 @@ import {
   computeDurataOre,
   computeAnnoCompetenza,
   isAutoApprovazione,
+  richiedeApprovazione,
+  misuraInGiorni,
   formatTitle,
   canDecide,
   canCancel,
@@ -82,6 +84,7 @@ export const SP_DISPLAY = {
     Approvatore: "Approvatore",
     DataDecisione: "DataDecisione",
     NoteDecisione: "NoteDecisione",
+    ProtocolloINPS: "ProtocolloINPS",
     AnnoCompetenza: "AnnoCompetenza",
   },
 } as const;
@@ -890,6 +893,7 @@ export interface SpRichiesta {
   approvatoreId?: string;
   dataDecisione?: string;
   noteDecisione?: string;
+  protocolloInps?: string;
   annoCompetenza?: number;
   createdAt?: string;
 }
@@ -903,7 +907,8 @@ export interface CreateRichiestaInput {
   oraFine?: string;
   motivazione?: string;
   modalita?: ModalitaStraordinario;
-  submit?: boolean; // true → Inviata (con eventuale auto-approvazione)
+  protocolloInps?: string; // solo Malattia (facoltativo)
+  submit?: boolean; // true → Inviata/Comunicata (con eventuale auto-approvazione)
 }
 
 export interface RichiesteFilter {
@@ -970,6 +975,7 @@ function mapRichiesta(cfg: SpDiscovered, it: GraphListItem<Record<string, unknow
     approvatoreId: appLookup != null ? String(appLookup) : undefined,
     dataDecisione: F.DataDecisione ? (f[F.DataDecisione] as string | undefined) : undefined,
     noteDecisione: F.NoteDecisione ? (f[F.NoteDecisione] as string | undefined) : undefined,
+    protocolloInps: F.ProtocolloINPS ? (f[F.ProtocolloINPS] as string | undefined) : undefined,
     annoCompetenza: F.AnnoCompetenza ? numOrUndef(f[F.AnnoCompetenza]) : undefined,
     createdAt: (f["Created"] as string | undefined) ?? undefined,
   };
@@ -1027,6 +1033,10 @@ export async function createRichiesta(input: CreateRichiestaInput): Promise<SpRi
 
   const submit = Boolean(input.submit);
   const anno = computeAnnoCompetenza(input.dataInizio);
+  const approva = richiedeApprovazione(input.tipo);
+  // Stato iniziale: Bozza se non inviata; all'invio → Inviata (tipi con
+  // approvazione) oppure Comunicata (tipi senza approvazione, es. Malattia).
+  const statoIniziale = submit ? (approva ? "Inviata" : "Comunicata") : "Bozza";
 
   const fields: Record<string, unknown> = {
     // Title placeholder: viene sovrascritto subito dopo con REQ-<anno>-<id>.
@@ -1035,13 +1045,13 @@ export async function createRichiesta(input: CreateRichiestaInput): Promise<SpRi
     [tipoField]: input.tipo,
     [dataInizioField]: `${input.dataInizio}T00:00:00Z`,
     [dataFineField]: `${input.dataFine}T00:00:00Z`,
-    [statoField]: submit ? "Inviata" : "Bozza",
+    [statoField]: statoIniziale,
   };
   if (F.CodiceRichiedente && codice) fields[F.CodiceRichiedente] = codice;
   if (F.SedeRichiedente && sedeRaw) fields[F.SedeRichiedente] = sedeRaw;
   if (F.Motivazione && input.motivazione) fields[F.Motivazione] = input.motivazione.trim();
   if (F.AnnoCompetenza) fields[F.AnnoCompetenza] = anno;
-  if (input.tipo === "Ferie") {
+  if (misuraInGiorni(input.tipo)) {
     if (F.DurataGiorni)
       fields[F.DurataGiorni] = computeDurataGiorni(input.dataInizio, input.dataFine);
   } else {
@@ -1052,11 +1062,14 @@ export async function createRichiesta(input: CreateRichiestaInput): Promise<SpRi
   }
   if (input.tipo === "Straordinario" && F.Modalita && input.modalita)
     fields[F.Modalita] = input.modalita;
+  if (input.tipo === "Malattia" && F.ProtocolloINPS && input.protocolloInps)
+    fields[F.ProtocolloINPS] = input.protocolloInps.trim();
   if (submit && F.DataInvio) fields[F.DataInvio] = new Date().toISOString();
 
-  // Auto-approvazione: richiedente autorizzato che invia una propria richiesta
-  // (oggi Francesco). Traccia comunque approvatore/data/nota per l'audit.
-  const auto = submit && isAutoApprovazione(input.richiedenteId, autorizza);
+  // Auto-approvazione: SOLO tipi con approvazione, richiedente autorizzato che
+  // invia una propria richiesta (oggi Francesco). Traccia approvatore/data/nota
+  // per l'audit. I tipi senza approvazione (Malattia) non passano di qui.
+  const auto = submit && approva && isAutoApprovazione(input.richiedenteId, autorizza);
   if (auto) {
     fields[statoField] = "Approvata";
     if (F.Approvatore) fields[lookupIdFieldName(F.Approvatore)] = richiedenteNum;

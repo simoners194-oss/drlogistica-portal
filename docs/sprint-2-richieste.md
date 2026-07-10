@@ -12,10 +12,12 @@
 
 ## 1. Obiettivo
 
-Consentire ai dipendenti di inviare richieste di **Ferie**, **Permesso** e
-**Straordinario**, e a chi ha `Autorizza = true` (oggi solo Francesco Romano) di
-approvarle/respingerle. Il modulo poggia sulla stessa integrazione SharePoint
-reale già in uso (login Codice+PIN, presenze), senza dati mock.
+Consentire ai dipendenti di inviare richieste di **Ferie**, **Permesso**,
+**Straordinario**, **Smart Working**, **Malattia** e **Reperibilità**. I tipi
+soggetti ad approvazione sono decisi da chi ha `Autorizza = true` (oggi solo
+Francesco Romano); la **Malattia** si comunica soltanto (nessuna approvazione).
+Il modulo poggia sulla stessa integrazione SharePoint reale già in uso (login
+Codice+PIN, presenze), senza dati mock.
 
 ---
 
@@ -30,20 +32,21 @@ Nuova lista SharePoint da creare sul sito DRPORTAL, accanto a `Dipendenti` e
 | 2 | `Richiedente` | **Lookup → Dipendenti** | Sì | Collega alla lista Dipendenti (stesso ID interno del resto del portale). Colonna mostrata: `NomeCompleto` o `Title`. |
 | 2b | `CodiceRichiedente` | Testo singola riga | No | L'app copia il **codice** (es. `DR001`) dal dipendente alla creazione. Rende il codice visibile/filtrabile/esportabile senza aprire il lookup. **Dato storico congelato.** |
 | 3 | `SedeRichiedente` | Scelta (`Fiano Romano`, `San Giuliano`) | No | L'app copia la sede del richiedente all'invio. Per filtro/report veloce senza join. |
-| 4 | `TipoRichiesta` | Scelta (`Ferie`, `Permesso`, `Straordinario`) | Sì | **Scelta singola.** Nessun valore "Malattia". |
-| 5 | `Modalita` | Scelta (`Preventivo`, `Consuntivo`) | No | Calcolata dall'app, **solo per Straordinario**. Vuota di default. |
-| 6 | `DataInizio` | Data (solo data) | Sì | Inizio ferie, o giorno del permesso/straordinario. |
-| 7 | `DataFine` | Data (solo data) | Sì | Fine. Per Permesso/Straordinario coincide con `DataInizio`. |
-| 8 | `OraInizio` | Testo singola riga | No | Formato `HH:MM`. Usata per Permesso e Straordinario. Testo (non tipo Ora) per semplicità. |
+| 4 | `TipoRichiesta` | Scelta (`Ferie`, `Permesso`, `Straordinario`, `Smart Working`, `Malattia`, `Reperibilità`) | Sì | **Scelta singola.** Valori esatti — attenzione a **`Smart Working`** (con lo spazio) e a **`Reperibilità`** (con l'accento à). |
+| 5 | `Modalita` | Scelta (`Preventivo`, `Consuntivo`) | No | **Solo per Straordinario.** Vuota di default. |
+| 6 | `DataInizio` | Data (solo data) | Sì | Inizio (ferie/smart working/malattia: intervallo), o giorno del permesso/straordinario/reperibilità. |
+| 7 | `DataFine` | Data (solo data) | Sì | Fine. Per i tipi a ore (Permesso/Straordinario/Reperibilità) coincide con `DataInizio`. |
+| 8 | `OraInizio` | Testo singola riga | No | Formato `HH:MM`. Tipi a ore (Permesso/Straordinario/Reperibilità). Testo (non tipo Ora) per semplicità. |
 | 9 | `OraFine` | Testo singola riga | No | Come sopra. |
-| 10 | `Motivazione` | Testo più righe (plain) | **No a livello SP** | Obbligatoria per Permesso/Straordinario, opzionale per Ferie — regola applicata dall'**app**. |
-| 11 | `DurataGiorni` | Numero (0 decimali) | No | Calcolata dall'app (per le Ferie). Per i report. |
-| 12 | `DurataOre` | Numero (1–2 decimali) | No | Calcolata dall'app (per Permesso/Straordinario). Per i report. |
-| 13 | `Stato` | Scelta (`Bozza`, `Inviata`, `Approvata`, `Respinta`, `Annullata`) | Sì | **Default = `Bozza`.** |
-| 14 | `DataInvio` | Data e ora | No | Momento del passaggio `Bozza → Inviata`. Scritta dall'app. Base per anzianità coda e per il calcolo delle 72h dello straordinario. |
+| 10 | `Motivazione` | Testo più righe (plain) | **No a livello SP** | Obbligatoria per **Permesso** e **Straordinario**; opzionale per gli altri tipi — regola applicata dall'**app**. |
+| 11 | `DurataGiorni` | Numero (0 decimali) | No | Calcolata dall'app per i tipi a **giorni** (Ferie, Smart Working, Malattia). Per i report. |
+| 12 | `DurataOre` | Numero (1–2 decimali) | No | Calcolata dall'app per i tipi a **ore** (Permesso, Straordinario, Reperibilità). Per i report. |
+| 13 | `Stato` | Scelta (`Bozza`, `Inviata`, `Comunicata`, `Approvata`, `Respinta`, `Annullata`) | Sì | **Default = `Bozza`.** `Comunicata` = stato finale dei tipi **senza approvazione** (Malattia). |
+| 14 | `DataInvio` | Data e ora | No | Momento del passaggio `Bozza → Inviata`/`Comunicata`. Scritta dall'app. Base per anzianità coda e per il calcolo delle 72h. |
 | 15 | `Approvatore` | Lookup → Dipendenti | No | Chi ha deciso. Vuota finché non c'è decisione. Coerente con `Richiedente`. |
 | 16 | `DataDecisione` | Data e ora | No | Momento dell'approvazione/rifiuto. Scritta dall'app. |
 | 17 | `NoteDecisione` | Testo più righe (plain) | **No a livello SP** | Obbligatoria se `Stato = Respinta` — regola applicata dall'**app**. Motivo del rifiuto o nota di approvazione. |
+| 17b | `ProtocolloINPS` | Testo singola riga | No | Numero di protocollo INPS del certificato. **Facoltativo**, solo per `Malattia`. |
 | 18 | `AnnoCompetenza` | Numero (0 decimali) | No | Anno a cui pesa la richiesta per i report. Calcolato dall'app. |
 | 19 | `Allegati` | (funzione nativa) | — | Non è una colonna: è la funzione **Allegati** nativa delle liste. Verificare solo che sia abilitata nelle impostazioni lista. |
 
@@ -85,22 +88,35 @@ leggibilità e come fotografia storica del momento — stessa logica di
 
 ---
 
-## 4. I tre tipi di richiesta
+## 4. I sei tipi di richiesta
 
-| | Ferie | Permesso | Straordinario |
-|---|---|---|---|
-| Periodo | `DataInizio` → `DataFine` (intervallo) | Giorno singolo (`DataFine = DataInizio`) | Giorno singolo |
-| Ore | — | `OraInizio`/`OraFine` → `DurataOre` | `OraInizio`/`OraFine` → `DurataOre` |
-| Giorni | `DurataGiorni` (calcolata) | — | — |
-| `Motivazione` | Opzionale | **Obbligatoria** | **Obbligatoria** |
-| `Modalita` | — | — | **`Preventivo` / `Consuntivo`** |
+| Tipo | Approvazione | Misura | Stato all'invio | Note |
+|---|---|---|---|---|
+| **Ferie** | Sì | giorni (intervallo `DataInizio`→`DataFine`) | `Inviata` | Motivazione opzionale |
+| **Permesso** | Sì | ore (giorno singolo) | `Inviata` | Motivazione obbligatoria |
+| **Straordinario** | Sì | ore (giorno singolo) | `Inviata` | `Modalita` Preventivo/Consuntivo; 72h su Consuntivo; motivazione obbligatoria |
+| **Smart Working** | Sì | **giorni** (come Ferie) | `Inviata` | Motivazione opzionale |
+| **Malattia** | **No** | giorni (intervallo da–a) | **`Comunicata`** | Si comunica e basta; `ProtocolloINPS` facoltativo; inserita dall'interessato |
+| **Reperibilità** | Sì | ore (giorno singolo) | `Inviata` | **Sempre a consuntivo**: inserita a posteriori, **max 72h** dal giorno |
 
 ### Regola dello Straordinario (Preventivo / Consuntivo)
 - **Preventivo**: straordinario richiesto *prima* di svolgerlo.
 - **Consuntivo**: straordinario dichiarato *dopo* averlo svolto.
 - **Blocco hard 72h**: l'invio di un **Consuntivo** è **bloccato** se sono
-  trascorse più di **72 ore** dallo straordinario. Chi non giustifica entro il
-  termine perde la possibilità — nessuna deroga. (Linea rigorosa concordata.)
+  trascorse più di **72 ore** dalla fine dello straordinario. Nessuna deroga.
+
+### Regola della Reperibilità
+- Si inserisce **solo a posteriori** (il giorno dopo aver svolto le ore di
+  reperibilità), mai in anticipo.
+- **Stesso tetto 72h** dello straordinario a consuntivo: oltre le 72h dal giorno
+  di riferimento l'inserimento è bloccato.
+- Passa comunque dall'**approvazione** (ore retribuite come lo straordinario).
+
+### Regola della Malattia
+- **Nessuna approvazione**: è una **comunicazione** (Bozza → `Comunicata`), non
+  una richiesta da autorizzare. Non serve un terzo che la inserisca.
+- Intervallo di giorni (da–a). `ProtocolloINPS` è un campo **facoltativo** (numero
+  di protocollo del certificato).
 
 ---
 
@@ -108,14 +124,17 @@ leggibilità e come fotografia storica del momento — stessa logica di
 
 La validazione condizionale è responsabilità dell'**app**, non di SharePoint:
 
-- `Motivazione` obbligatoria per **Permesso** e **Straordinario**, opzionale per
-  **Ferie**.
-- `OraInizio`/`OraFine` presenti e valide (`HH:MM`) per **Permesso** e
-  **Straordinario**; assenti per Ferie.
-- Per **Permesso**/**Straordinario**: `DataFine = DataInizio`.
-- `Modalita` valorizzata **solo** per **Straordinario**.
+- **Tipi a giorni** (Ferie, Smart Working, Malattia): intervallo `DataInizio`→
+  `DataFine` (fine ≥ inizio), niente ore né modalità.
+- **Tipi a ore** (Permesso, Straordinario, Reperibilità): giorno singolo
+  (`DataFine = DataInizio`), `OraInizio`/`OraFine` valide (`HH:MM`) con fine >
+  inizio.
+- `Motivazione` obbligatoria **solo** per Permesso e Straordinario.
+- `Modalita` valorizzata **solo** per Straordinario.
+- **Finestra 72h**: Straordinario a `Consuntivo` e **Reperibilità** rifiutati in
+  invio se oltre 72h dal giorno di riferimento.
 - `NoteDecisione` obbligatoria se `Stato = Respinta`.
-- `Consuntivo` straordinario: rifiutato in invio se oltre 72h (vedi §4).
+- `ProtocolloINPS`: accettato **solo** per Malattia (facoltativo).
 - `DurataGiorni` / `DurataOre` / `AnnoCompetenza` calcolate dall'app, mai inserite
   a mano.
 
@@ -124,17 +143,24 @@ La validazione condizionale è responsabilità dell'**app**, non di SharePoint:
 ## 6. Ciclo di vita e stati
 
 ```
-Bozza ──(invia)──▶ Inviata ──(approva)──▶ Approvata
-                      │
-                      └──(respingi)──▶ Respinta   [NoteDecisione obbligatoria]
+Tipi CON approvazione (Ferie, Permesso, Straordinario, Smart Working, Reperibilità):
+  Bozza ──(invia)──▶ Inviata ──(approva)──▶ Approvata
+                        │
+                        └──(respingi)──▶ Respinta   [NoteDecisione obbligatoria]
 
-Bozza / Inviata ──(annulla dal richiedente)──▶ Annullata
+Tipi SENZA approvazione (Malattia):
+  Bozza ──(comunica)──▶ Comunicata
+
+Annullabile dal richiedente: Bozza / Inviata / Comunicata ──▶ Annullata
 ```
 
-- **`Bozza → Inviata`**: scrive `DataInvio`, `CodiceRichiedente`,
+- **`Bozza → Inviata`/`Comunicata`**: scrive `DataInvio`, `CodiceRichiedente`,
   `SedeRichiedente`, calcola durate e `AnnoCompetenza`.
 - **`Inviata → Approvata/Respinta`**: scrive `Approvatore`, `DataDecisione` e
   (per Respinta) `NoteDecisione`.
+- **Auto-approvazione**: se chi invia un tipo con approvazione ha `Autorizza=true`
+  (oggi Francesco), la richiesta va diretta ad `Approvata` con `Approvatore`/
+  `DataDecisione`/nota scritti (vedi §7). Non si applica ai tipi senza approvazione.
 
 ---
 

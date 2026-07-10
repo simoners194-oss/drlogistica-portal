@@ -9,22 +9,58 @@
 // (`TipoRichiesta`, `Stato`, `Modalita`): così scrittura e confronto non
 // richiedono mappature.
 
-export type TipoRichiesta = "Ferie" | "Permesso" | "Straordinario";
-export type StatoRichiesta = "Bozza" | "Inviata" | "Approvata" | "Respinta" | "Annullata";
+export type TipoRichiesta =
+  | "Ferie"
+  | "Permesso"
+  | "Straordinario"
+  | "Smart Working"
+  | "Malattia"
+  | "Reperibilità";
+export type StatoRichiesta =
+  | "Bozza"
+  | "Inviata"
+  | "Comunicata"
+  | "Approvata"
+  | "Respinta"
+  | "Annullata";
 export type ModalitaStraordinario = "Preventivo" | "Consuntivo";
 export type DecisioneRichiesta = "Approvata" | "Respinta";
 
-export const TIPI_RICHIESTA: readonly TipoRichiesta[] = ["Ferie", "Permesso", "Straordinario"];
+export const TIPI_RICHIESTA: readonly TipoRichiesta[] = [
+  "Ferie",
+  "Permesso",
+  "Straordinario",
+  "Smart Working",
+  "Malattia",
+  "Reperibilità",
+];
 export const STATI_RICHIESTA: readonly StatoRichiesta[] = [
   "Bozza",
   "Inviata",
+  "Comunicata",
   "Approvata",
   "Respinta",
   "Annullata",
 ];
 export const MODALITA: readonly ModalitaStraordinario[] = ["Preventivo", "Consuntivo"];
 
-// Finestra massima per l'invio di uno straordinario a Consuntivo (ore).
+// Classificazione dei tipi -----------------------------------------------------
+// Tipi misurati in GIORNI (intervallo da–a); gli altri in ORE (fascia oraria).
+const TIPI_A_GIORNI: readonly TipoRichiesta[] = ["Ferie", "Smart Working", "Malattia"];
+// Tipi che NON passano dall'approvazione: si comunicano e basta.
+const TIPI_SENZA_APPROVAZIONE: readonly TipoRichiesta[] = ["Malattia"];
+// Tipi con motivazione obbligatoria.
+const TIPI_MOTIVAZIONE_OBBLIGATORIA: readonly TipoRichiesta[] = ["Permesso", "Straordinario"];
+
+export function misuraInGiorni(tipo: TipoRichiesta): boolean {
+  return TIPI_A_GIORNI.includes(tipo);
+}
+export function richiedeApprovazione(tipo: TipoRichiesta): boolean {
+  return !TIPI_SENZA_APPROVAZIONE.includes(tipo);
+}
+
+// Finestra massima per l'invio a posteriori (ore): straordinario a Consuntivo
+// e reperibilità (che è sempre a consuntivo, inserita il giorno dopo).
 export const CONSUNTIVO_LIMITE_ORE = 72;
 
 // Marcatore scritto in NoteDecisione quando richiedente = approvatore.
@@ -37,10 +73,11 @@ export interface RichiestaInput {
   tipo: TipoRichiesta;
   dataInizio: string; // "YYYY-MM-DD"
   dataFine: string; // "YYYY-MM-DD"
-  oraInizio?: string; // "HH:MM" — Permesso/Straordinario
-  oraFine?: string; // "HH:MM" — Permesso/Straordinario
+  oraInizio?: string; // "HH:MM" — tipi a ore
+  oraFine?: string; // "HH:MM" — tipi a ore
   motivazione?: string;
   modalita?: ModalitaStraordinario; // solo Straordinario
+  protocolloInps?: string; // solo Malattia (facoltativo)
 }
 
 // ---------------------------------------------------------------------------
@@ -82,9 +119,9 @@ function timeToMinutes(s: string): number {
 // Calcoli (valore retributivo → coperti da unit test)
 // ---------------------------------------------------------------------------
 
-// Giorni di ferie: numero di giorni di calendario inclusivi (inizio e fine
-// compresi). NB: v1 conta i giorni solari, non i giorni lavorativi; il calcolo
-// del saldo/giorni lavorativi è rimandato allo sprint dedicato ferie.
+// Giorni: numero di giorni di calendario inclusivi (inizio e fine compresi).
+// NB: v1 conta i giorni solari, non i lavorativi; il calcolo del saldo/giorni
+// lavorativi è rimandato allo sprint dedicato ferie.
 export function computeDurataGiorni(dataInizio: string, dataFine: string): number {
   if (!isValidDate(dataInizio) || !isValidDate(dataFine)) return 0;
   const a = new Date(`${dataInizio}T00:00:00`).getTime();
@@ -93,7 +130,7 @@ export function computeDurataGiorni(dataInizio: string, dataFine: string): numbe
   return Math.floor((b - a) / 86400000) + 1;
 }
 
-// Ore di permesso/straordinario: differenza oraFine-oraInizio in ore, 2 decimali.
+// Ore: differenza oraFine-oraInizio in ore, 2 decimali.
 export function computeDurataOre(oraInizio: string, oraFine: string): number {
   if (!isValidTime(oraInizio) || !isValidTime(oraFine)) return 0;
   const diff = timeToMinutes(oraFine) - timeToMinutes(oraInizio);
@@ -107,19 +144,27 @@ export function computeAnnoCompetenza(dataInizio: string): number {
   return new Date(`${dataInizio}T00:00:00`).getFullYear();
 }
 
-// Momento di fine dello straordinario (data inizio + ora fine), per il calcolo
-// delle 72h. Se manca l'ora fine si assume fine giornata.
-export function fineStraordinario(input: RichiestaInput): Date {
+// Momento di fine (data inizio + ora fine) per il calcolo delle 72h. Se manca
+// l'ora fine si assume fine giornata.
+export function fineEvento(input: RichiestaInput): Date {
   const ora = isValidTime(input.oraFine) ? input.oraFine! : "23:59";
   return new Date(`${input.dataInizio}T${ora}:00`);
 }
 
-// Straordinario a Consuntivo scaduto: sono trascorse più di 72h dalla fine.
-export function isConsuntivoScaduto(input: RichiestaInput, now: Date = new Date()): boolean {
-  if (input.tipo !== "Straordinario" || input.modalita !== "Consuntivo") return false;
+// Serve la finestra 72h? Straordinario a Consuntivo e Reperibilità (sempre a
+// consuntivo, inserita a posteriori).
+export function richiedeFinestra72h(input: RichiestaInput): boolean {
+  return (
+    (input.tipo === "Straordinario" && input.modalita === "Consuntivo") ||
+    input.tipo === "Reperibilità"
+  );
+}
+
+// Inserimento a posteriori fuori finestra: trascorse più di 72h dalla fine.
+export function isFuoriFinestra72h(input: RichiestaInput, now: Date = new Date()): boolean {
+  if (!richiedeFinestra72h(input)) return false;
   if (!isValidDate(input.dataInizio)) return false;
-  const fine = fineStraordinario(input);
-  const diffOre = (now.getTime() - fine.getTime()) / 3600000;
+  const diffOre = (now.getTime() - fineEvento(input).getTime()) / 3600000;
   return diffOre > CONSUNTIVO_LIMITE_ORE;
 }
 
@@ -131,10 +176,7 @@ export interface ValidationResult {
   errors: string[];
 }
 
-export function validateRichiesta(
-  input: RichiestaInput,
-  now: Date = new Date(),
-): ValidationResult {
+export function validateRichiesta(input: RichiestaInput, now: Date = new Date()): ValidationResult {
   const errors: string[] = [];
   const tipo = parseTipo(input.tipo);
   if (!tipo) {
@@ -149,19 +191,19 @@ export function validateRichiesta(
     }
   }
 
-  if (tipo === "Ferie") {
-    // Motivazione opzionale; nessuna ora; nessuna modalità.
+  if (misuraInGiorni(tipo)) {
+    // Ferie / Smart Working / Malattia: intervallo di giorni, niente ore/modalità.
     if (input.oraInizio || input.oraFine)
-      errors.push("Le ferie non prevedono orari di inizio/fine.");
-    if (input.modalita) errors.push("Le ferie non prevedono una modalità.");
+      errors.push("Questo tipo di richiesta non prevede orari di inizio/fine.");
+    if (input.modalita) errors.push("Questo tipo di richiesta non prevede una modalità.");
   } else {
-    // Permesso / Straordinario: giorno singolo, ore obbligatorie, motivazione.
+    // Permesso / Straordinario / Reperibilità: giorno singolo, ore obbligatorie.
     if (
       isValidDate(input.dataInizio) &&
       isValidDate(input.dataFine) &&
       input.dataInizio !== input.dataFine
     ) {
-      errors.push("Per permesso e straordinario la data di fine coincide con quella di inizio.");
+      errors.push("Questo tipo di richiesta si riferisce a un solo giorno.");
     }
     if (!isValidTime(input.oraInizio)) errors.push("Ora di inizio non valida (formato HH:MM).");
     if (!isValidTime(input.oraFine)) errors.push("Ora di fine non valida (formato HH:MM).");
@@ -172,20 +214,22 @@ export function validateRichiesta(
     ) {
       errors.push("L'ora di fine deve essere successiva all'ora di inizio.");
     }
-    if (!input.motivazione || !input.motivazione.trim())
-      errors.push("La motivazione è obbligatoria per permessi e straordinari.");
   }
+
+  if (TIPI_MOTIVAZIONE_OBBLIGATORIA.includes(tipo) && (!input.motivazione || !input.motivazione.trim()))
+    errors.push("La motivazione è obbligatoria per questo tipo di richiesta.");
 
   if (tipo === "Straordinario") {
     if (!parseModalita(input.modalita))
       errors.push("Modalità dello straordinario obbligatoria (Preventivo o Consuntivo).");
-    if (isConsuntivoScaduto(input, now)) {
-      errors.push(
-        `Consuntivo non inviabile: sono trascorse più di ${CONSUNTIVO_LIMITE_ORE} ore dallo straordinario.`,
-      );
-    }
   } else if (input.modalita) {
     errors.push("La modalità si applica solo allo straordinario.");
+  }
+
+  if (isFuoriFinestra72h(input, now)) {
+    errors.push(
+      `Inserimento non consentito: sono trascorse più di ${CONSUNTIVO_LIMITE_ORE} ore dal giorno di riferimento.`,
+    );
   }
 
   return { ok: errors.length === 0, errors };
@@ -197,8 +241,7 @@ export function validateDecisione(
   noteDecisione: string | undefined,
 ): ValidationResult {
   const errors: string[] = [];
-  if (decisione !== "Approvata" && decisione !== "Respinta")
-    errors.push("Decisione non valida.");
+  if (decisione !== "Approvata" && decisione !== "Respinta") errors.push("Decisione non valida.");
   if (decisione === "Respinta" && (!noteDecisione || !noteDecisione.trim()))
     errors.push("La nota è obbligatoria per un rifiuto.");
   return { ok: errors.length === 0, errors };
@@ -208,13 +251,20 @@ export function validateDecisione(
 // Macchina a stati del ciclo di vita
 // ---------------------------------------------------------------------------
 
-// Il richiedente può inviare una richiesta solo da Bozza (o nuova).
+// Stato in cui entra la richiesta all'invio: Inviata (attende approvazione)
+// oppure Comunicata (tipi senza approvazione, es. Malattia).
+export function statoDopoInvio(tipo: TipoRichiesta): StatoRichiesta {
+  return richiedeApprovazione(tipo) ? "Inviata" : "Comunicata";
+}
+
+// Il richiedente può inviare solo da Bozza (o nuova).
 export function canSubmit(stato: StatoRichiesta | null): boolean {
   return stato === null || stato === "Bozza";
 }
-// Il richiedente può annullare finché non c'è una decisione.
+// Il richiedente può annullare finché non c'è una decisione (incluse le
+// comunicazioni, es. una malattia inserita per errore).
 export function canCancel(stato: StatoRichiesta | null): boolean {
-  return stato === "Bozza" || stato === "Inviata";
+  return stato === "Bozza" || stato === "Inviata" || stato === "Comunicata";
 }
 // L'approvatore può decidere solo su richieste Inviate.
 export function canDecide(stato: StatoRichiesta | null): boolean {
@@ -225,8 +275,8 @@ export function canDecide(stato: StatoRichiesta | null): boolean {
 // Routing approvazione
 // ---------------------------------------------------------------------------
 
-// Auto-approvazione: il richiedente è anche l'autorizzatore (stesso id).
-// Vale per chi ha Autorizza=true e invia una propria richiesta (oggi Francesco).
+// Auto-approvazione: il richiedente è anche l'autorizzatore (Autorizza=true che
+// invia una propria richiesta soggetta ad approvazione — oggi Francesco).
 export function isAutoApprovazione(richiedenteId: string, richiedenteAutorizza: boolean): boolean {
   return richiedenteAutorizza === true && Boolean(richiedenteId);
 }
