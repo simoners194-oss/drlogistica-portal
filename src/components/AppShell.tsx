@@ -39,10 +39,10 @@ export function AppShell({
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-18 border-b border-border bg-card/85 backdrop-blur-md sticky top-0 z-10 flex items-center gap-3 px-4 md:px-6">
+          <header className="h-20 border-b border-border bg-card/85 backdrop-blur-md sticky top-0 z-10 flex items-center gap-3 px-4 md:px-6">
             <SidebarTrigger className="text-muted-foreground" />
             <div className="hidden md:block h-6 w-px bg-border" />
-            <div className="md:hidden flex-1"><Logo size={48} /></div>
+            <div className="md:hidden flex-1"><Logo size={56} /></div>
             <div className="hidden md:block flex-1 min-w-0">
               <h1 className="text-[15px] font-semibold text-foreground truncate tracking-tight">{title}</h1>
               {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
