@@ -26,7 +26,7 @@ Nuova lista SharePoint da creare sul sito DRPORTAL, accanto a `Dipendenti` e
 
 | # | Nome colonna | Tipo SharePoint | Obblig. (SP) | Note |
 |---|---|---|---|---|
-| 1 | `Title` | Testo (di sistema) | Sì (sistema) | Riusata come **ID leggibile** (es. `REQ-2026-0042`), generato dall'app. Non creare nulla. |
+| 1 | `Title` | Testo (di sistema) | Sì (sistema) | Riusata come **ID leggibile** `REQ-<anno>-<IDnativo>` (es. `REQ-2026-137`, dove `137` è l'ID auto-incrementale dell'item SharePoint). Scelta anti-collisione: nessun contatore "leggi max + incrementa", quindi niente race condition su invii concorrenti. Contro accettato: numerazione con buchi, non riparte da 1 ogni anno. L'app scrive `Title` con un PATCH subito dopo la creazione dell'item. |
 | 2 | `Richiedente` | **Lookup → Dipendenti** | Sì | Collega alla lista Dipendenti (stesso ID interno del resto del portale). Colonna mostrata: `NomeCompleto` o `Title`. |
 | 2b | `CodiceRichiedente` | Testo singola riga | No | L'app copia il **codice** (es. `DR001`) dal dipendente alla creazione. Rende il codice visibile/filtrabile/esportabile senza aprire il lookup. **Dato storico congelato.** |
 | 3 | `SedeRichiedente` | Scelta (`Fiano Romano`, `San Giuliano`) | No | L'app copia la sede del richiedente all'invio. Per filtro/report veloce senza join. |

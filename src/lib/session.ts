@@ -52,6 +52,11 @@ export interface SessionUser {
   cognome: string;
   sede: SessionSede;
   ruolo: Ruolo;
+  // Abilita all'approvazione di richieste (ferie/permessi/straordinari).
+  // Usato SOLO per pilotare la UI (mostrare la coda approvatore). L'effettiva
+  // autorizzazione a decidere è comunque ri-verificata lato server contro
+  // SharePoint. Retrocompatibile: sessioni vecchie senza il campo → false.
+  autorizza: boolean;
 }
 
 const KEY = "dr:currentUser";
@@ -69,6 +74,7 @@ export function readSession(): SessionUser | null {
       cognome: parsed.cognome ?? "",
       sede: (parsed.sede as SessionSede) ?? "roma",
       ruolo: normalizeRuolo(parsed.ruolo),
+      autorizza: Boolean(parsed.autorizza),
     };
   } catch {
     return null;

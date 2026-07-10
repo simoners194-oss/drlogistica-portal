@@ -51,6 +51,7 @@ function Index() {
         cognome: d.cognome,
         sede: d.sede,
         ruolo,
+        autorizza: Boolean(d.autorizza),
       });
       toast.success(`Benvenuto ${d.nome}`);
       navigate({ to: defaultLandingFor(ruolo) });

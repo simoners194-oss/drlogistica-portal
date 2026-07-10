@@ -15,6 +15,23 @@
 // - Nessun token/credenziale finisce nei log.
 // -----------------------------------------------------------------------------
 
+import {
+  validateRichiesta,
+  validateDecisione,
+  computeDurataGiorni,
+  computeDurataOre,
+  computeAnnoCompetenza,
+  isAutoApprovazione,
+  formatTitle,
+  canDecide,
+  canCancel,
+  parseStato,
+  NOTA_AUTO_APPROVAZIONE,
+  type TipoRichiesta,
+  type ModalitaStraordinario,
+  type DecisioneRichiesta,
+} from "./richieste-logic";
+
 const GATEWAY_BASE = "https://connector-gateway.lovable.dev/microsoft_sharepoint";
 const CACHE_TTL_MS = Number(process.env.SP_CACHE_TTL_MS ?? 60 * 60 * 1000);
 const TARGET_HOST = "drlogisticaroma.sharepoint.com";
@@ -45,6 +62,28 @@ export const SP_DISPLAY = {
     Esito: "Esito",
     Note: "Note",
   },
+  // Modulo Richieste (Sprint 2). Lista OPZIONALE: la sua assenza non deve
+  // rompere la discovery di Dipendenti/Timbrature (vedi discoverSharePoint).
+  richieste: {
+    Richiedente: "Richiedente",
+    CodiceRichiedente: "CodiceRichiedente",
+    SedeRichiedente: "SedeRichiedente",
+    TipoRichiesta: "TipoRichiesta",
+    Modalita: "Modalita",
+    DataInizio: "DataInizio",
+    DataFine: "DataFine",
+    OraInizio: "OraInizio",
+    OraFine: "OraFine",
+    Motivazione: "Motivazione",
+    DurataGiorni: "DurataGiorni",
+    DurataOre: "DurataOre",
+    Stato: "Stato",
+    DataInvio: "DataInvio",
+    Approvatore: "Approvatore",
+    DataDecisione: "DataDecisione",
+    NoteDecisione: "NoteDecisione",
+    AnnoCompetenza: "AnnoCompetenza",
+  },
 } as const;
 
 const REQUIRED_DIP_KEYS = [
@@ -71,6 +110,7 @@ const REQUIRED_TIM_KEYS = [
 const LIST_NAMES = {
   dipendenti: ["Dipendenti", "Dipendente"],
   timbrature: ["Timbrature", "Timbratura"],
+  richieste: ["Richieste", "Richiesta"],
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -127,11 +167,16 @@ export interface SpDiscovered {
   listDipendentiName: string;
   listTimbrature: string;
   listTimbratureName: string;
+  // Lista Richieste — OPZIONALE (modulo Sprint 2). null se non presente.
+  listRichieste: string | null;
+  listRichiesteName: string | null;
   // Mappa "chiave logica" -> internalName reale su SharePoint.
   dipendentiFields: Record<string, string>;
   timbratureFields: Record<string, string>;
+  richiesteFields: Record<string, string>;
   dipendentiMissing: string[];
   timbratureMissing: string[];
+  richiesteMissing: string[];
   cachedAt: string;
   expiresAt: string;
 }
@@ -345,6 +390,30 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const dipRes = resolveInternalNames(dipCols, SP_DISPLAY.dipendenti);
   const timRes = resolveInternalNames(timCols, SP_DISPLAY.timbrature);
 
+  // 5) Discovery SOFT della lista Richieste (Sprint 2): se assente o non
+  // ispezionabile, si prosegue senza — le presenze non devono dipenderne.
+  const rich = lists.find((l) => matchListName(l, LIST_NAMES.richieste));
+  let listRichieste: string | null = null;
+  let listRichiesteName: string | null = null;
+  let richiesteFields: Record<string, string> = {};
+  let richiesteMissing: string[] = [];
+  if (rich) {
+    listRichieste = rich.id;
+    listRichiesteName = rich.displayName || rich.name || rich.id;
+    try {
+      const richCols = await getListColumns(targetSite.id, rich.id);
+      const richRes = resolveInternalNames(richCols, SP_DISPLAY.richieste);
+      richiesteFields = richRes.map;
+      richiesteMissing = richRes.missing;
+    } catch (err) {
+      logSp(
+        "warn",
+        "discover.richieste",
+        `Colonne Richieste non risolte: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   const now = Date.now();
   discoveredCache = {
     siteId: targetSite.id,
@@ -354,10 +423,14 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listDipendentiName: dip.displayName || dip.name || dip.id,
     listTimbrature: tim.id,
     listTimbratureName: tim.displayName || tim.name || tim.id,
+    listRichieste,
+    listRichiesteName,
     dipendentiFields: dipRes.map,
     timbratureFields: timRes.map,
+    richiesteFields,
     dipendentiMissing: dipRes.missing,
     timbratureMissing: timRes.missing,
+    richiesteMissing,
     cachedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CACHE_TTL_MS).toISOString(),
   };
@@ -413,7 +486,7 @@ function normalizeSede(v: SedeRaw): "roma" | "san-giuliano" | "tutte" {
 function requireField(
   map: Record<string, string>,
   key: string,
-  list: "Dipendenti" | "Timbrature",
+  list: "Dipendenti" | "Timbrature" | "Richieste",
 ): string {
   const v = map[key];
   if (!v)
@@ -777,6 +850,311 @@ export async function deleteTimbratura(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Richieste (ferie / permessi / straordinari) — modulo Sprint 2
+// ---------------------------------------------------------------------------
+export interface SpRichiesta {
+  id: string;
+  title: string;
+  richiedenteId: string;
+  codiceRichiedente: string;
+  sedeRichiedente: string;
+  tipo: string;
+  modalita?: string;
+  dataInizio: string; // ISO (data)
+  dataFine: string; // ISO (data)
+  oraInizio?: string;
+  oraFine?: string;
+  motivazione?: string;
+  durataGiorni?: number;
+  durataOre?: number;
+  stato: string;
+  dataInvio?: string;
+  approvatoreId?: string;
+  dataDecisione?: string;
+  noteDecisione?: string;
+  annoCompetenza?: number;
+  createdAt?: string;
+}
+
+export interface CreateRichiestaInput {
+  richiedenteId: string;
+  tipo: TipoRichiesta;
+  dataInizio: string; // "YYYY-MM-DD"
+  dataFine: string; // "YYYY-MM-DD"
+  oraInizio?: string;
+  oraFine?: string;
+  motivazione?: string;
+  modalita?: ModalitaStraordinario;
+  submit?: boolean; // true → Inviata (con eventuale auto-approvazione)
+}
+
+export interface RichiesteFilter {
+  richiedenteId?: string;
+  stato?: string;
+}
+
+export interface DecideRichiestaInput {
+  richiestaId: string;
+  approvatoreId: string;
+  decisione: DecisioneRichiesta;
+  noteDecisione?: string;
+}
+
+function numOrUndef(v: unknown): number | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function requireRichiesteList(cfg: SpDiscovered): string {
+  if (!cfg.listRichieste)
+    throw new Error(
+      'Lista "Richieste" non trovata su SharePoint. Crearla sul sito DRPORTAL o verificarne il nome.',
+    );
+  return cfg.listRichieste;
+}
+
+// Legge i soli fields di un item Dipendenti per id (Codice/Sede/Autorizza).
+async function fetchDipendenteFields(
+  cfg: SpDiscovered,
+  id: string,
+): Promise<Record<string, unknown>> {
+  const it = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items/${id}?expand=fields`,
+    ),
+  );
+  return it.fields ?? {};
+}
+
+function mapRichiesta(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>): SpRichiesta {
+  const F = cfg.richiesteFields;
+  const f = it.fields ?? {};
+  const richLookup = F.Richiedente ? f[lookupIdFieldName(F.Richiedente)] : undefined;
+  const appLookup = F.Approvatore ? f[lookupIdFieldName(F.Approvatore)] : undefined;
+  return {
+    id: String(it.id),
+    title: String(f["Title"] ?? ""),
+    richiedenteId: richLookup != null ? String(richLookup) : "",
+    codiceRichiedente: F.CodiceRichiedente ? String(f[F.CodiceRichiedente] ?? "") : "",
+    sedeRichiedente: F.SedeRichiedente ? String(f[F.SedeRichiedente] ?? "") : "",
+    tipo: F.TipoRichiesta ? String(f[F.TipoRichiesta] ?? "") : "",
+    modalita: F.Modalita ? (f[F.Modalita] as string | undefined) : undefined,
+    dataInizio: F.DataInizio ? String(f[F.DataInizio] ?? "") : "",
+    dataFine: F.DataFine ? String(f[F.DataFine] ?? "") : "",
+    oraInizio: F.OraInizio ? (f[F.OraInizio] as string | undefined) : undefined,
+    oraFine: F.OraFine ? (f[F.OraFine] as string | undefined) : undefined,
+    motivazione: F.Motivazione ? (f[F.Motivazione] as string | undefined) : undefined,
+    durataGiorni: F.DurataGiorni ? numOrUndef(f[F.DurataGiorni]) : undefined,
+    durataOre: F.DurataOre ? numOrUndef(f[F.DurataOre]) : undefined,
+    stato: F.Stato ? String(f[F.Stato] ?? "") : "",
+    dataInvio: F.DataInvio ? (f[F.DataInvio] as string | undefined) : undefined,
+    approvatoreId: appLookup != null ? String(appLookup) : undefined,
+    dataDecisione: F.DataDecisione ? (f[F.DataDecisione] as string | undefined) : undefined,
+    noteDecisione: F.NoteDecisione ? (f[F.NoteDecisione] as string | undefined) : undefined,
+    annoCompetenza: F.AnnoCompetenza ? numOrUndef(f[F.AnnoCompetenza]) : undefined,
+    createdAt: (f["Created"] as string | undefined) ?? undefined,
+  };
+}
+
+async function fetchRichiestaById(cfg: SpDiscovered, id: string): Promise<SpRichiesta> {
+  const it = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${requireRichiesteList(cfg)}/items/${id}?expand=fields`,
+    ),
+  );
+  return mapRichiesta(cfg, it);
+}
+
+export async function fetchRichieste(filter: RichiesteFilter = {}): Promise<SpRichiesta[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listRichieste) return [];
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listRichieste}/items?expand=fields&$top=999`,
+    ),
+  );
+  let out = res.value.map((it) => mapRichiesta(cfg, it));
+  if (filter.richiedenteId) out = out.filter((r) => r.richiedenteId === filter.richiedenteId);
+  if (filter.stato) out = out.filter((r) => r.stato === filter.stato);
+  out.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  return out;
+}
+
+export async function createRichiesta(input: CreateRichiestaInput): Promise<SpRichiesta> {
+  const started = Date.now();
+  const cfg = await discoverSharePoint();
+  const listId = requireRichiesteList(cfg);
+  const F = cfg.richiesteFields;
+  const richiedenteField = requireField(F, "Richiedente", "Richieste");
+  const tipoField = requireField(F, "TipoRichiesta", "Richieste");
+  const dataInizioField = requireField(F, "DataInizio", "Richieste");
+  const dataFineField = requireField(F, "DataFine", "Richieste");
+  const statoField = requireField(F, "Stato", "Richieste");
+
+  const richiedenteNum = Number(input.richiedenteId);
+  if (!Number.isFinite(richiedenteNum)) throw new Error("richiedenteId non valido.");
+
+  // Re-validazione lato server (mai fidarsi del client).
+  const v = validateRichiesta(input);
+  if (!v.ok) throw new Error(v.errors.join(" "));
+
+  // Denormalizzazione codice/sede + routing auto-approvazione: legge il record
+  // del richiedente da SharePoint (autorevole).
+  const DF = cfg.dipendentiFields;
+  const dipFields = await fetchDipendenteFields(cfg, input.richiedenteId);
+  const codice = DF.Codice ? String(dipFields[DF.Codice] ?? "").trim() : "";
+  const sedeRaw = DF.Sede ? String(dipFields[DF.Sede] ?? "").trim() : "";
+  const autorizza = DF.Autorizza ? Boolean(dipFields[DF.Autorizza]) : false;
+
+  const submit = Boolean(input.submit);
+  const anno = computeAnnoCompetenza(input.dataInizio);
+
+  const fields: Record<string, unknown> = {
+    // Title placeholder: viene sovrascritto subito dopo con REQ-<anno>-<id>.
+    Title: formatTitle(anno, "TMP"),
+    [lookupIdFieldName(richiedenteField)]: richiedenteNum,
+    [tipoField]: input.tipo,
+    [dataInizioField]: `${input.dataInizio}T00:00:00Z`,
+    [dataFineField]: `${input.dataFine}T00:00:00Z`,
+    [statoField]: submit ? "Inviata" : "Bozza",
+  };
+  if (F.CodiceRichiedente && codice) fields[F.CodiceRichiedente] = codice;
+  if (F.SedeRichiedente && sedeRaw) fields[F.SedeRichiedente] = sedeRaw;
+  if (F.Motivazione && input.motivazione) fields[F.Motivazione] = input.motivazione.trim();
+  if (F.AnnoCompetenza) fields[F.AnnoCompetenza] = anno;
+  if (input.tipo === "Ferie") {
+    if (F.DurataGiorni)
+      fields[F.DurataGiorni] = computeDurataGiorni(input.dataInizio, input.dataFine);
+  } else {
+    if (F.OraInizio && input.oraInizio) fields[F.OraInizio] = input.oraInizio;
+    if (F.OraFine && input.oraFine) fields[F.OraFine] = input.oraFine;
+    if (F.DurataOre && input.oraInizio && input.oraFine)
+      fields[F.DurataOre] = computeDurataOre(input.oraInizio, input.oraFine);
+  }
+  if (input.tipo === "Straordinario" && F.Modalita && input.modalita)
+    fields[F.Modalita] = input.modalita;
+  if (submit && F.DataInvio) fields[F.DataInvio] = new Date().toISOString();
+
+  // Auto-approvazione: richiedente autorizzato che invia una propria richiesta
+  // (oggi Francesco). Traccia comunque approvatore/data/nota per l'audit.
+  const auto = submit && isAutoApprovazione(input.richiedenteId, autorizza);
+  if (auto) {
+    fields[statoField] = "Approvata";
+    if (F.Approvatore) fields[lookupIdFieldName(F.Approvatore)] = richiedenteNum;
+    if (F.DataDecisione) fields[F.DataDecisione] = new Date().toISOString();
+    if (F.NoteDecisione) fields[F.NoteDecisione] = NOTA_AUTO_APPROVAZIONE;
+  }
+
+  const created = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${listId}/items`,
+      { method: "POST", body: JSON.stringify({ fields }) },
+    ),
+  );
+
+  // PATCH del Title leggibile REQ-<anno>-<idNativo>.
+  const title = formatTitle(anno, created.id);
+  try {
+    await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${created.id}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify({ Title: title }),
+    });
+  } catch (err) {
+    logSp(
+      "warn",
+      "create.richiesta",
+      `Title non aggiornato per #${created.id}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  logSp(
+    "info",
+    "create.richiesta",
+    `Richiesta ${title} (${input.tipo}, ${String(fields[statoField])})`,
+    { durataMs: Date.now() - started },
+  );
+  return fetchRichiestaById(cfg, created.id);
+}
+
+export async function decideRichiesta(input: DecideRichiestaInput): Promise<SpRichiesta> {
+  const cfg = await discoverSharePoint();
+  requireRichiesteList(cfg);
+  const F = cfg.richiesteFields;
+  const statoField = requireField(F, "Stato", "Richieste");
+
+  // Autorizzazione SERVER-SIDE: l'approvatore deve avere Autorizza=true su SP.
+  // Non nascondere il bottone nella UI non basta; qui è dove conta davvero.
+  const DF = cfg.dipendentiFields;
+  const dipFields = await fetchDipendenteFields(cfg, input.approvatoreId);
+  const autorizza = DF.Autorizza ? Boolean(dipFields[DF.Autorizza]) : false;
+  if (!autorizza) {
+    logSp("warn", "decide.richiesta", `Tentativo non autorizzato da id=${input.approvatoreId}`);
+    throw new Error("Non sei autorizzato ad approvare o respingere richieste.");
+  }
+
+  const vd = validateDecisione(input.decisione, input.noteDecisione);
+  if (!vd.ok) throw new Error(vd.errors.join(" "));
+
+  // Re-check dello stato per evitare doppia decisione concorrente (TOCTOU).
+  const current = await fetchRichiestaById(cfg, input.richiestaId);
+  if (!canDecide(parseStato(current.stato))) {
+    throw new Error(`Richiesta non decidibile nello stato "${current.stato}".`);
+  }
+
+  const approvatoreNum = Number(input.approvatoreId);
+  const fields: Record<string, unknown> = { [statoField]: input.decisione };
+  if (F.Approvatore && Number.isFinite(approvatoreNum))
+    fields[lookupIdFieldName(F.Approvatore)] = approvatoreNum;
+  if (F.DataDecisione) fields[F.DataDecisione] = new Date().toISOString();
+  if (F.NoteDecisione && input.noteDecisione) fields[F.NoteDecisione] = input.noteDecisione.trim();
+
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listRichieste}/items/${input.richiestaId}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    }),
+  );
+  logSp("info", "decide.richiesta", `Richiesta #${input.richiestaId} → ${input.decisione}`);
+  return fetchRichiestaById(cfg, input.richiestaId);
+}
+
+export async function cancelRichiesta(inp: {
+  richiestaId: string;
+  richiedenteId: string;
+}): Promise<SpRichiesta> {
+  const cfg = await discoverSharePoint();
+  requireRichiesteList(cfg);
+  const F = cfg.richiesteFields;
+  const statoField = requireField(F, "Stato", "Richieste");
+  const current = await fetchRichiestaById(cfg, inp.richiestaId);
+  if (current.richiedenteId !== inp.richiedenteId)
+    throw new Error("Non puoi annullare una richiesta non tua.");
+  if (!canCancel(parseStato(current.stato)))
+    throw new Error(`Richiesta non annullabile nello stato "${current.stato}".`);
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listRichieste}/items/${inp.richiestaId}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify({ [statoField]: "Annullata" }),
+    }),
+  );
+  logSp("info", "cancel.richiesta", `Richiesta #${inp.richiestaId} annullata`);
+  return fetchRichiestaById(cfg, inp.richiestaId);
+}
+
+export async function deleteRichiesta(id: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requireRichiesteList(cfg);
+  const res = await gatewayFetch(`/sites/${cfg.siteId}/lists/${listId}/items/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok && res.status !== 204) {
+    throw new SpHttpError(res.status, `DELETE richiesta ${id} → ${res.status}`, "delete");
+  }
+  logSp("info", "delete.richiesta", `Rimossa richiesta #${id}`);
+}
+
+// ---------------------------------------------------------------------------
 // Health / diagnostics
 // ---------------------------------------------------------------------------
 export interface SpHealth {
@@ -951,6 +1329,39 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
     if (!testId) throw new Error("Nessun record da eliminare");
     await deleteTimbratura(testId);
   });
+
+  // Richieste (Sprint 2) — lista opzionale: se assente questi check falliscono
+  // in modo informativo senza compromettere il resto del self-test.
+  await step("list.richieste", "Discovery lista Richieste", async () => {
+    if (!disc) throw new Error("Discovery non completata");
+    if (!disc.listRichieste) throw new Error("Lista 'Richieste' non trovata sul sito");
+    return disc.listRichiesteName ?? undefined;
+  });
+  await step("columns.richieste", "Colonne Richieste", async () => {
+    if (!disc?.listRichieste) throw new Error("Lista Richieste assente");
+    if (disc.richiesteMissing.length)
+      throw new Error(`Mancanti — [${disc.richiesteMissing.join(", ")}]`);
+  });
+  let testRichId: string | null = null;
+  await step("write.richiesta", "Scrittura richiesta di test", async () => {
+    if (!disc?.listRichieste) throw new Error("Lista Richieste assente");
+    if (!firstDip) throw new Error("Nessun dipendente per il test");
+    const today = new Date().toISOString().slice(0, 10);
+    const r = await createRichiesta({
+      richiedenteId: firstDip.id,
+      tipo: "Ferie",
+      dataInizio: today,
+      dataFine: today,
+      submit: false,
+    });
+    testRichId = r.id;
+    return r.title || `#${r.id}`;
+  });
+  await step("rollback.richiesta", "Rollback richiesta di test", async () => {
+    if (!testRichId) throw new Error("Nessuna richiesta da eliminare");
+    await deleteRichiesta(testRichId);
+  });
+
   await step("latency", "Tempo risposta Graph", async () => {
     return `${lastGraphResponseMs} ms`;
   });

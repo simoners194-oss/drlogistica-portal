@@ -5,22 +5,30 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import {
+  cancelRichiesta,
   clearSpDiscoveryCache,
   computeHealth,
+  createRichiesta,
   createTimbratura,
+  decideRichiesta,
   discoverSharePoint,
   fetchDipendenti,
+  fetchRichieste,
   fetchTimbratureOggi,
   getLastSyncAt,
   getSpLog,
   loginByCodicePin,
   markSync,
   runSelfTest,
+  type CreateRichiestaInput,
   type CreateTimbraturaInput,
+  type DecideRichiestaInput,
   type EventoTimbratura,
   type LoginResult,
+  type RichiesteFilter,
   type SpHealth,
   type SpLogEvent,
+  type SpRichiesta,
   type SpSelfTestResult,
   type SpDipendente,
   type SpDiscovered,
@@ -123,3 +131,45 @@ export const spLogin = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<LoginResult> =>
     loginByCodicePin(data.codice, data.pin),
   );
+
+// ---------------------------------------------------------------------------
+// Richieste (Sprint 2)
+// ---------------------------------------------------------------------------
+
+export const spGetRichieste = createServerFn({ method: "GET" })
+  .inputValidator(
+    (input?: RichiesteFilter): RichiesteFilter => ({
+      richiedenteId: input?.richiedenteId ? String(input.richiedenteId) : undefined,
+      stato: input?.stato ? String(input.stato) : undefined,
+    }),
+  )
+  .handler(async ({ data }): Promise<SpRichiesta[]> => fetchRichieste(data));
+
+export const spCreateRichiesta = createServerFn({ method: "POST" })
+  .inputValidator((input: CreateRichiestaInput): CreateRichiestaInput => {
+    if (!input?.richiedenteId) throw new Error("richiedenteId mancante");
+    if (!input?.tipo) throw new Error("tipo mancante");
+    return input;
+  })
+  .handler(async ({ data }): Promise<SpRichiesta> => createRichiesta(data));
+
+export const spDecideRichiesta = createServerFn({ method: "POST" })
+  .inputValidator((input: DecideRichiestaInput): DecideRichiestaInput => {
+    if (!input?.richiestaId) throw new Error("richiestaId mancante");
+    if (!input?.approvatoreId) throw new Error("approvatoreId mancante");
+    if (input.decisione !== "Approvata" && input.decisione !== "Respinta")
+      throw new Error("decisione non valida");
+    return input;
+  })
+  .handler(async ({ data }): Promise<SpRichiesta> => decideRichiesta(data));
+
+export const spCancelRichiesta = createServerFn({ method: "POST" })
+  .inputValidator((input: { richiestaId: string; richiedenteId: string }) => {
+    if (!input?.richiestaId) throw new Error("richiestaId mancante");
+    if (!input?.richiedenteId) throw new Error("richiedenteId mancante");
+    return {
+      richiestaId: String(input.richiestaId),
+      richiedenteId: String(input.richiedenteId),
+    };
+  })
+  .handler(async ({ data }): Promise<SpRichiesta> => cancelRichiesta(data));
