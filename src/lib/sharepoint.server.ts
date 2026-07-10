@@ -233,7 +233,10 @@ async function gatewayJson<T = unknown>(path: string, init: RequestInit = {}): P
   // Retry transitorio su 5xx/429: il gateway a volte risponde 503
   // "upstream connect error" per pochi secondi. Ritentiamo con backoff
   // esponenziale prima di propagare l'errore alla UI.
-  const maxAttempts = 3;
+  // SOLO GET (idempotenti): le scritture (POST/PATCH/DELETE) NON si ritentano,
+  // per non rischiare timbrature/richieste duplicate su un 503 tardivo.
+  const idempotent = (init.method ?? "GET").toUpperCase() === "GET";
+  const maxAttempts = idempotent ? 3 : 1;
   let lastStatus = 0;
   let lastBody = "";
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
