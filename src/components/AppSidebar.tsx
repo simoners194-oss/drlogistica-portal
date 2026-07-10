@@ -36,11 +36,11 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="h-16 border-b border-sidebar-border flex items-center justify-center px-2">
+      <SidebarHeader className="h-18 border-b border-sidebar-border flex items-center justify-center px-2">
         {collapsed ? (
-          <img src="/favicon.png" alt="DR" className="h-8 w-8" />
+          <img src="/favicon.png" alt="DR" className="h-9 w-9" />
         ) : (
-          <Logo size={40} />
+          <Logo size={48} />
         )}
       </SidebarHeader>
       <SidebarContent>
