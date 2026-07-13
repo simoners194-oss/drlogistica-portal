@@ -71,7 +71,9 @@ export const SP_DISPLAY = {
     CodiceRichiedente: "CodiceRichiedente",
     SedeRichiedente: "SedeRichiedente",
     TipoRichiesta: "TipoRichiesta",
-    Modalita: "Modalita",
+    // Nome colonna SharePoint con accento (grafia italiana corretta). La chiave
+    // logica resta "Modalita" (senza accento) per comodità nel codice.
+    Modalita: "Modalità",
     DataInizio: "DataInizio",
     DataFine: "DataFine",
     OraInizio: "OraInizio",

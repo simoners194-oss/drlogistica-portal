@@ -33,7 +33,7 @@ Nuova lista SharePoint da creare sul sito DRPORTAL, accanto a `Dipendenti` e
 | 2b | `CodiceRichiedente` | Testo singola riga | No | L'app copia il **codice** (es. `DR001`) dal dipendente alla creazione. Rende il codice visibile/filtrabile/esportabile senza aprire il lookup. **Dato storico congelato.** |
 | 3 | `SedeRichiedente` | Scelta (`Fiano Romano`, `San Giuliano`) | No | L'app copia la sede del richiedente all'invio. Per filtro/report veloce senza join. |
 | 4 | `TipoRichiesta` | Scelta (`Ferie`, `Permesso`, `Straordinario`, `Smart Working`, `Malattia`, `Reperibilità`) | Sì | **Scelta singola.** Valori esatti — attenzione a **`Smart Working`** (con lo spazio) e a **`Reperibilità`** (con l'accento à). |
-| 5 | `Modalita` | Scelta (`Preventivo`, `Consuntivo`) | No | **Solo per Straordinario.** Vuota di default. |
+| 5 | `Modalità` | Scelta (`Preventivo`, `Consuntivo`) | No | **Solo per Straordinario.** Vuota di default. Nome colonna con accento (à). |
 | 6 | `DataInizio` | Data (solo data) | Sì | Inizio (ferie/smart working/malattia: intervallo), o giorno del permesso/straordinario/reperibilità. |
 | 7 | `DataFine` | Data (solo data) | Sì | Fine. Per i tipi a ore (Permesso/Straordinario/Reperibilità) coincide con `DataInizio`. |
 | 8 | `OraInizio` | Testo singola riga | No | Formato `HH:MM`. Tipi a ore (Permesso/Straordinario/Reperibilità). Testo (non tipo Ora) per semplicità. |
