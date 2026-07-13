@@ -54,6 +54,8 @@ export const SP_DISPLAY = {
     PIN: "PIN",
     Visibile: "Visibile",
     Autorizza: "Autorizza",
+    Operatore: "Operatore",
+    OreSettimanali: "OreSettimanali",
   },
   timbrature: {
     Dipendente: "Dipendente",
@@ -541,6 +543,13 @@ export interface SpDipendente {
   // Flag per la futura autorizzazione di ferie/permessi/straordinari
   // (modulo Richieste, non ancora implementato). Default: false.
   autorizza: boolean;
+  // Operatore/back-office (DR000 Lucrezia): può inserire/correggere timbrature
+  // manuali. Default false. L'autorizzazione effettiva è ri-verificata sul
+  // server nelle operazioni sensibili, non solo qui.
+  operatore: boolean;
+  // Ore contrattuali settimanali (full-time e part-time). null se non impostate.
+  // Usate da rilevazione anomalie e rendiconto.
+  oreSettimanali: number | null;
 }
 
 // Parsing tollerante di un campo booleano SharePoint (Sì/No).
@@ -548,6 +557,13 @@ export interface SpDipendente {
 function parseSpBool(raw: unknown, whenMissing: boolean): boolean {
   if (raw === undefined || raw === null || raw === "") return whenMissing;
   return Boolean(raw);
+}
+
+// Parsing tollerante di un campo numerico SharePoint. Vuoto/assente → default.
+function parseSpNumber(raw: unknown, whenMissing: number | null): number | null {
+  if (raw === undefined || raw === null || raw === "") return whenMissing;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : whenMissing;
 }
 
 export async function fetchDipendenti(): Promise<SpDipendente[]> {
@@ -576,9 +592,11 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
         sede: normalizeSede((F.Sede ? f[F.Sede] : undefined) as SedeRaw),
         attivo,
         ruolo: String(f[F.Ruolo ?? ""] ?? "").trim(),
-        // Fail-open sulla visibilità; autorizza default false.
+        // Fail-open sulla visibilità; autorizza/operatore default false.
         visibile: parseSpBool(F.Visibile ? f[F.Visibile] : undefined, true),
         autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
+        operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
+        oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
       };
     })
     .filter((d) => d.attivo);
@@ -669,6 +687,8 @@ export async function loginByCodicePin(
     // un utente con visibile=false può comunque autenticarsi (regola 2).
     visibile: parseSpBool(F.Visibile ? f[F.Visibile] : undefined, true),
     autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
+    operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
+    oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
   };
   logSp("info", "login", `Login ok per ${codice} (id=${dipendente.id})`, {
     durataMs: Date.now() - started,

@@ -57,6 +57,9 @@ export interface SessionUser {
   // autorizzazione a decidere è comunque ri-verificata lato server contro
   // SharePoint. Retrocompatibile: sessioni vecchie senza il campo → false.
   autorizza: boolean;
+  // Operatore/back-office (DR000): abilita l'inserimento di timbrature manuali.
+  // Solo gating UI; l'autorizzazione reale è ri-verificata lato server.
+  operatore: boolean;
 }
 
 const KEY = "dr:currentUser";
@@ -75,6 +78,7 @@ export function readSession(): SessionUser | null {
       sede: (parsed.sede as SessionSede) ?? "roma",
       ruolo: normalizeRuolo(parsed.ruolo),
       autorizza: Boolean(parsed.autorizza),
+      operatore: Boolean(parsed.operatore),
     };
   } catch {
     return null;
