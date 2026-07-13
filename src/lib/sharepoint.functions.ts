@@ -7,6 +7,7 @@ import { createServerFn } from "@tanstack/react-start";
 import {
   cancelRichiesta,
   clearSpDiscoveryCache,
+  computeAnomalie,
   computeHealth,
   createRichiesta,
   createTimbratura,
@@ -26,6 +27,7 @@ import {
   type CreateTimbraturaInput,
   type CreateTimbraturaManualeInput,
   type CreateTurnoManualeInput,
+  type AnomaliaItem,
   type DecideRichiestaInput,
   type EventoTimbratura,
   type LoginResult,
@@ -197,3 +199,9 @@ export const spCreateTurnoManuale = createServerFn({ method: "POST" })
     return input;
   })
   .handler(async ({ data }): Promise<SpTimbratura[]> => createTurnoManuale(data));
+
+export const spGetAnomalie = createServerFn({ method: "GET" })
+  .inputValidator((input?: { giorni?: number }) => ({
+    giorni: input?.giorni && input.giorni > 0 ? Math.floor(input.giorni) : 14,
+  }))
+  .handler(async ({ data }): Promise<AnomaliaItem[]> => computeAnomalie(data.giorni));

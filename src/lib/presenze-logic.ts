@@ -6,12 +6,7 @@ import type { Timbratura } from "./mock-data";
 
 export type EventoTimbratura = Timbratura["tipo"];
 
-export const EVENTI: EventoTimbratura[] = [
-  "entrata",
-  "inizio-pausa",
-  "fine-pausa",
-  "uscita",
-];
+export const EVENTI: EventoTimbratura[] = ["entrata", "inizio-pausa", "fine-pausa", "uscita"];
 
 // Macchina a stati: dato l'ultimo evento (o null se nessuna timbratura oggi),
 // quali eventi sono ammessi.
@@ -152,4 +147,33 @@ export function lastEvento(events: Timbratura[]): EventoTimbratura | null {
   if (events.length === 0) return null;
   const sorted = [...events].sort((a, b) => a.ora.localeCompare(b.ora));
   return sorted[sorted.length - 1].tipo;
+}
+
+// ---------------------------------------------------------------------------
+// Rilevazione anomalie giornaliere (Sprint 3, on-read)
+// ---------------------------------------------------------------------------
+export type TipoAnomalia = "turno-non-chiuso" | "pausa-non-chiusa";
+
+export const LABEL_ANOMALIA: Record<TipoAnomalia, string> = {
+  "turno-non-chiuso": "Turno non chiuso (manca l'uscita)",
+  "pausa-non-chiusa": "Pausa non chiusa (manca la fine pausa)",
+};
+
+// Rileva le anomalie MECCANICHE di una giornata dai suoi eventi:
+// - turno non chiuso: c'è un'entrata ma nessuna uscita;
+// - pausa non chiusa: più inizio-pausa che fine-pausa.
+// `rilevaPausa=false` per chi non ha diritto alla pausa (es. part-time ≤16h),
+// così non si segnala una pausa che non è prevista.
+export function anomalieDelGiorno(
+  eventi: EventoTimbratura[],
+  opts: { rilevaPausa: boolean },
+): TipoAnomalia[] {
+  const out: TipoAnomalia[] = [];
+  if (eventi.includes("entrata") && !eventi.includes("uscita")) out.push("turno-non-chiuso");
+  if (opts.rilevaPausa) {
+    const ip = eventi.filter((e) => e === "inizio-pausa").length;
+    const fp = eventi.filter((e) => e === "fine-pausa").length;
+    if (ip > fp) out.push("pausa-non-chiusa");
+  }
+  return out;
 }

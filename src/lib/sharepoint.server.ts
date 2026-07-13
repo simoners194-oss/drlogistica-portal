@@ -33,6 +33,7 @@ import {
   type ModalitaStraordinario,
   type DecisioneRichiesta,
 } from "./richieste-logic";
+import { anomalieDelGiorno, type TipoAnomalia } from "./presenze-logic";
 
 const GATEWAY_BASE = "https://connector-gateway.lovable.dev/microsoft_sharepoint";
 const CACHE_TTL_MS = Number(process.env.SP_CACHE_TTL_MS ?? 60 * 60 * 1000);
@@ -742,8 +743,8 @@ function lookupIdFieldName(internal: string): string {
   return `${internal}LookupId`;
 }
 
-export async function fetchTimbratureOggi(): Promise<SpTimbratura[]> {
-  const started = Date.now();
+// Legge le timbrature con DataOra >= fromISO (ordinate crescenti).
+async function fetchTimbratureDaISO(fromISO: string): Promise<SpTimbratura[]> {
   const cfg = await discoverSharePoint();
   const F = cfg.timbratureFields;
   const dataOraField = requireField(F, "DataOra", "Timbrature");
@@ -751,7 +752,7 @@ export async function fetchTimbratureOggi(): Promise<SpTimbratura[]> {
   const dipendenteField = requireField(F, "Dipendente", "Timbrature");
   const lookupId = lookupIdFieldName(dipendenteField);
 
-  const filter = encodeURIComponent(`fields/${dataOraField} ge '${todayIsoStart()}'`);
+  const filter = encodeURIComponent(`fields/${dataOraField} ge '${fromISO}'`);
   const basePath = `/sites/${cfg.siteId}/lists/${cfg.listTimbrature}/items?expand=fields&$top=999`;
   const filteredPath = `${basePath}&$orderby=fields/${dataOraField} asc&$filter=${filter}`;
   let res: GraphListResponse<Record<string, unknown>>;
@@ -764,8 +765,8 @@ export async function fetchTimbratureOggi(): Promise<SpTimbratura[]> {
       gatewayJson<GraphListResponse<Record<string, unknown>>>(basePath),
     );
   }
-  const startMs = new Date(todayIsoStart()).getTime();
-  const out = res.value
+  const startMs = new Date(fromISO).getTime();
+  return res.value
     .map((it): SpTimbratura | null => {
       const f = it.fields ?? {};
       const evento = parseEvento(f[eventoField]);
@@ -786,7 +787,74 @@ export async function fetchTimbratureOggi(): Promise<SpTimbratura[]> {
     })
     .filter((x): x is SpTimbratura => x !== null && new Date(x.dataOra).getTime() >= startMs)
     .sort((a, b) => a.dataOra.localeCompare(b.dataOra));
+}
+
+export async function fetchTimbratureOggi(): Promise<SpTimbratura[]> {
+  const started = Date.now();
+  const out = await fetchTimbratureDaISO(todayIsoStart());
   logSp("info", "fetch.timbrature", `${out.length} timbrature oggi`, {
+    durataMs: Date.now() - started,
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Anomalie giornaliere (Sprint 3, on-read) — vista operatore.
+// ---------------------------------------------------------------------------
+export interface AnomaliaItem {
+  dipendenteId: string;
+  nomeCompleto: string;
+  sede: string; // id sede ("roma"/"san-giuliano")
+  data: string; // YYYY-MM-DD
+  tipo: TipoAnomalia;
+}
+
+export async function computeAnomalie(giorni = 14): Promise<AnomaliaItem[]> {
+  const started = Date.now();
+  // Finestra: dagli ultimi `giorni` fino a IERI (oggi è in corso → escluso).
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+  from.setDate(from.getDate() - giorni);
+  const [tims, dips] = await Promise.all([
+    fetchTimbratureDaISO(from.toISOString()),
+    fetchDipendenti(),
+  ]);
+  const byId = new Map(dips.map((d) => [d.id, d]));
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Raggruppa per dipendente + giorno (esclude oggi/futuro).
+  const groups = new Map<string, { dipId: string; giorno: string; eventi: EventoTimbratura[] }>();
+  for (const t of tims) {
+    const giorno = t.dataOra.slice(0, 10);
+    if (giorno >= todayStr) continue;
+    const key = `${t.dipendenteId}|${giorno}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { dipId: t.dipendenteId, giorno, eventi: [] };
+      groups.set(key, g);
+    }
+    g.eventi.push(t.evento);
+  }
+
+  const out: AnomaliaItem[] = [];
+  for (const g of groups.values()) {
+    const dip = byId.get(g.dipId);
+    const ore = dip?.oreSettimanali ?? null;
+    const rilevaPausa = !(ore != null && ore <= 16);
+    for (const tipo of anomalieDelGiorno(g.eventi, { rilevaPausa })) {
+      out.push({
+        dipendenteId: g.dipId,
+        nomeCompleto: dip ? dip.nomeCompleto || `${dip.nome} ${dip.cognome}` : `#${g.dipId}`,
+        sede: dip?.sede ?? "",
+        data: g.giorno,
+        tipo,
+      });
+    }
+  }
+  out.sort((a, b) =>
+    a.data === b.data ? a.nomeCompleto.localeCompare(b.nomeCompleto) : b.data.localeCompare(a.data),
+  );
+  logSp("info", "anomalie", `${out.length} anomalie (ultimi ${giorni}g)`, {
     durataMs: Date.now() - started,
   });
   return out;
