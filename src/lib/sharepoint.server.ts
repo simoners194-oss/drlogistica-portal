@@ -60,9 +60,12 @@ export const SP_DISPLAY = {
     Evento: "Evento",
     DataOra: "DataOra",
     Origine: "Dispositivo",
-    Posizione: "GeoLoc",
     Esito: "Esito",
     Note: "Note",
+    // NB: la posizione/geolocalizzazione NON è tra le colonne attese: non viene
+    // raccolta (implicazioni GDPR / Art. 4 Statuto dei Lavoratori). Il codice
+    // mantiene comunque il "gancio" opzionale (F.Posizione) se un domani la si
+    // introdurrà con base giuridica e informativa: basterà riaggiungerla qui.
   },
   // Modulo Richieste (Sprint 2). Lista OPZIONALE: la sua assenza non deve
   // rompere la discovery di Dipendenti/Timbrature (vedi discoverSharePoint).
@@ -100,15 +103,7 @@ const REQUIRED_DIP_KEYS = [
   "Attivo",
   "Ruolo",
 ] as const;
-const REQUIRED_TIM_KEYS = [
-  "Dipendente",
-  "Evento",
-  "DataOra",
-  "Origine",
-  "Esito",
-  "Note",
-  "Posizione",
-] as const;
+const REQUIRED_TIM_KEYS = ["Dipendente", "Evento", "DataOra", "Origine", "Esito", "Note"] as const;
 
 // Nomi delle liste SharePoint da individuare (case-insensitive, tolleranti a
 // varianti singolare/plurale).
@@ -134,7 +129,7 @@ const spLog: SpLogEvent[] = [];
 
 function sanitize(msg: string): string {
   return msg
-    .replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, "Bearer ***")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer ***")
     .replace(/(api[-_ ]?key["']?\s*[:=]\s*["']?)[^"'\s,}]+/gi, "$1***")
     .replace(/(access_token["']?\s*[:=]\s*["']?)[^"'\s,}]+/gi, "$1***")
     .slice(0, 500);
@@ -253,9 +248,14 @@ async function gatewayJson<T = unknown>(path: string, init: RequestInit = {}): P
     if (res.ok) return (await res.json()) as T;
     lastStatus = res.status;
     lastBody = await res.text().catch(() => "");
-    const retriable = res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504;
+    const retriable =
+      res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504;
     if (!retriable || attempt === maxAttempts) break;
-    logSp("warn", "gateway", `Retry ${attempt}/${maxAttempts - 1} dopo ${res.status} su ${path.split("?")[0]}`);
+    logSp(
+      "warn",
+      "gateway",
+      `Retry ${attempt}/${maxAttempts - 1} dopo ${res.status} su ${path.split("?")[0]}`,
+    );
     await new Promise((r) => setTimeout(r, 400 * attempt));
   }
   throw new SpHttpError(
@@ -1146,10 +1146,13 @@ export async function decideRichiesta(input: DecideRichiestaInput): Promise<SpRi
   if (F.NoteDecisione && input.noteDecisione) fields[F.NoteDecisione] = input.noteDecisione.trim();
 
   await withDiscoveryRetry(() =>
-    gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listRichieste}/items/${input.richiestaId}/fields`, {
-      method: "PATCH",
-      body: JSON.stringify(fields),
-    }),
+    gatewayJson(
+      `/sites/${cfg.siteId}/lists/${cfg.listRichieste}/items/${input.richiestaId}/fields`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(fields),
+      },
+    ),
   );
   logSp("info", "decide.richiesta", `Richiesta #${input.richiestaId} → ${input.decisione}`);
   return fetchRichiestaById(cfg, input.richiestaId);
