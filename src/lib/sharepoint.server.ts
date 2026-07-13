@@ -895,6 +895,76 @@ export async function deleteTimbratura(id: string): Promise<void> {
   logSp("info", "delete.timbratura", `Rimossa timbratura #${id}`);
 }
 
+// Inserimento MANUALE di una timbratura (operatore DR000). A differenza di
+// createTimbratura NON applica la macchina a stati (le correzioni possono
+// inserire eventi fuori ordine o nel passato) e marca Origine=Manuale, così le
+// manuali sono filtrabili (tab supervisore DR005). Autorizzazione server-side:
+// solo un dipendente con Operatore=true può inserirle.
+export interface CreateTimbraturaManualeInput {
+  operatoreId: string;
+  dipendenteId: string;
+  evento: EventoTimbratura;
+  dataOra: string; // ISO datetime
+  note?: string;
+}
+
+export async function createTimbraturaManuale(
+  input: CreateTimbraturaManualeInput,
+): Promise<SpTimbratura> {
+  const cfg = await discoverSharePoint();
+  const F = cfg.timbratureFields;
+  const dipendenteField = requireField(F, "Dipendente", "Timbrature");
+  const eventoField = requireField(F, "Evento", "Timbrature");
+  const dataOraField = requireField(F, "DataOra", "Timbrature");
+
+  // Autorizzazione: l'operatore deve avere Operatore=true su SharePoint.
+  const DF = cfg.dipendentiFields;
+  const opFields = await fetchDipendenteFields(cfg, input.operatoreId);
+  const operatore = DF.Operatore ? Boolean(opFields[DF.Operatore]) : false;
+  if (!operatore) {
+    logSp("warn", "create.manuale", `Tentativo non autorizzato da id=${input.operatoreId}`);
+    throw new Error("Non sei autorizzato a inserire timbrature manuali.");
+  }
+
+  const dipInt = Number(input.dipendenteId);
+  if (!Number.isFinite(dipInt)) throw new Error("dipendenteId non valido.");
+  const evento = parseEvento(input.evento);
+  if (!evento) throw new Error("Evento non valido.");
+  const when = new Date(input.dataOra);
+  if (Number.isNaN(when.getTime())) throw new Error("Data/ora non valida.");
+  const dataOra = when.toISOString();
+
+  const fields: Record<string, unknown> = {
+    [lookupIdFieldName(dipendenteField)]: dipInt,
+    [eventoField]: eventoToSharePoint(evento),
+    [dataOraField]: dataOra,
+  };
+  if (F.Origine) fields[F.Origine] = "Manuale";
+  if (F.Esito) fields[F.Esito] = "Accettata";
+  if (F.Note && input.note) fields[F.Note] = input.note.trim();
+
+  const created = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listTimbrature}/items`,
+      { method: "POST", body: JSON.stringify({ fields }) },
+    ),
+  );
+  logSp(
+    "info",
+    "create.manuale",
+    `Timbratura manuale #${created.id} (${evento}) dip=${input.dipendenteId} op=${input.operatoreId}`,
+  );
+  return {
+    id: String(created.id),
+    dipendenteId: String(input.dipendenteId),
+    evento,
+    dataOra,
+    origine: "Manuale",
+    esito: "Accettata",
+    note: input.note,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Richieste (ferie / permessi / straordinari) — modulo Sprint 2
 // ---------------------------------------------------------------------------

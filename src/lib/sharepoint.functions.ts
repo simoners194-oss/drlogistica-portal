@@ -10,6 +10,7 @@ import {
   computeHealth,
   createRichiesta,
   createTimbratura,
+  createTimbraturaManuale,
   decideRichiesta,
   discoverSharePoint,
   fetchDipendenti,
@@ -22,6 +23,7 @@ import {
   runSelfTest,
   type CreateRichiestaInput,
   type CreateTimbraturaInput,
+  type CreateTimbraturaManualeInput,
   type DecideRichiestaInput,
   type EventoTimbratura,
   type LoginResult,
@@ -99,10 +101,7 @@ export const spGetSnapshot = createServerFn({ method: "GET" }).handler(
     // Garantisce discovery prima delle chiamate in parallelo (evita doppia
     // esecuzione della discovery quando la cache è fredda).
     await discoverSharePoint();
-    const [dipendenti, timbrature] = await Promise.all([
-      fetchDipendenti(),
-      fetchTimbratureOggi(),
-    ]);
+    const [dipendenti, timbrature] = await Promise.all([fetchDipendenti(), fetchTimbratureOggi()]);
     markSync();
     return { dipendenti, timbrature };
   },
@@ -128,21 +127,17 @@ export const spLogin = createServerFn({ method: "POST" })
     }
     return { codice: input.codice, pin: input.pin };
   })
-  .handler(async ({ data }): Promise<LoginResult> =>
-    loginByCodicePin(data.codice, data.pin),
-  );
+  .handler(async ({ data }): Promise<LoginResult> => loginByCodicePin(data.codice, data.pin));
 
 // ---------------------------------------------------------------------------
 // Richieste (Sprint 2)
 // ---------------------------------------------------------------------------
 
 export const spGetRichieste = createServerFn({ method: "GET" })
-  .inputValidator(
-    (input?: RichiesteFilter): RichiesteFilter => ({
-      richiedenteId: input?.richiedenteId ? String(input.richiedenteId) : undefined,
-      stato: input?.stato ? String(input.stato) : undefined,
-    }),
-  )
+  .inputValidator((input?: RichiesteFilter): RichiesteFilter => ({
+    richiedenteId: input?.richiedenteId ? String(input.richiedenteId) : undefined,
+    stato: input?.stato ? String(input.stato) : undefined,
+  }))
   .handler(async ({ data }): Promise<SpRichiesta[]> => fetchRichieste(data));
 
 export const spCreateRichiesta = createServerFn({ method: "POST" })
@@ -173,3 +168,21 @@ export const spCancelRichiesta = createServerFn({ method: "POST" })
     };
   })
   .handler(async ({ data }): Promise<SpRichiesta> => cancelRichiesta(data));
+
+// ---------------------------------------------------------------------------
+// Operatore (Sprint 3): elenco dipendenti + timbrature manuali
+// ---------------------------------------------------------------------------
+
+export const spGetDipendenti = createServerFn({ method: "GET" }).handler(
+  async (): Promise<SpDipendente[]> => fetchDipendenti(),
+);
+
+export const spCreateTimbraturaManuale = createServerFn({ method: "POST" })
+  .inputValidator((input: CreateTimbraturaManualeInput): CreateTimbraturaManualeInput => {
+    if (!input?.operatoreId) throw new Error("operatoreId mancante");
+    if (!input?.dipendenteId) throw new Error("dipendenteId mancante");
+    if (!input?.evento) throw new Error("evento mancante");
+    if (!input?.dataOra) throw new Error("dataOra mancante");
+    return input;
+  })
+  .handler(async ({ data }): Promise<SpTimbratura> => createTimbraturaManuale(data));

@@ -23,25 +23,27 @@ export function AppSidebar() {
   // Il ruolo viene letto client-side (sessionStorage) dopo il mount per
   // evitare mismatch di hydration con SSR/prerender.
   const [ruolo, setRuolo] = useState<Ruolo | null>(null);
+  const [operatore, setOperatore] = useState(false);
   useEffect(() => {
     const s = readSession();
     setRuolo(s?.ruolo ?? null);
+    setOperatore(s?.operatore ?? false);
   }, [pathname]);
 
   // Finché il ruolo non è noto, mostra solo le voci pubbliche a tutti i
-  // ruoli (Presenze, Richieste) per evitare "flash" del menu completo.
-  const visibleModules = MODULES.filter((m) =>
-    ruolo ? canAccess(m, ruolo) : canAccess(m, "dipendente"),
-  );
+  // ruoli (Presenze, Richieste) per evitare "flash" del menu completo. Le voci
+  // con `requiresOperatore` compaiono solo per gli operatori (DR000).
+  const visibleModules = MODULES.filter((m) => {
+    const roleOk = ruolo ? canAccess(m, ruolo) : canAccess(m, "dipendente");
+    if (!roleOk) return false;
+    if (m.requiresOperatore && !operatore) return false;
+    return true;
+  });
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="h-20 border-b border-sidebar-border flex items-center justify-center px-3 py-2">
-        {collapsed ? (
-          <img src="/favicon.png" alt="DR" className="h-10 w-10" />
-        ) : (
-          <Logo size={64} />
-        )}
+        {collapsed ? <img src="/favicon.png" alt="DR" className="h-10 w-10" /> : <Logo size={64} />}
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

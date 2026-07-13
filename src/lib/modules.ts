@@ -14,6 +14,7 @@ import {
   BarChart3,
   Settings,
   Sparkles,
+  ClipboardList,
   type LucideIcon,
 } from "lucide-react";
 import type { Ruolo } from "./session";
@@ -33,6 +34,9 @@ export type AppModule = {
   description?: string;
   /** Ruoli abilitati a vedere il modulo. Se omesso: visibile a tutti. */
   roles?: readonly Ruolo[];
+  /** Se true, la voce è visibile solo agli utenti con capability operatore
+   *  (flag `operatore` in sessione), a prescindere dal ruolo. */
+  requiresOperatore?: boolean;
 };
 
 export const APP_NAME = "DR Portal";
@@ -65,6 +69,16 @@ export const MODULES: readonly AppModule[] = [
     ready: true,
     description: "Ferie, permessi, straordinari, smart working, malattia e reperibilità.",
     roles: ["dipendente", "responsabile", "amministratore_sistema"],
+  },
+  {
+    id: "gestione-timbrature",
+    title: "Gestione timbrature",
+    url: "/gestione-timbrature",
+    icon: ClipboardList,
+    ready: true,
+    description: "Inserimento e correzione timbrature manuali (operatore).",
+    roles: ["dipendente", "responsabile", "amministratore_sistema"],
+    requiresOperatore: true,
   },
   {
     id: "report",

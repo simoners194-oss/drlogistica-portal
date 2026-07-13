@@ -13,6 +13,7 @@ import { Route as RichiesteRouteImport } from './routes/richieste'
 import { Route as ReportRouteImport } from './routes/report'
 import { Route as PresenzeRouteImport } from './routes/presenze'
 import { Route as NovitaRouteImport } from './routes/novita'
+import { Route as GestioneTimbratureRouteImport } from './routes/gestione-timbrature'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AmministrazioneRouteImport } from './routes/amministrazione'
 import { Route as IndexRouteImport } from './routes/index'
@@ -37,6 +38,11 @@ const NovitaRoute = NovitaRouteImport.update({
   path: '/novita',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GestioneTimbratureRoute = GestioneTimbratureRouteImport.update({
+  id: '/gestione-timbrature',
+  path: '/gestione-timbrature',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
   '/dashboard': typeof DashboardRoute
+  '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/report': typeof ReportRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
   '/dashboard': typeof DashboardRoute
+  '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/report': typeof ReportRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
   '/dashboard': typeof DashboardRoute
+  '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/report': typeof ReportRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/amministrazione'
     | '/dashboard'
+    | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
     | '/report'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/amministrazione'
     | '/dashboard'
+    | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
     | '/report'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/amministrazione'
     | '/dashboard'
+    | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
     | '/report'
@@ -115,6 +127,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AmministrazioneRoute: typeof AmministrazioneRoute
   DashboardRoute: typeof DashboardRoute
+  GestioneTimbratureRoute: typeof GestioneTimbratureRoute
   NovitaRoute: typeof NovitaRoute
   PresenzeRoute: typeof PresenzeRoute
   ReportRoute: typeof ReportRoute
@@ -151,6 +164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NovitaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gestione-timbrature': {
+      id: '/gestione-timbrature'
+      path: '/gestione-timbrature'
+      fullPath: '/gestione-timbrature'
+      preLoaderRoute: typeof GestioneTimbratureRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
@@ -179,6 +199,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AmministrazioneRoute: AmministrazioneRoute,
   DashboardRoute: DashboardRoute,
+  GestioneTimbratureRoute: GestioneTimbratureRoute,
   NovitaRoute: NovitaRoute,
   PresenzeRoute: PresenzeRoute,
   ReportRoute: ReportRoute,
@@ -187,3 +208,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
