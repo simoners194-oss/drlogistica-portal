@@ -123,6 +123,9 @@ function NovitaPage() {
       <p className="mt-8 text-center text-[11px] text-muted-foreground">
         Build {APP_INFO.build} — {APP_INFO.copyright}
       </p>
+      <p className="mt-1 text-center text-[11px] text-muted-foreground/70">
+        Realizzato da Simone Russo
+      </p>
     </AppShell>
   );
 }
