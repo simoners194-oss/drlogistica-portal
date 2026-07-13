@@ -26,6 +26,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.2.0",
+    date: "2026-07-13",
+    codename: "Rendiconto",
+    entries: [
+      {
+        tag: "feature",
+        title: "Rendiconto mensile",
+        description:
+          "Riepilogo ore per dipendente: ore lavorate, straordinari (calcolati dalle timbrature e autorizzati dalle richieste), permessi, ferie e malattie, con filtri per mese, sede e dipendente.",
+      },
+    ],
+  },
+  {
     version: "1.1.0",
     date: "2026-07-13",
     codename: "Richieste e Supervisione",
