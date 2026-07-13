@@ -908,61 +908,125 @@ export interface CreateTimbraturaManualeInput {
   note?: string;
 }
 
-export async function createTimbraturaManuale(
-  input: CreateTimbraturaManualeInput,
+export interface CreateTurnoManualeInput {
+  operatoreId: string;
+  dipendenteId: string;
+  entrata: string; // ISO datetime
+  uscita: string; // ISO datetime
+  inizioPausa?: string; // ISO datetime (opzionale)
+  finePausa?: string; // ISO datetime (opzionale)
+  note?: string;
+}
+
+// Verifica che l'operatore abbia la capability Operatore su SharePoint.
+async function assertOperatore(cfg: SpDiscovered, operatoreId: string): Promise<void> {
+  const DF = cfg.dipendentiFields;
+  const opFields = await fetchDipendenteFields(cfg, operatoreId);
+  const operatore = DF.Operatore ? Boolean(opFields[DF.Operatore]) : false;
+  if (!operatore) {
+    logSp("warn", "create.manuale", `Tentativo non autorizzato da id=${operatoreId}`);
+    throw new Error("Non sei autorizzato a inserire timbrature manuali.");
+  }
+}
+
+// Inserisce UNA timbratura manuale (Origine=Manuale). Nessuna macchina a stati.
+async function insertManuale(
+  cfg: SpDiscovered,
+  dipInt: number,
+  evento: EventoTimbratura,
+  dataOraISO: string,
+  note?: string,
 ): Promise<SpTimbratura> {
-  const cfg = await discoverSharePoint();
   const F = cfg.timbratureFields;
   const dipendenteField = requireField(F, "Dipendente", "Timbrature");
   const eventoField = requireField(F, "Evento", "Timbrature");
   const dataOraField = requireField(F, "DataOra", "Timbrature");
-
-  // Autorizzazione: l'operatore deve avere Operatore=true su SharePoint.
-  const DF = cfg.dipendentiFields;
-  const opFields = await fetchDipendenteFields(cfg, input.operatoreId);
-  const operatore = DF.Operatore ? Boolean(opFields[DF.Operatore]) : false;
-  if (!operatore) {
-    logSp("warn", "create.manuale", `Tentativo non autorizzato da id=${input.operatoreId}`);
-    throw new Error("Non sei autorizzato a inserire timbrature manuali.");
-  }
-
-  const dipInt = Number(input.dipendenteId);
-  if (!Number.isFinite(dipInt)) throw new Error("dipendenteId non valido.");
-  const evento = parseEvento(input.evento);
-  if (!evento) throw new Error("Evento non valido.");
-  const when = new Date(input.dataOra);
-  if (Number.isNaN(when.getTime())) throw new Error("Data/ora non valida.");
-  const dataOra = when.toISOString();
-
   const fields: Record<string, unknown> = {
     [lookupIdFieldName(dipendenteField)]: dipInt,
     [eventoField]: eventoToSharePoint(evento),
-    [dataOraField]: dataOra,
+    [dataOraField]: dataOraISO,
   };
   if (F.Origine) fields[F.Origine] = "Manuale";
   if (F.Esito) fields[F.Esito] = "Accettata";
-  if (F.Note && input.note) fields[F.Note] = input.note.trim();
-
+  if (F.Note && note) fields[F.Note] = note.trim();
   const created = await withDiscoveryRetry(() =>
     gatewayJson<GraphListItem<Record<string, unknown>>>(
       `/sites/${cfg.siteId}/lists/${cfg.listTimbrature}/items`,
       { method: "POST", body: JSON.stringify({ fields }) },
     ),
   );
+  return {
+    id: String(created.id),
+    dipendenteId: String(dipInt),
+    evento,
+    dataOra: dataOraISO,
+    origine: "Manuale",
+    esito: "Accettata",
+    note,
+  };
+}
+
+export async function createTimbraturaManuale(
+  input: CreateTimbraturaManualeInput,
+): Promise<SpTimbratura> {
+  const cfg = await discoverSharePoint();
+  await assertOperatore(cfg, input.operatoreId);
+  const dipInt = Number(input.dipendenteId);
+  if (!Number.isFinite(dipInt)) throw new Error("dipendenteId non valido.");
+  const evento = parseEvento(input.evento);
+  if (!evento) throw new Error("Evento non valido.");
+  const when = new Date(input.dataOra);
+  if (Number.isNaN(when.getTime())) throw new Error("Data/ora non valida.");
+  const t = await insertManuale(cfg, dipInt, evento, when.toISOString(), input.note);
   logSp(
     "info",
     "create.manuale",
-    `Timbratura manuale #${created.id} (${evento}) dip=${input.dipendenteId} op=${input.operatoreId}`,
+    `Timbratura manuale #${t.id} (${evento}) dip=${input.dipendenteId} op=${input.operatoreId}`,
   );
-  return {
-    id: String(created.id),
-    dipendenteId: String(input.dipendenteId),
-    evento,
-    dataOra,
-    origine: "Manuale",
-    esito: "Accettata",
-    note: input.note,
-  };
+  return t;
+}
+
+// Inserisce un TURNO INTERO in un colpo: entrata, [pausa], uscita (tutte manuali).
+// Utile quando il dipendente non ha potuto timbrare l'intera giornata.
+export async function createTurnoManuale(input: CreateTurnoManualeInput): Promise<SpTimbratura[]> {
+  const cfg = await discoverSharePoint();
+  await assertOperatore(cfg, input.operatoreId);
+  const dipInt = Number(input.dipendenteId);
+  if (!Number.isFinite(dipInt)) throw new Error("dipendenteId non valido.");
+
+  const ms = (iso: string) => new Date(iso).getTime();
+  const entrata = ms(input.entrata);
+  const uscita = ms(input.uscita);
+  if (Number.isNaN(entrata) || Number.isNaN(uscita)) throw new Error("Orari del turno non validi.");
+  if (uscita <= entrata) throw new Error("L'uscita deve essere successiva all'entrata.");
+
+  const eventi: { evento: EventoTimbratura; iso: string }[] = [
+    { evento: "entrata", iso: input.entrata },
+  ];
+  if (input.inizioPausa || input.finePausa) {
+    if (!input.inizioPausa || !input.finePausa)
+      throw new Error("Per la pausa servono sia l'inizio sia la fine.");
+    const ip = ms(input.inizioPausa);
+    const fp = ms(input.finePausa);
+    if (Number.isNaN(ip) || Number.isNaN(fp)) throw new Error("Orari della pausa non validi.");
+    if (!(entrata < ip && ip < fp && fp < uscita))
+      throw new Error("La pausa deve essere compresa tra entrata e uscita (inizio prima di fine).");
+    eventi.push({ evento: "inizio-pausa", iso: input.inizioPausa });
+    eventi.push({ evento: "fine-pausa", iso: input.finePausa });
+  }
+  eventi.push({ evento: "uscita", iso: input.uscita });
+  eventi.sort((a, b) => ms(a.iso) - ms(b.iso));
+
+  const out: SpTimbratura[] = [];
+  for (const e of eventi) {
+    out.push(await insertManuale(cfg, dipInt, e.evento, new Date(e.iso).toISOString(), input.note));
+  }
+  logSp(
+    "info",
+    "create.turno",
+    `Turno manuale (${out.length} eventi) dip=${input.dipendenteId} op=${input.operatoreId}`,
+  );
+  return out;
 }
 
 // ---------------------------------------------------------------------------

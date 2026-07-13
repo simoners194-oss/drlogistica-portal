@@ -1,14 +1,18 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { ClipboardList, Lock, PlusCircle } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
-import { spGetDipendenti, spCreateTimbraturaManuale } from "@/lib/sharepoint.functions";
+import {
+  spGetDipendenti,
+  spCreateTimbraturaManuale,
+  spCreateTurnoManuale,
+} from "@/lib/sharepoint.functions";
 import type { SpDipendente } from "@/lib/sharepoint.server";
 import { EVENTI, type EventoTimbratura } from "@/lib/presenze-logic";
-import { labelTipo } from "@/lib/mock-data";
+import { SEDI, labelTipo, type SedeId } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/gestione-timbrature")({
   head: () => ({ meta: [{ title: "Gestione timbrature — DR Portal" }] }),
@@ -29,16 +33,29 @@ export const Route = createFileRoute("/gestione-timbrature")({
 const inputCls =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
+function toIso(data: string, ora: string): string {
+  return new Date(`${data}T${ora}`).toISOString();
+}
+
 function GestioneTimbraturePage() {
   const [session, setSession] = useState<SessionUser | null>(null);
   const [dipendenti, setDipendenti] = useState<SpDipendente[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [sedeFilter, setSedeFilter] = useState<SedeId | "tutte">("tutte");
   const [dipendenteId, setDipendenteId] = useState("");
-  const [evento, setEvento] = useState<EventoTimbratura>("entrata");
+  const [mode, setMode] = useState<"singola" | "turno">("singola");
   const [data, setData] = useState("");
-  const [ora, setOra] = useState("");
   const [note, setNote] = useState("");
+  // Singola
+  const [evento, setEvento] = useState<EventoTimbratura>("entrata");
+  const [ora, setOra] = useState("");
+  // Turno
+  const [entrataOra, setEntrataOra] = useState("");
+  const [uscitaOra, setUscitaOra] = useState("");
+  const [pausaInizio, setPausaInizio] = useState("");
+  const [pausaFine, setPausaFine] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -48,50 +65,75 @@ function GestioneTimbraturePage() {
       return;
     }
     setSession(s);
-    if (!s.operatore) return; // non operatore: non carichiamo nulla
+    if (!s.operatore) return;
     spGetDipendenti()
-      .then((list) => {
-        const arr = list as SpDipendente[];
-        arr.sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`));
-        setDipendenti(arr);
-      })
+      .then((list) => setDipendenti(list as SpDipendente[]))
       .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)));
   }, []);
+
+  const filteredDip = useMemo(() => {
+    const arr = (dipendenti ?? []).filter((d) =>
+      sedeFilter === "tutte" ? true : d.sede === sedeFilter,
+    );
+    return [...arr].sort((a, b) =>
+      `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`),
+    );
+  }, [dipendenti, sedeFilter]);
+
+  function resetTimes() {
+    setOra("");
+    setEntrataOra("");
+    setUscitaOra("");
+    setPausaInizio("");
+    setPausaFine("");
+    setNote("");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!session || submitting) return;
-    if (!dipendenteId) {
-      toast.error("Seleziona un dipendente");
-      return;
-    }
-    if (!data || !ora) {
-      toast.error("Inserisci data e ora");
-      return;
-    }
-    const dataOra = new Date(`${data}T${ora}`);
-    if (Number.isNaN(dataOra.getTime())) {
-      toast.error("Data/ora non valida");
-      return;
-    }
+    if (!dipendenteId) return toast.error("Seleziona un dipendente");
+    if (!data) return toast.error("Inserisci la data");
+
     setSubmitting(true);
     try {
-      await spCreateTimbraturaManuale({
-        data: {
-          operatoreId: session.id,
-          dipendenteId,
-          evento,
-          dataOra: dataOra.toISOString(),
-          note: note.trim() || undefined,
-        },
-      });
       const dip = dipendenti?.find((d) => d.id === dipendenteId);
-      toast.success("Timbratura manuale inserita", {
-        description: `${dip ? `${dip.cognome} ${dip.nome} · ` : ""}${labelTipo(evento)} · ${data} ${ora}`,
-      });
-      setData("");
-      setOra("");
-      setNote("");
+      const chi = dip ? `${dip.cognome} ${dip.nome} · ` : "";
+      if (mode === "singola") {
+        if (!ora) return toast.error("Inserisci l'ora");
+        await spCreateTimbraturaManuale({
+          data: {
+            operatoreId: session.id,
+            dipendenteId,
+            evento,
+            dataOra: toIso(data, ora),
+            note: note.trim() || undefined,
+          },
+        });
+        toast.success("Timbratura inserita", {
+          description: `${chi}${labelTipo(evento)} · ${data} ${ora}`,
+        });
+      } else {
+        if (!entrataOra || !uscitaOra) return toast.error("Inserisci entrata e uscita");
+        const conPausa = Boolean(pausaInizio || pausaFine);
+        if (conPausa && (!pausaInizio || !pausaFine))
+          return toast.error("Per la pausa servono sia inizio sia fine");
+        const res = (await spCreateTurnoManuale({
+          data: {
+            operatoreId: session.id,
+            dipendenteId,
+            entrata: toIso(data, entrataOra),
+            uscita: toIso(data, uscitaOra),
+            inizioPausa: conPausa ? toIso(data, pausaInizio) : undefined,
+            finePausa: conPausa ? toIso(data, pausaFine) : undefined,
+            note: note.trim() || undefined,
+          },
+        })) as unknown[];
+        toast.success("Turno inserito", {
+          description: `${chi}${res.length} timbrature · ${data}`,
+        });
+      }
+      resetTimes();
     } catch (err) {
       toast.error("Inserimento non riuscito", {
         description: err instanceof Error ? err.message : String(err),
@@ -101,7 +143,6 @@ function GestioneTimbraturePage() {
     }
   }
 
-  // Accesso riservato agli operatori (gating server-side comunque presente).
   if (session && !session.operatore) {
     return (
       <AppShell title="Gestione timbrature">
@@ -128,7 +169,7 @@ function GestioneTimbraturePage() {
           className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)] space-y-4"
         >
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
-            <ClipboardList className="h-4 w-4 text-primary" /> Nuova timbratura manuale
+            <ClipboardList className="h-4 w-4 text-primary" /> Nuovo inserimento manuale
           </div>
 
           {loadError && (
@@ -137,63 +178,159 @@ function GestioneTimbraturePage() {
             </div>
           )}
 
-          {/* Dipendente */}
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">
-              Dipendente
-            </label>
-            <select
-              className={`${inputCls} mt-1`}
-              value={dipendenteId}
-              onChange={(e) => setDipendenteId(e.target.value)}
-              disabled={dipendenti === null}
-            >
-              <option value="">{dipendenti === null ? "Caricamento…" : "— seleziona —"}</option>
-              {dipendenti?.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.cognome} {d.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Evento */}
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">Evento</label>
-            <select
-              className={`${inputCls} mt-1`}
-              value={evento}
-              onChange={(e) => setEvento(e.target.value as EventoTimbratura)}
-            >
-              {EVENTI.map((ev) => (
-                <option key={ev} value={ev}>
-                  {labelTipo(ev)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Data + ora */}
+          {/* Filtro sede + dipendente */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Data</label>
-              <input
-                type="date"
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Sede</label>
+              <select
                 className={`${inputCls} mt-1`}
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-              />
+                value={sedeFilter}
+                onChange={(e) => {
+                  setSedeFilter(e.target.value as SedeId | "tutte");
+                  setDipendenteId("");
+                }}
+              >
+                <option value="tutte">Tutte le sedi</option>
+                {SEDI.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nome}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Ora</label>
-              <input
-                type="time"
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Dipendente
+              </label>
+              <select
                 className={`${inputCls} mt-1`}
-                value={ora}
-                onChange={(e) => setOra(e.target.value)}
-              />
+                value={dipendenteId}
+                onChange={(e) => setDipendenteId(e.target.value)}
+                disabled={dipendenti === null}
+              >
+                <option value="">{dipendenti === null ? "Caricamento…" : "— seleziona —"}</option>
+                {filteredDip.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.cognome} {d.nome}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
+
+          {/* Modalità: singola vs turno intero */}
+          <div className="inline-flex rounded-lg border border-border bg-background p-1 text-sm">
+            <button
+              type="button"
+              onClick={() => setMode("singola")}
+              className={`rounded-md px-3 py-1.5 font-medium transition-colors ${mode === "singola" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              Timbratura singola
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("turno")}
+              className={`rounded-md px-3 py-1.5 font-medium transition-colors ${mode === "turno" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              Turno intero
+            </button>
+          </div>
+
+          {/* Data (comune) */}
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground">Data</label>
+            <input
+              type="date"
+              className={`${inputCls} mt-1`}
+              value={data}
+              onChange={(e) => setData(e.target.value)}
+            />
+          </div>
+
+          {mode === "singola" ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Evento
+                </label>
+                <select
+                  className={`${inputCls} mt-1`}
+                  value={evento}
+                  onChange={(e) => setEvento(e.target.value as EventoTimbratura)}
+                >
+                  {EVENTI.map((ev) => (
+                    <option key={ev} value={ev}>
+                      {labelTipo(ev)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Ora
+                </label>
+                <input
+                  type="time"
+                  className={`${inputCls} mt-1`}
+                  value={ora}
+                  onChange={(e) => setOra(e.target.value)}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Entrata
+                  </label>
+                  <input
+                    type="time"
+                    className={`${inputCls} mt-1`}
+                    value={entrataOra}
+                    onChange={(e) => setEntrataOra(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Uscita
+                  </label>
+                  <input
+                    type="time"
+                    className={`${inputCls} mt-1`}
+                    value={uscitaOra}
+                    onChange={(e) => setUscitaOra(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Inizio pausa{" "}
+                    <span className="normal-case text-muted-foreground/70">(facolt.)</span>
+                  </label>
+                  <input
+                    type="time"
+                    className={`${inputCls} mt-1`}
+                    value={pausaInizio}
+                    onChange={(e) => setPausaInizio(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Fine pausa{" "}
+                    <span className="normal-case text-muted-foreground/70">(facolt.)</span>
+                  </label>
+                  <input
+                    type="time"
+                    className={`${inputCls} mt-1`}
+                    value={pausaFine}
+                    onChange={(e) => setPausaFine(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Note */}
           <div>
@@ -204,18 +341,24 @@ function GestioneTimbraturePage() {
               className={`${inputCls} mt-1 min-h-[60px] resize-y`}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Motivo della correzione / inserimento"
+              placeholder="Motivo (es. telefono non funzionante)"
             />
           </div>
 
           <div className="rounded-lg bg-primary/5 p-3 text-[12px] text-muted-foreground">
-            La timbratura verrà registrata con origine <strong>Manuale</strong> e resa visibile al
-            supervisore.
+            {mode === "turno"
+              ? "Verranno inserite entrata, eventuale pausa e uscita, tutte con origine "
+              : "La timbratura verrà registrata con origine "}
+            <strong>Manuale</strong> e resa visibile al supervisore.
           </div>
 
           <Button type="submit" className="w-full" disabled={submitting}>
             <PlusCircle className="h-4 w-4" />
-            {submitting ? "Inserimento…" : "Inserisci timbratura"}
+            {submitting
+              ? "Inserimento…"
+              : mode === "turno"
+                ? "Inserisci turno"
+                : "Inserisci timbratura"}
           </Button>
         </form>
       </div>

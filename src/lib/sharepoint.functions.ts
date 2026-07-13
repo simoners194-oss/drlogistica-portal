@@ -11,6 +11,7 @@ import {
   createRichiesta,
   createTimbratura,
   createTimbraturaManuale,
+  createTurnoManuale,
   decideRichiesta,
   discoverSharePoint,
   fetchDipendenti,
@@ -24,6 +25,7 @@ import {
   type CreateRichiestaInput,
   type CreateTimbraturaInput,
   type CreateTimbraturaManualeInput,
+  type CreateTurnoManualeInput,
   type DecideRichiestaInput,
   type EventoTimbratura,
   type LoginResult,
@@ -186,3 +188,12 @@ export const spCreateTimbraturaManuale = createServerFn({ method: "POST" })
     return input;
   })
   .handler(async ({ data }): Promise<SpTimbratura> => createTimbraturaManuale(data));
+
+export const spCreateTurnoManuale = createServerFn({ method: "POST" })
+  .inputValidator((input: CreateTurnoManualeInput): CreateTurnoManualeInput => {
+    if (!input?.operatoreId) throw new Error("operatoreId mancante");
+    if (!input?.dipendenteId) throw new Error("dipendenteId mancante");
+    if (!input?.entrata || !input?.uscita) throw new Error("entrata/uscita mancanti");
+    return input;
+  })
+  .handler(async ({ data }): Promise<SpTimbratura[]> => createTurnoManuale(data));
