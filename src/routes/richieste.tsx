@@ -1,17 +1,424 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
-import { PlaceholderSection } from "@/components/PlaceholderSection";
-import { FileText } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { FileText, Plus, Send, XCircle, CalendarDays, Clock, Info } from "lucide-react";
+import { readSession, type SessionUser } from "@/lib/session";
+import { spGetRichieste, spCreateRichiesta, spCancelRichiesta } from "@/lib/sharepoint.functions";
+import type { SpRichiesta } from "@/lib/sharepoint.server";
+import {
+  TIPI_RICHIESTA,
+  MODALITA,
+  misuraInGiorni,
+  richiedeApprovazione,
+  validateRichiesta,
+  canCancel,
+  parseStato,
+  type TipoRichiesta,
+  type ModalitaStraordinario,
+  type RichiestaInput,
+} from "@/lib/richieste-logic";
 
 export const Route = createFileRoute("/richieste")({
-  head: () => ({ meta: [{ title: "Modulo Richieste — DR Portal" }] }),
-  component: () => (
-    <AppShell title="Richieste" subtitle="Ferie, permessi e giustificativi">
-      <PlaceholderSection
-        Icon={FileText}
-        title="Modulo Richieste in arrivo"
-        description="Qui i dipendenti potranno inviare richieste di ferie, permessi e giustificativi. Il flusso di approvazione sarà collegato alla lista SharePoint 'Richieste' di Microsoft 365."
-      />
-    </AppShell>
-  ),
+  head: () => ({ meta: [{ title: "Richieste — DR Portal" }] }),
+  beforeLoad: ({ location }) => {
+    // Guardia client-only, come le altre route protette.
+    if (typeof window === "undefined") return;
+    let hasSession = false;
+    try {
+      const raw = window.sessionStorage.getItem("dr:currentUser");
+      if (raw) hasSession = Boolean((JSON.parse(raw) as { id?: string } | null)?.id);
+    } catch {
+      hasSession = false;
+    }
+    if (!hasSession) throw redirect({ to: "/", search: { redirect: location.href } });
+  },
+  component: RichiestePage,
 });
+
+const inputCls =
+  "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
+
+const STATO_STYLE: Record<string, string> = {
+  Bozza: "bg-muted text-muted-foreground",
+  Inviata: "bg-primary/10 text-primary",
+  Comunicata: "bg-primary/10 text-primary",
+  Approvata: "bg-status-present/15 text-status-present",
+  Respinta: "bg-status-absent/15 text-status-absent",
+  Annullata: "bg-muted text-muted-foreground",
+};
+
+function fmtData(iso?: string): string {
+  if (!iso) return "—";
+  const [y, m, g] = iso.slice(0, 10).split("-");
+  return y && m && g ? `${g}/${m}/${y}` : iso;
+}
+
+function RichiestePage() {
+  const [session, setSession] = useState<SessionUser | null>(null);
+  const [richieste, setRichieste] = useState<SpRichiesta[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Stato del form
+  const [tipo, setTipo] = useState<TipoRichiesta>("Ferie");
+  const [dataInizio, setDataInizio] = useState("");
+  const [dataFine, setDataFine] = useState("");
+  const [oraInizio, setOraInizio] = useState("");
+  const [oraFine, setOraFine] = useState("");
+  const [motivazione, setMotivazione] = useState("");
+  const [modalita, setModalita] = useState<ModalitaStraordinario | "">("");
+  const [protocolloInps, setProtocolloInps] = useState("");
+  const [formErrors, setFormErrors] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
+
+  const perGiorni = misuraInGiorni(tipo);
+  const motivObbligatoria = tipo === "Permesso" || tipo === "Straordinario";
+  const senzaApprovazione = !richiedeApprovazione(tipo);
+
+  async function loadRichieste(id: string) {
+    try {
+      const list = (await spGetRichieste({ data: { richiedenteId: id } })) as SpRichiesta[];
+      setRichieste(list);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
+      setRichieste([]);
+    }
+  }
+
+  useEffect(() => {
+    const s = readSession();
+    if (!s) {
+      window.location.href = "/";
+      return;
+    }
+    setSession(s);
+    void loadRichieste(s.id);
+  }, []);
+
+  function resetForm() {
+    setDataInizio("");
+    setDataFine("");
+    setOraInizio("");
+    setOraFine("");
+    setMotivazione("");
+    setModalita("");
+    setProtocolloInps("");
+    setFormErrors([]);
+  }
+
+  function buildInput(): RichiestaInput {
+    return {
+      tipo,
+      dataInizio,
+      dataFine: perGiorni ? dataFine : dataInizio,
+      oraInizio: perGiorni ? undefined : oraInizio || undefined,
+      oraFine: perGiorni ? undefined : oraFine || undefined,
+      motivazione: motivazione.trim() || undefined,
+      modalita: tipo === "Straordinario" ? modalita || undefined : undefined,
+      protocolloInps: tipo === "Malattia" ? protocolloInps.trim() || undefined : undefined,
+    };
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!session || submitting) return;
+    const input = buildInput();
+    const v = validateRichiesta(input);
+    if (!v.ok) {
+      setFormErrors(v.errors);
+      toast.error("Controlla i campi della richiesta", { description: v.errors[0] });
+      return;
+    }
+    setFormErrors([]);
+    setSubmitting(true);
+    try {
+      await spCreateRichiesta({ data: { richiedenteId: session.id, ...input, submit: true } });
+      toast.success(senzaApprovazione ? "Comunicazione inviata" : "Richiesta inviata", {
+        description: `${tipo} · ${fmtData(input.dataInizio)}`,
+      });
+      resetForm();
+      await loadRichieste(session.id);
+    } catch (err) {
+      toast.error("Invio non riuscito", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleCancel(r: SpRichiesta) {
+    if (!session || cancelingId) return;
+    setCancelingId(r.id);
+    try {
+      await spCancelRichiesta({ data: { richiestaId: r.id, richiedenteId: session.id } });
+      toast.success(`Richiesta ${r.title || `#${r.id}`} annullata`);
+      await loadRichieste(session.id);
+    } catch (err) {
+      toast.error("Annullamento non riuscito", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setCancelingId(null);
+    }
+  }
+
+  return (
+    <AppShell title="Richieste" subtitle="Ferie, permessi e giustificativi">
+      <div className="grid gap-4 md:gap-5 lg:grid-cols-5">
+        {/* Nuova richiesta */}
+        <form
+          onSubmit={handleSubmit}
+          className="lg:col-span-2 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)] space-y-4"
+        >
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+            <Plus className="h-4 w-4 text-primary" /> Nuova richiesta
+          </div>
+
+          {/* Tipo */}
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground">Tipo</label>
+            <select
+              className={`${inputCls} mt-1`}
+              value={tipo}
+              onChange={(e) => {
+                setTipo(e.target.value as TipoRichiesta);
+                setFormErrors([]);
+              }}
+            >
+              {TIPI_RICHIESTA.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {senzaApprovazione && (
+            <div className="flex items-start gap-2 rounded-lg bg-primary/5 p-3 text-[13px] text-muted-foreground">
+              <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+              Questa è una <strong className="text-foreground">comunicazione</strong>: non richiede
+              approvazione, viene registrata direttamente.
+            </div>
+          )}
+
+          {/* Date */}
+          {perGiorni ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Dal
+                </label>
+                <input
+                  type="date"
+                  className={`${inputCls} mt-1`}
+                  value={dataInizio}
+                  onChange={(e) => setDataInizio(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">Al</label>
+                <input
+                  type="date"
+                  className={`${inputCls} mt-1`}
+                  value={dataFine}
+                  onChange={(e) => setDataFine(e.target.value)}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Giorno
+                </label>
+                <input
+                  type="date"
+                  className={`${inputCls} mt-1`}
+                  value={dataInizio}
+                  onChange={(e) => setDataInizio(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Dalle
+                  </label>
+                  <input
+                    type="time"
+                    className={`${inputCls} mt-1`}
+                    value={oraInizio}
+                    onChange={(e) => setOraInizio(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Alle
+                  </label>
+                  <input
+                    type="time"
+                    className={`${inputCls} mt-1`}
+                    value={oraFine}
+                    onChange={(e) => setOraFine(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modalità (solo Straordinario) */}
+          {tipo === "Straordinario" && (
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Modalità
+              </label>
+              <select
+                className={`${inputCls} mt-1`}
+                value={modalita}
+                onChange={(e) => setModalita(e.target.value as ModalitaStraordinario | "")}
+              >
+                <option value="">— seleziona —</option>
+                {MODALITA.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Protocollo INPS (solo Malattia) */}
+          {tipo === "Malattia" && (
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Protocollo INPS{" "}
+                <span className="normal-case text-muted-foreground/70">(facoltativo)</span>
+              </label>
+              <input
+                type="text"
+                className={`${inputCls} mt-1`}
+                value={protocolloInps}
+                onChange={(e) => setProtocolloInps(e.target.value)}
+                placeholder="Numero di protocollo del certificato"
+              />
+            </div>
+          )}
+
+          {/* Motivazione */}
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground">
+              Motivazione{" "}
+              {motivObbligatoria ? (
+                <span className="text-status-absent normal-case">(obbligatoria)</span>
+              ) : (
+                <span className="normal-case text-muted-foreground/70">(facoltativa)</span>
+              )}
+            </label>
+            <textarea
+              className={`${inputCls} mt-1 min-h-[72px] resize-y`}
+              value={motivazione}
+              onChange={(e) => setMotivazione(e.target.value)}
+            />
+          </div>
+
+          {formErrors.length > 0 && (
+            <ul className="rounded-lg bg-status-absent/10 p-3 text-[13px] text-status-absent space-y-1">
+              {formErrors.map((err, i) => (
+                <li key={i}>• {err}</li>
+              ))}
+            </ul>
+          )}
+
+          <Button type="submit" className="w-full" disabled={submitting}>
+            <Send className="h-4 w-4" />
+            {submitting ? "Invio in corso…" : senzaApprovazione ? "Comunica" : "Invia richiesta"}
+          </Button>
+        </form>
+
+        {/* Le mie richieste */}
+        <div className="lg:col-span-3 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
+            <FileText className="h-4 w-4 text-primary" /> Le mie richieste
+          </div>
+
+          {loadError && (
+            <div className="rounded-lg bg-status-absent/10 p-3 text-[13px] text-status-absent mb-3">
+              Errore nel caricamento: {loadError}
+            </div>
+          )}
+
+          {richieste === null ? (
+            <div className="text-sm text-muted-foreground">Caricamento in corso…</div>
+          ) : richieste.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              Nessuna richiesta ancora. Creane una dal riquadro a sinistra.
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {richieste.map((r) => {
+                const stato = String(r.stato);
+                const annullabile = canCancel(parseStato(stato));
+                const periodo =
+                  r.dataFine && r.dataFine.slice(0, 10) !== r.dataInizio.slice(0, 10)
+                    ? `${fmtData(r.dataInizio)} → ${fmtData(r.dataFine)}`
+                    : fmtData(r.dataInizio);
+                const ore = r.oraInizio && r.oraFine ? ` · ${r.oraInizio}–${r.oraFine}` : "";
+                return (
+                  <li
+                    key={r.id}
+                    className="rounded-xl border border-border bg-background p-4 flex items-start justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-foreground">{r.tipo || "—"}</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATO_STYLE[stato] ?? "bg-muted text-muted-foreground"}`}
+                        >
+                          {stato}
+                        </span>
+                        {r.modalita && (
+                          <span className="text-[11px] text-muted-foreground">({r.modalita})</span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
+                        {r.oraInizio ? (
+                          <Clock className="h-3.5 w-3.5" />
+                        ) : (
+                          <CalendarDays className="h-3.5 w-3.5" />
+                        )}
+                        <span className="truncate">
+                          {periodo}
+                          {ore}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground/70">
+                        {r.title || `#${r.id}`}
+                        {r.protocolloInps ? ` · INPS ${r.protocolloInps}` : ""}
+                      </div>
+                    </div>
+                    {annullabile && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 text-status-absent hover:text-status-absent"
+                        disabled={cancelingId === r.id}
+                        onClick={() => handleCancel(r)}
+                      >
+                        <XCircle className="h-4 w-4" />
+                        {cancelingId === r.id ? "…" : "Annulla"}
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </AppShell>
+  );
+}

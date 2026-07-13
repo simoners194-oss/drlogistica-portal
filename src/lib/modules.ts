@@ -62,8 +62,8 @@ export const MODULES: readonly AppModule[] = [
     title: "Richieste",
     url: "/richieste",
     icon: FileText,
-    ready: false,
-    description: "Ferie, permessi e giustificativi.",
+    ready: true,
+    description: "Ferie, permessi, straordinari, smart working, malattia e reperibilità.",
     roles: ["dipendente", "responsabile", "amministratore_sistema"],
   },
   {
