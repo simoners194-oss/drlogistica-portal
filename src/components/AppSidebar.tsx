@@ -36,11 +36,18 @@ export function AppSidebar() {
   // ruoli (Presenze, Richieste) per evitare "flash" del menu completo. Le voci
   // con `requiresOperatore` compaiono solo per gli operatori (DR000).
   const visibleModules = MODULES.filter((m) => {
-    const roleOk = ruolo ? canAccess(m, ruolo) : canAccess(m, "dipendente");
-    if (!roleOk) return false;
+    // Requisiti di capability obbligatori (AND col ruolo).
     if (m.requiresOperatore && !operatore) return false;
     if (m.requiresAutorizza && !autorizza) return false;
-    return true;
+    const roleOk = ruolo ? canAccess(m, ruolo) : canAccess(m, "dipendente");
+    // Capability alternative: visibile se ruolo ammesso OPPURE capability.
+    if (m.orCapabilities && m.orCapabilities.length) {
+      const capOk = m.orCapabilities.some(
+        (c) => (c === "operatore" && operatore) || (c === "autorizza" && autorizza),
+      );
+      return roleOk || capOk;
+    }
+    return roleOk;
   });
 
   return (

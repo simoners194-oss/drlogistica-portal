@@ -34,6 +34,15 @@ import {
   type DecisioneRichiesta,
 } from "./richieste-logic";
 import { anomalieDelGiorno, type TipoAnomalia } from "./presenze-logic";
+import {
+  oreLavorateGiorno,
+  isoDow,
+  lunediDellaSettimana,
+  orePrevisteSettimana,
+  straordinarioSettimana,
+  ymd,
+  round2,
+} from "./rendiconto-logic";
 
 const GATEWAY_BASE = "https://connector-gateway.lovable.dev/microsoft_sharepoint";
 const CACHE_TTL_MS = Number(process.env.SP_CACHE_TTL_MS ?? 60 * 60 * 1000);
@@ -897,6 +906,172 @@ export async function fetchTimbratureManuali(giorni = 30): Promise<TimbraturaMan
       };
     })
     .sort((a, b) => b.dataOra.localeCompare(a.dataOra));
+}
+
+// ---------------------------------------------------------------------------
+// Rendiconto mensile (riscontro settimanale a monte ore).
+// ---------------------------------------------------------------------------
+export interface RendicontoRiga {
+  dipendenteId: string;
+  nomeCompleto: string;
+  sede: string;
+  oreSettimanali: number | null;
+  oreLavorate: number; // effettive dal timbrature (giorni chiusi del mese)
+  straordinarioCalcolato: number; // dalle timbrature (settimane con lunedì nel mese)
+  straordinarioAutorizzato: number; // da richieste Straordinario approvate (mese)
+  permessiOre: number;
+  ferieGiorni: number;
+  malattiaGiorni: number;
+  giorniNonChiusi: number; // giornate con turno aperto (ore non calcolabili)
+}
+
+function eachDay(fromStr: string, toStr: string): string[] {
+  const out: string[] = [];
+  const d = new Date(`${fromStr}T00:00:00`);
+  const end = new Date(`${toStr}T00:00:00`).getTime();
+  while (d.getTime() <= end) {
+    out.push(ymd(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+export async function computeRendiconto(anno: number, mese: number): Promise<RendicontoRiga[]> {
+  const monthStart = new Date(anno, mese - 1, 1);
+  const monthEnd = new Date(anno, mese, 0);
+  const monthStartStr = ymd(monthStart);
+  const monthEndStr = ymd(monthEnd);
+  // Estendi alle settimane complete (per lo straordinario settimanale).
+  const from = new Date(monthStart);
+  from.setDate(from.getDate() - ((from.getDay() === 0 ? 7 : from.getDay()) - 1));
+  const to = new Date(monthEnd);
+  to.setDate(to.getDate() + (7 - (to.getDay() === 0 ? 7 : to.getDay())));
+  const fromStr = ymd(from);
+  const toStr = ymd(to);
+
+  const [tims, richieste, dips] = await Promise.all([
+    fetchTimbratureDaISO(
+      new Date(from.getFullYear(), from.getMonth(), from.getDate()).toISOString(),
+    ),
+    fetchRichieste({}),
+    fetchDipendenti(),
+  ]);
+
+  // Eventi per dipendente+giorno (giorno = data locale).
+  const eventiByDipDay = new Map<string, { evento: EventoTimbratura; ora: string }[]>();
+  for (const t of tims) {
+    const giorno = ymd(new Date(t.dataOra));
+    if (giorno < fromStr || giorno > toStr) continue;
+    const key = `${t.dipendenteId}|${giorno}`;
+    const arr = eventiByDipDay.get(key) ?? [];
+    arr.push({ evento: t.evento, ora: t.dataOra });
+    eventiByDipDay.set(key, arr);
+  }
+
+  // Assenze/ore da richieste (per dipendente+giorno).
+  const ferie = new Set<string>();
+  const malattia = new Set<string>();
+  const permessoOre = new Map<string, number>();
+  const straordAut = new Map<string, number>();
+  for (const r of richieste) {
+    const di = r.dataInizio.slice(0, 10);
+    const df = (r.dataFine || r.dataInizio).slice(0, 10);
+    if (r.tipo === "Ferie" && r.stato === "Approvata") {
+      for (const g of eachDay(di, df)) ferie.add(`${r.richiedenteId}|${g}`);
+    } else if (r.tipo === "Malattia" && (r.stato === "Comunicata" || r.stato === "Approvata")) {
+      for (const g of eachDay(di, df)) malattia.add(`${r.richiedenteId}|${g}`);
+    } else if (r.tipo === "Permesso" && r.stato === "Approvata") {
+      const k = `${r.richiedenteId}|${di}`;
+      permessoOre.set(k, (permessoOre.get(k) ?? 0) + (r.durataOre ?? 0));
+    } else if (r.tipo === "Straordinario" && r.stato === "Approvata") {
+      const k = `${r.richiedenteId}|${di}`;
+      straordAut.set(k, (straordAut.get(k) ?? 0) + (r.durataOre ?? 0));
+    }
+  }
+
+  const inMonth = (g: string) => g >= monthStartStr && g <= monthEndStr;
+  const out: RendicontoRiga[] = [];
+  for (const d of dips) {
+    const dipId = d.id;
+    let oreLavorate = 0;
+    let giorniNonChiusi = 0;
+    let straordinarioCalcolato = 0;
+    let straordinarioAutorizzato = 0;
+    let permessi = 0;
+    let ferieGiorni = 0;
+    let malattiaGiorni = 0;
+
+    // Ore lavorate per giorno su tutto il range esteso (servono al calcolo
+    // settimanale); nel totale mensile contano solo i giorni del mese.
+    const oreGiorno = new Map<string, number>();
+    for (const g of eachDay(fromStr, toStr)) {
+      const ev = eventiByDipDay.get(`${dipId}|${g}`);
+      if (!ev || ev.length === 0) continue;
+      const ore = oreLavorateGiorno(ev);
+      if (ore == null) {
+        if (inMonth(g)) giorniNonChiusi++;
+        continue;
+      }
+      oreGiorno.set(g, ore);
+      if (inMonth(g)) oreLavorate += ore;
+    }
+
+    // Metriche mensili (calendario) dalle richieste.
+    for (const g of eachDay(monthStartStr, monthEndStr)) {
+      if (ferie.has(`${dipId}|${g}`)) ferieGiorni++;
+      if (malattia.has(`${dipId}|${g}`)) malattiaGiorni++;
+      permessi += permessoOre.get(`${dipId}|${g}`) ?? 0;
+      straordinarioAutorizzato += straordAut.get(`${dipId}|${g}`) ?? 0;
+    }
+
+    // Straordinario calcolato: settimane il cui lunedì cade nel mese.
+    if (d.oreSettimanali != null) {
+      const weeks = new Map<string, string[]>();
+      for (const g of eachDay(fromStr, toStr)) {
+        const lun = lunediDellaSettimana(g);
+        const arr = weeks.get(lun) ?? [];
+        arr.push(g);
+        weeks.set(lun, arr);
+      }
+      for (const [lun, giorni] of weeks) {
+        if (!inMonth(lun)) continue;
+        let lunSab = 0;
+        let dom = 0;
+        let assenze = 0;
+        let permW = 0;
+        for (const g of giorni) {
+          const ore = oreGiorno.get(g) ?? 0;
+          if (isoDow(g) === 7) dom += ore;
+          else lunSab += ore;
+          if (ferie.has(`${dipId}|${g}`) || malattia.has(`${dipId}|${g}`)) assenze++;
+          permW += permessoOre.get(`${dipId}|${g}`) ?? 0;
+        }
+        const prev = orePrevisteSettimana(d.oreSettimanali, assenze, permW);
+        straordinarioCalcolato += straordinarioSettimana(lunSab, dom, prev);
+      }
+    }
+
+    out.push({
+      dipendenteId: dipId,
+      nomeCompleto: d.nomeCompleto || `${d.cognome} ${d.nome}`,
+      sede: d.sede,
+      oreSettimanali: d.oreSettimanali,
+      oreLavorate: round2(oreLavorate),
+      straordinarioCalcolato: round2(straordinarioCalcolato),
+      straordinarioAutorizzato: round2(straordinarioAutorizzato),
+      permessiOre: round2(permessi),
+      ferieGiorni,
+      malattiaGiorni,
+      giorniNonChiusi,
+    });
+  }
+  out.sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto));
+  logSp(
+    "info",
+    "rendiconto",
+    `Rendiconto ${anno}-${String(mese).padStart(2, "0")}: ${out.length} righe`,
+  );
+  return out;
 }
 
 export interface CreateTimbraturaInput {

@@ -41,6 +41,9 @@ export type AppModule = {
   /** Se true, la voce è visibile solo agli utenti con capability autorizza
    *  (approvatore/supervisore — flag `autorizza` in sessione). */
   requiresAutorizza?: boolean;
+  /** Capability alternative: se presenti, la voce è visibile quando il ruolo è
+   *  ammesso OPPURE l'utente possiede almeno una di queste capability. */
+  orCapabilities?: readonly ("operatore" | "autorizza")[];
 };
 
 export const APP_NAME = "DR Portal";
@@ -96,12 +99,13 @@ export const MODULES: readonly AppModule[] = [
   },
   {
     id: "report",
-    title: "Report",
+    title: "Rendiconto",
     url: "/report",
     icon: BarChart3,
-    ready: false,
-    description: "Reportistica mensile e annuale.",
+    ready: true,
+    description: "Rendiconto mensile ore per dipendente.",
     roles: ["responsabile", "amministratore_sistema"],
+    orCapabilities: ["operatore", "autorizza"],
   },
   {
     id: "amministrazione",

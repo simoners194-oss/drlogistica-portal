@@ -9,6 +9,7 @@ import {
   clearSpDiscoveryCache,
   computeAnomalie,
   computeHealth,
+  computeRendiconto,
   createRichiesta,
   createTimbratura,
   createTimbraturaManuale,
@@ -30,6 +31,7 @@ import {
   type CreateTurnoManualeInput,
   type AnomaliaItem,
   type TimbraturaManualeItem,
+  type RendicontoRiga,
   type DecideRichiestaInput,
   type EventoTimbratura,
   type LoginResult,
@@ -215,3 +217,13 @@ export const spGetTimbratureManuali = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<TimbraturaManualeItem[]> =>
     fetchTimbratureManuali(data.giorni),
   );
+
+export const spGetRendiconto = createServerFn({ method: "GET" })
+  .inputValidator((input: { anno: number; mese: number }) => {
+    const anno = Number(input?.anno);
+    const mese = Number(input?.mese);
+    if (!Number.isFinite(anno) || !Number.isFinite(mese) || mese < 1 || mese > 12)
+      throw new Error("anno/mese non validi");
+    return { anno, mese };
+  })
+  .handler(async ({ data }): Promise<RendicontoRiga[]> => computeRendiconto(data.anno, data.mese));
