@@ -17,6 +17,7 @@ import {
   discoverSharePoint,
   fetchDipendenti,
   fetchRichieste,
+  fetchTimbratureManuali,
   fetchTimbratureOggi,
   getLastSyncAt,
   getSpLog,
@@ -28,6 +29,7 @@ import {
   type CreateTimbraturaManualeInput,
   type CreateTurnoManualeInput,
   type AnomaliaItem,
+  type TimbraturaManualeItem,
   type DecideRichiestaInput,
   type EventoTimbratura,
   type LoginResult,
@@ -205,3 +207,11 @@ export const spGetAnomalie = createServerFn({ method: "GET" })
     giorni: input?.giorni && input.giorni > 0 ? Math.floor(input.giorni) : 14,
   }))
   .handler(async ({ data }): Promise<AnomaliaItem[]> => computeAnomalie(data.giorni));
+
+export const spGetTimbratureManuali = createServerFn({ method: "GET" })
+  .inputValidator((input?: { giorni?: number }) => ({
+    giorni: input?.giorni && input.giorni > 0 ? Math.floor(input.giorni) : 30,
+  }))
+  .handler(async ({ data }): Promise<TimbraturaManualeItem[]> =>
+    fetchTimbratureManuali(data.giorni),
+  );

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SupervisioneRouteImport } from './routes/supervisione'
 import { Route as RichiesteRouteImport } from './routes/richieste'
 import { Route as ReportRouteImport } from './routes/report'
 import { Route as PresenzeRouteImport } from './routes/presenze'
@@ -18,6 +19,11 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AmministrazioneRouteImport } from './routes/amministrazione'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SupervisioneRoute = SupervisioneRouteImport.update({
+  id: '/supervisione',
+  path: '/supervisione',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RichiesteRoute = RichiesteRouteImport.update({
   id: '/richieste',
   path: '/richieste',
@@ -68,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/presenze': typeof PresenzeRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
+  '/supervisione': typeof SupervisioneRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByTo {
   '/presenze': typeof PresenzeRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
+  '/supervisione': typeof SupervisioneRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/presenze': typeof PresenzeRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
+  '/supervisione': typeof SupervisioneRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -101,6 +110,7 @@ export interface FileRouteTypes {
     | '/presenze'
     | '/report'
     | '/richieste'
+    | '/supervisione'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
     | '/presenze'
     | '/report'
     | '/richieste'
+    | '/supervisione'
   id:
     | '__root__'
     | '/'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/presenze'
     | '/report'
     | '/richieste'
+    | '/supervisione'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -132,10 +144,18 @@ export interface RootRouteChildren {
   PresenzeRoute: typeof PresenzeRoute
   ReportRoute: typeof ReportRoute
   RichiesteRoute: typeof RichiesteRoute
+  SupervisioneRoute: typeof SupervisioneRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/supervisione': {
+      id: '/supervisione'
+      path: '/supervisione'
+      fullPath: '/supervisione'
+      preLoaderRoute: typeof SupervisioneRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/richieste': {
       id: '/richieste'
       path: '/richieste'
@@ -204,6 +224,7 @@ const rootRouteChildren: RootRouteChildren = {
   PresenzeRoute: PresenzeRoute,
   ReportRoute: ReportRoute,
   RichiesteRoute: RichiesteRoute,
+  SupervisioneRoute: SupervisioneRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

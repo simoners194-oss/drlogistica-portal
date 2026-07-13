@@ -24,10 +24,12 @@ export function AppSidebar() {
   // evitare mismatch di hydration con SSR/prerender.
   const [ruolo, setRuolo] = useState<Ruolo | null>(null);
   const [operatore, setOperatore] = useState(false);
+  const [autorizza, setAutorizza] = useState(false);
   useEffect(() => {
     const s = readSession();
     setRuolo(s?.ruolo ?? null);
     setOperatore(s?.operatore ?? false);
+    setAutorizza(s?.autorizza ?? false);
   }, [pathname]);
 
   // Finché il ruolo non è noto, mostra solo le voci pubbliche a tutti i
@@ -37,6 +39,7 @@ export function AppSidebar() {
     const roleOk = ruolo ? canAccess(m, ruolo) : canAccess(m, "dipendente");
     if (!roleOk) return false;
     if (m.requiresOperatore && !operatore) return false;
+    if (m.requiresAutorizza && !autorizza) return false;
     return true;
   });
 

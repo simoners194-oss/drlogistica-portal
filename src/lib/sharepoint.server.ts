@@ -860,6 +860,45 @@ export async function computeAnomalie(giorni = 14): Promise<AnomaliaItem[]> {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Supervisore (Sprint 3, DR005/Francesco): timbrature manuali per visione.
+// ---------------------------------------------------------------------------
+export interface TimbraturaManualeItem {
+  id: string;
+  dipendenteId: string;
+  nomeCompleto: string;
+  sede: string; // id sede
+  evento: EventoTimbratura;
+  dataOra: string; // ISO
+  note?: string;
+}
+
+export async function fetchTimbratureManuali(giorni = 30): Promise<TimbraturaManualeItem[]> {
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+  from.setDate(from.getDate() - giorni);
+  const [tims, dips] = await Promise.all([
+    fetchTimbratureDaISO(from.toISOString()),
+    fetchDipendenti(),
+  ]);
+  const byId = new Map(dips.map((d) => [d.id, d]));
+  return tims
+    .filter((t) => (t.origine ?? "").toLowerCase() === "manuale")
+    .map((t) => {
+      const d = byId.get(t.dipendenteId);
+      return {
+        id: t.id,
+        dipendenteId: t.dipendenteId,
+        nomeCompleto: d ? d.nomeCompleto || `${d.nome} ${d.cognome}` : `#${t.dipendenteId}`,
+        sede: d?.sede ?? "",
+        evento: t.evento,
+        dataOra: t.dataOra,
+        note: t.note,
+      };
+    })
+    .sort((a, b) => b.dataOra.localeCompare(a.dataOra));
+}
+
 export interface CreateTimbraturaInput {
   dipendenteId: string;
   evento: EventoTimbratura;

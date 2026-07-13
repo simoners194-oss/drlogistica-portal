@@ -15,6 +15,7 @@ import {
   Settings,
   Sparkles,
   ClipboardList,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import type { Ruolo } from "./session";
@@ -37,6 +38,9 @@ export type AppModule = {
   /** Se true, la voce è visibile solo agli utenti con capability operatore
    *  (flag `operatore` in sessione), a prescindere dal ruolo. */
   requiresOperatore?: boolean;
+  /** Se true, la voce è visibile solo agli utenti con capability autorizza
+   *  (approvatore/supervisore — flag `autorizza` in sessione). */
+  requiresAutorizza?: boolean;
 };
 
 export const APP_NAME = "DR Portal";
@@ -79,6 +83,16 @@ export const MODULES: readonly AppModule[] = [
     description: "Inserimento e correzione timbrature manuali (operatore).",
     roles: ["dipendente", "responsabile", "amministratore_sistema"],
     requiresOperatore: true,
+  },
+  {
+    id: "supervisione",
+    title: "Supervisione",
+    url: "/supervisione",
+    icon: ShieldCheck,
+    ready: true,
+    description: "Richieste approvate e timbrature manuali (supervisore).",
+    roles: ["dipendente", "responsabile", "amministratore_sistema"],
+    requiresAutorizza: true,
   },
   {
     id: "report",
