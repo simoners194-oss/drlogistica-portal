@@ -1794,23 +1794,30 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
     }
   });
 
+  let dipList: SpDipendente[] = [];
   let firstDip: SpDipendente | null = null;
   await step("read.dipendenti", "Lettura dipendenti", async () => {
     const list = await fetchDipendenti();
     if (list.length === 0) throw new Error("Nessun dipendente restituito");
+    dipList = list;
     firstDip = list[0];
     return `${list.length} record`;
   });
+  const timbratiOggi = new Set<string>();
   await step("read.timbrature", "Lettura timbrature oggi", async () => {
     const list = await fetchTimbratureOggi();
+    for (const t of list) timbratiOggi.add(t.dipendenteId);
     return `${list.length} record`;
   });
 
   let testId: string | null = null;
   await step("write.timbratura", "Scrittura timbratura di test", async () => {
-    if (!firstDip) throw new Error("Nessun dipendente per il test");
+    // Sceglie un dipendente SENZA timbrature oggi (stato null → entrata
+    // ammessa), così la prova di scrittura non urta la macchina a stati.
+    const testDip = dipList.find((d) => !timbratiOggi.has(d.id)) ?? firstDip;
+    if (!testDip) throw new Error("Nessun dipendente per il test");
     const t = await createTimbratura({
-      dipendenteId: firstDip.id,
+      dipendenteId: testDip.id,
       evento: "entrata",
       origine: "SelfTest",
       esito: "Test",
