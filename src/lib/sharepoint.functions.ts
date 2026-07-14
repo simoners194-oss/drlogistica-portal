@@ -33,6 +33,8 @@ import {
   loginByCodicePin,
   markSync,
   runSelfTest,
+  uploadGiustificativo,
+  type UploadGiustificativoResult,
   type CreateRichiestaInput,
   type CreateTimbraturaInput,
   type CreateTimbraturaManualeInput,
@@ -231,6 +233,22 @@ export const spCreateRichiesta = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<SpRichiesta> => {
     const me = await currentUser();
     return createRichiesta({ ...data, richiedenteId: me.id });
+  });
+
+// Upload del giustificativo di spesa (rimborsi). Richiede solo una sessione
+// valida: ogni dipendente può caricare il proprio documento. Ritorna il webUrl
+// da salvare nel campo "Giustificativo" della richiesta.
+export const spUploadGiustificativo = createServerFn({ method: "POST" })
+  .inputValidator((input: { filename: string; contentBase64: string }) => {
+    if (!input?.contentBase64) throw new Error("Contenuto file mancante");
+    return {
+      filename: String(input.filename ?? "documento"),
+      contentBase64: String(input.contentBase64),
+    };
+  })
+  .handler(async ({ data }): Promise<UploadGiustificativoResult> => {
+    await currentUser();
+    return uploadGiustificativo(data.filename, data.contentBase64);
   });
 
 export const spDecideRichiesta = createServerFn({ method: "POST" })

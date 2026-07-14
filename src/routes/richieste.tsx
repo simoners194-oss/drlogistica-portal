@@ -20,6 +20,7 @@ import {
   spCreateRichiesta,
   spCancelRichiesta,
   spDecideRichiesta,
+  spUploadGiustificativo,
 } from "@/lib/sharepoint.functions";
 import type { SpRichiesta } from "@/lib/sharepoint.server";
 import {
@@ -74,6 +75,17 @@ function fmtData(iso?: string): string {
   return y && m && g ? `${g}/${m}/${y}` : iso;
 }
 
+// Legge un File come data URL base64 ("data:...;base64,XXXX"). Il server ne
+// estrae la parte base64 e la scrive nella libreria documenti.
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("Lettura file fallita"));
+    reader.readAsDataURL(file);
+  });
+}
+
 function periodoLabel(r: SpRichiesta): string {
   const range =
     r.dataFine && r.dataFine.slice(0, 10) !== r.dataInizio.slice(0, 10)
@@ -111,6 +123,7 @@ function RichiestePage() {
   const [importo, setImporto] = useState("");
   const [tipoAcquisto, setTipoAcquisto] = useState<TipoAcquisto | "">("");
   const [giustificativo, setGiustificativo] = useState("");
+  const [giustFile, setGiustFile] = useState<File | null>(null);
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -164,6 +177,7 @@ function RichiestePage() {
     setImporto("");
     setTipoAcquisto("");
     setGiustificativo("");
+    setGiustFile(null);
     setFormErrors([]);
   }
 
@@ -204,6 +218,18 @@ function RichiestePage() {
     setFormErrors([]);
     setSubmitting(true);
     try {
+      // Rimborso con file allegato: prima carico il giustificativo nella
+      // libreria documenti e uso il webUrl restituito come "Giustificativo".
+      if (isRimb && giustFile) {
+        if (giustFile.size > 8 * 1024 * 1024) {
+          throw new Error("File troppo grande: il limite è 8 MB.");
+        }
+        const contentBase64 = await fileToDataUrl(giustFile);
+        const up = await spUploadGiustificativo({
+          data: { filename: giustFile.name, contentBase64 },
+        });
+        input.giustificativo = up.webUrl || input.giustificativo;
+      }
       await spCreateRichiesta({ data: { richiedenteId: session.id, ...input, submit: true } });
       toast.success(senzaApprovazione ? "Comunicazione inviata" : "Richiesta inviata", {
         description: `${tipo} · ${fmtData(input.dataInizio)}`,
@@ -507,15 +533,25 @@ function RichiestePage() {
                 </div>
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Giustificativo{" "}
-                    <span className="normal-case text-muted-foreground/70">(link, opzionale)</span>
+                    Documento giustificativo{" "}
+                    <span className="normal-case text-muted-foreground/70">(file, opzionale)</span>
                   </label>
                   <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className={`${inputCls} mt-1 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1 file:text-xs file:font-medium file:text-foreground`}
+                    onChange={(e) => setGiustFile(e.target.files?.[0] ?? null)}
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Foto o PDF dello scontrino/fattura · max 8 MB. In alternativa incolla un link
+                    qui sotto.
+                  </p>
+                  <input
                     type="text"
-                    className={`${inputCls} mt-1`}
+                    className={`${inputCls} mt-2`}
                     value={giustificativo}
                     onChange={(e) => setGiustificativo(e.target.value)}
-                    placeholder="Link al documento (l'upload del file arriva a breve)"
+                    placeholder="Oppure link al documento (opzionale)"
                   />
                 </div>
               </div>

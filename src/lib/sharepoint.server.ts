@@ -1649,6 +1649,57 @@ export async function deleteRichiesta(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Upload giustificativi di spesa (libreria documenti del sito)
+// ---------------------------------------------------------------------------
+// Microsoft Graph non espone gli allegati delle liste tramite il gateway, per
+// cui i giustificativi vengono caricati nel drive del sito (verificato dal
+// self-test). Il file finisce in /Rimborsi/<anno>/<timestamp>-<nome> e viene
+// restituito il webUrl da salvare nel campo "Giustificativo" della richiesta.
+function base64ToBytes(b64: string): Uint8Array {
+  // Accetta sia base64 puro sia data URL ("data:...;base64,XXXX").
+  const clean = b64.includes(",") ? b64.slice(b64.indexOf(",") + 1) : b64;
+  const bin = atob(clean);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+export interface UploadGiustificativoResult {
+  webUrl: string;
+  fileName: string;
+}
+
+export async function uploadGiustificativo(
+  filename: string,
+  contentBase64: string,
+): Promise<UploadGiustificativoResult> {
+  const cfg = await discoverSharePoint();
+  const bytes = base64ToBytes(contentBase64);
+  if (bytes.length === 0) throw new Error("Il file caricato è vuoto.");
+  if (bytes.length > 8 * 1024 * 1024) {
+    throw new Error("File troppo grande: il limite è 8 MB.");
+  }
+  // Nome file sicuro: solo caratteri innocui, coda limitata a 80 char.
+  const safe = (filename || "documento").replace(/[^A-Za-z0-9._-]/g, "_").slice(-80) || "documento";
+  const anno = new Date().getFullYear();
+  const path = `Rimborsi/${anno}/${Date.now()}-${safe}`;
+  const created = await withDiscoveryRetry(() =>
+    gatewayJson<{ webUrl?: string; name?: string }>(
+      `/sites/${cfg.siteId}/drive/root:/${path}:/content`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/octet-stream" },
+        // runtime (Workers/Node) accetta Uint8Array come body; il cast evita
+        // l'incompatibilità del tipo BodyInit su lib DOM recenti.
+        body: bytes as unknown as BodyInit,
+      },
+    ),
+  );
+  logSp("info", "upload.giustificativo", `Caricato ${path} (${bytes.length} byte)`);
+  return { webUrl: created.webUrl ?? "", fileName: created.name ?? safe };
+}
+
+// ---------------------------------------------------------------------------
 // Health / diagnostics
 // ---------------------------------------------------------------------------
 export interface SpHealth {
@@ -1861,28 +1912,6 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
   await step("rollback.richiesta", "Rollback richiesta di test", async () => {
     if (!testRichId) throw new Error("Nessuna richiesta da eliminare");
     await deleteRichiesta(testRichId);
-  });
-
-  // Sonda B2: verifica se il gateway permette l'upload di un file nella
-  // libreria documenti del sito (drive). Serve per i giustificativi di spesa.
-  let probeId: string | null = null;
-  await step("upload.probe", "Upload documento su libreria (prova)", async () => {
-    if (!disc) throw new Error("Discovery non completata");
-    const p = `DR_Portal_Test/probe-${Date.now()}.txt`;
-    const created = await gatewayJson<{ id?: string; webUrl?: string }>(
-      `/sites/${disc.siteId}/drive/root:/${p}:/content`,
-      { method: "PUT", headers: { "Content-Type": "text/plain" }, body: "DR Portal upload probe" },
-    );
-    probeId = created.id ? String(created.id) : null;
-    return created.webUrl ?? "caricato";
-  });
-  await step("upload.rollback", "Rollback documento di prova", async () => {
-    if (!disc) throw new Error("Discovery non completata");
-    if (!probeId) throw new Error("Nessun documento da eliminare");
-    const res = await gatewayFetch(`/sites/${disc.siteId}/drive/items/${probeId}`, {
-      method: "DELETE",
-    });
-    if (!res.ok && res.status !== 204) throw new Error(`DELETE drive item → ${res.status}`);
   });
 
   await step("latency", "Tempo risposta Graph", async () => {
