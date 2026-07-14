@@ -6,7 +6,7 @@
 // Le operazioni sensibili (creazione timbrature, letture privilegiate) sono
 // comunque validate lato server tramite le server function SharePoint.
 
-import type { SedeId } from "./mock-data";
+import { sedeTimbra, type SedeId } from "./mock-data";
 
 // I tre ruoli ufficiali di DR Portal.
 // - `dipendente`             — utente operativo, vede solo le proprie presenze
@@ -105,8 +105,15 @@ export function clearSession() {
 
 // Landing di default in base al ruolo. I dipendenti aprono direttamente le
 // proprie presenze; responsabili e amministratori atterrano sulla dashboard.
-export function defaultLandingFor(ruolo: Ruolo): "/presenze" | "/dashboard" {
-  return ruolo === "dipendente" ? "/presenze" : "/dashboard";
+export function defaultLandingFor(
+  ruolo: Ruolo,
+  sede?: SessionSede,
+): "/presenze" | "/dashboard" | "/richieste" {
+  if (ruolo === "dipendente") {
+    // Dipendenti di sedi che non timbrano atterrano sulle Richieste.
+    return sede && !sedeTimbra(sede) ? "/richieste" : "/presenze";
+  }
+  return "/dashboard";
 }
 
 export function canAccess(module: { roles?: readonly Ruolo[] }, ruolo: Ruolo): boolean {

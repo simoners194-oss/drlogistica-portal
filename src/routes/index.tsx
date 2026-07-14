@@ -64,7 +64,7 @@ function Index() {
         `Benvenuto ${d.nome}`,
         who?.user ? { description: "Sessione server attiva ✓" } : undefined,
       );
-      navigate({ to: defaultLandingFor(ruolo) });
+      navigate({ to: defaultLandingFor(ruolo, d.sede) });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Codice o PIN non validi.");
     } finally {

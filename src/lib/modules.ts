@@ -44,6 +44,9 @@ export type AppModule = {
   /** Capability alternative: se presenti, la voce è visibile quando il ruolo è
    *  ammesso OPPURE l'utente possiede almeno una di queste capability. */
   orCapabilities?: readonly ("operatore" | "autorizza")[];
+  /** Se true, la voce è visibile solo agli utenti la cui sede timbra
+   *  (`sedeTimbra`). Le sedi che non timbrano non vedono il modulo. */
+  richiedeTimbratura?: boolean;
 };
 
 export const APP_NAME = "DR Portal";
@@ -67,6 +70,7 @@ export const MODULES: readonly AppModule[] = [
     ready: true,
     description: "Timbrature, pause e stato personale.",
     roles: ["dipendente", "responsabile", "amministratore_sistema"],
+    richiedeTimbratura: true,
   },
   {
     id: "richieste",

@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/sidebar";
 import { Logo } from "./Logo";
 import { MODULES } from "@/lib/modules";
-import { canAccess, readSession, type Ruolo } from "@/lib/session";
+import { canAccess, readSession, type Ruolo, type SessionSede } from "@/lib/session";
+import { sedeTimbra } from "@/lib/mock-data";
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -25,11 +26,13 @@ export function AppSidebar() {
   const [ruolo, setRuolo] = useState<Ruolo | null>(null);
   const [operatore, setOperatore] = useState(false);
   const [autorizza, setAutorizza] = useState(false);
+  const [sede, setSede] = useState<SessionSede | null>(null);
   useEffect(() => {
     const s = readSession();
     setRuolo(s?.ruolo ?? null);
     setOperatore(s?.operatore ?? false);
     setAutorizza(s?.autorizza ?? false);
+    setSede(s?.sede ?? null);
   }, [pathname]);
 
   // Finché il ruolo non è noto, mostra solo le voci pubbliche a tutti i
@@ -39,6 +42,8 @@ export function AppSidebar() {
     // Requisiti di capability obbligatori (AND col ruolo).
     if (m.requiresOperatore && !operatore) return false;
     if (m.requiresAutorizza && !autorizza) return false;
+    // Sedi che non timbrano: niente moduli che richiedono la timbratura.
+    if (m.richiedeTimbratura && sede && !sedeTimbra(sede)) return false;
     const roleOk = ruolo ? canAccess(m, ruolo) : canAccess(m, "dipendente");
     // Capability alternative: visibile se ruolo ammesso OPPURE capability.
     if (m.orCapabilities && m.orCapabilities.length) {
