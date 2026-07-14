@@ -39,6 +39,12 @@ export function sedeTimbra(sede: SedeId | "tutte"): boolean {
   return SEDI.find((s) => s.id === sede)?.timbratura ?? true;
 }
 
+// Almeno una sede timbra? (usato per grigiare le viste presenze quando nessuna
+// sede è timbrante — es. oggi Fiano Romano e San Giuliano non timbrano).
+export function anySedeTimbra(): boolean {
+  return SEDI.some((s) => s.timbratura);
+}
+
 const oggi = (h: number, m: number) => {
   const d = new Date();
   d.setHours(h, m, 0, 0);

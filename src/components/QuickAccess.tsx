@@ -7,6 +7,8 @@ export interface QuickAccessItem {
   Icon: LucideIcon;
   ready?: boolean;
   description?: string;
+  /** Nota mostrata quando la voce è disabilitata (al posto di "In arrivo"). */
+  disabledNote?: string;
 }
 
 // Sezione "Accesso rapido" mostrata nelle landing per ciascun ruolo.
@@ -44,8 +46,8 @@ export function QuickAccess({
                   {it.label}
                 </span>
                 {!it.ready && (
-                  <span className="mt-0.5 inline-block text-[9px] font-medium uppercase tracking-wider text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded-full">
-                    In arrivo
+                  <span className="mt-0.5 inline-block text-[9px] font-medium uppercase tracking-wider text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                    {it.disabledNote ?? "In arrivo"}
                   </span>
                 )}
                 {it.ready && it.description && (
@@ -65,7 +67,7 @@ export function QuickAccess({
                 type="button"
                 disabled
                 aria-disabled="true"
-                title="In arrivo — disponibile in una prossima versione"
+                title={it.disabledNote ?? "In arrivo — disponibile in una prossima versione"}
                 className={`${base} opacity-60 cursor-not-allowed`}
               >
                 {content}

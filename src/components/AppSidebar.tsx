@@ -15,7 +15,7 @@ import {
 import { Logo } from "./Logo";
 import { MODULES } from "@/lib/modules";
 import { canAccess, readSession, type Ruolo, type SessionSede } from "@/lib/session";
-import { sedeTimbra } from "@/lib/mock-data";
+import { sedeTimbra, anySedeTimbra } from "@/lib/mock-data";
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -38,12 +38,16 @@ export function AppSidebar() {
   // Finché il ruolo non è noto, mostra solo le voci pubbliche a tutti i
   // ruoli (Presenze, Richieste) per evitare "flash" del menu completo. Le voci
   // con `requiresOperatore` compaiono solo per gli operatori (DR000).
+  // Presenze attive per l'utente? Sede "tutte" (admin/resp.) → basta che UNA
+  // sede timbri; sede reale → dipende dalla sede. I moduli che richiedono la
+  // timbratura restano visibili ma GRIGI quando non attiva.
+  const presenzeAttive =
+    sede == null ? true : sede === "tutte" ? anySedeTimbra() : sedeTimbra(sede);
+
   const visibleModules = MODULES.filter((m) => {
     // Requisiti di capability obbligatori (AND col ruolo).
     if (m.requiresOperatore && !operatore) return false;
     if (m.requiresAutorizza && !autorizza) return false;
-    // Sedi che non timbrano: niente moduli che richiedono la timbratura.
-    if (m.richiedeTimbratura && sede && !sedeTimbra(sede)) return false;
     const roleOk = ruolo ? canAccess(m, ruolo) : canAccess(m, "dipendente");
     // Capability alternative: visibile se ruolo ammesso OPPURE capability.
     if (m.orCapabilities && m.orCapabilities.length) {
@@ -67,12 +71,18 @@ export function AppSidebar() {
             <SidebarMenu>
               {visibleModules.map((item) => {
                 const active = pathname === item.url;
-                // Voci "In arrivo": non cliccabili, aspetto attenuato.
-                if (!item.ready) {
+                // Voci disabilitate: "In arrivo" (non pronte) oppure timbratura
+                // non attiva per la sede. Non cliccabili, aspetto attenuato.
+                const disabledTimbratura = item.richiedeTimbratura && !presenzeAttive;
+                if (!item.ready || disabledTimbratura) {
+                  const badge = !item.ready ? "In arrivo" : "Non attivo";
+                  const tip = !item.ready
+                    ? `${item.title} — In arrivo`
+                    : `${item.title} — timbratura non attiva per la tua sede`;
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
-                        tooltip={`${item.title} — In arrivo`}
+                        tooltip={tip}
                         aria-disabled="true"
                         className="opacity-60 cursor-not-allowed hover:bg-transparent"
                         onClick={(e) => e.preventDefault()}
@@ -81,8 +91,8 @@ export function AppSidebar() {
                         {!collapsed && (
                           <span className="flex-1 flex items-center justify-between">
                             {item.title}
-                            <span className="text-[9px] font-medium uppercase tracking-wider text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded-full">
-                              In arrivo
+                            <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                              {badge}
                             </span>
                           </span>
                         )}
