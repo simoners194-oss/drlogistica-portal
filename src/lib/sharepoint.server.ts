@@ -1856,6 +1856,28 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
     await deleteRichiesta(testRichId);
   });
 
+  // Sonda B2: verifica se il gateway permette l'upload di un file nella
+  // libreria documenti del sito (drive). Serve per i giustificativi di spesa.
+  let probeId: string | null = null;
+  await step("upload.probe", "Upload documento su libreria (prova)", async () => {
+    if (!disc) throw new Error("Discovery non completata");
+    const p = `DR_Portal_Test/probe-${Date.now()}.txt`;
+    const created = await gatewayJson<{ id?: string; webUrl?: string }>(
+      `/sites/${disc.siteId}/drive/root:/${p}:/content`,
+      { method: "PUT", headers: { "Content-Type": "text/plain" }, body: "DR Portal upload probe" },
+    );
+    probeId = created.id ? String(created.id) : null;
+    return created.webUrl ?? "caricato";
+  });
+  await step("upload.rollback", "Rollback documento di prova", async () => {
+    if (!disc) throw new Error("Discovery non completata");
+    if (!probeId) throw new Error("Nessun documento da eliminare");
+    const res = await gatewayFetch(`/sites/${disc.siteId}/drive/items/${probeId}`, {
+      method: "DELETE",
+    });
+    if (!res.ok && res.status !== 204) throw new Error(`DELETE drive item → ${res.status}`);
+  });
+
   await step("latency", "Tempo risposta Graph", async () => {
     return `${lastGraphResponseMs} ms`;
   });
