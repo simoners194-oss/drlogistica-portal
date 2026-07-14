@@ -4,6 +4,14 @@
 // (bloccato dal bundle client dal suffisso .server.ts).
 
 import { createServerFn } from "@tanstack/react-start";
+import { normalizeRuolo } from "./session";
+import {
+  setSessionCookie,
+  readSessionUser,
+  clearSessionCookie,
+  sessionSecretConfigured,
+  type ServerSessionUser,
+} from "./auth.server";
 import {
   cancelRichiesta,
   clearSpDiscoveryCache,
@@ -135,7 +143,43 @@ export const spLogin = createServerFn({ method: "POST" })
     }
     return { codice: input.codice, pin: input.pin };
   })
-  .handler(async ({ data }): Promise<LoginResult> => loginByCodicePin(data.codice, data.pin));
+  .handler(async ({ data }): Promise<LoginResult> => {
+    const res = await loginByCodicePin(data.codice, data.pin);
+    if (res.ok && res.dipendente) {
+      const d = res.dipendente;
+      // S1: emette la sessione server firmata (no-op se manca SESSION_SECRET).
+      await setSessionCookie({
+        id: d.id,
+        nome: d.nome,
+        cognome: d.cognome,
+        sede: d.sede,
+        ruolo: normalizeRuolo(d.ruolo),
+        autorizza: d.autorizza,
+        operatore: d.operatore,
+      });
+    }
+    return res;
+  });
+
+// Identità dalla SESSIONE SERVER (cookie firmato). `sessionePronta` indica se
+// il segreto di firma è configurato. Serve alla verifica della S1 e, in
+// seguito, all'enforcement lato server.
+export interface WhoAmI {
+  user: ServerSessionUser | null;
+  sessionePronta: boolean;
+}
+
+export const spWhoAmI = createServerFn({ method: "GET" }).handler(async (): Promise<WhoAmI> => ({
+  user: await readSessionUser(),
+  sessionePronta: sessionSecretConfigured(),
+}));
+
+export const spLogout = createServerFn({ method: "POST" }).handler(
+  async (): Promise<{ ok: true }> => {
+    clearSessionCookie();
+    return { ok: true };
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Richieste (Sprint 2)

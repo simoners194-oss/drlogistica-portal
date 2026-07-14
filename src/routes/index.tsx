@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { spLogin } from "@/lib/sharepoint.functions";
+import { spLogin, spWhoAmI } from "@/lib/sharepoint.functions";
 import { APP_NAME, APP_TAGLINE } from "@/lib/modules";
 import { defaultLandingFor, normalizeRuolo, writeSession } from "@/lib/session";
 import { AppFooter } from "@/components/AppFooter";
@@ -58,7 +58,12 @@ function Index() {
         autorizza: Boolean(d.autorizza),
         operatore: Boolean(d.operatore),
       });
-      toast.success(`Benvenuto ${d.nome}`);
+      // S1: conferma che la sessione server firmata è attiva (cookie httpOnly).
+      const who = await spWhoAmI().catch(() => null);
+      toast.success(
+        `Benvenuto ${d.nome}`,
+        who?.user ? { description: "Sessione server attiva ✓" } : undefined,
+      );
       navigate({ to: defaultLandingFor(ruolo) });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Codice o PIN non validi.");
