@@ -15,14 +15,10 @@ export type TipoRichiesta =
   | "Straordinario"
   | "Smart Working"
   | "Malattia"
-  | "Reperibilità";
+  | "Reperibilità"
+  | "Rimborso spese";
 export type StatoRichiesta =
-  | "Bozza"
-  | "Inviata"
-  | "Comunicata"
-  | "Approvata"
-  | "Respinta"
-  | "Annullata";
+  "Bozza" | "Inviata" | "Comunicata" | "Approvata" | "Respinta" | "Annullata";
 export type ModalitaStraordinario = "Preventivo" | "Consuntivo";
 export type DecisioneRichiesta = "Approvata" | "Respinta";
 
@@ -33,6 +29,7 @@ export const TIPI_RICHIESTA: readonly TipoRichiesta[] = [
   "Smart Working",
   "Malattia",
   "Reperibilità",
+  "Rimborso spese",
 ];
 export const STATI_RICHIESTA: readonly StatoRichiesta[] = [
   "Bozza",
@@ -43,6 +40,17 @@ export const STATI_RICHIESTA: readonly StatoRichiesta[] = [
   "Annullata",
 ];
 export const MODALITA: readonly ModalitaStraordinario[] = ["Preventivo", "Consuntivo"];
+
+// Tipologia di acquisto per i rimborsi spese.
+export type TipoAcquisto = "Pasto" | "Viaggio" | "Alloggio" | "Altro";
+export const TIPI_ACQUISTO: readonly TipoAcquisto[] = ["Pasto", "Viaggio", "Alloggio", "Altro"];
+export function parseTipoAcquisto(v: unknown): TipoAcquisto | null {
+  const s = String(v ?? "").trim();
+  return (TIPI_ACQUISTO as readonly string[]).includes(s) ? (s as TipoAcquisto) : null;
+}
+export function isRimborso(tipo: TipoRichiesta): boolean {
+  return tipo === "Rimborso spese";
+}
 
 // Classificazione dei tipi -----------------------------------------------------
 // Tipi misurati in GIORNI (intervallo da–a); gli altri in ORE (fascia oraria).
@@ -78,6 +86,10 @@ export interface RichiestaInput {
   motivazione?: string;
   modalita?: ModalitaStraordinario; // solo Straordinario
   protocolloInps?: string; // solo Malattia (facoltativo)
+  // Rimborso spese (dataInizio = data acquisto):
+  importo?: number;
+  tipoAcquisto?: TipoAcquisto;
+  giustificativo?: string; // link/URL del documento (upload in fase B2)
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +195,19 @@ export function validateRichiesta(input: RichiestaInput, now: Date = new Date())
     return { ok: false, errors: ["Tipo di richiesta non valido."] };
   }
 
+  // Rimborso spese: data acquisto (=dataInizio) + importo + tipologia; niente
+  // intervallo/ore/modalità.
+  if (isRimborso(tipo)) {
+    if (!isValidDate(input.dataInizio)) errors.push("Data di acquisto non valida.");
+    if (input.importo == null || !(input.importo > 0))
+      errors.push("Importo non valido (maggiore di 0).");
+    if (!parseTipoAcquisto(input.tipoAcquisto))
+      errors.push("Tipologia di acquisto obbligatoria (Pasto/Viaggio/Alloggio/Altro).");
+    if (input.oraInizio || input.oraFine) errors.push("Il rimborso non prevede orari.");
+    if (input.modalita) errors.push("Il rimborso non prevede una modalità.");
+    return { ok: errors.length === 0, errors };
+  }
+
   if (!isValidDate(input.dataInizio)) errors.push("Data di inizio non valida.");
   if (!isValidDate(input.dataFine)) errors.push("Data di fine non valida.");
   if (isValidDate(input.dataInizio) && isValidDate(input.dataFine)) {
@@ -216,7 +241,10 @@ export function validateRichiesta(input: RichiestaInput, now: Date = new Date())
     }
   }
 
-  if (TIPI_MOTIVAZIONE_OBBLIGATORIA.includes(tipo) && (!input.motivazione || !input.motivazione.trim()))
+  if (
+    TIPI_MOTIVAZIONE_OBBLIGATORIA.includes(tipo) &&
+    (!input.motivazione || !input.motivazione.trim())
+  )
     errors.push("La motivazione è obbligatoria per questo tipo di richiesta.");
 
   if (tipo === "Straordinario") {

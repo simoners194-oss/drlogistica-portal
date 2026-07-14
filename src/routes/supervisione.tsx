@@ -2,7 +2,15 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
-import { ShieldCheck, Lock, CheckCircle2, ClipboardList, CalendarDays, Clock } from "lucide-react";
+import {
+  ShieldCheck,
+  Lock,
+  CheckCircle2,
+  ClipboardList,
+  CalendarDays,
+  Clock,
+  Receipt,
+} from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
   spGetRichieste,
@@ -48,7 +56,7 @@ function sedeNome(id: string): string {
 
 function SupervisionePage() {
   const [session, setSession] = useState<SessionUser | null>(null);
-  const [tab, setTab] = useState<"approvate" | "manuali">("approvate");
+  const [tab, setTab] = useState<"approvate" | "rimborsi" | "manuali">("approvate");
 
   const [approvate, setApprovate] = useState<SpRichiesta[] | null>(null);
   const [dipendenti, setDipendenti] = useState<SpDipendente[]>([]);
@@ -106,6 +114,12 @@ function SupervisionePage() {
     });
   }, [approvate, sedeF, dipF, dal, al]);
 
+  const rimborsi = useMemo(() => filtrate.filter((r) => r.tipo === "Rimborso spese"), [filtrate]);
+  const totaleImporto = useMemo(
+    () => rimborsi.reduce((s, r) => s + (r.importo ?? 0), 0),
+    [rimborsi],
+  );
+
   if (session && !session.autorizza) {
     return (
       <AppShell title="Supervisione">
@@ -140,6 +154,13 @@ function SupervisionePage() {
           className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${tab === "manuali" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
           <ClipboardList className="h-4 w-4" /> Timbrature manuali
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("rimborsi")}
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${tab === "rimborsi" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <Receipt className="h-4 w-4" /> Rimborsi
         </button>
       </div>
 
@@ -257,6 +278,134 @@ function SupervisionePage() {
               <div className="mt-3 text-[12px] text-muted-foreground">
                 {filtrate.length} richiest{filtrate.length === 1 ? "a" : "e"}.
               </div>
+            </div>
+          )}
+        </div>
+      ) : tab === "rimborsi" ? (
+        <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
+            <Receipt className="h-4 w-4 text-primary" /> Rimborsi spese approvati
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-4 mb-4">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Sede</label>
+              <select
+                className={`${inputCls} mt-1`}
+                value={sedeF}
+                onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
+              >
+                <option value="tutte">Tutte</option>
+                {SEDI.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Dipendente
+              </label>
+              <select
+                className={`${inputCls} mt-1`}
+                value={dipF}
+                onChange={(e) => setDipF(e.target.value)}
+              >
+                <option value="">Tutti</option>
+                {[...dipendenti]
+                  .sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`))
+                  .map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.cognome} {d.nome}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Dal</label>
+              <input
+                type="date"
+                className={`${inputCls} mt-1`}
+                value={dal}
+                onChange={(e) => setDal(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Al</label>
+              <input
+                type="date"
+                className={`${inputCls} mt-1`}
+                value={al}
+                onChange={(e) => setAl(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {approvate === null ? (
+            <div className="text-sm text-muted-foreground">Caricamento…</div>
+          ) : rimborsi.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              Nessun rimborso approvato con questi filtri.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                    <th className="py-2 pr-3">Dipendente</th>
+                    <th className="py-2 pr-3">Sede</th>
+                    <th className="py-2 pr-3">Data</th>
+                    <th className="py-2 pr-3">Tipologia</th>
+                    <th className="py-2 pr-3 text-right">Importo</th>
+                    <th className="py-2 pr-3">Doc.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rimborsi.map((r) => (
+                    <tr key={r.id} className="border-b border-border/60">
+                      <td className="py-2 pr-3 text-foreground">
+                        {nomeById.get(r.richiedenteId) ||
+                          r.codiceRichiedente ||
+                          `#${r.richiedenteId}`}
+                      </td>
+                      <td className="py-2 pr-3 text-muted-foreground">
+                        {r.sedeRichiedente || "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">{fmtData(r.dataInizio)}</td>
+                      <td className="py-2 pr-3">{r.tipoAcquisto || "—"}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">
+                        € {(r.importo ?? 0).toFixed(2)}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {r.giustificativo ? (
+                          <a
+                            href={r.giustificativo}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary underline"
+                          >
+                            apri
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-border font-semibold">
+                    <td className="py-2 pr-3" colSpan={4}>
+                      Totale ({rimborsi.length})
+                    </td>
+                    <td className="py-2 pr-3 text-right tabular-nums">
+                      € {totaleImporto.toFixed(2)}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           )}
         </div>

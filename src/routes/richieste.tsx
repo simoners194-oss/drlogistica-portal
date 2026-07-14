@@ -25,13 +25,16 @@ import type { SpRichiesta } from "@/lib/sharepoint.server";
 import {
   TIPI_RICHIESTA,
   MODALITA,
+  TIPI_ACQUISTO,
   misuraInGiorni,
   richiedeApprovazione,
+  isRimborso,
   validateRichiesta,
   canCancel,
   parseStato,
   type TipoRichiesta,
   type ModalitaStraordinario,
+  type TipoAcquisto,
   type DecisioneRichiesta,
   type RichiestaInput,
 } from "@/lib/richieste-logic";
@@ -105,9 +108,13 @@ function RichiestePage() {
   const [motivazione, setMotivazione] = useState("");
   const [modalita, setModalita] = useState<ModalitaStraordinario | "">("");
   const [protocolloInps, setProtocolloInps] = useState("");
+  const [importo, setImporto] = useState("");
+  const [tipoAcquisto, setTipoAcquisto] = useState<TipoAcquisto | "">("");
+  const [giustificativo, setGiustificativo] = useState("");
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
+  const isRimb = isRimborso(tipo);
   const perGiorni = misuraInGiorni(tipo);
   const motivObbligatoria = tipo === "Permesso" || tipo === "Straordinario";
   const senzaApprovazione = !richiedeApprovazione(tipo);
@@ -154,10 +161,24 @@ function RichiestePage() {
     setMotivazione("");
     setModalita("");
     setProtocolloInps("");
+    setImporto("");
+    setTipoAcquisto("");
+    setGiustificativo("");
     setFormErrors([]);
   }
 
   function buildInput(): RichiestaInput {
+    if (isRimb) {
+      return {
+        tipo,
+        dataInizio, // data acquisto
+        dataFine: dataInizio,
+        motivazione: motivazione.trim() || undefined,
+        importo: importo ? Number(importo.replace(",", ".")) : undefined,
+        tipoAcquisto: tipoAcquisto || undefined,
+        giustificativo: giustificativo.trim() || undefined,
+      };
+    }
     return {
       tipo,
       dataInizio,
@@ -437,8 +458,68 @@ function RichiestePage() {
               </div>
             )}
 
-            {/* Date */}
-            {perGiorni ? (
+            {/* Campi per tipo */}
+            {isRimb ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Data acquisto
+                  </label>
+                  <input
+                    type="date"
+                    className={`${inputCls} mt-1`}
+                    value={dataInizio}
+                    onChange={(e) => setDataInizio(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Importo (€)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className={`${inputCls} mt-1`}
+                      value={importo}
+                      onChange={(e) => setImporto(e.target.value)}
+                      placeholder="0,00"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Tipologia
+                    </label>
+                    <select
+                      className={`${inputCls} mt-1`}
+                      value={tipoAcquisto}
+                      onChange={(e) => setTipoAcquisto(e.target.value as TipoAcquisto | "")}
+                    >
+                      <option value="">— seleziona —</option>
+                      {TIPI_ACQUISTO.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Giustificativo{" "}
+                    <span className="normal-case text-muted-foreground/70">(link, opzionale)</span>
+                  </label>
+                  <input
+                    type="text"
+                    className={`${inputCls} mt-1`}
+                    value={giustificativo}
+                    onChange={(e) => setGiustificativo(e.target.value)}
+                    placeholder="Link al documento (l'upload del file arriva a breve)"
+                  />
+                </div>
+              </div>
+            ) : perGiorni ? (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">

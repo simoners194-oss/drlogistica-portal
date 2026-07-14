@@ -24,6 +24,7 @@ import {
   isAutoApprovazione,
   richiedeApprovazione,
   misuraInGiorni,
+  isRimborso,
   formatTitle,
   canDecide,
   canCancel,
@@ -31,6 +32,7 @@ import {
   NOTA_AUTO_APPROVAZIONE,
   type TipoRichiesta,
   type ModalitaStraordinario,
+  type TipoAcquisto,
   type DecisioneRichiesta,
 } from "./richieste-logic";
 import { anomalieDelGiorno, type TipoAnomalia } from "./presenze-logic";
@@ -102,6 +104,9 @@ export const SP_DISPLAY = {
     DataDecisione: "DataDecisione",
     NoteDecisione: "NoteDecisione",
     ProtocolloINPS: "ProtocolloINPS",
+    Importo: "Importo",
+    TipologiaAcquisto: "TipologiaAcquisto",
+    Giustificativo: "Giustificativo",
     AnnoCompetenza: "AnnoCompetenza",
   },
 } as const;
@@ -1335,6 +1340,9 @@ export interface SpRichiesta {
   dataDecisione?: string;
   noteDecisione?: string;
   protocolloInps?: string;
+  importo?: number;
+  tipoAcquisto?: string;
+  giustificativo?: string;
   annoCompetenza?: number;
   createdAt?: string;
 }
@@ -1349,6 +1357,9 @@ export interface CreateRichiestaInput {
   motivazione?: string;
   modalita?: ModalitaStraordinario;
   protocolloInps?: string; // solo Malattia (facoltativo)
+  importo?: number; // solo Rimborso spese
+  tipoAcquisto?: TipoAcquisto; // solo Rimborso spese
+  giustificativo?: string; // solo Rimborso spese (link/URL documento)
   submit?: boolean; // true → Inviata/Comunicata (con eventuale auto-approvazione)
 }
 
@@ -1417,6 +1428,9 @@ function mapRichiesta(cfg: SpDiscovered, it: GraphListItem<Record<string, unknow
     dataDecisione: F.DataDecisione ? (f[F.DataDecisione] as string | undefined) : undefined,
     noteDecisione: F.NoteDecisione ? (f[F.NoteDecisione] as string | undefined) : undefined,
     protocolloInps: F.ProtocolloINPS ? (f[F.ProtocolloINPS] as string | undefined) : undefined,
+    importo: F.Importo ? numOrUndef(f[F.Importo]) : undefined,
+    tipoAcquisto: F.TipologiaAcquisto ? (f[F.TipologiaAcquisto] as string | undefined) : undefined,
+    giustificativo: F.Giustificativo ? (f[F.Giustificativo] as string | undefined) : undefined,
     annoCompetenza: F.AnnoCompetenza ? numOrUndef(f[F.AnnoCompetenza]) : undefined,
     createdAt: (f["Created"] as string | undefined) ?? undefined,
   };
@@ -1492,7 +1506,12 @@ export async function createRichiesta(input: CreateRichiestaInput): Promise<SpRi
   if (F.SedeRichiedente && sedeRaw) fields[F.SedeRichiedente] = sedeRaw;
   if (F.Motivazione && input.motivazione) fields[F.Motivazione] = input.motivazione.trim();
   if (F.AnnoCompetenza) fields[F.AnnoCompetenza] = anno;
-  if (misuraInGiorni(input.tipo)) {
+  if (isRimborso(input.tipo)) {
+    if (F.Importo && input.importo != null) fields[F.Importo] = input.importo;
+    if (F.TipologiaAcquisto && input.tipoAcquisto) fields[F.TipologiaAcquisto] = input.tipoAcquisto;
+    if (F.Giustificativo && input.giustificativo)
+      fields[F.Giustificativo] = input.giustificativo.trim();
+  } else if (misuraInGiorni(input.tipo)) {
     if (F.DurataGiorni)
       fields[F.DurataGiorni] = computeDurataGiorni(input.dataInizio, input.dataFine);
   } else {
