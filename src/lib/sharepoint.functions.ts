@@ -53,6 +53,18 @@ import {
   type SpTimbratura,
 } from "./sharepoint.server";
 
+// --- S1b: identità e autorizzazione dalla SESSIONE SERVER (cookie firmato) ---
+// L'attore di ogni operazione è preso dal cookie, MAI dal payload del client.
+async function currentUser(): Promise<ServerSessionUser> {
+  const me = await readSessionUser();
+  if (!me) throw new Error("Sessione assente o scaduta. Effettua di nuovo l'accesso.");
+  return me;
+}
+function assertCap(ok: boolean): void {
+  if (!ok) throw new Error("Non sei autorizzato per questa operazione.");
+}
+const isAdmin = (me: ServerSessionUser) => me.ruolo === "amministratore_sistema";
+
 export interface SpDiagnostics {
   hasLovableKey: boolean;
   hasConnectionKey: boolean;
@@ -66,6 +78,7 @@ export interface SpDiagnostics {
 export const spGetDiagnostics = createServerFn({ method: "GET" })
   .inputValidator((input?: { force?: boolean }) => ({ force: Boolean(input?.force) }))
   .handler(async ({ data }): Promise<SpDiagnostics> => {
+    assertCap(isAdmin(await currentUser()));
     const hasLovableKey = Boolean(process.env.LOVABLE_API_KEY);
     const hasConnectionKey = Boolean(process.env.MICROSOFT_SHAREPOINT_API_KEY);
     if (!hasLovableKey || !hasConnectionKey) {
@@ -114,6 +127,7 @@ export interface SpSnapshot {
 
 export const spGetSnapshot = createServerFn({ method: "GET" }).handler(
   async (): Promise<SpSnapshot> => {
+    await currentUser(); // richiede una sessione valida
     // Garantisce discovery prima delle chiamate in parallelo (evita doppia
     // esecuzione della discovery quando la cache è fredda).
     await discoverSharePoint();
@@ -130,10 +144,17 @@ export const spCreateTimbratura = createServerFn({ method: "POST" })
     if (!validi.includes(input.evento)) throw new Error("evento non valido");
     return input;
   })
-  .handler(async ({ data }) => createTimbratura(data));
+  .handler(async ({ data }) => {
+    const me = await currentUser();
+    // Timbra SEMPRE per sé stesso: id dalla sessione, non dal client.
+    return createTimbratura({ ...data, dipendenteId: me.id });
+  });
 
 export const spRunSelfTest = createServerFn({ method: "POST" }).handler(
-  async (): Promise<SpSelfTestResult> => runSelfTest(),
+  async (): Promise<SpSelfTestResult> => {
+    assertCap(isAdmin(await currentUser()));
+    return runSelfTest();
+  },
 );
 
 export const spLogin = createServerFn({ method: "POST" })
@@ -190,7 +211,16 @@ export const spGetRichieste = createServerFn({ method: "GET" })
     richiedenteId: input?.richiedenteId ? String(input.richiedenteId) : undefined,
     stato: input?.stato ? String(input.stato) : undefined,
   }))
-  .handler(async ({ data }): Promise<SpRichiesta[]> => fetchRichieste(data));
+  .handler(async ({ data }): Promise<SpRichiesta[]> => {
+    const me = await currentUser();
+    if (data.richiedenteId) {
+      // Vista personale: forzata al proprio id (non si leggono richieste altrui).
+      return fetchRichieste({ richiedenteId: me.id, stato: data.stato });
+    }
+    // Vista privilegiata (coda approvatore / report): richiede autorizzazione.
+    assertCap(me.autorizza || isAdmin(me));
+    return fetchRichieste({ stato: data.stato });
+  });
 
 export const spCreateRichiesta = createServerFn({ method: "POST" })
   .inputValidator((input: CreateRichiestaInput): CreateRichiestaInput => {
@@ -198,7 +228,10 @@ export const spCreateRichiesta = createServerFn({ method: "POST" })
     if (!input?.tipo) throw new Error("tipo mancante");
     return input;
   })
-  .handler(async ({ data }): Promise<SpRichiesta> => createRichiesta(data));
+  .handler(async ({ data }): Promise<SpRichiesta> => {
+    const me = await currentUser();
+    return createRichiesta({ ...data, richiedenteId: me.id });
+  });
 
 export const spDecideRichiesta = createServerFn({ method: "POST" })
   .inputValidator((input: DecideRichiestaInput): DecideRichiestaInput => {
@@ -208,7 +241,11 @@ export const spDecideRichiesta = createServerFn({ method: "POST" })
       throw new Error("decisione non valida");
     return input;
   })
-  .handler(async ({ data }): Promise<SpRichiesta> => decideRichiesta(data));
+  .handler(async ({ data }): Promise<SpRichiesta> => {
+    const me = await currentUser();
+    // L'approvatore è chi ha la sessione; il server ri-verifica autorizza su SP.
+    return decideRichiesta({ ...data, approvatoreId: me.id });
+  });
 
 export const spCancelRichiesta = createServerFn({ method: "POST" })
   .inputValidator((input: { richiestaId: string; richiedenteId: string }) => {
@@ -219,14 +256,21 @@ export const spCancelRichiesta = createServerFn({ method: "POST" })
       richiedenteId: String(input.richiedenteId),
     };
   })
-  .handler(async ({ data }): Promise<SpRichiesta> => cancelRichiesta(data));
+  .handler(async ({ data }): Promise<SpRichiesta> => {
+    const me = await currentUser();
+    return cancelRichiesta({ richiestaId: data.richiestaId, richiedenteId: me.id });
+  });
 
 // ---------------------------------------------------------------------------
 // Operatore (Sprint 3): elenco dipendenti + timbrature manuali
 // ---------------------------------------------------------------------------
 
 export const spGetDipendenti = createServerFn({ method: "GET" }).handler(
-  async (): Promise<SpDipendente[]> => fetchDipendenti(),
+  async (): Promise<SpDipendente[]> => {
+    const me = await currentUser();
+    assertCap(me.operatore || me.autorizza || me.ruolo === "responsabile" || isAdmin(me));
+    return fetchDipendenti();
+  },
 );
 
 export const spCreateTimbraturaManuale = createServerFn({ method: "POST" })
@@ -237,7 +281,11 @@ export const spCreateTimbraturaManuale = createServerFn({ method: "POST" })
     if (!input?.dataOra) throw new Error("dataOra mancante");
     return input;
   })
-  .handler(async ({ data }): Promise<SpTimbratura> => createTimbraturaManuale(data));
+  .handler(async ({ data }): Promise<SpTimbratura> => {
+    const me = await currentUser();
+    // operatoreId dalla sessione; il server ri-verifica il flag Operatore su SP.
+    return createTimbraturaManuale({ ...data, operatoreId: me.id });
+  });
 
 export const spCreateTurnoManuale = createServerFn({ method: "POST" })
   .inputValidator((input: CreateTurnoManualeInput): CreateTurnoManualeInput => {
@@ -246,21 +294,30 @@ export const spCreateTurnoManuale = createServerFn({ method: "POST" })
     if (!input?.entrata || !input?.uscita) throw new Error("entrata/uscita mancanti");
     return input;
   })
-  .handler(async ({ data }): Promise<SpTimbratura[]> => createTurnoManuale(data));
+  .handler(async ({ data }): Promise<SpTimbratura[]> => {
+    const me = await currentUser();
+    return createTurnoManuale({ ...data, operatoreId: me.id });
+  });
 
 export const spGetAnomalie = createServerFn({ method: "GET" })
   .inputValidator((input?: { giorni?: number }) => ({
     giorni: input?.giorni && input.giorni > 0 ? Math.floor(input.giorni) : 14,
   }))
-  .handler(async ({ data }): Promise<AnomaliaItem[]> => computeAnomalie(data.giorni));
+  .handler(async ({ data }): Promise<AnomaliaItem[]> => {
+    const me = await currentUser();
+    assertCap(me.operatore || isAdmin(me));
+    return computeAnomalie(data.giorni);
+  });
 
 export const spGetTimbratureManuali = createServerFn({ method: "GET" })
   .inputValidator((input?: { giorni?: number }) => ({
     giorni: input?.giorni && input.giorni > 0 ? Math.floor(input.giorni) : 30,
   }))
-  .handler(async ({ data }): Promise<TimbraturaManualeItem[]> =>
-    fetchTimbratureManuali(data.giorni),
-  );
+  .handler(async ({ data }): Promise<TimbraturaManualeItem[]> => {
+    const me = await currentUser();
+    assertCap(me.autorizza || isAdmin(me));
+    return fetchTimbratureManuali(data.giorni);
+  });
 
 export const spGetRendiconto = createServerFn({ method: "GET" })
   .inputValidator((input: { anno: number; mese: number }) => {
@@ -270,4 +327,8 @@ export const spGetRendiconto = createServerFn({ method: "GET" })
       throw new Error("anno/mese non validi");
     return { anno, mese };
   })
-  .handler(async ({ data }): Promise<RendicontoRiga[]> => computeRendiconto(data.anno, data.mese));
+  .handler(async ({ data }): Promise<RendicontoRiga[]> => {
+    const me = await currentUser();
+    assertCap(me.operatore || me.autorizza || me.ruolo === "responsabile" || isAdmin(me));
+    return computeRendiconto(data.anno, data.mese);
+  });
