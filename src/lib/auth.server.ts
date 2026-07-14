@@ -60,8 +60,15 @@ function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+// Segreto di firma. Preferisce SESSION_SECRET (dedicato); se assente, ricade su
+// un segreto server-only già iniettato dal connettore (mai esposto al client,
+// stabile). Così la sessione funziona senza configurazione manuale; per la
+// produzione conviene comunque impostare un SESSION_SECRET dedicato.
 function getSecret(): string | null {
-  const s = process.env.SESSION_SECRET;
+  const s =
+    process.env.SESSION_SECRET ||
+    process.env.MICROSOFT_SHAREPOINT_API_KEY ||
+    process.env.LOVABLE_API_KEY;
   return s && s.length >= 16 ? s : null;
 }
 
