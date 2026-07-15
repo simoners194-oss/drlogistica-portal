@@ -2116,7 +2116,7 @@ function mapDocumento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknow
   return {
     id: String(it.id),
     categoria: F.Categoria ? String(f[F.Categoria] ?? "") : "",
-    titolo: F.Titolo ? String(f[F.Titolo] ?? "") : "",
+    titolo: String((F.Titolo ? f[F.Titolo] : undefined) ?? f["Title"] ?? ""),
     ambito: F.Ambito ? String(f[F.Ambito] ?? "") : "",
     destinatarioId: F.DestinatarioId ? String(f[F.DestinatarioId] ?? "") : "",
     codiceDestinatario: F.CodiceDestinatario ? String(f[F.CodiceDestinatario] ?? "") : "",
@@ -2242,7 +2242,7 @@ function mapComunicazione(
   const f = it.fields ?? {};
   return {
     id: String(it.id),
-    titolo: F.Titolo ? String(f[F.Titolo] ?? "") : "",
+    titolo: String((F.Titolo ? f[F.Titolo] : undefined) ?? f["Title"] ?? ""),
     testo: F.Testo ? String(f[F.Testo] ?? "") : "",
     tipo: F.Tipo ? String(f[F.Tipo] ?? "") : "",
     sede: F.Sede ? String(f[F.Sede] ?? "") : "",
