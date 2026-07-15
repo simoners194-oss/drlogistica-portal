@@ -1,8 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
-import { PlaceholderSection } from "@/components/PlaceholderSection";
 import {
-  Settings,
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
@@ -222,12 +220,6 @@ function AmministrazionePage() {
         />
 
         <ImportDipendentiCard onDone={() => refresh(true)} />
-
-        <PlaceholderSection
-          Icon={Settings}
-          title="Pannello amministrativo in arrivo"
-          description="Gestione sedi, turni e integrazione con Azure AD / SharePoint."
-        />
 
         <MicrosoftAuthTestCard />
       </div>

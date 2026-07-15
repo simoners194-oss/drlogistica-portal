@@ -2,7 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
-import { BarChart3, Lock, AlertTriangle } from "lucide-react";
+import { BarChart3, Lock, AlertTriangle, Download } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
 import { spGetRendiconto } from "@/lib/sharepoint.functions";
 import type { RendicontoRiga } from "@/lib/sharepoint.server";
@@ -41,6 +41,48 @@ function gg(n: number): string {
 function currentPeriodo(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// Esporta il rendiconto in CSV (separatore ";", BOM UTF-8) → apribile in Excel.
+function esportaCsv(righe: RendicontoRiga[], periodo: string): void {
+  const header = [
+    "Dipendente",
+    "Sede",
+    "Ore lavorate",
+    "Straordinario calcolato",
+    "Straordinario autorizzato",
+    "Permessi (ore)",
+    "Ferie (giorni)",
+    "Malattie (giorni)",
+    "Giorni non chiusi",
+  ];
+  const esc = (v: string | number): string => {
+    const s = String(v ?? "");
+    return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const body = righe.map((r) =>
+    [
+      r.nomeCompleto,
+      r.sede,
+      r.oreLavorate,
+      r.straordinarioCalcolato,
+      r.straordinarioAutorizzato,
+      r.permessiOre,
+      r.ferieGiorni,
+      r.malattiaGiorni,
+      r.giorniNonChiusi,
+    ]
+      .map(esc)
+      .join(";"),
+  );
+  const csv = [header.join(";"), ...body].join("\r\n");
+  const blob = new Blob([String.fromCharCode(0xfeff) + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `rendiconto-${periodo}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function RendicontoPage() {
@@ -175,6 +217,18 @@ function RendicontoPage() {
             </select>
           </div>
         </div>
+
+        {filtrate.length > 0 && (
+          <div className="mb-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => esportaCsv(filtrate, periodo)}
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
+            >
+              <Download className="h-4 w-4" /> Esporta CSV
+            </button>
+          </div>
+        )}
 
         {loading || righe === null ? (
           <div className="text-sm text-muted-foreground">Calcolo in corso…</div>
