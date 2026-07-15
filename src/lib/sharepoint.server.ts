@@ -72,6 +72,7 @@ export const SP_DISPLAY = {
     Operatore: "Operatore",
     OreSettimanali: "OreSettimanali",
     Inquadramento: "Inquadramento",
+    GiorniFerieAnnui: "GiorniFerieAnnui",
   },
   timbrature: {
     Dipendente: "Dipendente",
@@ -666,6 +667,9 @@ export interface SpDipendente {
   // informativo per ora: nessuna logica lo usa. Colonna SharePoint OPZIONALE —
   // se assente/vuota → "" (non entra nei controlli di salute).
   inquadramento: string;
+  // Giorni di ferie spettanti nell'anno (per il saldo residuo). null se non
+  // impostato → si usa il default DEFAULT_FERIE_ANNUE.
+  giorniFerieAnnui: number | null;
 }
 
 // Parsing tollerante di un campo booleano SharePoint (Sì/No).
@@ -714,6 +718,10 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
         operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
         oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
         inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
+        giorniFerieAnnui: parseSpNumber(
+          F.GiorniFerieAnnui ? f[F.GiorniFerieAnnui] : undefined,
+          null,
+        ),
       };
     })
     .filter((d) => d.attivo);
@@ -1036,6 +1044,7 @@ export async function loginByCodicePin(
     operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
     oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
     inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
+    giorniFerieAnnui: parseSpNumber(F.GiorniFerieAnnui ? f[F.GiorniFerieAnnui] : undefined, null),
   };
   logSp("info", "login", `Login ok per ${codice} (id=${dipendente.id})`, {
     durataMs: Date.now() - started,
@@ -1260,6 +1269,53 @@ export interface RendicontoRiga {
   ferieGiorni: number;
   malattiaGiorni: number;
   giorniNonChiusi: number; // giornate con turno aperto (ore non calcolabili)
+}
+
+// Giorni di ferie annui di default, se il dipendente non ha la colonna
+// GiorniFerieAnnui valorizzata su SharePoint.
+export const DEFAULT_FERIE_ANNUE = 26;
+
+export interface SaldoFerieRiga {
+  dipendenteId: string;
+  nomeCompleto: string;
+  sede: string;
+  spettanti: number;
+  godute: number;
+  residui: number;
+}
+
+// Saldo ferie per l'anno: spettanti (da colonna o default) meno i giorni di
+// Ferie approvate nell'anno.
+export async function computeSaldoFerie(anno: number): Promise<SaldoFerieRiga[]> {
+  const [dipendenti, richieste] = await Promise.all([
+    fetchDipendenti(),
+    fetchRichieste({ stato: "Approvata" }),
+  ]);
+  const goduteById = new Map<string, number>();
+  for (const r of richieste) {
+    if (r.tipo !== "Ferie") continue;
+    if (Number((r.dataInizio || "").slice(0, 4)) !== anno) continue;
+    const gg =
+      r.durataGiorni && r.durataGiorni > 0
+        ? r.durataGiorni
+        : computeDurataGiorni(r.dataInizio.slice(0, 10), (r.dataFine || r.dataInizio).slice(0, 10));
+    goduteById.set(r.richiedenteId, (goduteById.get(r.richiedenteId) ?? 0) + gg);
+  }
+  return dipendenti
+    .filter((d) => d.visibile)
+    .map((d) => {
+      const spettanti = d.giorniFerieAnnui ?? DEFAULT_FERIE_ANNUE;
+      const godute = goduteById.get(d.id) ?? 0;
+      return {
+        dipendenteId: d.id,
+        nomeCompleto: d.nomeCompleto || `${d.cognome} ${d.nome}`,
+        sede: d.sede,
+        spettanti,
+        godute,
+        residui: spettanti - godute,
+      };
+    })
+    .sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto));
 }
 
 function eachDay(fromStr: string, toStr: string): string[] {

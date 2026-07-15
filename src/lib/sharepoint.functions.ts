@@ -18,6 +18,8 @@ import {
   computeAnomalie,
   computeHealth,
   computeRendiconto,
+  computeSaldoFerie,
+  type SaldoFerieRiga,
   createRichiesta,
   createTimbratura,
   createTimbraturaManuale,
@@ -501,4 +503,16 @@ export const spGetRendiconto = createServerFn({ method: "GET" })
     const me = await currentUser();
     assertCap(me.operatore || me.autorizza || me.ruolo === "responsabile" || isAdmin(me));
     return computeRendiconto(data.anno, data.mese);
+  });
+
+export const spGetSaldoFerie = createServerFn({ method: "GET" })
+  .inputValidator((input: { anno: number }) => {
+    const anno = Number(input?.anno);
+    if (!Number.isFinite(anno)) throw new Error("anno non valido");
+    return { anno };
+  })
+  .handler(async ({ data }): Promise<SaldoFerieRiga[]> => {
+    const me = await currentUser();
+    assertCap(me.operatore || me.autorizza || me.ruolo === "responsabile" || isAdmin(me));
+    return computeSaldoFerie(data.anno);
   });

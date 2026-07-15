@@ -2,10 +2,10 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
-import { BarChart3, Lock, AlertTriangle, Download } from "lucide-react";
+import { BarChart3, Lock, AlertTriangle, Download, CalendarDays } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
-import { spGetRendiconto } from "@/lib/sharepoint.functions";
-import type { RendicontoRiga } from "@/lib/sharepoint.server";
+import { spGetRendiconto, spGetSaldoFerie } from "@/lib/sharepoint.functions";
+import type { RendicontoRiga, SaldoFerieRiga } from "@/lib/sharepoint.server";
 import { type SedeId } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/report")({
@@ -92,6 +92,9 @@ function RendicontoPage() {
   const [loading, setLoading] = useState(false);
   const [sedeF, setSedeF] = useState<SedeId | "tutte">("tutte");
   const [dipF, setDipF] = useState("");
+  const [vista, setVista] = useState<"rendiconto" | "ferie">("rendiconto");
+  const [saldo, setSaldo] = useState<SaldoFerieRiga[] | null>(null);
+  const [saldoLoading, setSaldoLoading] = useState(false);
 
   const canView =
     session != null &&
@@ -127,10 +130,34 @@ function RendicontoPage() {
       .finally(() => setLoading(false));
   }, [periodo, canView]);
 
+  useEffect(() => {
+    if (!canView || vista !== "ferie") return;
+    const anno = Number(periodo.slice(0, 4));
+    if (!anno) return;
+    setSaldoLoading(true);
+    spGetSaldoFerie({ data: { anno } })
+      .then((l) => setSaldo(l as SaldoFerieRiga[]))
+      .catch((err) => {
+        setSaldo([]);
+        toast.error("Errore saldo ferie", {
+          description: err instanceof Error ? err.message : String(err),
+        });
+      })
+      .finally(() => setSaldoLoading(false));
+  }, [vista, periodo, canView]);
+
+  const saldoFiltrato = useMemo(() => {
+    return (saldo ?? []).filter((r) => {
+      if (sedeF !== "tutte" && r.sede !== sedeF) return false;
+      if (dipF && r.dipendenteId !== dipF) return false;
+      return true;
+    });
+  }, [saldo, sedeF, dipF]);
+
   const sediOptions = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const r of righe ?? []) {
+    for (const r of [...(righe ?? []), ...(saldo ?? [])]) {
       const s = (r.sede ?? "").trim();
       if (s && s.toLowerCase() !== "tutte" && !seen.has(s.toLowerCase())) {
         seen.add(s.toLowerCase());
@@ -138,7 +165,7 @@ function RendicontoPage() {
       }
     }
     return out.sort((a, b) => a.localeCompare(b));
-  }, [righe]);
+  }, [righe, saldo]);
 
   const filtrate = useMemo(() => {
     return (righe ?? []).filter((r) => {
@@ -167,135 +194,247 @@ function RendicontoPage() {
   }
 
   return (
-    <AppShell title="Rendiconto" subtitle="Ore mensili per dipendente">
-      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
-        <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-          <BarChart3 className="h-4 w-4 text-primary" /> Rendiconto mensile
-        </div>
-
-        {/* Filtri */}
-        <div className="grid gap-3 sm:grid-cols-3 mb-4">
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">Mese</label>
-            <input
-              type="month"
-              className={`${inputCls} mt-1`}
-              value={periodo}
-              onChange={(e) => setPeriodo(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">Sede</label>
-            <select
-              className={`${inputCls} mt-1`}
-              value={sedeF}
-              onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
-            >
-              <option value="tutte">Tutte</option>
-              {sediOptions.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">
-              Dipendente
-            </label>
-            <select
-              className={`${inputCls} mt-1`}
-              value={dipF}
-              onChange={(e) => setDipF(e.target.value)}
-            >
-              <option value="">Tutti</option>
-              {(righe ?? []).map((r) => (
-                <option key={r.dipendenteId} value={r.dipendenteId}>
-                  {r.nomeCompleto}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {filtrate.length > 0 && (
-          <div className="mb-3 flex justify-end">
-            <button
-              type="button"
-              onClick={() => esportaCsv(filtrate, periodo)}
-              className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
-            >
-              <Download className="h-4 w-4" /> Esporta CSV
-            </button>
-          </div>
-        )}
-
-        {loading || righe === null ? (
-          <div className="text-sm text-muted-foreground">Calcolo in corso…</div>
-        ) : filtrate.length === 0 ? (
-          <div className="text-sm text-muted-foreground">
-            Nessun dato per il periodo/filtri selezionati.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                  <th className="py-2 pr-3">Dipendente</th>
-                  <th className="py-2 pr-3">Sede</th>
-                  <th className="py-2 pr-3 text-right">Ore lav.</th>
-                  <th className="py-2 pr-3 text-right">Str. calc.</th>
-                  <th className="py-2 pr-3 text-right">Str. autor.</th>
-                  <th className="py-2 pr-3 text-right">Permessi</th>
-                  <th className="py-2 pr-3 text-right">Ferie</th>
-                  <th className="py-2 pr-3 text-right">Malattie</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtrate.map((r) => (
-                  <tr key={r.dipendenteId} className="border-b border-border/60">
-                    <td className="py-2 pr-3 text-foreground">
-                      <span className="inline-flex items-center gap-1.5">
-                        {r.nomeCompleto}
-                        {r.giorniNonChiusi > 0 && (
-                          <span
-                            title={`${r.giorniNonChiusi} giorno/i con turno non chiuso: correggere nelle Anomalie`}
-                            className="inline-flex items-center text-status-absent"
-                          >
-                            <AlertTriangle className="h-3.5 w-3.5" />
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3 text-muted-foreground">{sedeNome(r.sede)}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums text-foreground">
-                      {h(r.oreLavorate)}
-                    </td>
-                    <td className="py-2 pr-3 text-right tabular-nums">
-                      {h(r.straordinarioCalcolato)}
-                    </td>
-                    <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">
-                      {h(r.straordinarioAutorizzato)}
-                    </td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{h(r.permessiOre)}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{gg(r.ferieGiorni)}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{gg(r.malattiaGiorni)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="mt-4 text-[12px] text-muted-foreground leading-relaxed">
-          <strong>Str. calc.</strong> = straordinario dalle timbrature (ore Lun–Sab oltre il monte
-          ore settimanale + tutta la domenica). <strong>Str. autor.</strong> = ore da richieste di
-          straordinario approvate, per confronto. Il previsto settimanale è ridotto da
-          ferie/malattia ({"OreSettimanali/5"} per giorno) e dai permessi. Le settimane a cavallo di
-          due mesi contano nel mese del loro lunedì. ⚠️ = giorni con turno non chiuso (ore non
-          conteggiate: correggere nelle Anomalie).
-        </div>
+    <AppShell title="Rendiconto" subtitle="Ore mensili e saldo ferie">
+      <div className="mb-4 inline-flex rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
+        <button
+          type="button"
+          onClick={() => setVista("rendiconto")}
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${vista === "rendiconto" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <BarChart3 className="h-4 w-4" /> Rendiconto
+        </button>
+        <button
+          type="button"
+          onClick={() => setVista("ferie")}
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${vista === "ferie" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <CalendarDays className="h-4 w-4" /> Saldo ferie
+        </button>
       </div>
+
+      {vista === "rendiconto" && (
+        <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
+            <BarChart3 className="h-4 w-4 text-primary" /> Rendiconto mensile
+          </div>
+
+          {/* Filtri */}
+          <div className="grid gap-3 sm:grid-cols-3 mb-4">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Mese</label>
+              <input
+                type="month"
+                className={`${inputCls} mt-1`}
+                value={periodo}
+                onChange={(e) => setPeriodo(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Sede</label>
+              <select
+                className={`${inputCls} mt-1`}
+                value={sedeF}
+                onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
+              >
+                <option value="tutte">Tutte</option>
+                {sediOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Dipendente
+              </label>
+              <select
+                className={`${inputCls} mt-1`}
+                value={dipF}
+                onChange={(e) => setDipF(e.target.value)}
+              >
+                <option value="">Tutti</option>
+                {(righe ?? []).map((r) => (
+                  <option key={r.dipendenteId} value={r.dipendenteId}>
+                    {r.nomeCompleto}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {filtrate.length > 0 && (
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => esportaCsv(filtrate, periodo)}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
+              >
+                <Download className="h-4 w-4" /> Esporta CSV
+              </button>
+            </div>
+          )}
+
+          {loading || righe === null ? (
+            <div className="text-sm text-muted-foreground">Calcolo in corso…</div>
+          ) : filtrate.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              Nessun dato per il periodo/filtri selezionati.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                    <th className="py-2 pr-3">Dipendente</th>
+                    <th className="py-2 pr-3">Sede</th>
+                    <th className="py-2 pr-3 text-right">Ore lav.</th>
+                    <th className="py-2 pr-3 text-right">Str. calc.</th>
+                    <th className="py-2 pr-3 text-right">Str. autor.</th>
+                    <th className="py-2 pr-3 text-right">Permessi</th>
+                    <th className="py-2 pr-3 text-right">Ferie</th>
+                    <th className="py-2 pr-3 text-right">Malattie</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtrate.map((r) => (
+                    <tr key={r.dipendenteId} className="border-b border-border/60">
+                      <td className="py-2 pr-3 text-foreground">
+                        <span className="inline-flex items-center gap-1.5">
+                          {r.nomeCompleto}
+                          {r.giorniNonChiusi > 0 && (
+                            <span
+                              title={`${r.giorniNonChiusi} giorno/i con turno non chiuso: correggere nelle Anomalie`}
+                              className="inline-flex items-center text-status-absent"
+                            >
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3 text-muted-foreground">{sedeNome(r.sede)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums text-foreground">
+                        {h(r.oreLavorate)}
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">
+                        {h(r.straordinarioCalcolato)}
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">
+                        {h(r.straordinarioAutorizzato)}
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{h(r.permessiOre)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{gg(r.ferieGiorni)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{gg(r.malattiaGiorni)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="mt-4 text-[12px] text-muted-foreground leading-relaxed">
+            <strong>Str. calc.</strong> = straordinario dalle timbrature (ore Lun–Sab oltre il monte
+            ore settimanale + tutta la domenica). <strong>Str. autor.</strong> = ore da richieste di
+            straordinario approvate, per confronto. Il previsto settimanale è ridotto da
+            ferie/malattia ({"OreSettimanali/5"} per giorno) e dai permessi. Le settimane a cavallo
+            di due mesi contano nel mese del loro lunedì. ⚠️ = giorni con turno non chiuso (ore non
+            conteggiate: correggere nelle Anomalie).
+          </div>
+        </div>
+      )}
+
+      {vista === "ferie" && (
+        <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
+            <CalendarDays className="h-4 w-4 text-primary" /> Saldo ferie {periodo.slice(0, 4)}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 mb-4">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Anno</label>
+              <input
+                type="month"
+                className={`${inputCls} mt-1`}
+                value={periodo}
+                onChange={(e) => setPeriodo(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Sede</label>
+              <select
+                className={`${inputCls} mt-1`}
+                value={sedeF}
+                onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
+              >
+                <option value="tutte">Tutte</option>
+                {sediOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Dipendente
+              </label>
+              <select
+                className={`${inputCls} mt-1`}
+                value={dipF}
+                onChange={(e) => setDipF(e.target.value)}
+              >
+                <option value="">Tutti</option>
+                {(saldo ?? []).map((r) => (
+                  <option key={r.dipendenteId} value={r.dipendenteId}>
+                    {r.nomeCompleto}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {saldoLoading || saldo === null ? (
+            <div className="text-sm text-muted-foreground">Calcolo in corso…</div>
+          ) : saldoFiltrato.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              Nessun dato per i filtri selezionati.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                    <th className="py-2 pr-3">Dipendente</th>
+                    <th className="py-2 pr-3">Sede</th>
+                    <th className="py-2 pr-3 text-right">Spettanti</th>
+                    <th className="py-2 pr-3 text-right">Godute</th>
+                    <th className="py-2 pr-3 text-right">Residue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {saldoFiltrato.map((r) => (
+                    <tr key={r.dipendenteId} className="border-b border-border/60">
+                      <td className="py-2 pr-3 text-foreground">{r.nomeCompleto}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">{sedeNome(r.sede)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{r.spettanti}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{r.godute}</td>
+                      <td
+                        className={`py-2 pr-3 text-right tabular-nums font-semibold ${r.residui < 0 ? "text-status-absent" : "text-foreground"}`}
+                      >
+                        {r.residui}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="mt-3 text-[12px] text-muted-foreground">
+                <strong>Spettanti</strong> dalla colonna GiorniFerieAnnui del dipendente (default 26
+                se non impostata). <strong>Godute</strong> = giorni di Ferie approvate nell'anno.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </AppShell>
   );
 }
