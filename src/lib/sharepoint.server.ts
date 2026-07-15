@@ -704,6 +704,30 @@ function parseDelimited(text: string, delim: "," | "\t"): string[][] {
   return rows.filter((r) => r.some((x) => x.trim() !== ""));
 }
 
+// Normalizza intestazione/nome colonna per il confronto: converte gli spazi
+// unicode invisibili (NBSP, zero-width, BOM…) in spazio normale, collassa gli
+// spazi e ignora le maiuscole. Evita i falsi "colonna mancante" causati da
+// caratteri non visibili incollati da Excel/Word.
+function normKey(s: string): string {
+  let out = "";
+  for (const ch of s) {
+    const code = ch.codePointAt(0) ?? 0;
+    // Spazi/caratteri invisibili unicode (NBSP, zero-width, BOM…) → spazio.
+    const invisible =
+      code === 0x00a0 ||
+      code === 0x00ad ||
+      code === 0x200b ||
+      code === 0x2060 ||
+      code === 0xfeff ||
+      code === 0x202f ||
+      code === 0x205f ||
+      code === 0x3000 ||
+      (code >= 0x2000 && code <= 0x200a);
+    out += invisible ? " " : ch;
+  }
+  return out.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
 export async function importDipendenti(
   csvText: string,
   dryRun: boolean,
@@ -726,8 +750,8 @@ export async function importDipendenti(
   const availableSet = new Set<string>();
   for (const c of colsRes.value ?? []) {
     if (c.hidden || c.readOnly) continue;
-    if (c.displayName && c.name) internalByLabel.set(c.displayName.trim().toLowerCase(), c.name);
-    if (c.name) internalByLabel.set(c.name.trim().toLowerCase(), c.name);
+    if (c.displayName && c.name) internalByLabel.set(normKey(c.displayName), c.name);
+    if (c.name) internalByLabel.set(normKey(c.name), c.name);
     if (c.displayName) availableSet.add(c.displayName);
     else if (c.name) availableSet.add(c.name);
   }
@@ -745,7 +769,7 @@ export async function importDipendenti(
   const matchedColumns: string[] = [];
   const missingColumns: string[] = [];
   for (const h of header) {
-    if (internalByLabel.has(h.toLowerCase())) matchedColumns.push(h);
+    if (internalByLabel.has(normKey(h))) matchedColumns.push(h);
     else missingColumns.push(h);
   }
   // Se un'intestazione non corrisponde a una colonna, NON importo nulla: c'è il
@@ -770,7 +794,7 @@ export async function importDipendenti(
   const buildFields = (r: string[]): Record<string, ImportFieldValue> => {
     const fields: Record<string, ImportFieldValue> = {};
     header.forEach((h, i) => {
-      const key = h.toLowerCase();
+      const key = normKey(h);
       const internal = internalByLabel.get(key)!;
       const raw = (r[i] ?? "").trim();
       if (IMPORT_BOOL_COLS.has(key)) {
