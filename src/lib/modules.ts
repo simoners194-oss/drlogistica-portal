@@ -97,9 +97,9 @@ export const MODULES: readonly AppModule[] = [
     url: "/supervisione",
     icon: ShieldCheck,
     ready: true,
-    description: "Richieste approvate e timbrature manuali (supervisore).",
-    roles: ["dipendente", "responsabile", "amministratore_sistema"],
-    requiresAutorizza: true,
+    description: "Richieste decise, rimborsi e timbrature manuali.",
+    roles: ["responsabile", "amministratore_sistema"],
+    orCapabilities: ["operatore", "autorizza"],
   },
   {
     id: "report",

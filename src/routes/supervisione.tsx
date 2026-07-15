@@ -54,17 +54,32 @@ function sedeNome(id: string): string {
   return SEDI.find((s) => s.id === id)?.nome ?? id;
 }
 
+const STATO_BADGE: Record<string, string> = {
+  Approvata: "bg-status-present/15 text-status-present",
+  Respinta: "bg-status-absent/15 text-status-absent",
+};
+function StatoBadge({ stato }: { stato: string }) {
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATO_BADGE[stato] ?? "bg-muted text-muted-foreground"}`}
+    >
+      {stato}
+    </span>
+  );
+}
+
 function SupervisionePage() {
   const [session, setSession] = useState<SessionUser | null>(null);
   const [tab, setTab] = useState<"approvate" | "rimborsi" | "manuali">("approvate");
 
-  const [approvate, setApprovate] = useState<SpRichiesta[] | null>(null);
+  const [decise, setDecise] = useState<SpRichiesta[] | null>(null);
   const [dipendenti, setDipendenti] = useState<SpDipendente[]>([]);
   const [manuali, setManuali] = useState<TimbraturaManualeItem[] | null>(null);
 
-  // Filtri report approvate
+  // Filtri report richieste decise (approvate + rifiutate)
   const [sedeF, setSedeF] = useState<SedeId | "tutte">("tutte");
   const [dipF, setDipF] = useState("");
+  const [statoF, setStatoF] = useState<"tutte" | "Approvata" | "Respinta">("tutte");
   const [dal, setDal] = useState("");
   const [al, setAl] = useState("");
 
@@ -75,11 +90,19 @@ function SupervisionePage() {
       return;
     }
     setSession(s);
-    if (!s.autorizza) return;
-    spGetRichieste({ data: { stato: "Approvata" } })
-      .then((l) => setApprovate(l as SpRichiesta[]))
+    const puoVedere =
+      s.autorizza ||
+      s.operatore ||
+      s.ruolo === "amministratore_sistema" ||
+      s.ruolo === "responsabile";
+    if (!puoVedere) return;
+    Promise.all([
+      spGetRichieste({ data: { stato: "Approvata" } }),
+      spGetRichieste({ data: { stato: "Respinta" } }),
+    ])
+      .then(([a, r]) => setDecise([...(a as SpRichiesta[]), ...(r as SpRichiesta[])]))
       .catch((err) => {
-        setApprovate([]);
+        setDecise([]);
         toast.error("Errore richieste", {
           description: err instanceof Error ? err.message : String(err),
         });
@@ -104,7 +127,8 @@ function SupervisionePage() {
   }, [dipendenti]);
 
   const filtrate = useMemo(() => {
-    return (approvate ?? []).filter((r) => {
+    return (decise ?? []).filter((r) => {
+      if (statoF !== "tutte" && r.stato !== statoF) return false;
       if (sedeF !== "tutte" && r.sedeRichiedente !== sedeNome(sedeF)) return false;
       if (dipF && r.richiedenteId !== dipF) return false;
       const d = r.dataInizio.slice(0, 10);
@@ -112,15 +136,23 @@ function SupervisionePage() {
       if (al && d > al) return false;
       return true;
     });
-  }, [approvate, sedeF, dipF, dal, al]);
+  }, [decise, statoF, sedeF, dipF, dal, al]);
 
   const rimborsi = useMemo(() => filtrate.filter((r) => r.tipo === "Rimborso spese"), [filtrate]);
+  // Totale sui soli rimborsi APPROVATI (i respinti non concorrono alla spesa).
   const totaleImporto = useMemo(
-    () => rimborsi.reduce((s, r) => s + (r.importo ?? 0), 0),
+    () => rimborsi.reduce((s, r) => s + (r.stato === "Approvata" ? (r.importo ?? 0) : 0), 0),
     [rimborsi],
   );
 
-  if (session && !session.autorizza) {
+  const puoVedere =
+    session != null &&
+    (session.autorizza ||
+      session.operatore ||
+      session.ruolo === "amministratore_sistema" ||
+      session.ruolo === "responsabile");
+
+  if (session && !puoVedere) {
     return (
       <AppShell title="Supervisione">
         <div className="flex items-start gap-3 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
@@ -146,7 +178,7 @@ function SupervisionePage() {
           onClick={() => setTab("approvate")}
           className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${tab === "approvate" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          <CheckCircle2 className="h-4 w-4" /> Richieste approvate
+          <CheckCircle2 className="h-4 w-4" /> Richieste decise
         </button>
         <button
           type="button"
@@ -167,11 +199,26 @@ function SupervisionePage() {
       {tab === "approvate" ? (
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-            <ShieldCheck className="h-4 w-4 text-primary" /> Richieste approvate
+            <ShieldCheck className="h-4 w-4 text-primary" /> Richieste decise (approvate e
+            rifiutate)
           </div>
 
           {/* Filtri */}
-          <div className="grid gap-3 sm:grid-cols-4 mb-4">
+          <div className="grid gap-3 sm:grid-cols-5 mb-4">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Stato
+              </label>
+              <select
+                className={`${inputCls} mt-1`}
+                value={statoF}
+                onChange={(e) => setStatoF(e.target.value as "tutte" | "Approvata" | "Respinta")}
+              >
+                <option value="tutte">Tutte</option>
+                <option value="Approvata">Approvate</option>
+                <option value="Respinta">Rifiutate</option>
+              </select>
+            </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">Sede</label>
               <select
@@ -226,11 +273,11 @@ function SupervisionePage() {
             </div>
           </div>
 
-          {approvate === null ? (
+          {decise === null ? (
             <div className="text-sm text-muted-foreground">Caricamento…</div>
           ) : filtrate.length === 0 ? (
             <div className="text-sm text-muted-foreground">
-              Nessuna richiesta approvata con questi filtri.
+              Nessuna richiesta decisa con questi filtri.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -238,10 +285,12 @@ function SupervisionePage() {
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
                     <th className="py-2 pr-3">Richiesta</th>
+                    <th className="py-2 pr-3">Stato</th>
                     <th className="py-2 pr-3">Dipendente</th>
                     <th className="py-2 pr-3">Tipo</th>
                     <th className="py-2 pr-3">Periodo</th>
                     <th className="py-2 pr-3">Sede</th>
+                    <th className="py-2 pr-3">Doc.</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -254,6 +303,9 @@ function SupervisionePage() {
                     return (
                       <tr key={r.id} className="border-b border-border/60">
                         <td className="py-2 pr-3 text-muted-foreground">{r.title || `#${r.id}`}</td>
+                        <td className="py-2 pr-3">
+                          <StatoBadge stato={r.stato} />
+                        </td>
                         <td className="py-2 pr-3 text-foreground">
                           {nomeById.get(r.richiedenteId) ||
                             r.codiceRichiedente ||
@@ -270,6 +322,20 @@ function SupervisionePage() {
                         <td className="py-2 pr-3 text-muted-foreground">
                           {r.sedeRichiedente || "—"}
                         </td>
+                        <td className="py-2 pr-3">
+                          {r.giustificativo ? (
+                            <a
+                              href={r.giustificativo}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-primary underline"
+                            >
+                              apri
+                            </a>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -284,7 +350,7 @@ function SupervisionePage() {
       ) : tab === "rimborsi" ? (
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-            <Receipt className="h-4 w-4 text-primary" /> Rimborsi spese approvati
+            <Receipt className="h-4 w-4 text-primary" /> Rimborsi spese (decisi)
           </div>
 
           <div className="grid gap-3 sm:grid-cols-4 mb-4">
@@ -342,18 +408,17 @@ function SupervisionePage() {
             </div>
           </div>
 
-          {approvate === null ? (
+          {decise === null ? (
             <div className="text-sm text-muted-foreground">Caricamento…</div>
           ) : rimborsi.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              Nessun rimborso approvato con questi filtri.
-            </div>
+            <div className="text-sm text-muted-foreground">Nessun rimborso con questi filtri.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
                     <th className="py-2 pr-3">Dipendente</th>
+                    <th className="py-2 pr-3">Stato</th>
                     <th className="py-2 pr-3">Sede</th>
                     <th className="py-2 pr-3">Data</th>
                     <th className="py-2 pr-3">Tipologia</th>
@@ -368,6 +433,9 @@ function SupervisionePage() {
                         {nomeById.get(r.richiedenteId) ||
                           r.codiceRichiedente ||
                           `#${r.richiedenteId}`}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <StatoBadge stato={r.stato} />
                       </td>
                       <td className="py-2 pr-3 text-muted-foreground">
                         {r.sedeRichiedente || "—"}
@@ -396,8 +464,8 @@ function SupervisionePage() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t border-border font-semibold">
-                    <td className="py-2 pr-3" colSpan={4}>
-                      Totale ({rimborsi.length})
+                    <td className="py-2 pr-3" colSpan={5}>
+                      Totale approvati ({rimborsi.filter((r) => r.stato === "Approvata").length})
                     </td>
                     <td className="py-2 pr-3 text-right tabular-nums">
                       € {totaleImporto.toFixed(2)}

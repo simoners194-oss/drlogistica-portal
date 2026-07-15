@@ -222,12 +222,19 @@ export const spGetRichieste = createServerFn({ method: "GET" })
       // Vista personale: forzata al proprio id (non si leggono richieste altrui).
       return fetchRichieste({ richiedenteId: me.id, stato: data.stato });
     }
-    // Vista privilegiata (coda approvatore / report): richiede autorizzazione.
-    assertCap(me.autorizza || isAdmin(me));
-    // L'admin vede tutte le sedi; il supervisore solo le sedi di sua competenza
-    // (DR005 = sedi storiche, DR000 = tutte le altre).
-    if (isAdmin(me)) return fetchRichieste({ stato: data.stato });
-    return fetchRichiestePerSupervisore(me.id, data.stato);
+    // Coda approvatore (richieste DA DECIDERE, stato "Inviata"): solo
+    // autorizzatori; scope per sede di competenza (DR005 globale, altri solo le
+    // proprie sedi).
+    if (data.stato === "Inviata") {
+      assertCap(me.autorizza || isAdmin(me));
+      if (isAdmin(me)) return fetchRichieste({ stato: data.stato });
+      return fetchRichiestePerSupervisore(me.id, data.stato);
+    }
+    // Report richieste già decise (Approvata/Respinta) e altre viste
+    // privilegiate: visibili a autorizzatori, OPERATORE e admin, SENZA scope per
+    // sede — l'operatore DR000 deve vedere TUTTE le approvate.
+    assertCap(me.autorizza || me.operatore || isAdmin(me));
+    return fetchRichieste({ stato: data.stato });
   });
 
 export const spCreateRichiesta = createServerFn({ method: "POST" })
@@ -352,7 +359,7 @@ export const spGetTimbratureManuali = createServerFn({ method: "GET" })
   }))
   .handler(async ({ data }): Promise<TimbraturaManualeItem[]> => {
     const me = await currentUser();
-    assertCap(me.autorizza || isAdmin(me));
+    assertCap(me.autorizza || me.operatore || isAdmin(me));
     return fetchTimbratureManuali(data.giorni);
   });
 
