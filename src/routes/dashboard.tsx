@@ -244,14 +244,14 @@ function DashboardPage() {
             </div>
           </section>
 
-          {/* KPI: presenti, in pausa, usciti, non timbrati, oltre 8 ore */}
+          {/* KPI: presenti, in pausa, usciti, non timbrati, in straordinario */}
           <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
             <KpiCard label="Presenti" value={totals.presenti} Icon={UserCheck} tone="present" />
             <KpiCard label="In pausa" value={totals.pausa} Icon={Coffee} tone="break" />
             <KpiCard label="Usciti" value={totals.usciti} Icon={LogOut} tone="primary" />
             <KpiCard label="Non timbrati" value={totals.assenti} Icon={UserX} tone="absent" />
             <KpiCard
-              label="Oltre 8 ore"
+              label="In straordinario"
               value={totals.oltre}
               Icon={TrendingUp}
               tone="out"
@@ -286,7 +286,7 @@ function DashboardPage() {
               <AlertPanel
                 Icon={TrendingUp}
                 tone="ok"
-                title="Oltre 8 ore"
+                title="In straordinario"
                 items={presenzeData.filter((d) => (d.oltreOrarioMinuti ?? 0) > 0)}
                 renderMeta={(d) => `${d.ruolo} · ${sedeLabel(d.sede)}`}
                 renderValue={(d) => `+${formatDurata(d.oltreOrarioMinuti ?? 0)}`}

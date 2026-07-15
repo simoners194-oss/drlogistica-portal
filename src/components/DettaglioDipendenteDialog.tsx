@@ -6,11 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatOra, labelTipo, type Dipendente } from "@/lib/mock-data";
-import {
-  computeOreOggi,
-  formatDurata,
-  type EventoTimbratura,
-} from "@/lib/presenze-logic";
+import { computeOreOggi, formatDurata, type EventoTimbratura } from "@/lib/presenze-logic";
 import { LogIn, Coffee, Hourglass, TrendingUp, ListChecks, Lock } from "lucide-react";
 
 // Dettaglio giornaliero del dipendente per il portale Responsabili.
@@ -51,9 +47,7 @@ export function DettaglioDipendenteDialog({
         {ore.chiusa && (
           <div className="flex items-start gap-2.5 rounded-xl border border-status-out/40 bg-status-out/5 p-3">
             <Lock className="h-4 w-4 text-status-out mt-0.5 shrink-0" />
-            <div className="text-xs text-muted-foreground">
-              Giornata lavorativa chiusa.
-            </div>
+            <div className="text-xs text-muted-foreground">Giornata lavorativa chiusa.</div>
           </div>
         )}
 
@@ -81,7 +75,7 @@ export function DettaglioDipendenteDialog({
           />
           <MiniStat
             Icon={TrendingUp}
-            label="Oltre 8 ore"
+            label="In straordinario"
             value={ore.oltreOrarioMinuti > 0 ? `+${formatDurata(ore.oltreOrarioMinuti)}` : "—"}
             highlight={ore.oltreOrarioMinuti > 0}
             className="col-span-2"
@@ -102,7 +96,9 @@ export function DettaglioDipendenteDialog({
                     className={`absolute -left-[7px] top-1.5 h-3 w-3 rounded-full ring-2 ring-card ${dotForEvento(e.tipo)}`}
                   />
                   <div className="flex items-baseline justify-between gap-3">
-                    <div className="text-[14px] font-medium text-foreground">{labelTipo(e.tipo)}</div>
+                    <div className="text-[14px] font-medium text-foreground">
+                      {labelTipo(e.tipo)}
+                    </div>
                     <div className="text-[15px] font-semibold tabular-nums text-primary">
                       {formatOra(e.ora)}
                     </div>
