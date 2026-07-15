@@ -130,10 +130,12 @@ export const SP_DISPLAY = {
   comunicazioni: {
     Titolo: "Titolo",
     Testo: "Testo",
-    Tipo: "Tipo",
+    // Nomi colonna adattati per non collidere con campi già esistenti sulla
+    // lista: "Tipo"→"Tipologia", "Autore"→"AutoreComunicazione".
+    Tipo: "Tipologia",
     Sede: "Sede",
     DataComunicazione: "DataComunicazione",
-    Autore: "Autore",
+    Autore: "AutoreComunicazione",
     Allegato: "Allegato",
     RichiedePresaVisione: "RichiedePresaVisione",
   },
