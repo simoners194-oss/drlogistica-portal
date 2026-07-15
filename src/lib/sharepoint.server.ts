@@ -163,7 +163,9 @@ const LIST_NAMES = {
   dipendenti: ["Dipendenti", "Dipendente"],
   timbrature: ["Timbrature", "Timbratura"],
   richieste: ["Richieste", "Richiesta"],
-  documenti: ["Documenti", "Documento"],
+  // NB: NON usare "Documenti": in SharePoint italiano è il nome della libreria
+  // documenti di default → collisione. La lista metadati è "DocumentiDipendenti".
+  documenti: ["DocumentiDipendenti", "DocumentoDipendente"],
   comunicazioni: ["Comunicazioni", "Comunicazione"],
   preseVisione: ["PreseVisione", "PresaVisione", "PreseVisioni"],
 } as const;
