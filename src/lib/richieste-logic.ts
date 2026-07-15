@@ -309,6 +309,35 @@ export function isAutoApprovazione(richiedenteId: string, richiedenteAutorizza: 
   return richiedenteAutorizza === true && Boolean(richiedenteId);
 }
 
+// ---------------------------------------------------------------------------
+// Routing supervisione per sede
+// ---------------------------------------------------------------------------
+// Le due sedi storiche (Fiano Romano e San Giuliano) fanno capo al supervisore
+// DR005. Ogni ALTRA sede — comprese quelle caricate in futuro — fa capo a DR000.
+// Elenco CONGELATO di proposito: NON aggiungere qui le nuove sedi, così ricadono
+// automaticamente su DR000. Confronto tollerante a nome/ID e maiuscole.
+const SEDI_DR005 = new Set(["fiano romano", "san giuliano", "roma", "san-giuliano"]);
+
+export function codiceSupervisoreDiSede(sedeRichiedente: string): "DR005" | "DR000" {
+  const s = (sedeRichiedente ?? "").trim().toLowerCase();
+  return SEDI_DR005.has(s) ? "DR005" : "DR000";
+}
+
+// DR005 è il supervisore "globale/onnisciente": in VISUALIZZAZIONE vede tutte le
+// sedi (come l'admin). Può però AUTORIZZARE solo le sedi storiche
+// (vedi supervisionaSede). DR000 e gli altri vedono solo le proprie sedi.
+export function isSupervisoreGlobale(codice: string): boolean {
+  return (codice ?? "").trim().toUpperCase() === "DR005";
+}
+
+// Un autorizzatore (identificato dal suo Codice) è competente sulla richiesta di
+// quella sede? Confronto case-insensitive sul codice.
+export function supervisionaSede(codiceAutorizzatore: string, sedeRichiedente: string): boolean {
+  return (
+    (codiceAutorizzatore ?? "").trim().toUpperCase() === codiceSupervisoreDiSede(sedeRichiedente)
+  );
+}
+
 // Costruisce il Title leggibile: REQ-<anno>-<idNativo>.
 export function formatTitle(anno: number, itemId: string | number): string {
   return `REQ-${anno}-${itemId}`;

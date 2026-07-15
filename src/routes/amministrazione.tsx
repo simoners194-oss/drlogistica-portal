@@ -1,7 +1,18 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { PlaceholderSection } from "@/components/PlaceholderSection";
-import { Settings, CheckCircle2, AlertTriangle, RefreshCw, KeyRound, Loader2, PlayCircle, XCircle } from "lucide-react";
+import {
+  Settings,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  KeyRound,
+  Loader2,
+  PlayCircle,
+  XCircle,
+  Upload,
+  Users,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +24,8 @@ import {
   runSpSelfTest,
   type IntegrationStatus,
 } from "@/lib/data-service";
-import type { SpSelfTestResult, SpHealth } from "@/lib/sharepoint.server";
+import type { SpSelfTestResult, SpHealth, ImportDipendentiResult } from "@/lib/sharepoint.server";
+import { spImportDipendenti } from "@/lib/sharepoint.functions";
 import { readSession } from "@/lib/session";
 import {
   microsoftAuthConfig,
@@ -155,17 +167,20 @@ function AmministrazionePage() {
                 <span className="text-sm text-muted-foreground">Nessuno</span>
               )}
             </InfoRow>
-            {status.diagnostics && (!status.diagnostics.hasLovableKey || !status.diagnostics.hasConnectionKey) && (
-              <div className="sm:col-span-2 rounded-md border border-dashed border-status-absent/50 p-3 text-xs text-status-absent">
-                <p className="font-medium mb-1">Credenziali connettore mancanti sul server</p>
-                <ul className="list-disc list-inside space-y-0.5">
-                  {!status.diagnostics.hasLovableKey && <li>LOVABLE_API_KEY non disponibile</li>}
-                  {!status.diagnostics.hasConnectionKey && (
-                    <li>MICROSOFT_SHAREPOINT_API_KEY non disponibile — riconnetti il connettore.</li>
-                  )}
-                </ul>
-              </div>
-            )}
+            {status.diagnostics &&
+              (!status.diagnostics.hasLovableKey || !status.diagnostics.hasConnectionKey) && (
+                <div className="sm:col-span-2 rounded-md border border-dashed border-status-absent/50 p-3 text-xs text-status-absent">
+                  <p className="font-medium mb-1">Credenziali connettore mancanti sul server</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {!status.diagnostics.hasLovableKey && <li>LOVABLE_API_KEY non disponibile</li>}
+                    {!status.diagnostics.hasConnectionKey && (
+                      <li>
+                        MICROSOFT_SHAREPOINT_API_KEY non disponibile — riconnetti il connettore.
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
             {status.log.length > 0 && (
               <div className="sm:col-span-2 rounded-md border border-border p-3">
                 <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
@@ -206,10 +221,12 @@ function AmministrazionePage() {
           selfTestLoading={selfTestLoading}
         />
 
+        <ImportDipendentiCard onDone={() => refresh(true)} />
+
         <PlaceholderSection
           Icon={Settings}
           title="Pannello amministrativo in arrivo"
-          description="Gestione anagrafica dipendenti, sedi, turni e integrazione con Azure AD / SharePoint."
+          description="Gestione sedi, turni e integrazione con Azure AD / SharePoint."
         />
 
         <MicrosoftAuthTestCard />
@@ -346,10 +363,147 @@ function HealthCard({
                     {c.durataMs ? `${c.durataMs}ms` : ""}
                   </span>
                   {c.message && (
-                    <span className={c.ok ? "text-muted-foreground" : "text-status-absent break-all"}>
+                    <span
+                      className={c.ok ? "text-muted-foreground" : "text-status-absent break-all"}
+                    >
                       {c.message}
                     </span>
                   )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ImportDipendentiCard({ onDone }: { onDone: () => void }) {
+  const [csv, setCsv] = useState("");
+  const [result, setResult] = useState<ImportDipendentiResult | null>(null);
+  const [loading, setLoading] = useState<"preview" | "import" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (dryRun: boolean) => {
+    setError(null);
+    setLoading(dryRun ? "preview" : "import");
+    try {
+      const r = (await spImportDipendenti({
+        data: { csv, dryRun },
+      })) as ImportDipendentiResult;
+      setResult(r);
+      if (!dryRun && r.created > 0) onDone();
+    } catch (e) {
+      setResult(null);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const hasMissing = Boolean(result && result.missingColumns.length > 0);
+  const canImport =
+    csv.trim().length > 0 && !hasMissing && result != null && result.dryRun && result.totalRows > 0;
+
+  return (
+    <Card>
+      <CardHeader className="space-y-1">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Users className="h-5 w-5 text-primary" />
+          Import massivo dipendenti
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Incolla dati da Excel (TAB) o CSV, prima riga con le intestazioni uguali ai nomi colonna
+          della lista SharePoint. Usa le credenziali del portale: nessun secret da configurare. Fai
+          sempre l'<strong>Anteprima</strong> prima di importare.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <textarea
+          value={csv}
+          onChange={(e) => {
+            setCsv(e.target.value);
+            setResult(null);
+          }}
+          placeholder={
+            "Nome,Cognome,Nome Completo,Email,Sede,Attivo,Ruolo,Codice,PIN,Visibile,Autorizza,Operatore,OreSettimanali\nMario,Rossi,Mario Rossi,mario@dr.it,Milano,Sì,Dipendente,DR100,1234,Sì,No,No,40"
+          }
+          spellCheck={false}
+          className="w-full min-h-[140px] resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => run(true)}
+            disabled={loading !== null || csv.trim().length === 0}
+          >
+            {loading === "preview" ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <PlayCircle className="h-4 w-4 mr-2" />
+            )}
+            Anteprima (non scrive)
+          </Button>
+          <Button size="sm" onClick={() => run(false)} disabled={loading !== null || !canImport}>
+            {loading === "import" ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4 mr-2" />
+            )}
+            Importa {result?.dryRun ? `${result.totalRows} righe` : ""}
+          </Button>
+          {result?.dryRun && !hasMissing && (
+            <span className="text-xs text-muted-foreground">
+              Anteprima ok · premi <strong>Importa</strong> per creare i record.
+            </span>
+          )}
+        </div>
+
+        {error && (
+          <div className="rounded-md border border-status-absent/40 bg-status-absent/5 p-3 text-xs text-status-absent break-all">
+            {error}
+          </div>
+        )}
+
+        {hasMissing && (
+          <div className="rounded-md border border-status-absent/40 bg-status-absent/5 p-3 text-xs text-status-absent">
+            <p className="font-medium">Intestazioni non riconosciute (import bloccato):</p>
+            <p className="mt-1 break-all">{result!.missingColumns.join(", ")}</p>
+            <p className="mt-1 text-muted-foreground">
+              Correggi i nomi nella prima riga così che combacino con le colonne della lista, poi
+              rifai l'anteprima.
+            </p>
+          </div>
+        )}
+
+        {result && !hasMissing && (
+          <div className="rounded-md border border-border p-3 text-xs">
+            <div className="flex items-center gap-2 mb-2">
+              {result.dryRun ? (
+                <Badge variant="secondary">Anteprima · {result.totalRows} righe</Badge>
+              ) : (
+                <Badge className="bg-status-present text-white">
+                  Creati {result.created}
+                  {result.failed ? ` · Errori ${result.failed}` : ""}
+                </Badge>
+              )}
+              <span className="text-muted-foreground">
+                Colonne riconosciute: {result.matchedColumns.length}
+              </span>
+            </div>
+            <ul className="space-y-1 max-h-60 overflow-auto font-mono">
+              {result.rows.map((r, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  {r.ok ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-status-present mt-0.5 shrink-0" />
+                  ) : (
+                    <XCircle className="h-3.5 w-3.5 text-status-absent mt-0.5 shrink-0" />
+                  )}
+                  <span className="text-foreground shrink-0">{r.label}</span>
+                  {r.error && <span className="text-status-absent break-all">{r.error}</span>}
                 </li>
               ))}
             </ul>

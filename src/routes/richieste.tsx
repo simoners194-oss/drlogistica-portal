@@ -13,6 +13,7 @@ import {
   Info,
   Inbox,
   CheckCircle2,
+  Receipt,
 } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
@@ -373,6 +374,28 @@ function RichiestePage() {
                       {r.motivazione && (
                         <div className="mt-1 text-[13px] text-foreground/80 italic">
                           “{r.motivazione}”
+                        </div>
+                      )}
+                      {r.tipo === "Rimborso spese" && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[13px]">
+                          <span className="font-medium text-foreground tabular-nums">
+                            € {(r.importo ?? 0).toFixed(2)}
+                          </span>
+                          {r.tipoAcquisto && (
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                              {r.tipoAcquisto}
+                            </span>
+                          )}
+                          {r.giustificativo && (
+                            <a
+                              href={r.giustificativo}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-primary underline"
+                            >
+                              <Receipt className="h-3.5 w-3.5" /> Giustificativo
+                            </a>
+                          )}
                         </div>
                       )}
                       <div className="mt-0.5 text-[11px] text-muted-foreground/70">

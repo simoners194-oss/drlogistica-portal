@@ -26,7 +26,10 @@ import {
   discoverSharePoint,
   fetchDipendenti,
   fetchRichieste,
+  fetchRichiestePerSupervisore,
   fetchTimbratureManuali,
+  importDipendenti,
+  type ImportDipendentiResult,
   fetchTimbratureOggi,
   getLastSyncAt,
   getSpLog,
@@ -221,7 +224,10 @@ export const spGetRichieste = createServerFn({ method: "GET" })
     }
     // Vista privilegiata (coda approvatore / report): richiede autorizzazione.
     assertCap(me.autorizza || isAdmin(me));
-    return fetchRichieste({ stato: data.stato });
+    // L'admin vede tutte le sedi; il supervisore solo le sedi di sua competenza
+    // (DR005 = sedi storiche, DR000 = tutte le altre).
+    if (isAdmin(me)) return fetchRichieste({ stato: data.stato });
+    return fetchRichiestePerSupervisore(me.id, data.stato);
   });
 
 export const spCreateRichiesta = createServerFn({ method: "POST" })
@@ -290,6 +296,19 @@ export const spGetDipendenti = createServerFn({ method: "GET" }).handler(
     return fetchDipendenti();
   },
 );
+
+// Import massivo Dipendenti da CSV/TSV incollato — SOLO amministratore.
+// dryRun=true restituisce l'anteprima senza scrivere nulla.
+export const spImportDipendenti = createServerFn({ method: "POST" })
+  .inputValidator((input: { csv: string; dryRun?: boolean }) => {
+    if (!input?.csv || typeof input.csv !== "string") throw new Error("Testo CSV mancante");
+    return { csv: input.csv, dryRun: Boolean(input.dryRun) };
+  })
+  .handler(async ({ data }): Promise<ImportDipendentiResult> => {
+    const me = await currentUser();
+    assertCap(isAdmin(me));
+    return importDipendenti(data.csv, data.dryRun);
+  });
 
 export const spCreateTimbraturaManuale = createServerFn({ method: "POST" })
   .inputValidator((input: CreateTimbraturaManualeInput): CreateTimbraturaManualeInput => {

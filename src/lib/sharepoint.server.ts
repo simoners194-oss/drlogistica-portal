@@ -22,6 +22,8 @@ import {
   computeDurataOre,
   computeAnnoCompetenza,
   isAutoApprovazione,
+  supervisionaSede,
+  isSupervisoreGlobale,
   richiedeApprovazione,
   misuraInGiorni,
   isRimborso,
@@ -36,6 +38,7 @@ import {
   type DecisioneRichiesta,
 } from "./richieste-logic";
 import { anomalieDelGiorno, type TipoAnomalia } from "./presenze-logic";
+import { normalizeRuolo } from "./session";
 import {
   oreLavorateGiorno,
   isoDow,
@@ -68,6 +71,7 @@ export const SP_DISPLAY = {
     Autorizza: "Autorizza",
     Operatore: "Operatore",
     OreSettimanali: "OreSettimanali",
+    Inquadramento: "Inquadramento",
   },
   timbrature: {
     Dipendente: "Dipendente",
@@ -565,6 +569,10 @@ export interface SpDipendente {
   // Ore contrattuali settimanali (full-time e part-time). null se non impostate.
   // Usate da rilevazione anomalie e rendiconto.
   oreSettimanali: number | null;
+  // Inquadramento contrattuale (es. livello/qualifica CCNL). Puramente
+  // informativo per ora: nessuna logica lo usa. Colonna SharePoint OPZIONALE —
+  // se assente/vuota → "" (non entra nei controlli di salute).
+  inquadramento: string;
 }
 
 // Parsing tollerante di un campo booleano SharePoint (Sì/No).
@@ -612,6 +620,7 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
         autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
         operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
         oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
+        inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
       };
     })
     .filter((d) => d.attivo);
@@ -619,6 +628,199 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
     durataMs: Date.now() - started,
   });
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Import massivo Dipendenti (admin) — incolla CSV/TSV dal pannello
+// Amministrazione. Riusa le credenziali server del portale (nessun secret da
+// reperire) e lo stesso gateway. Con dryRun non scrive nulla: solo anteprima.
+// ---------------------------------------------------------------------------
+const IMPORT_BOOL_COLS = new Set(["attivo", "visibile", "autorizza", "operatore"]);
+const IMPORT_NUM_COLS = new Set(["oresettimanali"]);
+const IMPORT_MAX_ROWS = 500;
+
+type ImportFieldValue = string | number | boolean;
+export interface ImportRowResult {
+  label: string;
+  ok: boolean;
+  error?: string;
+  preview?: Record<string, ImportFieldValue>;
+}
+export interface ImportDipendentiResult {
+  dryRun: boolean;
+  matchedColumns: string[];
+  missingColumns: string[];
+  totalRows: number;
+  created: number;
+  failed: number;
+  rows: ImportRowResult[];
+}
+
+// Rileva il separatore dall'intestazione: TAB (incolla da Excel) o virgola (CSV).
+function detectDelim(text: string): "," | "\t" {
+  const nl = text.indexOf("\n");
+  const firstLine = nl >= 0 ? text.slice(0, nl) : text;
+  return firstLine.includes("\t") ? "\t" : ",";
+}
+
+// Parser tollerante ai campi tra virgolette. Separatore singolo (`,` o TAB).
+function parseDelimited(text: string, delim: "," | "\t"): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"' && text[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (c === '"') inQ = false;
+      else field += c;
+    } else if (c === '"') inQ = true;
+    else if (c === delim) {
+      row.push(field);
+      field = "";
+    } else if (c === "\r") {
+      /* skip */
+    } else if (c === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else field += c;
+  }
+  if (field.length || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.some((x) => x.trim() !== ""));
+}
+
+export async function importDipendenti(
+  csvText: string,
+  dryRun: boolean,
+): Promise<ImportDipendentiResult> {
+  const cfg = await discoverSharePoint();
+  const listId = cfg.listDipendenti;
+
+  // Colonne reali della lista (display + internal), escluse read-only/nascoste.
+  const colsRes = await withDiscoveryRetry(() =>
+    gatewayJson<{
+      value?: Array<{
+        name?: string;
+        displayName?: string;
+        readOnly?: boolean;
+        hidden?: boolean;
+      }>;
+    }>(`/sites/${cfg.siteId}/lists/${listId}/columns?$select=name,displayName,readOnly,hidden`),
+  );
+  const internalByLabel = new Map<string, string>();
+  for (const c of colsRes.value ?? []) {
+    if (c.hidden || c.readOnly) continue;
+    if (c.displayName && c.name) internalByLabel.set(c.displayName.trim().toLowerCase(), c.name);
+    if (c.name) internalByLabel.set(c.name.trim().toLowerCase(), c.name);
+  }
+
+  const delim = detectDelim(csvText);
+  const rows = parseDelimited(csvText, delim);
+  if (rows.length < 2)
+    throw new Error("Il testo deve avere l'intestazione + almeno una riga di dati.");
+  const header = rows[0].map((h) => h.trim());
+  const dataRows = rows.slice(1);
+  if (dataRows.length > IMPORT_MAX_ROWS)
+    throw new Error(`Troppe righe (${dataRows.length}); massimo ${IMPORT_MAX_ROWS} per import.`);
+
+  const matchedColumns: string[] = [];
+  const missingColumns: string[] = [];
+  for (const h of header) {
+    if (internalByLabel.has(h.toLowerCase())) matchedColumns.push(h);
+    else missingColumns.push(h);
+  }
+  // Se un'intestazione non corrisponde a una colonna, NON importo nulla: c'è il
+  // rischio di disallineamento. L'admin corregge le intestazioni e riprova.
+  if (missingColumns.length) {
+    return {
+      dryRun,
+      matchedColumns,
+      missingColumns,
+      totalRows: dataRows.length,
+      created: 0,
+      failed: 0,
+      rows: [],
+    };
+  }
+
+  const codiceInt = internalByLabel.get("codice");
+  const cognomeInt = internalByLabel.get("cognome");
+  const nomeInt = internalByLabel.get("nome");
+
+  const buildFields = (r: string[]): Record<string, ImportFieldValue> => {
+    const fields: Record<string, ImportFieldValue> = {};
+    header.forEach((h, i) => {
+      const key = h.toLowerCase();
+      const internal = internalByLabel.get(key)!;
+      const raw = (r[i] ?? "").trim();
+      if (IMPORT_BOOL_COLS.has(key)) {
+        fields[internal] = /^(s[iì]|true|1|x)$/i.test(raw);
+      } else if (IMPORT_NUM_COLS.has(key)) {
+        if (raw === "") return;
+        const n = Number(raw.replace(",", "."));
+        if (Number.isFinite(n)) fields[internal] = n;
+      } else if (raw !== "") {
+        fields[internal] = raw;
+      }
+    });
+    return fields;
+  };
+  const labelOf = (fields: Record<string, ImportFieldValue>): string =>
+    [codiceInt && fields[codiceInt], cognomeInt && fields[cognomeInt], nomeInt && fields[nomeInt]]
+      .filter(Boolean)
+      .join(" ") || "(riga)";
+
+  const outRows: ImportRowResult[] = [];
+  let created = 0;
+  let failed = 0;
+
+  for (const r of dataRows) {
+    const fields = buildFields(r);
+    const label = labelOf(fields);
+    if (dryRun) {
+      outRows.push({ label, ok: true, preview: fields });
+      continue;
+    }
+    try {
+      await withDiscoveryRetry(() =>
+        gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
+          method: "POST",
+          body: JSON.stringify({ fields }),
+        }),
+      );
+      outRows.push({ label, ok: true });
+      created++;
+    } catch (err) {
+      outRows.push({ label, ok: false, error: err instanceof Error ? err.message : String(err) });
+      failed++;
+    }
+  }
+
+  logSp(
+    "info",
+    "import.dipendenti",
+    dryRun
+      ? `Anteprima import: ${dataRows.length} righe`
+      : `Import dipendenti: creati ${created}, errori ${failed}`,
+  );
+
+  return {
+    dryRun,
+    matchedColumns,
+    missingColumns,
+    totalRows: dataRows.length,
+    created,
+    failed,
+    rows: outRows,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -704,6 +906,7 @@ export async function loginByCodicePin(
     autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
     operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
     oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
+    inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
   };
   logSp("info", "login", `Login ok per ${codice} (id=${dipendente.id})`, {
     durataMs: Date.now() - started,
@@ -1460,6 +1663,24 @@ export async function fetchRichieste(filter: RichiesteFilter = {}): Promise<SpRi
   return out;
 }
 
+// Vista supervisore: come fetchRichieste ma limitata alle sole richieste delle
+// sedi di competenza dell'autorizzatore (identificato per Codice). DR005 copre
+// le sedi storiche (Fiano Romano / San Giuliano); DR000 tutte le altre. L'admin
+// non passa di qui — usa fetchRichieste e vede tutto.
+export async function fetchRichiestePerSupervisore(
+  supervisoreId: string,
+  stato?: string,
+): Promise<SpRichiesta[]> {
+  const cfg = await discoverSharePoint();
+  const DF = cfg.dipendentiFields;
+  const dip = await fetchDipendenteFields(cfg, supervisoreId);
+  const codice = DF.Codice ? String(dip[DF.Codice] ?? "").trim() : "";
+  const all = await fetchRichieste({ stato });
+  // DR005 è onnisciente: vede le richieste di tutte le sedi (come l'admin).
+  if (isSupervisoreGlobale(codice)) return all;
+  return all.filter((r) => supervisionaSede(codice, r.sedeRichiedente));
+}
+
 export async function createRichiesta(input: CreateRichiestaInput): Promise<SpRichiesta> {
   const started = Date.now();
   const cfg = await discoverSharePoint();
@@ -1591,6 +1812,22 @@ export async function decideRichiesta(input: DecideRichiestaInput): Promise<SpRi
   const current = await fetchRichiestaById(cfg, input.richiestaId);
   if (!canDecide(parseStato(current.stato))) {
     throw new Error(`Richiesta non decidibile nello stato "${current.stato}".`);
+  }
+
+  // Competenza per sede: l'autorizzatore può decidere SOLO sulle richieste delle
+  // sedi che supervisiona (DR005 = sedi storiche, DR000 = tutte le altre).
+  // L'amministratore di sistema può decidere ovunque.
+  const ruoloApprover = DF.Ruolo ? normalizeRuolo(String(dipFields[DF.Ruolo] ?? "")) : "dipendente";
+  if (ruoloApprover !== "amministratore_sistema") {
+    const codiceApprover = DF.Codice ? String(dipFields[DF.Codice] ?? "").trim() : "";
+    if (!supervisionaSede(codiceApprover, current.sedeRichiedente)) {
+      logSp(
+        "warn",
+        "decide.richiesta",
+        `Sede non di competenza per id=${input.approvatoreId} (sede="${current.sedeRichiedente}")`,
+      );
+      throw new Error("Questa richiesta è di competenza di un altro supervisore.");
+    }
   }
 
   const approvatoreNum = Number(input.approvatoreId);
