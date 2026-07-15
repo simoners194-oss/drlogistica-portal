@@ -1,4 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Sparkles, ShieldCheck, Wrench, TrendingUp } from "lucide-react";
 import { readSession } from "@/lib/session";
@@ -40,6 +41,15 @@ const TAG_CLASS: Record<ReleaseTag, string> = {
 function NovitaPage() {
   const sorted = [...RELEASES].sort((a, b) => b.date.localeCompare(a.date));
   const latest = sorted[0];
+
+  // Segna le novità come "viste" per la versione corrente: spegne il popup.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("dr:novita:lastVersion", APP_INFO.version);
+    } catch {
+      /* localStorage non disponibile */
+    }
+  }, []);
 
   return (
     <AppShell title="Novità" subtitle={`Registro delle versioni pubblicate di ${APP_INFO.name}`}>

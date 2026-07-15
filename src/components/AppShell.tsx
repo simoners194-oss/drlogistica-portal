@@ -3,6 +3,7 @@ import { LogOut } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { Logo } from "./Logo";
+import { Notifiche } from "./Notifiche";
 import { PageProgress } from "./PageProgress";
 import { AppFooter } from "./AppFooter";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -36,24 +37,32 @@ export function AppShell({
   return (
     <SidebarProvider>
       <PageProgress />
+      <Notifiche />
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-20 border-b border-border bg-card/85 backdrop-blur-md sticky top-0 z-10 flex items-center gap-3 px-4 md:px-6">
             <SidebarTrigger className="text-muted-foreground" />
             <div className="hidden md:block h-6 w-px bg-border" />
-            <div className="md:hidden flex-1"><Logo size={56} /></div>
+            <div className="md:hidden flex-1">
+              <Logo size={56} />
+            </div>
             <div className="hidden md:block flex-1 min-w-0">
-              <h1 className="text-[15px] font-semibold text-foreground truncate tracking-tight">{title}</h1>
+              <h1 className="text-[15px] font-semibold text-foreground truncate tracking-tight">
+                {title}
+              </h1>
               {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
             </div>
             <div className="flex items-center gap-2">
               {user && (
                 <div className="hidden sm:flex items-center gap-2 px-3 h-9 rounded-full bg-secondary text-sm animate-fade-in">
                   <div className="h-6 w-6 rounded-full bg-gradient-to-br from-primary to-[color:var(--primary-glow)] text-primary-foreground text-[10px] font-semibold flex items-center justify-center shadow-sm">
-                    {user.nome?.[0] ?? ""}{user.cognome?.[0] ?? ""}
+                    {user.nome?.[0] ?? ""}
+                    {user.cognome?.[0] ?? ""}
                   </div>
-                  <span className="text-secondary-foreground">{user.nome} {user.cognome}</span>
+                  <span className="text-secondary-foreground">
+                    {user.nome} {user.cognome}
+                  </span>
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground border-l border-border pl-2 ml-0.5">
                     {RUOLO_LABEL[user.ruolo]}
                   </span>
@@ -72,7 +81,9 @@ export function AppShell({
           </header>
           <main className="flex-1 w-full max-w-[1400px] mx-auto px-5 md:px-8 py-6 md:py-8 animate-fade-in">
             <div className="md:hidden mb-5">
-              <h1 className="text-[26px] leading-tight font-semibold text-foreground tracking-tight">{title}</h1>
+              <h1 className="text-[26px] leading-tight font-semibold text-foreground tracking-tight">
+                {title}
+              </h1>
               {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
             </div>
             {children}

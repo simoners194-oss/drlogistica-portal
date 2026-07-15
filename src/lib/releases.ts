@@ -28,6 +28,38 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.4.0",
+    date: "2026-07-15",
+    codename: "Documenti e Comunicazioni",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        title: "Documenti dipendente",
+        description:
+          "Contratti, buste paga, DPI, certificati corsi e altri documenti, personali o generali per sede. Ogni dipendente ritrova i propri direttamente nel portale.",
+      },
+      {
+        tag: "feature",
+        title: "Comunicazioni interne",
+        description:
+          "Bacheca per riunioni e avvisi, per tutte le sedi o una specifica, con allegato e presa visione: il dipendente conferma la lettura e chi pubblica vede chi ha letto.",
+      },
+      {
+        tag: "feature",
+        title: "Avvisi in tempo reale",
+        description:
+          "Un promemoria compare quando ci sono comunicazioni da leggere o nuove novità dell'applicazione.",
+      },
+      {
+        tag: "improvement",
+        title: "Etichetta straordinario",
+        description:
+          'Nella dashboard la voce "Oltre 8 ore" è ora "In straordinario", più coerente con il conteggio a ore settimanali.',
+      },
+    ],
+  },
+  {
     version: "1.3.0",
     date: "2026-07-15",
     codename: "Rimborsi e nuove sedi",
