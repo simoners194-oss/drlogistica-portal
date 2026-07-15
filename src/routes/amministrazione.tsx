@@ -472,9 +472,18 @@ function ImportDipendentiCard({ onDone }: { onDone: () => void }) {
           <div className="rounded-md border border-status-absent/40 bg-status-absent/5 p-3 text-xs text-status-absent">
             <p className="font-medium">Intestazioni non riconosciute (import bloccato):</p>
             <p className="mt-1 break-all">{result!.missingColumns.join(", ")}</p>
-            <p className="mt-1 text-muted-foreground">
-              Correggi i nomi nella prima riga così che combacino con le colonne della lista, poi
-              rifai l'anteprima.
+            {result!.availableColumns.length > 0 && (
+              <p className="mt-2 text-muted-foreground break-all">
+                <span className="font-medium text-foreground">
+                  Colonne scrivibili su SharePoint:
+                </span>{" "}
+                {result!.availableColumns.join(", ")}
+              </p>
+            )}
+            <p className="mt-2 text-muted-foreground">
+              L'intestazione deve combaciare ESATTAMENTE con una colonna qui sopra. Se
+              "Inquadramento" non è nell'elenco, la colonna è di sola lettura/nascosta o ha un nome
+              diverso: correggi su SharePoint (o l'intestazione nel file), poi rifai l'anteprima.
             </p>
           </div>
         )}

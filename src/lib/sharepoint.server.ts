@@ -654,6 +654,9 @@ export interface ImportDipendentiResult {
   dryRun: boolean;
   matchedColumns: string[];
   missingColumns: string[];
+  // Colonne SCRIVIBILI realmente esposte da SharePoint (per diagnosticare i
+  // mismatch di intestazione: nome diverso, colonna calcolata/nascosta, ecc.).
+  availableColumns: string[];
   totalRows: number;
   created: number;
   failed: number;
@@ -720,11 +723,15 @@ export async function importDipendenti(
     }>(`/sites/${cfg.siteId}/lists/${listId}/columns?$select=name,displayName,readOnly,hidden`),
   );
   const internalByLabel = new Map<string, string>();
+  const availableSet = new Set<string>();
   for (const c of colsRes.value ?? []) {
     if (c.hidden || c.readOnly) continue;
     if (c.displayName && c.name) internalByLabel.set(c.displayName.trim().toLowerCase(), c.name);
     if (c.name) internalByLabel.set(c.name.trim().toLowerCase(), c.name);
+    if (c.displayName) availableSet.add(c.displayName);
+    else if (c.name) availableSet.add(c.name);
   }
+  const availableColumns = [...availableSet].sort((a, b) => a.localeCompare(b));
 
   const delim = detectDelim(csvText);
   const rows = parseDelimited(csvText, delim);
@@ -748,6 +755,7 @@ export async function importDipendenti(
       dryRun,
       matchedColumns,
       missingColumns,
+      availableColumns,
       totalRows: dataRows.length,
       created: 0,
       failed: 0,
@@ -820,6 +828,7 @@ export async function importDipendenti(
     dryRun,
     matchedColumns,
     missingColumns,
+    availableColumns,
     totalRows: dataRows.length,
     created,
     failed,
