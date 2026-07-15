@@ -20,11 +20,51 @@ export interface Release {
   date: string;
   /** Nome sintetico della release, opzionale. */
   codename?: string;
+  /** A cura di (curatore/autore della release), opzionale. */
+  author?: string;
   /** Elenco novità pubblicate con questa versione. */
   entries: ReleaseEntry[];
 }
 
 export const RELEASES: readonly Release[] = [
+  {
+    version: "1.3.0",
+    date: "2026-07-15",
+    codename: "Rimborsi e nuove sedi",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        title: "Rimborsi spese con giustificativo",
+        description:
+          "Nuovo tipo di richiesta per i rimborsi: alleghi la foto o il PDF dello scontrino/fattura e l'approvatore vede importo, tipologia e documento direttamente nella coda di approvazione.",
+      },
+      {
+        tag: "feature",
+        title: "Richieste decise sempre consultabili",
+        description:
+          "Nuova vista delle richieste approvate e rifiutate, con il giustificativo sempre a portata di clic e filtri per stato, sede, periodo e dipendente. Visibile anche all'operatore.",
+      },
+      {
+        tag: "feature",
+        title: "Supporto a più sedi",
+        description:
+          "Il portale gestisce ora un numero qualsiasi di sedi che timbrano: presenze, correzioni e filtri si adattano automaticamente alle sedi caricate.",
+      },
+      {
+        tag: "feature",
+        title: "Import massivo dei dipendenti",
+        description:
+          "Caricamento in blocco dell'anagrafica da Excel/CSV con anteprima di controllo prima della scrittura, direttamente da Amministrazione.",
+      },
+      {
+        tag: "improvement",
+        title: "Supervisione per sede e nuovo Inquadramento",
+        description:
+          "Ogni supervisore vede e autorizza le richieste di propria competenza; aggiunto il campo Inquadramento nell'anagrafica dipendente.",
+      },
+    ],
+  },
   {
     version: "1.2.0",
     date: "2026-07-13",

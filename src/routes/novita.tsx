@@ -42,10 +42,7 @@ function NovitaPage() {
   const latest = sorted[0];
 
   return (
-    <AppShell
-      title="Novità"
-      subtitle={`Registro delle versioni pubblicate di ${APP_INFO.name}`}
-    >
+    <AppShell title="Novità" subtitle={`Registro delle versioni pubblicate di ${APP_INFO.name}`}>
       {latest && (
         <div className="mb-6 rounded-2xl border border-primary/30 bg-primary/5 p-4 sm:p-5 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-primary text-[11px] font-semibold uppercase tracking-wider">
@@ -58,6 +55,9 @@ function NovitaPage() {
             </span>
             {latest.codename && (
               <span className="text-sm text-muted-foreground">· {latest.codename}</span>
+            )}
+            {latest.author && (
+              <span className="text-sm text-muted-foreground">· a cura di {latest.author}</span>
             )}
             <span className="text-xs text-muted-foreground ml-auto">
               Pubblicata il {formatReleaseDate(latest.date)}
@@ -74,8 +74,9 @@ function NovitaPage() {
               <h2 className="text-lg font-semibold text-foreground tracking-tight tabular-nums">
                 Versione {r.version}
               </h2>
-              {r.codename && (
-                <span className="text-sm text-muted-foreground">· {r.codename}</span>
+              {r.codename && <span className="text-sm text-muted-foreground">· {r.codename}</span>}
+              {r.author && (
+                <span className="text-sm text-muted-foreground">· a cura di {r.author}</span>
               )}
               <span className="text-xs text-muted-foreground ml-auto">
                 {formatReleaseDate(r.date)}
@@ -98,9 +99,7 @@ function NovitaPage() {
                       </span>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[14px] font-medium text-foreground">
-                            {e.title}
-                          </span>
+                          <span className="text-[14px] font-medium text-foreground">{e.title}</span>
                           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-secondary rounded-full px-1.5 py-0.5">
                             {TAG_LABEL[tag]}
                           </span>
