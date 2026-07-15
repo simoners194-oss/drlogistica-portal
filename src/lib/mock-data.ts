@@ -1,4 +1,6 @@
-export type SedeId = "roma" | "san-giuliano";
+// La sede è identificata dal suo NOME reale (come salvato su SharePoint), non
+// più da un id chiuso. Le sedi sono dinamiche: possono essercene molte.
+export type SedeId = string;
 
 export type StatoTimbratura = "presente" | "pausa" | "uscito" | "non-timbrato";
 
@@ -32,17 +34,24 @@ export const SEDI: { id: SedeId; nome: string; timbratura: boolean }[] = [
   { id: "san-giuliano", nome: "San Giuliano", timbratura: false },
 ];
 
-// Se la sede NON timbra, i suoi dipendenti fanno solo richieste (niente
-// modulo Presenze). Le sedi non elencate/`tutte` sono considerate timbranti.
-export function sedeTimbra(sede: SedeId | "tutte"): boolean {
-  if (sede === "tutte") return true;
-  return SEDI.find((s) => s.id === sede)?.timbratura ?? true;
+// Sedi STORICHE che NON timbrano (Fiano Romano, San Giuliano). Ogni ALTRA sede
+// — comprese quelle nuove — timbra. Insieme CONGELATO di proposito: le sedi
+// future NON vanno aggiunte qui. Confronto tollerante a maiuscole/spazi e ai
+// vecchi id "roma"/"san-giuliano".
+const SEDI_NON_TIMBRANTI = new Set(["fiano romano", "san giuliano", "roma", "san-giuliano"]);
+
+// Se la sede NON timbra, i suoi dipendenti fanno solo richieste (niente modulo
+// Presenze). Vuoto/`tutte` → considerata timbrante.
+export function sedeTimbra(sede: string): boolean {
+  if (!sede || sede === "tutte") return true;
+  return !SEDI_NON_TIMBRANTI.has(sede.trim().toLowerCase());
 }
 
-// Almeno una sede timbra? (usato per grigiare le viste presenze quando nessuna
-// sede è timbrante — es. oggi Fiano Romano e San Giuliano non timbrano).
+// Con l'arrivo delle sedi timbranti la timbratura è potenzialmente sempre
+// attiva per la vista aggregata "tutte" (admin/responsabile). Le singole viste
+// restano comunque guidate dal dato reale via `sedeTimbra`.
 export function anySedeTimbra(): boolean {
-  return SEDI.some((s) => s.timbratura);
+  return true;
 }
 
 const oggi = (h: number, m: number) => {

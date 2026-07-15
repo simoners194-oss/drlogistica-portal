@@ -6,7 +6,7 @@ import { BarChart3, Lock, AlertTriangle } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
 import { spGetRendiconto } from "@/lib/sharepoint.functions";
 import type { RendicontoRiga } from "@/lib/sharepoint.server";
-import { SEDI, type SedeId } from "@/lib/mock-data";
+import { type SedeId } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/report")({
   head: () => ({ meta: [{ title: "Rendiconto — DR Portal" }] }),
@@ -27,8 +27,9 @@ export const Route = createFileRoute("/report")({
 const inputCls =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
+// La sede è già il suo nome reale: nessuna mappatura id→nome.
 function sedeNome(id: string): string {
-  return SEDI.find((s) => s.id === id)?.nome ?? id;
+  return id;
 }
 function h(n: number): string {
   return n > 0 ? `${n} h` : "—";
@@ -84,6 +85,19 @@ function RendicontoPage() {
       .finally(() => setLoading(false));
   }, [periodo, canView]);
 
+  const sediOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const r of righe ?? []) {
+      const s = (r.sede ?? "").trim();
+      if (s && s.toLowerCase() !== "tutte" && !seen.has(s.toLowerCase())) {
+        seen.add(s.toLowerCase());
+        out.push(s);
+      }
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  }, [righe]);
+
   const filtrate = useMemo(() => {
     return (righe ?? []).filter((r) => {
       if (sedeF !== "tutte" && r.sede !== sedeF) return false;
@@ -136,9 +150,9 @@ function RendicontoPage() {
               onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
             >
               <option value="tutte">Tutte</option>
-              {SEDI.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nome}
+              {sediOptions.map((s) => (
+                <option key={s} value={s}>
+                  {s}
                 </option>
               ))}
             </select>

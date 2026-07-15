@@ -18,8 +18,7 @@ import {
   spGetTimbratureManuali,
 } from "@/lib/sharepoint.functions";
 import type { SpRichiesta, SpDipendente, TimbraturaManualeItem } from "@/lib/sharepoint.server";
-import { labelTipo } from "@/lib/mock-data";
-import { SEDI, type SedeId } from "@/lib/mock-data";
+import { labelTipo, type SedeId } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/supervisione")({
   head: () => ({ meta: [{ title: "Supervisione — DR Portal" }] }),
@@ -50,8 +49,23 @@ function fmtDataOra(iso: string): string {
   const t = iso.slice(11, 16);
   return t ? `${d} ${t}` : d;
 }
+// La sede è già il suo nome reale: nessuna mappatura id→nome.
 function sedeNome(id: string): string {
-  return SEDI.find((s) => s.id === id)?.nome ?? id;
+  return id;
+}
+
+// Elenco sedi distinte presenti nei dati (richieste + dipendenti), ordinato.
+function sediDistinte(nomi: (string | undefined)[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const n of nomi) {
+    const s = (n ?? "").trim();
+    if (s && s.toLowerCase() !== "tutte" && !seen.has(s.toLowerCase())) {
+      seen.add(s.toLowerCase());
+      out.push(s);
+    }
+  }
+  return out.sort((a, b) => a.localeCompare(b));
 }
 
 const STATO_BADGE: Record<string, string> = {
@@ -125,6 +139,15 @@ function SupervisionePage() {
     for (const d of dipendenti) m.set(d.id, d.nomeCompleto || `${d.cognome} ${d.nome}`);
     return m;
   }, [dipendenti]);
+
+  const sediOptions = useMemo(
+    () =>
+      sediDistinte([
+        ...(decise ?? []).map((r) => r.sedeRichiedente),
+        ...dipendenti.map((d) => d.sede),
+      ]),
+    [decise, dipendenti],
+  );
 
   const filtrate = useMemo(() => {
     return (decise ?? []).filter((r) => {
@@ -227,9 +250,9 @@ function SupervisionePage() {
                 onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
               >
                 <option value="tutte">Tutte</option>
-                {SEDI.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nome}
+                {sediOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
                   </option>
                 ))}
               </select>
@@ -362,9 +385,9 @@ function SupervisionePage() {
                 onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
               >
                 <option value="tutte">Tutte</option>
-                {SEDI.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nome}
+                {sediOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
                   </option>
                 ))}
               </select>

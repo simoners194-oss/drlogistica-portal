@@ -26,25 +26,13 @@ import {
   DISPLAY_LABEL,
   type DisplayStato,
 } from "@/lib/data-service";
-import {
-  SEDI,
-  sedeTimbra,
-  formatOra,
-  labelTipo,
-  type SedeId,
-  type Dipendente,
-} from "@/lib/mock-data";
+import { sedeTimbra, formatOra, labelTipo, type SedeId, type Dipendente } from "@/lib/mock-data";
 import { useLivePresenze } from "@/lib/use-live-presenze";
 import { formatDurata } from "@/lib/presenze-logic";
 import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
 import { DettaglioDipendenteDialog } from "@/components/DettaglioDipendenteDialog";
 import { readSession, type Ruolo, type SessionUser } from "@/lib/session";
 import { QuickAccess, type QuickAccessItem } from "@/components/QuickAccess";
-
-// Sedi che timbrano (stabile: dipende solo dalla configurazione SEDI). Oggi
-// nessuna → le viste presenze restano grigie/oscurate.
-const SEDI_TIMBRANTI = SEDI.filter((s) => s.timbratura);
-const TIMBRATURA_ATTIVA = SEDI_TIMBRANTI.length > 0;
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — DR Portal" }] }),
@@ -79,13 +67,16 @@ function DashboardPage() {
   const isResponsabile = ruolo === "responsabile";
   const isAdmin = ruolo === "amministratore_sistema";
 
+  // Timbratura attiva se almeno un dipendente appartiene a una sede timbrante.
+  const timbraturaAttiva = data.some((d) => sedeTimbra(d.sede));
+
   const quickItems: QuickAccessItem[] = isAdmin
     ? [
         {
           label: "Presenze",
           to: "/presenze",
           Icon: Clock,
-          ready: TIMBRATURA_ATTIVA,
+          ready: timbraturaAttiva,
           disabledNote: "Sede senza timbratura",
         },
         { label: "Report", to: "/report", Icon: BarChart3, ready: false },
@@ -104,7 +95,7 @@ function DashboardPage() {
           label: "Presenze",
           to: "/presenze",
           Icon: Clock,
-          ready: TIMBRATURA_ATTIVA,
+          ready: timbraturaAttiva,
           disabledNote: "Sede senza timbratura",
         },
         { label: "Report", to: "/report", Icon: BarChart3, ready: false },
@@ -127,17 +118,26 @@ function DashboardPage() {
     [scopedData, selected],
   );
 
-  const sediStats = useMemo(
-    () =>
-      SEDI_TIMBRANTI.map((s) => {
-        const dip = bySede(data, s.id);
-        const presenti = dip.filter((d) => displayStato(d) !== "assente").length;
-        return { ...s, presenti, totale: dip.length };
-      }),
-    [data],
-  );
+  // Sedi timbranti effettivamente presenti nei dati (distinte, ordinate).
+  const sediStats = useMemo(() => {
+    const seen = new Set<string>();
+    const nomi: string[] = [];
+    for (const d of presenzeData) {
+      const s = (d.sede ?? "").trim();
+      if (s && s.toLowerCase() !== "tutte" && !seen.has(s.toLowerCase())) {
+        seen.add(s.toLowerCase());
+        nomi.push(s);
+      }
+    }
+    nomi.sort((a, b) => a.localeCompare(b));
+    return nomi.map((nome) => {
+      const dip = bySede(presenzeData, nome);
+      const presenti = dip.filter((d) => displayStato(d) !== "assente").length;
+      return { id: nome, nome, presenti, totale: dip.length };
+    });
+  }, [presenzeData]);
 
-  const visibleSedi = SEDI_TIMBRANTI;
+  const visibleSedi = sediStats;
 
   const title = isResponsabile ? "Dashboard responsabili" : "Dashboard presenze";
   const subtitle = isResponsabile
@@ -169,7 +169,7 @@ function DashboardPage() {
 
       {loading && scopedData.length === 0 ? (
         <DashboardSkeleton />
-      ) : !TIMBRATURA_ATTIVA ? (
+      ) : !timbraturaAttiva ? (
         <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-[var(--shadow-card)]">
           <div className="text-sm font-semibold text-foreground">Timbrature non attive</div>
           <p className="text-[13px] text-muted-foreground mt-1 max-w-md mx-auto">
@@ -317,7 +317,7 @@ function DashboardPage() {
 }
 
 function sedeLabel(id: SedeId) {
-  return SEDI.find((s) => s.id === id)?.nome ?? id;
+  return id;
 }
 
 function KpiCard({

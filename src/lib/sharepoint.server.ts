@@ -523,11 +523,15 @@ interface GraphListResponse<F> {
 }
 
 type SedeRaw = string | undefined | null;
-function normalizeSede(v: SedeRaw): "roma" | "san-giuliano" | "tutte" {
-  const s = (v ?? "").toString().trim().toLowerCase().replace(/\s+/g, "-");
-  if (s === "tutte" || s === "all" || s === "*") return "tutte";
-  if (s.startsWith("san")) return "san-giuliano";
-  return "roma";
+// Conserva il NOME reale della sede (com'è su SharePoint), così le sedi nuove
+// non vengono più schiacciate su un id fisso. Solo il valore speciale "tutte"
+// (admin senza sede operativa) viene normalizzato.
+function normalizeSede(v: SedeRaw): string {
+  const s = (v ?? "").toString().trim();
+  if (!s) return "";
+  const low = s.toLowerCase();
+  if (low === "tutte" || low === "all" || low === "*") return "tutte";
+  return s;
 }
 
 function requireField(
@@ -550,7 +554,7 @@ export interface SpDipendente {
   cognome: string;
   nomeCompleto: string;
   email: string;
-  sede: "roma" | "san-giuliano" | "tutte";
+  sede: string;
   attivo: boolean;
   ruolo: string;
   // Visibilità nelle viste operative (dashboard, elenchi, conteggi, report).
@@ -1021,7 +1025,7 @@ export async function fetchTimbratureOggi(): Promise<SpTimbratura[]> {
 export interface AnomaliaItem {
   dipendenteId: string;
   nomeCompleto: string;
-  sede: string; // id sede ("roma"/"san-giuliano")
+  sede: string; // nome sede (come su SharePoint)
   data: string; // YYYY-MM-DD
   tipo: TipoAnomalia;
 }

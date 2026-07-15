@@ -13,7 +13,7 @@ import {
 } from "@/lib/sharepoint.functions";
 import type { SpDipendente, AnomaliaItem } from "@/lib/sharepoint.server";
 import { EVENTI, LABEL_ANOMALIA, type EventoTimbratura } from "@/lib/presenze-logic";
-import { SEDI, labelTipo, type SedeId } from "@/lib/mock-data";
+import { labelTipo, type SedeId } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/gestione-timbrature")({
   head: () => ({ meta: [{ title: "Gestione timbrature — DR Portal" }] }),
@@ -38,8 +38,9 @@ function toIso(data: string, ora: string): string {
   return new Date(`${data}T${ora}`).toISOString();
 }
 
+// La sede è già il suo nome reale: nessuna mappatura id→nome.
 function sedeNome(id: string): string {
-  return SEDI.find((s) => s.id === id)?.nome ?? id;
+  return id;
 }
 
 function fmtData(iso: string): string {
@@ -95,6 +96,19 @@ function GestioneTimbraturePage() {
       .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)));
     loadAnomalie();
   }, []);
+
+  const sediOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const d of dipendenti ?? []) {
+      const s = (d.sede ?? "").trim();
+      if (s && s.toLowerCase() !== "tutte" && !seen.has(s.toLowerCase())) {
+        seen.add(s.toLowerCase());
+        out.push(s);
+      }
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  }, [dipendenti]);
 
   const filteredDip = useMemo(() => {
     const arr = (dipendenti ?? []).filter((d) =>
@@ -307,9 +321,9 @@ function GestioneTimbraturePage() {
                   }}
                 >
                   <option value="tutte">Tutte le sedi</option>
-                  {SEDI.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nome}
+                  {sediOptions.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
                     </option>
                   ))}
                 </select>
