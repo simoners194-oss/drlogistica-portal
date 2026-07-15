@@ -663,15 +663,18 @@ export interface ImportDipendentiResult {
   rows: ImportRowResult[];
 }
 
-// Rileva il separatore dall'intestazione: TAB (incolla da Excel) o virgola (CSV).
-function detectDelim(text: string): "," | "\t" {
+// Rileva il separatore dall'intestazione: TAB (incolla da Excel), punto e
+// virgola (default CSV Excel italiano) o virgola.
+function detectDelim(text: string): "," | "\t" | ";" {
   const nl = text.indexOf("\n");
   const firstLine = nl >= 0 ? text.slice(0, nl) : text;
-  return firstLine.includes("\t") ? "\t" : ",";
+  if (firstLine.includes("\t")) return "\t";
+  if (firstLine.includes(";")) return ";";
+  return ",";
 }
 
-// Parser tollerante ai campi tra virgolette. Separatore singolo (`,` o TAB).
-function parseDelimited(text: string, delim: "," | "\t"): string[][] {
+// Parser tollerante ai campi tra virgolette. Separatore singolo (`,`, `;` o TAB).
+function parseDelimited(text: string, delim: "," | "\t" | ";"): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
