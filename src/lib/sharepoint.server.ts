@@ -113,6 +113,37 @@ export const SP_DISPLAY = {
     Giustificativo: "Giustificativo",
     AnnoCompetenza: "AnnoCompetenza",
   },
+  // Modulo Documenti (Sprint 4). Lista OPZIONALE (discovery soft).
+  documenti: {
+    Categoria: "Categoria",
+    Titolo: "Titolo",
+    Ambito: "Ambito",
+    DestinatarioId: "DestinatarioId",
+    CodiceDestinatario: "CodiceDestinatario",
+    SedeDestinatario: "SedeDestinatario",
+    File: "File",
+    NomeFile: "NomeFile",
+    DataDocumento: "DataDocumento",
+    CaricatoDa: "CaricatoDa",
+  },
+  // Modulo Comunicazioni interne (Sprint 4). Lista OPZIONALE.
+  comunicazioni: {
+    Titolo: "Titolo",
+    Testo: "Testo",
+    Tipo: "Tipo",
+    Sede: "Sede",
+    DataComunicazione: "DataComunicazione",
+    Autore: "Autore",
+    Allegato: "Allegato",
+    RichiedePresaVisione: "RichiedePresaVisione",
+  },
+  // Prese visione delle comunicazioni (ricevute di lettura). Lista OPZIONALE.
+  preseVisione: {
+    ComunicazioneId: "ComunicazioneId",
+    DipendenteId: "DipendenteId",
+    CodiceDipendente: "CodiceDipendente",
+    DataLettura: "DataLettura",
+  },
 } as const;
 
 const REQUIRED_DIP_KEYS = [
@@ -132,6 +163,9 @@ const LIST_NAMES = {
   dipendenti: ["Dipendenti", "Dipendente"],
   timbrature: ["Timbrature", "Timbratura"],
   richieste: ["Richieste", "Richiesta"],
+  documenti: ["Documenti", "Documento"],
+  comunicazioni: ["Comunicazioni", "Comunicazione"],
+  preseVisione: ["PreseVisione", "PresaVisione", "PreseVisioni"],
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -198,6 +232,19 @@ export interface SpDiscovered {
   dipendentiMissing: string[];
   timbratureMissing: string[];
   richiesteMissing: string[];
+  // Liste Sprint 4 (Documenti / Comunicazioni / PreseVisione) — OPZIONALI.
+  listDocumenti: string | null;
+  listDocumentiName: string | null;
+  documentiFields: Record<string, string>;
+  documentiMissing: string[];
+  listComunicazioni: string | null;
+  listComunicazioniName: string | null;
+  comunicazioniFields: Record<string, string>;
+  comunicazioniMissing: string[];
+  listPreseVisione: string | null;
+  listPreseVisioneName: string | null;
+  preseVisioneFields: Record<string, string>;
+  preseVisioneMissing: string[];
   cachedAt: string;
   expiresAt: string;
 }
@@ -461,6 +508,32 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     }
   }
 
+  // 6) Discovery SOFT delle liste Sprint 4 (Documenti/Comunicazioni/PreseVisione).
+  const softList = async (names: readonly string[], display: Record<string, string>) => {
+    const l = lists.find((x) => matchListName(x, names));
+    if (!l) return { id: null, name: null, fields: {} as Record<string, string>, missing: [] };
+    try {
+      const cols = await getListColumns(targetSite.id, l.id);
+      const res = resolveInternalNames(cols, display);
+      return {
+        id: l.id,
+        name: l.displayName || l.name || l.id,
+        fields: res.map,
+        missing: res.missing,
+      };
+    } catch (err) {
+      logSp(
+        "warn",
+        "discover.softlist",
+        `Colonne non risolte per ${l.displayName || l.name}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return { id: l.id, name: l.displayName || l.name || l.id, fields: {}, missing: [] };
+    }
+  };
+  const docs = await softList(LIST_NAMES.documenti, SP_DISPLAY.documenti);
+  const coms = await softList(LIST_NAMES.comunicazioni, SP_DISPLAY.comunicazioni);
+  const pv = await softList(LIST_NAMES.preseVisione, SP_DISPLAY.preseVisione);
+
   const now = Date.now();
   discoveredCache = {
     siteId: targetSite.id,
@@ -478,6 +551,18 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     dipendentiMissing: dipRes.missing,
     timbratureMissing: timRes.missing,
     richiesteMissing,
+    listDocumenti: docs.id,
+    listDocumentiName: docs.name,
+    documentiFields: docs.fields,
+    documentiMissing: docs.missing,
+    listComunicazioni: coms.id,
+    listComunicazioniName: coms.name,
+    comunicazioniFields: coms.fields,
+    comunicazioniMissing: coms.missing,
+    listPreseVisione: pv.id,
+    listPreseVisioneName: pv.name,
+    preseVisioneFields: pv.fields,
+    preseVisioneMissing: pv.missing,
     cachedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CACHE_TTL_MS).toISOString(),
   };
@@ -1946,7 +2031,11 @@ export interface UploadGiustificativoResult {
   fileName: string;
 }
 
-export async function uploadGiustificativo(
+// Upload generico di un file sulla libreria documenti del sito, in una
+// sottocartella (`subfolder`). Ritorna il webUrl da salvare come riferimento.
+// Limite 8 MB. Usato da giustificativi, documenti dipendente e allegati.
+export async function uploadFileToLibrary(
+  subfolder: string,
   filename: string,
   contentBase64: string,
 ): Promise<UploadGiustificativoResult> {
@@ -1958,8 +2047,9 @@ export async function uploadGiustificativo(
   }
   // Nome file sicuro: solo caratteri innocui, coda limitata a 80 char.
   const safe = (filename || "documento").replace(/[^A-Za-z0-9._-]/g, "_").slice(-80) || "documento";
+  const folder = (subfolder || "Documenti").replace(/[^A-Za-z0-9._/-]/g, "_");
   const anno = new Date().getFullYear();
-  const path = `Rimborsi/${anno}/${Date.now()}-${safe}`;
+  const path = `${folder}/${anno}/${Date.now()}-${safe}`;
   const created = await withDiscoveryRetry(() =>
     gatewayJson<{ webUrl?: string; name?: string }>(
       `/sites/${cfg.siteId}/drive/root:/${path}:/content`,
@@ -1972,8 +2062,320 @@ export async function uploadGiustificativo(
       },
     ),
   );
-  logSp("info", "upload.giustificativo", `Caricato ${path} (${bytes.length} byte)`);
+  logSp("info", "upload.file", `Caricato ${path} (${bytes.length} byte)`);
   return { webUrl: created.webUrl ?? "", fileName: created.name ?? safe };
+}
+
+export async function uploadGiustificativo(
+  filename: string,
+  contentBase64: string,
+): Promise<UploadGiustificativoResult> {
+  return uploadFileToLibrary("Rimborsi", filename, contentBase64);
+}
+
+// ---------------------------------------------------------------------------
+// Modulo Documenti dipendente (Sprint 4)
+// ---------------------------------------------------------------------------
+function requireDocumentiList(cfg: SpDiscovered): string {
+  if (!cfg.listDocumenti)
+    throw new Error('Lista "Documenti" non trovata su SharePoint. Crearla sul sito DRPORTAL.');
+  return cfg.listDocumenti;
+}
+
+export type DocumentoCategoria = "Contratto" | "Busta paga" | "DPI" | "Certificato corso" | "Altro";
+export type DocumentoAmbito = "Personale" | "Generale";
+
+export interface SpDocumento {
+  id: string;
+  categoria: string;
+  titolo: string;
+  ambito: string;
+  destinatarioId: string;
+  codiceDestinatario: string;
+  sedeDestinatario: string;
+  file: string;
+  nomeFile: string;
+  dataDocumento: string;
+  caricatoDa: string;
+  createdAt?: string;
+}
+export interface CreateDocumentoInput {
+  categoria: DocumentoCategoria;
+  titolo: string;
+  ambito: DocumentoAmbito;
+  destinatarioId?: string; // per Ambito=Personale
+  sedeDestinatario?: string; // per Ambito=Generale ("Tutte" o nome sede)
+  file: string; // webUrl del file caricato
+  nomeFile?: string;
+  caricatoDa: string; // codice di chi carica
+}
+
+function mapDocumento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>): SpDocumento {
+  const F = cfg.documentiFields;
+  const f = it.fields ?? {};
+  return {
+    id: String(it.id),
+    categoria: F.Categoria ? String(f[F.Categoria] ?? "") : "",
+    titolo: F.Titolo ? String(f[F.Titolo] ?? "") : "",
+    ambito: F.Ambito ? String(f[F.Ambito] ?? "") : "",
+    destinatarioId: F.DestinatarioId ? String(f[F.DestinatarioId] ?? "") : "",
+    codiceDestinatario: F.CodiceDestinatario ? String(f[F.CodiceDestinatario] ?? "") : "",
+    sedeDestinatario: F.SedeDestinatario ? String(f[F.SedeDestinatario] ?? "") : "",
+    file: F.File ? String(f[F.File] ?? "") : "",
+    nomeFile: F.NomeFile ? String(f[F.NomeFile] ?? "") : "",
+    dataDocumento: F.DataDocumento ? String(f[F.DataDocumento] ?? "") : "",
+    caricatoDa: F.CaricatoDa ? String(f[F.CaricatoDa] ?? "") : "",
+    createdAt: (f["Created"] as string | undefined) ?? undefined,
+  };
+}
+
+async function fetchAllDocumenti(cfg: SpDiscovered): Promise<SpDocumento[]> {
+  if (!cfg.listDocumenti) return [];
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listDocumenti}/items?expand=fields&$top=999`,
+    ),
+  );
+  return res.value
+    .map((it) => mapDocumento(cfg, it))
+    .sort((a, b) =>
+      (b.dataDocumento || b.createdAt || "").localeCompare(a.dataDocumento || a.createdAt || ""),
+    );
+}
+
+export async function fetchDocumentiAll(): Promise<SpDocumento[]> {
+  return fetchAllDocumenti(await discoverSharePoint());
+}
+
+export async function fetchDocumentiForUser(userId: string, sede: string): Promise<SpDocumento[]> {
+  const all = await fetchAllDocumenti(await discoverSharePoint());
+  const sedeLow = (sede || "").trim().toLowerCase();
+  return all.filter((d) => {
+    if (d.ambito === "Personale") return d.destinatarioId === userId;
+    // Generale: destinato a tutte le sedi o alla sede dell'utente.
+    const s = (d.sedeDestinatario || "").trim().toLowerCase();
+    return s === "" || s === "tutte" || s === sedeLow;
+  });
+}
+
+export async function createDocumento(input: CreateDocumentoInput): Promise<SpDocumento> {
+  const cfg = await discoverSharePoint();
+  const listId = requireDocumentiList(cfg);
+  const F = cfg.documentiFields;
+  const fields: Record<string, unknown> = {};
+  if (F.Categoria) fields[F.Categoria] = input.categoria;
+  if (F.Titolo) fields[F.Titolo] = input.titolo;
+  if (F.Ambito) fields[F.Ambito] = input.ambito;
+  if (F.File) fields[F.File] = input.file;
+  if (F.NomeFile && input.nomeFile) fields[F.NomeFile] = input.nomeFile;
+  if (F.DataDocumento) fields[F.DataDocumento] = new Date().toISOString();
+  if (F.CaricatoDa) fields[F.CaricatoDa] = input.caricatoDa;
+  fields["Title"] = input.titolo || input.categoria || "Documento";
+  if (input.ambito === "Personale" && input.destinatarioId) {
+    if (F.DestinatarioId) fields[F.DestinatarioId] = input.destinatarioId;
+    try {
+      const DF = cfg.dipendentiFields;
+      const dip = await fetchDipendenteFields(cfg, input.destinatarioId);
+      if (F.CodiceDestinatario && DF.Codice)
+        fields[F.CodiceDestinatario] = String(dip[DF.Codice] ?? "");
+    } catch {
+      /* denormalizzazione best-effort */
+    }
+  } else if (input.ambito === "Generale") {
+    if (F.SedeDestinatario) fields[F.SedeDestinatario] = input.sedeDestinatario || "Tutte";
+  }
+  const created = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${listId}/items`,
+      { method: "POST", body: JSON.stringify({ fields }) },
+    ),
+  );
+  logSp("info", "create.documento", `Documento "${input.titolo}" (${input.categoria})`);
+  return mapDocumento(cfg, { id: created.id, fields });
+}
+
+// ---------------------------------------------------------------------------
+// Modulo Comunicazioni interne + Prese visione (Sprint 4)
+// ---------------------------------------------------------------------------
+function requireComunicazioniList(cfg: SpDiscovered): string {
+  if (!cfg.listComunicazioni)
+    throw new Error('Lista "Comunicazioni" non trovata su SharePoint. Crearla sul sito DRPORTAL.');
+  return cfg.listComunicazioni;
+}
+
+export type ComunicazioneTipo = "Riunione" | "Comunicazione";
+
+export interface SpComunicazione {
+  id: string;
+  titolo: string;
+  testo: string;
+  tipo: string;
+  sede: string;
+  dataComunicazione: string;
+  autore: string;
+  allegato: string;
+  richiedePresaVisione: boolean;
+  createdAt?: string;
+}
+export interface CreateComunicazioneInput {
+  titolo: string;
+  testo: string;
+  tipo: ComunicazioneTipo;
+  sede: string; // "Tutte" o nome sede
+  autore: string; // codice
+  allegato?: string;
+  richiedePresaVisione: boolean;
+}
+export interface SpPresaVisione {
+  id: string;
+  comunicazioneId: string;
+  dipendenteId: string;
+  codiceDipendente: string;
+  dataLettura: string;
+}
+
+function mapComunicazione(
+  cfg: SpDiscovered,
+  it: GraphListItem<Record<string, unknown>>,
+): SpComunicazione {
+  const F = cfg.comunicazioniFields;
+  const f = it.fields ?? {};
+  return {
+    id: String(it.id),
+    titolo: F.Titolo ? String(f[F.Titolo] ?? "") : "",
+    testo: F.Testo ? String(f[F.Testo] ?? "") : "",
+    tipo: F.Tipo ? String(f[F.Tipo] ?? "") : "",
+    sede: F.Sede ? String(f[F.Sede] ?? "") : "",
+    dataComunicazione: F.DataComunicazione ? String(f[F.DataComunicazione] ?? "") : "",
+    autore: F.Autore ? String(f[F.Autore] ?? "") : "",
+    allegato: F.Allegato ? String(f[F.Allegato] ?? "") : "",
+    richiedePresaVisione: parseSpBool(
+      F.RichiedePresaVisione ? f[F.RichiedePresaVisione] : undefined,
+      false,
+    ),
+    createdAt: (f["Created"] as string | undefined) ?? undefined,
+  };
+}
+
+async function fetchAllComunicazioni(cfg: SpDiscovered): Promise<SpComunicazione[]> {
+  if (!cfg.listComunicazioni) return [];
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listComunicazioni}/items?expand=fields&$top=999`,
+    ),
+  );
+  return res.value
+    .map((it) => mapComunicazione(cfg, it))
+    .sort((a, b) =>
+      (b.dataComunicazione || b.createdAt || "").localeCompare(
+        a.dataComunicazione || a.createdAt || "",
+      ),
+    );
+}
+
+export async function fetchComunicazioniAll(): Promise<SpComunicazione[]> {
+  return fetchAllComunicazioni(await discoverSharePoint());
+}
+
+export async function fetchComunicazioniForUser(sede: string): Promise<SpComunicazione[]> {
+  const all = await fetchAllComunicazioni(await discoverSharePoint());
+  const sedeLow = (sede || "").trim().toLowerCase();
+  return all.filter((c) => {
+    const s = (c.sede || "").trim().toLowerCase();
+    return s === "" || s === "tutte" || s === sedeLow;
+  });
+}
+
+export async function createComunicazione(
+  input: CreateComunicazioneInput,
+): Promise<SpComunicazione> {
+  const cfg = await discoverSharePoint();
+  const listId = requireComunicazioniList(cfg);
+  const F = cfg.comunicazioniFields;
+  const fields: Record<string, unknown> = {};
+  fields["Title"] = input.titolo || "Comunicazione";
+  if (F.Titolo) fields[F.Titolo] = input.titolo;
+  if (F.Testo) fields[F.Testo] = input.testo;
+  if (F.Tipo) fields[F.Tipo] = input.tipo;
+  if (F.Sede) fields[F.Sede] = input.sede || "Tutte";
+  if (F.DataComunicazione) fields[F.DataComunicazione] = new Date().toISOString();
+  if (F.Autore) fields[F.Autore] = input.autore;
+  if (F.Allegato && input.allegato) fields[F.Allegato] = input.allegato;
+  if (F.RichiedePresaVisione) fields[F.RichiedePresaVisione] = input.richiedePresaVisione;
+  const created = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${listId}/items`,
+      { method: "POST", body: JSON.stringify({ fields }) },
+    ),
+  );
+  logSp("info", "create.comunicazione", `Comunicazione "${input.titolo}" (${input.tipo})`);
+  return mapComunicazione(cfg, { id: created.id, fields });
+}
+
+function mapPresaVisione(
+  cfg: SpDiscovered,
+  it: GraphListItem<Record<string, unknown>>,
+): SpPresaVisione {
+  const F = cfg.preseVisioneFields;
+  const f = it.fields ?? {};
+  return {
+    id: String(it.id),
+    comunicazioneId: F.ComunicazioneId ? String(f[F.ComunicazioneId] ?? "") : "",
+    dipendenteId: F.DipendenteId ? String(f[F.DipendenteId] ?? "") : "",
+    codiceDipendente: F.CodiceDipendente ? String(f[F.CodiceDipendente] ?? "") : "",
+    dataLettura: F.DataLettura ? String(f[F.DataLettura] ?? "") : "",
+  };
+}
+
+async function fetchAllPreseVisione(cfg: SpDiscovered): Promise<SpPresaVisione[]> {
+  if (!cfg.listPreseVisione) return [];
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listPreseVisione}/items?expand=fields&$top=999`,
+    ),
+  );
+  return res.value.map((it) => mapPresaVisione(cfg, it));
+}
+
+// Prese visione di una comunicazione (chi l'ha letta).
+export async function fetchPreseVisione(comunicazioneId: string): Promise<SpPresaVisione[]> {
+  const all = await fetchAllPreseVisione(await discoverSharePoint());
+  return all.filter((p) => p.comunicazioneId === comunicazioneId);
+}
+
+// Id delle comunicazioni già confermate da un dipendente.
+export async function fetchPreseVisioneForUser(dipendenteId: string): Promise<string[]> {
+  const all = await fetchAllPreseVisione(await discoverSharePoint());
+  return all.filter((p) => p.dipendenteId === dipendenteId).map((p) => p.comunicazioneId);
+}
+
+// Registra la presa visione (idempotente: non duplica se già presente).
+export async function markPresaVisione(
+  comunicazioneId: string,
+  dipendenteId: string,
+  codiceDipendente: string,
+): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listPreseVisione)
+    throw new Error('Lista "PreseVisione" non trovata su SharePoint. Crearla sul sito DRPORTAL.');
+  const esistenti = await fetchAllPreseVisione(cfg);
+  if (
+    esistenti.some((p) => p.comunicazioneId === comunicazioneId && p.dipendenteId === dipendenteId)
+  )
+    return;
+  const F = cfg.preseVisioneFields;
+  const fields: Record<string, unknown> = { Title: `PV-${comunicazioneId}-${dipendenteId}` };
+  if (F.ComunicazioneId) fields[F.ComunicazioneId] = comunicazioneId;
+  if (F.DipendenteId) fields[F.DipendenteId] = dipendenteId;
+  if (F.CodiceDipendente) fields[F.CodiceDipendente] = codiceDipendente;
+  if (F.DataLettura) fields[F.DataLettura] = new Date().toISOString();
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listPreseVisione}/items`, {
+      method: "POST",
+      body: JSON.stringify({ fields }),
+    }),
+  );
+  logSp("info", "presa.visione", `Comunicazione #${comunicazioneId} letta da #${dipendenteId}`);
 }
 
 // ---------------------------------------------------------------------------

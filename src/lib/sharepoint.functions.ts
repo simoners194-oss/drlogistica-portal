@@ -30,6 +30,21 @@ import {
   fetchTimbratureManuali,
   importDipendenti,
   type ImportDipendentiResult,
+  uploadFileToLibrary,
+  fetchDocumentiAll,
+  fetchDocumentiForUser,
+  createDocumento,
+  fetchComunicazioniAll,
+  fetchComunicazioniForUser,
+  createComunicazione,
+  markPresaVisione,
+  fetchPreseVisione,
+  fetchPreseVisioneForUser,
+  type SpDocumento,
+  type CreateDocumentoInput,
+  type SpComunicazione,
+  type CreateComunicazioneInput,
+  type SpPresaVisione,
   fetchTimbratureOggi,
   getLastSyncAt,
   getSpLog,
@@ -315,6 +330,117 @@ export const spImportDipendenti = createServerFn({ method: "POST" })
     const me = await currentUser();
     assertCap(isAdmin(me));
     return importDipendenti(data.csv, data.dryRun);
+  });
+
+// ---------------------------------------------------------------------------
+// Documenti + Comunicazioni interne (Sprint 4)
+// ---------------------------------------------------------------------------
+// Capability di pubblicazione: responsabile, amministratore o operatore (DR000).
+const canPubblicare = (me: ServerSessionUser) =>
+  me.ruolo === "responsabile" || isAdmin(me) || me.operatore;
+
+// Upload generico su libreria (solo pubblicatori). subfolder ristretto.
+export const spUploadFile = createServerFn({ method: "POST" })
+  .inputValidator((input: { subfolder: string; filename: string; contentBase64: string }) => {
+    if (!input?.contentBase64) throw new Error("Contenuto file mancante");
+    const allowed = new Set(["Documenti", "Comunicazioni"]);
+    return {
+      subfolder: allowed.has(input.subfolder) ? input.subfolder : "Documenti",
+      filename: String(input.filename ?? "documento"),
+      contentBase64: String(input.contentBase64),
+    };
+  })
+  .handler(async ({ data }): Promise<UploadGiustificativoResult> => {
+    const me = await currentUser();
+    assertCap(canPubblicare(me));
+    return uploadFileToLibrary(data.subfolder, data.filename, data.contentBase64);
+  });
+
+export const spGetDocumenti = createServerFn({ method: "GET" }).handler(
+  async (): Promise<SpDocumento[]> => {
+    const me = await currentUser();
+    // Pubblicatori vedono tutti i documenti; il dipendente solo i propri
+    // (personali) + i generali per la sua sede / per tutti.
+    if (canPubblicare(me)) return fetchDocumentiAll();
+    return fetchDocumentiForUser(me.id, String(me.sede));
+  },
+);
+
+export const spCreateDocumento = createServerFn({ method: "POST" })
+  .inputValidator((input: Omit<CreateDocumentoInput, "caricatoDa">) => {
+    if (!input?.categoria) throw new Error("Categoria mancante");
+    if (!input?.titolo) throw new Error("Titolo mancante");
+    if (!input?.file) throw new Error("File mancante");
+    if (input.ambito !== "Personale" && input.ambito !== "Generale")
+      throw new Error("Ambito non valido");
+    if (input.ambito === "Personale" && !input.destinatarioId)
+      throw new Error("Destinatario mancante per un documento personale");
+    return input;
+  })
+  .handler(async ({ data }): Promise<SpDocumento> => {
+    const me = await currentUser();
+    assertCap(canPubblicare(me));
+    return createDocumento({ ...data, caricatoDa: `${me.nome} ${me.cognome}`.trim() });
+  });
+
+export const spGetComunicazioni = createServerFn({ method: "GET" }).handler(
+  async (): Promise<SpComunicazione[]> => {
+    const me = await currentUser();
+    if (canPubblicare(me)) return fetchComunicazioniAll();
+    return fetchComunicazioniForUser(String(me.sede));
+  },
+);
+
+export const spCreateComunicazione = createServerFn({ method: "POST" })
+  .inputValidator((input: Omit<CreateComunicazioneInput, "autore">) => {
+    if (!input?.titolo) throw new Error("Titolo mancante");
+    if (!input?.testo) throw new Error("Testo mancante");
+    if (input.tipo !== "Riunione" && input.tipo !== "Comunicazione")
+      throw new Error("Tipo non valido");
+    return {
+      titolo: String(input.titolo),
+      testo: String(input.testo),
+      tipo: input.tipo,
+      sede: String(input.sede ?? "Tutte"),
+      allegato: input.allegato ? String(input.allegato) : undefined,
+      richiedePresaVisione: Boolean(input.richiedePresaVisione),
+    };
+  })
+  .handler(async ({ data }): Promise<SpComunicazione> => {
+    const me = await currentUser();
+    assertCap(canPubblicare(me));
+    return createComunicazione({ ...data, autore: `${me.nome} ${me.cognome}`.trim() });
+  });
+
+// Chi ha letto una comunicazione — solo pubblicatori.
+export const spGetPreseVisione = createServerFn({ method: "GET" })
+  .inputValidator((input: { comunicazioneId: string }) => {
+    if (!input?.comunicazioneId) throw new Error("comunicazioneId mancante");
+    return { comunicazioneId: String(input.comunicazioneId) };
+  })
+  .handler(async ({ data }): Promise<SpPresaVisione[]> => {
+    const me = await currentUser();
+    assertCap(canPubblicare(me));
+    return fetchPreseVisione(data.comunicazioneId);
+  });
+
+// Comunicazioni già confermate dall'utente corrente.
+export const spGetMiePreseVisione = createServerFn({ method: "GET" }).handler(
+  async (): Promise<string[]> => {
+    const me = await currentUser();
+    return fetchPreseVisioneForUser(me.id);
+  },
+);
+
+export const spMarkPresaVisione = createServerFn({ method: "POST" })
+  .inputValidator((input: { comunicazioneId: string }) => {
+    if (!input?.comunicazioneId) throw new Error("comunicazioneId mancante");
+    return { comunicazioneId: String(input.comunicazioneId) };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    const me = await currentUser();
+    await markPresaVisione(data.comunicazioneId, me.id, `${me.nome} ${me.cognome}`.trim());
+    return { ok: true };
   });
 
 export const spCreateTimbraturaManuale = createServerFn({ method: "POST" })

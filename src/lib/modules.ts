@@ -16,6 +16,8 @@ import {
   Sparkles,
   ClipboardList,
   ShieldCheck,
+  FolderOpen,
+  Megaphone,
   type LucideIcon,
 } from "lucide-react";
 import type { Ruolo } from "./session";
@@ -79,6 +81,24 @@ export const MODULES: readonly AppModule[] = [
     icon: FileText,
     ready: true,
     description: "Ferie, permessi, straordinari, smart working, malattia e reperibilità.",
+    roles: ["dipendente", "responsabile", "amministratore_sistema"],
+  },
+  {
+    id: "documenti",
+    title: "Documenti",
+    url: "/documenti",
+    icon: FolderOpen,
+    ready: true,
+    description: "Contratti, buste paga, DPI, certificati corsi e altri documenti.",
+    roles: ["dipendente", "responsabile", "amministratore_sistema"],
+  },
+  {
+    id: "comunicazioni",
+    title: "Comunicazioni",
+    url: "/comunicazioni",
+    icon: Megaphone,
+    ready: true,
+    description: "Bacheca interna: riunioni e avvisi, con presa visione.",
     roles: ["dipendente", "responsabile", "amministratore_sistema"],
   },
   {

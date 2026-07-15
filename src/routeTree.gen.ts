@@ -15,7 +15,9 @@ import { Route as ReportRouteImport } from './routes/report'
 import { Route as PresenzeRouteImport } from './routes/presenze'
 import { Route as NovitaRouteImport } from './routes/novita'
 import { Route as GestioneTimbratureRouteImport } from './routes/gestione-timbrature'
+import { Route as DocumentiRouteImport } from './routes/documenti'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ComunicazioniRouteImport } from './routes/comunicazioni'
 import { Route as AmministrazioneRouteImport } from './routes/amministrazione'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -49,9 +51,19 @@ const GestioneTimbratureRoute = GestioneTimbratureRouteImport.update({
   path: '/gestione-timbrature',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocumentiRoute = DocumentiRouteImport.update({
+  id: '/documenti',
+  path: '/documenti',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComunicazioniRoute = ComunicazioniRouteImport.update({
+  id: '/comunicazioni',
+  path: '/comunicazioni',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AmministrazioneRoute = AmministrazioneRouteImport.update({
@@ -68,7 +80,9 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
+  '/comunicazioni': typeof ComunicazioniRoute
   '/dashboard': typeof DashboardRoute
+  '/documenti': typeof DocumentiRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
@@ -79,7 +93,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
+  '/comunicazioni': typeof ComunicazioniRoute
   '/dashboard': typeof DashboardRoute
+  '/documenti': typeof DocumentiRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
@@ -91,7 +107,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
+  '/comunicazioni': typeof ComunicazioniRoute
   '/dashboard': typeof DashboardRoute
+  '/documenti': typeof DocumentiRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
@@ -104,7 +122,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/amministrazione'
+    | '/comunicazioni'
     | '/dashboard'
+    | '/documenti'
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
@@ -115,7 +135,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/amministrazione'
+    | '/comunicazioni'
     | '/dashboard'
+    | '/documenti'
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
@@ -126,7 +148,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/amministrazione'
+    | '/comunicazioni'
     | '/dashboard'
+    | '/documenti'
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
@@ -138,7 +162,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AmministrazioneRoute: typeof AmministrazioneRoute
+  ComunicazioniRoute: typeof ComunicazioniRoute
   DashboardRoute: typeof DashboardRoute
+  DocumentiRoute: typeof DocumentiRoute
   GestioneTimbratureRoute: typeof GestioneTimbratureRoute
   NovitaRoute: typeof NovitaRoute
   PresenzeRoute: typeof PresenzeRoute
@@ -191,11 +217,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GestioneTimbratureRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/documenti': {
+      id: '/documenti'
+      path: '/documenti'
+      fullPath: '/documenti'
+      preLoaderRoute: typeof DocumentiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/comunicazioni': {
+      id: '/comunicazioni'
+      path: '/comunicazioni'
+      fullPath: '/comunicazioni'
+      preLoaderRoute: typeof ComunicazioniRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/amministrazione': {
@@ -218,7 +258,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AmministrazioneRoute: AmministrazioneRoute,
+  ComunicazioniRoute: ComunicazioniRoute,
   DashboardRoute: DashboardRoute,
+  DocumentiRoute: DocumentiRoute,
   GestioneTimbratureRoute: GestioneTimbratureRoute,
   NovitaRoute: NovitaRoute,
   PresenzeRoute: PresenzeRoute,
