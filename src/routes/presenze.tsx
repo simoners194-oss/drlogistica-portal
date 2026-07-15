@@ -1,5 +1,5 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { PresenzeSkeleton } from "@/components/skeletons/PresenzeSkeleton";
@@ -18,6 +18,7 @@ import { Lock, FileText, History, User } from "lucide-react";
 import { QuickAccess } from "@/components/QuickAccess";
 import { formatOra, labelTipo, type Dipendente, type Timbratura } from "@/lib/mock-data";
 import { dataService, displayStato, DISPLAY_DOT, DISPLAY_LABEL } from "@/lib/data-service";
+import { readSession } from "@/lib/session";
 import {
   computeOreOggi,
   formatDurata,
@@ -60,6 +61,8 @@ function PresenzePage() {
   const [me, setMe] = useState<Dipendente | undefined>(undefined);
   const [errore, setErrore] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [oreSett, setOreSett] = useState<number | null>(null);
+  const avvisoOrarioRef = useRef(false);
 
   useEffect(() => {
     let currentId: string | null = null;
@@ -74,6 +77,7 @@ function PresenzePage() {
       navigate({ to: "/" });
       return;
     }
+    setOreSett(readSession()?.oreSettimanali ?? null);
     dataService
       .getDipendente(currentId)
       .then((d) => {
@@ -84,6 +88,22 @@ function PresenzePage() {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, [navigate]);
+
+  // Avviso "monte ore giornaliero": una volta, quando il dipendente è ancora al
+  // lavoro e raggiunge le ore previste per la giornata (OreSettimanali/5).
+  useEffect(() => {
+    if (!me || oreSett == null || oreSett <= 0) return;
+    const o = computeOreOggi(me.eventiOggi ?? [], now);
+    const quotaMin = (oreSett / 5) * 60;
+    if (!o.chiusa && o.oreLavorateMinuti >= quotaMin && !avvisoOrarioRef.current) {
+      avvisoOrarioRef.current = true;
+      const oreGiorno = oreSett / 5;
+      toast("Monte ore giornaliero raggiunto", {
+        description: `Hai raggiunto le ${oreGiorno.toFixed(oreSett % 5 === 0 ? 0 : 1)} ore previste per oggi.`,
+        duration: 8000,
+      });
+    }
+  }, [me, now, oreSett]);
 
   const timbra = async (tipo: Timbratura["tipo"]) => {
     if (!me || busy) return;
