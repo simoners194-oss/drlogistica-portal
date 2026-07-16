@@ -18,6 +18,7 @@ import {
   computeAnomalie,
   computeHealth,
   computeRendiconto,
+  computeRendicontoPeriodo,
   computeSaldoFerie,
   type SaldoFerieRiga,
   createRichiesta,
@@ -630,6 +631,24 @@ export const spGetRendiconto = createServerFn({ method: "GET" })
     const me = await currentUser();
     assertCap(me.operatore || me.autorizza || me.ruolo === "responsabile" || isAdmin(me));
     return computeRendiconto(data.anno, data.mese);
+  });
+
+// Rendiconto su periodo arbitrario (settimana fiscale / settimana del mese).
+export const spGetRendicontoPeriodo = createServerFn({ method: "GET" })
+  .inputValidator((input: { from: string; to: string }) => {
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    if (!re.test(input?.from ?? "") || !re.test(input?.to ?? ""))
+      throw new Error("Periodo non valido");
+    const days =
+      (new Date(`${input.to}T00:00:00`).getTime() - new Date(`${input.from}T00:00:00`).getTime()) /
+      86400000;
+    if (days < 0 || days > 45) throw new Error("Periodo non valido (max 45 giorni)");
+    return { from: input.from, to: input.to };
+  })
+  .handler(async ({ data }): Promise<RendicontoRiga[]> => {
+    const me = await currentUser();
+    assertCap(me.operatore || me.autorizza || me.ruolo === "responsabile" || isAdmin(me));
+    return computeRendicontoPeriodo(data.from, data.to);
   });
 
 export const spGetSaldoFerie = createServerFn({ method: "GET" })

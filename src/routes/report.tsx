@@ -4,7 +4,11 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { BarChart3, Lock, AlertTriangle, Download, CalendarDays } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
-import { spGetRendiconto, spGetSaldoFerie } from "@/lib/sharepoint.functions";
+import {
+  spGetRendiconto,
+  spGetRendicontoPeriodo,
+  spGetSaldoFerie,
+} from "@/lib/sharepoint.functions";
 import type { RendicontoRiga, SaldoFerieRiga } from "@/lib/sharepoint.server";
 import { type SedeId } from "@/lib/mock-data";
 
@@ -34,6 +38,32 @@ function gg(n: number): string {
 function currentPeriodo(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// --- Settimane (lun-dom) -----------------------------------------------------
+function ymdLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function addDays(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+function mondayOf(d: Date): Date {
+  const x = new Date(d);
+  const dow = x.getDay() === 0 ? 7 : x.getDay();
+  x.setDate(x.getDate() - (dow - 1));
+  return x;
+}
+// Lunedì della settimana fiscale (ISO): la settimana 1 è quella che contiene
+// il 4 gennaio.
+function mondayOfFiscalWeek(anno: number, week: number): Date {
+  return addDays(mondayOf(new Date(anno, 0, 4)), (week - 1) * 7);
+}
+// Lunedì della settimana del mese (lun-dom): la week1 è quella che contiene il
+// giorno 1 del mese; le week ripartono da 1 ogni mese.
+function mondayOfMonthWeek(anno: number, mese: number, week: number): Date {
+  return addDays(mondayOf(new Date(anno, mese - 1, 1)), (week - 1) * 7);
 }
 
 // Esporta il rendiconto in CSV (separatore ";", BOM UTF-8) → apribile in Excel.
@@ -86,6 +116,10 @@ function RendicontoPage() {
   const [sedeF, setSedeF] = useState<SedeId | "tutte">("tutte");
   const [dipF, setDipF] = useState("");
   const [vista, setVista] = useState<"rendiconto" | "ferie">("rendiconto");
+  // Granularità del periodo: mese solare, settimana fiscale (dell'anno) o
+  // settimana del mese (lun-dom, riparte da week1 ogni mese).
+  const [periodoModo, setPeriodoModo] = useState<"mese" | "fiscal" | "mensile">("mese");
+  const [weekNum, setWeekNum] = useState(1);
   const [saldo, setSaldo] = useState<SaldoFerieRiga[] | null>(null);
   const [saldoLoading, setSaldoLoading] = useState(false);
 
@@ -105,6 +139,22 @@ function RendicontoPage() {
     setSession(s);
   }, []);
 
+  // Intervallo effettivo del periodo selezionato (per le viste settimanali).
+  const rangeSettimana = useMemo(() => {
+    const anno = Number(periodo.slice(0, 4));
+    const mese = Number(periodo.slice(5, 7));
+    if (!anno || !mese) return null;
+    if (periodoModo === "fiscal") {
+      const lun = mondayOfFiscalWeek(anno, weekNum);
+      return { from: ymdLocal(lun), to: ymdLocal(addDays(lun, 6)) };
+    }
+    if (periodoModo === "mensile") {
+      const lun = mondayOfMonthWeek(anno, mese, weekNum);
+      return { from: ymdLocal(lun), to: ymdLocal(addDays(lun, 6)) };
+    }
+    return null;
+  }, [periodo, periodoModo, weekNum]);
+
   useEffect(() => {
     if (!canView) return;
     const anno = Number(periodo.slice(0, 4));
@@ -112,7 +162,11 @@ function RendicontoPage() {
     if (!anno || !mese) return;
     setLoading(true);
     setRighe(null);
-    spGetRendiconto({ data: { anno, mese } })
+    const req =
+      periodoModo === "mese" || !rangeSettimana
+        ? spGetRendiconto({ data: { anno, mese } })
+        : spGetRendicontoPeriodo({ data: rangeSettimana });
+    req
       .then((l) => setRighe(l as RendicontoRiga[]))
       .catch((err) => {
         setRighe([]);
@@ -121,7 +175,7 @@ function RendicontoPage() {
         });
       })
       .finally(() => setLoading(false));
-  }, [periodo, canView]);
+  }, [periodo, periodoModo, rangeSettimana, canView]);
 
   useEffect(() => {
     if (!canView || vista !== "ferie") return;
@@ -212,9 +266,28 @@ function RendicontoPage() {
           </div>
 
           {/* Filtri */}
-          <div className="grid gap-3 sm:grid-cols-3 mb-4">
+          <div className="grid gap-3 sm:grid-cols-4 mb-4">
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Mese</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Periodo
+              </label>
+              <select
+                className={`${inputCls} mt-1`}
+                value={periodoModo}
+                onChange={(e) => {
+                  setPeriodoModo(e.target.value as "mese" | "fiscal" | "mensile");
+                  setWeekNum(1);
+                }}
+              >
+                <option value="mese">Mese</option>
+                <option value="fiscal">Settimana fiscale (anno)</option>
+                <option value="mensile">Settimana del mese</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {periodoModo === "fiscal" ? "Anno (dal mese)" : "Mese"}
+              </label>
               <input
                 type="month"
                 className={`${inputCls} mt-1`}
@@ -222,6 +295,27 @@ function RendicontoPage() {
                 onChange={(e) => setPeriodo(e.target.value)}
               />
             </div>
+            {periodoModo !== "mese" && (
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  {periodoModo === "fiscal" ? "Week fiscale (1-53)" : "Week del mese (1-6)"}
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={periodoModo === "fiscal" ? 53 : 6}
+                  className={`${inputCls} mt-1`}
+                  value={weekNum}
+                  onChange={(e) => setWeekNum(Math.max(1, Number(e.target.value) || 1))}
+                />
+                {rangeSettimana && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    dal {rangeSettimana.from.split("-").reverse().join("/")} al{" "}
+                    {rangeSettimana.to.split("-").reverse().join("/")}
+                  </p>
+                )}
+              </div>
+            )}
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">Sede</label>
               <select

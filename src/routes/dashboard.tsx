@@ -104,10 +104,16 @@ function DashboardPage() {
       ];
 
   // Sia il Responsabile sia l'Amministratore di sistema vedono i dati di
-  // TUTTE le sedi. Il Responsabile mantiene però una vista in sola lettura
-  // (niente pannelli operativi di alert azionabili).
-  const scopedData = data;
+  // TUTTE le sedi (in sola lettura per il Responsabile). Il filtro Sede scopa
+  // KPI, alert ed elenchi sulla singola sede.
+  const [sedeFilter, setSedeFilter] = useState<string>("tutte");
+  const scopedData = useMemo(
+    () => (sedeFilter === "tutte" ? data : data.filter((d) => d.sede === sedeFilter)),
+    [data, sedeFilter],
+  );
 
+  // Tutte le presenze (non filtrate) — alimentano la sintesi per sede.
+  const allPresenze = useMemo(() => data.filter((d) => sedeTimbra(d.sede)), [data]);
   // Solo dipendenti di sedi che timbrano entrano nelle viste presenze.
   const presenzeData = useMemo(() => scopedData.filter((d) => sedeTimbra(d.sede)), [scopedData]);
   const totals = useMemo(() => aggregate(presenzeData), [presenzeData]);
@@ -119,10 +125,12 @@ function DashboardPage() {
   );
 
   // Sedi timbranti effettivamente presenti nei dati (distinte, ordinate).
+  // Derivate da TUTTE le presenze: la sintesi per sede resta completa anche
+  // quando il filtro scopa KPI/elenchi su una sede sola.
   const sediStats = useMemo(() => {
     const seen = new Set<string>();
     const nomi: string[] = [];
-    for (const d of presenzeData) {
+    for (const d of allPresenze) {
       const s = (d.sede ?? "").trim();
       if (s && s.toLowerCase() !== "tutte" && !seen.has(s.toLowerCase())) {
         seen.add(s.toLowerCase());
@@ -131,13 +139,16 @@ function DashboardPage() {
     }
     nomi.sort((a, b) => a.localeCompare(b));
     return nomi.map((nome) => {
-      const dip = bySede(presenzeData, nome);
+      const dip = bySede(allPresenze, nome);
       const presenti = dip.filter((d) => displayStato(d) !== "assente").length;
       return { id: nome, nome, presenti, totale: dip.length };
     });
-  }, [presenzeData]);
+  }, [allPresenze]);
 
-  const visibleSedi = sediStats;
+  const visibleSedi = useMemo(
+    () => (sedeFilter === "tutte" ? sediStats : sediStats.filter((s) => s.nome === sedeFilter)),
+    [sediStats, sedeFilter],
+  );
 
   const title = isResponsabile ? "Dashboard responsabili" : "Dashboard presenze";
   const subtitle = isResponsabile
@@ -197,16 +208,31 @@ function DashboardPage() {
                   </span>
                 </p>
               </div>
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                aria-label="Aggiorna sintesi presenze"
-                className="shrink-0 inline-flex items-center gap-2 rounded-full bg-primary px-4 h-11 sm:h-9 min-w-11 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-[var(--shadow-elegant)] transition-all active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed touch-manipulation"
-              >
-                <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-                <span className="hidden sm:inline">Aggiorna ora</span>
-                <span className="sm:hidden">Aggiorna</span>
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <select
+                  aria-label="Filtra per sede"
+                  className="h-11 sm:h-9 rounded-full border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  value={sedeFilter}
+                  onChange={(e) => setSedeFilter(e.target.value)}
+                >
+                  <option value="tutte">Tutte le sedi</option>
+                  {sediStats.map((s) => (
+                    <option key={s.id} value={s.nome}>
+                      {s.nome}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  aria-label="Aggiorna sintesi presenze"
+                  className="shrink-0 inline-flex items-center gap-2 rounded-full bg-primary px-4 h-11 sm:h-9 min-w-11 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-[var(--shadow-elegant)] transition-all active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed touch-manipulation"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                  <span className="hidden sm:inline">Aggiorna ora</span>
+                  <span className="sm:hidden">Aggiorna</span>
+                </button>
+              </div>
             </div>
 
             <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2">

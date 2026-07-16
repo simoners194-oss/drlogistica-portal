@@ -1436,8 +1436,17 @@ function eachDay(fromStr: string, toStr: string): string[] {
 export async function computeRendiconto(anno: number, mese: number): Promise<RendicontoRiga[]> {
   const monthStart = new Date(anno, mese - 1, 1);
   const monthEnd = new Date(anno, mese, 0);
-  const monthStartStr = ymd(monthStart);
-  const monthEndStr = ymd(monthEnd);
+  return computeRendicontoPeriodo(ymd(monthStart), ymd(monthEnd));
+}
+
+// Rendiconto su un periodo arbitrario (mese, settimana fiscale o settimana del
+// mese). Le settimane contano nel periodo in cui cade il loro LUNEDÌ.
+export async function computeRendicontoPeriodo(
+  monthStartStr: string,
+  monthEndStr: string,
+): Promise<RendicontoRiga[]> {
+  const monthStart = new Date(`${monthStartStr}T00:00:00`);
+  const monthEnd = new Date(`${monthEndStr}T00:00:00`);
   // Estendi alle settimane complete (per lo straordinario settimanale).
   const from = new Date(monthStart);
   from.setDate(from.getDate() - ((from.getDay() === 0 ? 7 : from.getDay()) - 1));
@@ -1563,11 +1572,7 @@ export async function computeRendiconto(anno: number, mese: number): Promise<Ren
     });
   }
   out.sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto));
-  logSp(
-    "info",
-    "rendiconto",
-    `Rendiconto ${anno}-${String(mese).padStart(2, "0")}: ${out.length} righe`,
-  );
+  logSp("info", "rendiconto", `Rendiconto ${monthStartStr}→${monthEndStr}: ${out.length} righe`);
   return out;
 }
 
