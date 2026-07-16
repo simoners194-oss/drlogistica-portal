@@ -508,6 +508,10 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   ]);
   const dipRes = resolveInternalNames(dipCols, SP_DISPLAY.dipendenti);
   const timRes = resolveInternalNames(timCols, SP_DISPLAY.timbrature);
+  // Colonne Dipendenti facoltative: la loro assenza NON segna la salute rossa
+  // (il codice ha default: Inquadramento="" e GiorniFerieAnnui=26).
+  const OPTIONAL_DIP = new Set(["Inquadramento", "GiorniFerieAnnui"]);
+  dipRes.missing = dipRes.missing.filter((m) => !OPTIONAL_DIP.has(m));
 
   // 5) Discovery SOFT della lista Richieste (Sprint 2): se assente o non
   // ispezionabile, si prosegue senza — le presenze non devono dipenderne.
@@ -2861,6 +2865,34 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
   await step("rollback.richiesta", "Rollback richiesta di test", async () => {
     if (!testRichId) throw new Error("Nessuna richiesta da eliminare");
     await deleteRichiesta(testRichId);
+  });
+
+  // Liste Sprint 4 (opzionali): visibilità su Documenti/Comunicazioni/Push.
+  await step("list.documenti", "Lista DocumentiDipendenti", async () => {
+    if (!disc?.listDocumenti) throw new Error("Lista 'DocumentiDipendenti' non trovata");
+    if (disc.documentiMissing.length)
+      throw new Error(`Colonne mancanti — [${disc.documentiMissing.join(", ")}]`);
+    return disc.listDocumentiName ?? undefined;
+  });
+  await step("list.comunicazioni", "Lista Comunicazioni", async () => {
+    if (!disc?.listComunicazioni) throw new Error("Lista 'Comunicazioni' non trovata");
+    if (disc.comunicazioniMissing.length)
+      throw new Error(`Colonne mancanti — [${disc.comunicazioniMissing.join(", ")}]`);
+    return disc.listComunicazioniName ?? undefined;
+  });
+  await step("list.presevisione", "Lista PreseVisione", async () => {
+    if (!disc?.listPreseVisione) throw new Error("Lista 'PreseVisione' non trovata");
+    if (disc.preseVisioneMissing.length)
+      throw new Error(`Colonne mancanti — [${disc.preseVisioneMissing.join(", ")}]`);
+    return disc.listPreseVisioneName ?? undefined;
+  });
+  await step("push.ready", "Notifiche push (lista + chiavi VAPID)", async () => {
+    if (!disc?.listPushSubscriptions) throw new Error("Lista 'PushSubscriptions' non trovata");
+    if (disc.pushSubscriptionsMissing.length)
+      throw new Error(`Colonne mancanti — [${disc.pushSubscriptionsMissing.join(", ")}]`);
+    // Genera (o legge) le chiavi VAPID: verifica end-to-end scrittura+crypto.
+    const pub = await getVapidPublicKey();
+    return `chiave pubblica ${pub.slice(0, 12)}…`;
   });
 
   await step("latency", "Tempo risposta Graph", async () => {
