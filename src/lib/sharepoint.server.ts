@@ -172,6 +172,15 @@ export const SP_DISPLAY = {
     Macro: "Macro",
     Dettaglio: "Dettaglio",
   },
+  // Coda email in uscita (outbox): il portale accoda, un flusso Power Automate
+  // invia e aggiorna lo Stato. Lista OPZIONALE.
+  codaEmail: {
+    Destinatari: "Destinatari",
+    Oggetto: "Oggetto",
+    Corpo: "Corpo",
+    Allegato: "Allegato",
+    Stato: "Stato",
+  },
   // Richieste di acquisto (modulo Procurement). Lista OPZIONALE.
   acquisti: {
     Richiedente: "Richiedente",
@@ -214,6 +223,7 @@ const LIST_NAMES = {
   pushSubscriptions: ["PushSubscriptions", "PushSubscription"],
   voci: ["Voci", "Voce", "VociSpesa"],
   acquisti: ["RichiesteAcquisto", "RichiestaAcquisto", "Acquisti"],
+  codaEmail: ["CodaEmail", "Coda Email", "EmailQueue"],
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -305,6 +315,10 @@ export interface SpDiscovered {
   listAcquistiName: string | null;
   acquistiFields: Record<string, string>;
   acquistiMissing: string[];
+  listCodaEmail: string | null;
+  listCodaEmailName: string | null;
+  codaEmailFields: Record<string, string>;
+  codaEmailMissing: string[];
   cachedAt: string;
   expiresAt: string;
 }
@@ -600,6 +614,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const push = await softList(LIST_NAMES.pushSubscriptions, SP_DISPLAY.pushSubscriptions);
   const voci = await softList(LIST_NAMES.voci, SP_DISPLAY.voci);
   const acq = await softList(LIST_NAMES.acquisti, SP_DISPLAY.acquisti);
+  const coda = await softList(LIST_NAMES.codaEmail, SP_DISPLAY.codaEmail);
 
   const now = Date.now();
   discoveredCache = {
@@ -642,6 +657,10 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listAcquistiName: acq.name,
     acquistiFields: acq.fields,
     acquistiMissing: acq.missing,
+    listCodaEmail: coda.id,
+    listCodaEmailName: coda.name,
+    codaEmailFields: coda.fields,
+    codaEmailMissing: coda.missing,
     cachedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CACHE_TTL_MS).toISOString(),
   };
@@ -2350,6 +2369,49 @@ export async function uploadGiustificativo(
 }
 
 // ---------------------------------------------------------------------------
+// Coda email (outbox) — il portale accoda, Power Automate invia
+// ---------------------------------------------------------------------------
+// Il connettore non ha Mail.Send (probe → 403): l'invio è delegato a un flusso
+// Power Automate che osserva la lista CodaEmail (Stato="Da inviare"), spedisce
+// e aggiorna lo Stato. Il portale si limita ad accodare.
+
+export function parseEmails(raw: string): string[] {
+  return (raw ?? "")
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
+}
+
+export async function enqueueEmail(msg: {
+  destinatari: string[];
+  oggetto: string;
+  corpo: string;
+  allegato?: string;
+}): Promise<boolean> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listCodaEmail || msg.destinatari.length === 0) return false;
+  const F = cfg.codaEmailFields;
+  const fields: Record<string, unknown> = { Title: msg.oggetto.slice(0, 200) };
+  if (F.Destinatari) fields[F.Destinatari] = msg.destinatari.join("; ");
+  if (F.Oggetto) fields[F.Oggetto] = msg.oggetto;
+  if (F.Corpo) fields[F.Corpo] = msg.corpo;
+  if (F.Allegato && msg.allegato) fields[F.Allegato] = msg.allegato;
+  if (F.Stato) fields[F.Stato] = "Da inviare";
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listCodaEmail}/items`, {
+      method: "POST",
+      body: JSON.stringify({ fields }),
+    }),
+  );
+  logSp(
+    "info",
+    "email.enqueue",
+    `Email in coda: "${msg.oggetto}" → ${msg.destinatari.length} destinatari`,
+  );
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Modulo Documenti dipendente (Sprint 4)
 // ---------------------------------------------------------------------------
 function requireDocumentiList(cfg: SpDiscovered): string {
@@ -2447,6 +2509,7 @@ export async function createDocumento(input: CreateDocumentoInput): Promise<SpDo
   if (F.DataDocumento) fields[F.DataDocumento] = new Date().toISOString();
   if (F.CaricatoDa) fields[F.CaricatoDa] = input.caricatoDa;
   fields["Title"] = input.titolo || input.categoria || "Documento";
+  let emailDestinatario = "";
   if (input.ambito === "Personale" && input.destinatarioId) {
     if (F.DestinatarioId) fields[F.DestinatarioId] = input.destinatarioId;
     try {
@@ -2454,6 +2517,7 @@ export async function createDocumento(input: CreateDocumentoInput): Promise<SpDo
       const dip = await fetchDipendenteFields(cfg, input.destinatarioId);
       if (F.CodiceDestinatario && DF.Codice)
         fields[F.CodiceDestinatario] = String(dip[DF.Codice] ?? "");
+      if (DF.Email) emailDestinatario = String(dip[DF.Email] ?? "").trim();
     } catch {
       /* denormalizzazione best-effort */
     }
@@ -2467,6 +2531,15 @@ export async function createDocumento(input: CreateDocumentoInput): Promise<SpDo
     ),
   );
   logSp("info", "create.documento", `Documento "${input.titolo}" (${input.categoria})`);
+  // Documento personale → email al destinatario via coda (best-effort).
+  if (emailDestinatario && parseEmails(emailDestinatario).length) {
+    await enqueueEmail({
+      destinatari: parseEmails(emailDestinatario),
+      oggetto: `[DR Portal] Nuovo documento: ${input.titolo}`,
+      corpo: `È disponibile un nuovo documento nella tua area personale del portale DR Logistica.\n\nCategoria: ${input.categoria}\nTitolo: ${input.titolo}\n\nConsultalo su https://portal.drlogistica.it/documenti`,
+      allegato: input.file,
+    }).catch(() => {});
+  }
   return mapDocumento(cfg, { id: created.id, fields });
 }
 
@@ -3325,33 +3398,17 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
       throw new Error(`Colonne mancanti — [${disc.preseVisioneMissing.join(", ")}]`);
     return disc.listPreseVisioneName ?? undefined;
   });
-  // PROBE email (Sprint 5, feature 7): /me risponde 200 → il gateway espone le
-  // API Graph delegate. Verifica DEFINITIVA del permesso Mail.Send: invio reale
-  // di una mail di prova A SÉ STESSI (innocuo, non salvata negli Inviati).
-  await step("email.probe", "Invio email (probe reale a sé stessi)", async () => {
-    const meRes = await gatewayFetch(`/me?$select=mail,userPrincipalName`);
-    if (!meRes.ok) throw new Error(`GET /me → ${meRes.status}: API email non esposte dal gateway`);
-    const me = (await meRes.json()) as { mail?: string; userPrincipalName?: string };
-    const addr = (me.mail || me.userPrincipalName || "").trim();
-    if (!addr) throw new Error("Identità del connettore senza indirizzo email");
-    const send = await gatewayFetch(`/me/sendMail`, {
-      method: "POST",
-      body: JSON.stringify({
-        message: {
-          subject: "DR Portal — verifica invio email (ignorare)",
-          body: {
-            contentType: "Text",
-            content:
-              "Verifica automatica della capacità di invio email dal portale (self-test). Nessuna azione richiesta.",
-          },
-          toRecipients: [{ emailAddress: { address: addr } }],
-        },
-        saveToSentItems: false,
-      }),
-    });
-    if (send.status === 202) return `OK — invio funzionante da ${addr}`;
-    const body = await send.text().catch(() => "");
-    throw new Error(`POST /me/sendMail → ${send.status} ${body.slice(0, 120)}`);
+  // Email: il connettore NON ha Mail.Send (probe storico → 403). L'invio è
+  // delegato a un flusso Power Automate sulla lista CodaEmail: qui si verifica
+  // che la lista esista con le colonne attese.
+  await step("email.coda", "Coda email (lista CodaEmail + Power Automate)", async () => {
+    if (!disc?.listCodaEmail)
+      throw new Error(
+        "Lista 'CodaEmail' non trovata — creare la lista e il flusso Power Automate per l'invio",
+      );
+    if (disc.codaEmailMissing.length)
+      throw new Error(`Colonne mancanti — [${disc.codaEmailMissing.join(", ")}]`);
+    return disc.listCodaEmailName ?? undefined;
   });
 
   await step("push.ready", "Notifiche push (lista + chiavi VAPID)", async () => {

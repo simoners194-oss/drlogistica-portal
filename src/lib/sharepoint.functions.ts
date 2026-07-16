@@ -48,6 +48,8 @@ import {
   savePushSubscription,
   sendPushToSede,
   sendPushToDipendente,
+  enqueueEmail,
+  parseEmails,
   fetchVoci,
   fetchAcquisti,
   createAcquisto,
@@ -428,27 +430,29 @@ export const spGetComunicazioni = createServerFn({ method: "GET" }).handler(
 );
 
 export const spCreateComunicazione = createServerFn({ method: "POST" })
-  .inputValidator((input: Omit<CreateComunicazioneInput, "autore">) => {
-    if (!input?.titolo) throw new Error("Titolo mancante");
-    if (!input?.testo) throw new Error("Testo mancante");
-    if (input.tipo !== "Riunione" && input.tipo !== "Comunicazione")
-      throw new Error("Tipo non valido");
-    return {
-      titolo: String(input.titolo),
-      testo: String(input.testo),
-      tipo: input.tipo,
-      sede: String(input.sede ?? "Tutte"),
-      allegato: input.allegato ? String(input.allegato) : undefined,
-      richiedePresaVisione: Boolean(input.richiedePresaVisione),
-    };
-  })
+  .inputValidator(
+    (input: Omit<CreateComunicazioneInput, "autore"> & { destinatariEmail?: string }) => {
+      if (!input?.titolo) throw new Error("Titolo mancante");
+      if (!input?.testo) throw new Error("Testo mancante");
+      if (input.tipo !== "Riunione" && input.tipo !== "Comunicazione")
+        throw new Error("Tipo non valido");
+      return {
+        titolo: String(input.titolo),
+        testo: String(input.testo),
+        tipo: input.tipo,
+        sede: String(input.sede ?? "Tutte"),
+        allegato: input.allegato ? String(input.allegato) : undefined,
+        richiedePresaVisione: Boolean(input.richiedePresaVisione),
+        destinatariEmail: input.destinatariEmail ? String(input.destinatariEmail) : undefined,
+      };
+    },
+  )
   .handler(async ({ data }): Promise<SpComunicazione & { pushEsito: string }> => {
     const me = await currentUser();
     assertCap(canPubblicare(me));
-    const created = await createComunicazione({
-      ...data,
-      autore: `${me.nome} ${me.cognome}`.trim(),
-    });
+    const autore = `${me.nome} ${me.cognome}`.trim();
+    const { destinatariEmail, ...comInput } = data;
+    const created = await createComunicazione({ ...comInput, autore });
     // Notifica push ai dispositivi registrati della sede destinataria.
     // Best-effort: un errore qui non deve annullare la pubblicazione.
     // L'esito è restituito al pubblicatore per visibilità immediata.
@@ -467,6 +471,19 @@ export const spCreateComunicazione = createServerFn({ method: "POST" })
             }${r.errori.length && !r.failed ? ` — ${r.errori.join(" · ")}` : ""}`;
     } catch (err) {
       pushEsito = `Notifiche push non inviate: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    // Invio email (via coda + Power Automate) ai destinatari indicati.
+    const emails = parseEmails(destinatariEmail ?? "");
+    if (emails.length) {
+      const ok = await enqueueEmail({
+        destinatari: emails,
+        oggetto: `[DR Logistica] ${data.tipo === "Riunione" ? "Riunione" : "Comunicazione"}: ${data.titolo}`,
+        corpo: `${data.testo}\n\n— ${autore}\nPortale DR Logistica: https://portal.drlogistica.it/comunicazioni`,
+        allegato: data.allegato,
+      }).catch(() => false);
+      pushEsito += ok
+        ? ` · Email in coda per ${emails.length} destinatari.`
+        : " · Email NON accodate (lista CodaEmail assente).";
     }
     return { ...created, pushEsito };
   });

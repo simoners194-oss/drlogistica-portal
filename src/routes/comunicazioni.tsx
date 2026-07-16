@@ -74,6 +74,7 @@ function ComunicazioniPage() {
   const [sede, setSede] = useState("Tutte");
   const [richiedePresaVisione, setRichiedePresaVisione] = useState(false);
   const [allegato, setAllegato] = useState<File | null>(null);
+  const [destEmail, setDestEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // Banner attivazione notifiche push (client-only, dopo il mount).
@@ -228,6 +229,7 @@ function ComunicazioniPage() {
           sede,
           allegato: allegatoUrl,
           richiedePresaVisione,
+          destinatariEmail: destEmail.trim() || undefined,
         },
       })) as SpComunicazione & { pushEsito?: string };
       toast.success("Comunicazione pubblicata", {
@@ -238,6 +240,7 @@ function ComunicazioniPage() {
       setTesto("");
       setAllegato(null);
       setRichiedePresaVisione(false);
+      setDestEmail("");
       load();
     } catch (err) {
       toast.error("Errore nella pubblicazione", {
@@ -336,6 +339,18 @@ function ComunicazioniPage() {
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Invia anche via email a{" "}
+                <span className="normal-case text-muted-foreground/70">(opzionale)</span>
+              </label>
+              <input
+                className={`${inputCls} mt-1`}
+                value={destEmail}
+                onChange={(e) => setDestEmail(e.target.value)}
+                placeholder="email1@esempio.it; email2@esempio.it — anche esterni, separati da ; o ,"
+              />
             </div>
             <div className="sm:col-span-2 flex flex-wrap items-center gap-4">
               <label className="flex items-center gap-2 text-sm text-foreground">
