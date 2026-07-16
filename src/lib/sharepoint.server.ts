@@ -180,6 +180,7 @@ export const SP_DISPLAY = {
     Corpo: "Corpo",
     Allegato: "Allegato",
     Stato: "Stato",
+    Mittente: "Mittente",
   },
   // Richieste di acquisto (modulo Procurement). Lista OPZIONALE.
   acquisti: {
@@ -2382,11 +2383,30 @@ export function parseEmails(raw: string): string[] {
     .filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
 }
 
+// Mittente di default: casella della Segreteria. Chi accoda può indicarne un
+// altro (es. l'email di chi pubblica una comunicazione); il flusso Power
+// Automate usa il campo Mittente come "Da (Invia come)".
+export const EMAIL_MITTENTE_DEFAULT = "segreteria@drlogistica.it";
+
+// Email di un dipendente dal suo record SharePoint ("" se assente).
+export async function getEmailDipendente(dipendenteId: string): Promise<string> {
+  try {
+    const cfg = await discoverSharePoint();
+    const DF = cfg.dipendentiFields;
+    if (!DF.Email) return "";
+    const f = await fetchDipendenteFields(cfg, dipendenteId);
+    return String(f[DF.Email] ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
 export async function enqueueEmail(msg: {
   destinatari: string[];
   oggetto: string;
   corpo: string;
   allegato?: string;
+  mittente?: string;
 }): Promise<boolean> {
   const cfg = await discoverSharePoint();
   if (!cfg.listCodaEmail || msg.destinatari.length === 0) return false;
@@ -2397,6 +2417,7 @@ export async function enqueueEmail(msg: {
   if (F.Corpo) fields[F.Corpo] = msg.corpo;
   if (F.Allegato && msg.allegato) fields[F.Allegato] = msg.allegato;
   if (F.Stato) fields[F.Stato] = "Da inviare";
+  if (F.Mittente) fields[F.Mittente] = msg.mittente?.trim() || EMAIL_MITTENTE_DEFAULT;
   await withDiscoveryRetry(() =>
     gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listCodaEmail}/items`, {
       method: "POST",
