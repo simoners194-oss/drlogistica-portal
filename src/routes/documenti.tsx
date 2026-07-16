@@ -41,6 +41,14 @@ function fmtData(iso?: string): string {
   const [y, m, g] = iso.slice(0, 10).split("-");
   return y && m && g ? `${g}/${m}/${y}` : iso;
 }
+
+// Estrae un codice fiscale italiano dal nome file (16 caratteri, pattern
+// standard), anche in nomi "sporchi" (es. "CedolinoGiugno_RSSMRA80A01H501U.pdf").
+const CF_RE = /[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]/i;
+function estraiCF(filename: string): string | null {
+  const m = filename.toUpperCase().match(CF_RE);
+  return m ? m[0] : null;
+}
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -66,6 +74,12 @@ function DocumentiPage() {
 
   // Filtri elenco
   const [catF, setCatF] = useState<string>("tutte");
+
+  // Buste paga (multi-upload con abbinamento per codice fiscale)
+  const [bpFiles, setBpFiles] = useState<File[]>([]);
+  const [bpPeriodo, setBpPeriodo] = useState("");
+  const [bpBusy, setBpBusy] = useState(false);
+  const [bpEsiti, setBpEsiti] = useState<{ nome: string; esito: string; ok: boolean }[]>([]);
 
   const canPubblicare =
     session != null &&
@@ -105,6 +119,86 @@ function DocumentiPage() {
     for (const d of dipendenti) m.set(d.id, d.nomeCompleto || `${d.cognome} ${d.nome}`);
     return m;
   }, [dipendenti]);
+
+  const dipByCf = useMemo(() => {
+    const m = new Map<string, SpDipendente>();
+    for (const d of dipendenti) if (d.cf) m.set(d.cf.toUpperCase(), d);
+    return m;
+  }, [dipendenti]);
+
+  // Anteprima abbinamento buste paga: file → dipendente (per CF nel nome file).
+  const bpAnteprima = useMemo(
+    () =>
+      bpFiles.map((f) => {
+        const cf = estraiCF(f.name);
+        const dip = cf ? dipByCf.get(cf) : undefined;
+        return { file: f, cf, dip };
+      }),
+    [bpFiles, dipByCf],
+  );
+
+  const isOperatoreOAdmin =
+    session != null && (session.operatore || session.ruolo === "amministratore_sistema");
+
+  const caricaBustePaga = async () => {
+    if (!bpPeriodo.trim()) {
+      toast.error("Indica il periodo (es. Giugno 2026)");
+      return;
+    }
+    const abbinati = bpAnteprima.filter((a) => a.dip);
+    if (abbinati.length === 0) {
+      toast.error("Nessun file abbinato a un dipendente");
+      return;
+    }
+    setBpBusy(true);
+    const esiti: { nome: string; esito: string; ok: boolean }[] = [];
+    for (const a of bpAnteprima) {
+      if (!a.dip) {
+        esiti.push({
+          nome: a.file.name,
+          esito: a.cf ? `CF ${a.cf} non trovato tra i dipendenti` : "Nessun CF nel nome file",
+          ok: false,
+        });
+        continue;
+      }
+      try {
+        if (a.file.size > 8 * 1024 * 1024) throw new Error("oltre 8 MB");
+        const contentBase64 = await fileToDataUrl(a.file);
+        const up = await spUploadFile({
+          data: { subfolder: "Documenti", filename: a.file.name, contentBase64 },
+        });
+        await spCreateDocumento({
+          data: {
+            categoria: "Busta paga",
+            titolo: `Busta paga ${bpPeriodo.trim()}`,
+            ambito: "Personale",
+            destinatarioId: a.dip.id,
+            file: up.webUrl,
+            nomeFile: up.fileName,
+          },
+        });
+        esiti.push({
+          nome: a.file.name,
+          esito: `→ ${a.dip.nomeCompleto || a.dip.cognome} ✓`,
+          ok: true,
+        });
+      } catch (err) {
+        esiti.push({
+          nome: a.file.name,
+          esito: err instanceof Error ? err.message : String(err),
+          ok: false,
+        });
+      }
+    }
+    setBpEsiti(esiti);
+    setBpFiles([]);
+    setBpBusy(false);
+    const okN = esiti.filter((e) => e.ok).length;
+    toast[okN > 0 ? "success" : "error"](
+      `Buste paga: ${okN} caricate${esiti.length - okN ? `, ${esiti.length - okN} non abbinate` : ""}`,
+    );
+    load();
+  };
 
   const sediOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -287,6 +381,94 @@ function DocumentiPage() {
                 <Upload className="h-4 w-4 mr-2" />
               )}
               Carica
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isOperatoreOAdmin && (
+        <div className="mb-6 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-1">
+            <Upload className="h-4 w-4 text-primary" /> Carica buste paga (multiplo)
+          </div>
+          <p className="text-[12px] text-muted-foreground mb-4">
+            Seleziona tutti i PDF insieme: l'abbinamento al dipendente avviene dal{" "}
+            <strong>codice fiscale nel nome del file</strong> (colonna CF su Dipendenti). Ogni
+            dipendente riceve il documento personale e una notifica.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Periodo
+              </label>
+              <input
+                className={`${inputCls} mt-1`}
+                value={bpPeriodo}
+                onChange={(e) => setBpPeriodo(e.target.value)}
+                placeholder="Es. Giugno 2026"
+              />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                File PDF
+              </label>
+              <input
+                type="file"
+                multiple
+                accept="application/pdf"
+                className={`${inputCls} mt-1`}
+                onChange={(e) => {
+                  setBpFiles(Array.from(e.target.files ?? []));
+                  setBpEsiti([]);
+                }}
+              />
+            </div>
+          </div>
+
+          {bpAnteprima.length > 0 && (
+            <div className="mt-3 rounded-lg border border-border p-3 text-[12px]">
+              <p className="text-muted-foreground mb-1">
+                Anteprima abbinamenti ({bpAnteprima.filter((a) => a.dip).length}/
+                {bpAnteprima.length} riconosciuti):
+              </p>
+              <ul className="space-y-0.5 max-h-48 overflow-auto font-mono">
+                {bpAnteprima.map((a, i) => (
+                  <li key={i} className={a.dip ? "text-foreground" : "text-status-absent"}>
+                    {a.file.name} →{" "}
+                    {a.dip
+                      ? a.dip.nomeCompleto || a.dip.cognome
+                      : a.cf
+                        ? `CF ${a.cf} non trovato`
+                        : "nessun CF nel nome"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {bpEsiti.length > 0 && (
+            <div className="mt-3 rounded-lg border border-border p-3 text-[12px]">
+              <ul className="space-y-0.5 max-h-48 overflow-auto font-mono">
+                {bpEsiti.map((e, i) => (
+                  <li key={i} className={e.ok ? "text-status-present" : "text-status-absent"}>
+                    {e.nome}: {e.esito}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="mt-4 flex justify-end">
+            <Button
+              type="button"
+              onClick={caricaBustePaga}
+              disabled={bpBusy || bpAnteprima.filter((a) => a.dip).length === 0}
+            >
+              {bpBusy ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4 mr-2" />
+              )}
+              Carica {bpAnteprima.filter((a) => a.dip).length} buste paga
             </Button>
           </div>
         </div>

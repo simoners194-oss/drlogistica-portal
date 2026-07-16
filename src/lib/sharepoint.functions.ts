@@ -46,6 +46,7 @@ import {
   getVapidPublicKey,
   savePushSubscription,
   sendPushToSede,
+  sendPushToDipendente,
   fetchVoci,
   fetchAcquisti,
   createAcquisto,
@@ -393,7 +394,19 @@ export const spCreateDocumento = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<SpDocumento> => {
     const me = await currentUser();
     assertCap(canPubblicare(me));
-    return createDocumento({ ...data, caricatoDa: `${me.nome} ${me.cognome}`.trim() });
+    const created = await createDocumento({
+      ...data,
+      caricatoDa: `${me.nome} ${me.cognome}`.trim(),
+    });
+    // Documento personale → notifica push al destinatario (best-effort).
+    if (data.ambito === "Personale" && data.destinatarioId) {
+      await sendPushToDipendente(data.destinatarioId, {
+        title: "Nuovo documento",
+        body: `${data.categoria}: ${data.titolo}`,
+        url: "/documenti",
+      }).catch(() => {});
+    }
+    return created;
   });
 
 export const spGetComunicazioni = createServerFn({ method: "GET" }).handler(

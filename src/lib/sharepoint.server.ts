@@ -81,6 +81,7 @@ export const SP_DISPLAY = {
     Inquadramento: "Inquadramento",
     GiorniFerieAnnui: "GiorniFerieAnnui",
     OrePermessiAnnui: "OrePermessiAnnui",
+    CF: "CF",
   },
   timbrature: {
     Dipendente: "Dipendente",
@@ -544,7 +545,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const timRes = resolveInternalNames(timCols, SP_DISPLAY.timbrature);
   // Colonne Dipendenti facoltative: la loro assenza NON segna la salute rossa
   // (il codice ha default: Inquadramento="" e GiorniFerieAnnui=26).
-  const OPTIONAL_DIP = new Set(["Inquadramento", "GiorniFerieAnnui", "OrePermessiAnnui"]);
+  const OPTIONAL_DIP = new Set(["Inquadramento", "GiorniFerieAnnui", "OrePermessiAnnui", "CF"]);
   dipRes.missing = dipRes.missing.filter((m) => !OPTIONAL_DIP.has(m));
 
   // 5) Discovery SOFT della lista Richieste (Sprint 2): se assente o non
@@ -746,6 +747,9 @@ export interface SpDipendente {
   // Ore di permesso annue (ROL/ex festività). null se non impostate → il
   // residuo permessi non viene mostrato (nessun default inventato).
   orePermessiAnnui: number | null;
+  // Codice fiscale (per l'abbinamento automatico delle buste paga). Colonna
+  // OPZIONALE; vuoto se non impostato.
+  cf: string;
 }
 
 // Parsing tollerante di un campo booleano SharePoint (Sì/No).
@@ -802,6 +806,9 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
           F.OrePermessiAnnui ? f[F.OrePermessiAnnui] : undefined,
           null,
         ),
+        cf: String(f[F.CF ?? ""] ?? "")
+          .trim()
+          .toUpperCase(),
       };
     })
     .filter((d) => d.attivo);
@@ -1126,6 +1133,9 @@ export async function loginByCodicePin(
     inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
     giorniFerieAnnui: parseSpNumber(F.GiorniFerieAnnui ? f[F.GiorniFerieAnnui] : undefined, null),
     orePermessiAnnui: parseSpNumber(F.OrePermessiAnnui ? f[F.OrePermessiAnnui] : undefined, null),
+    cf: String(f[F.CF ?? ""] ?? "")
+      .trim()
+      .toUpperCase(),
   };
   logSp("info", "login", `Login ok per ${codice} (id=${dipendente.id})`, {
     durataMs: Date.now() - started,
@@ -2889,6 +2899,32 @@ async function deletePushRow(cfg: SpDiscovered, id: string): Promise<void> {
     await gatewayFetch(`/sites/${cfg.siteId}/lists/${cfg.listPushSubscriptions}/items/${id}`, {
       method: "DELETE",
     });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Notifica push ai dispositivi di UN dipendente (es. nuovo documento
+// personale). Best-effort: nessun errore propagato.
+export async function sendPushToDipendente(
+  dipendenteId: string,
+  payload: { title: string; body: string; url: string },
+): Promise<void> {
+  try {
+    const cfg = await discoverSharePoint();
+    if (!cfg.listPushSubscriptions) return;
+    const keys = await getVapidKeys();
+    const rows = (await fetchPushRows(cfg)).filter(
+      (r) => r.title !== VAPID_ROW_TITLE && r.dipendenteId === dipendenteId,
+    );
+    for (const r of rows) {
+      const res = await sendWebPush(
+        { endpoint: r.endpoint, p256dh: r.p256dh, auth: r.auth },
+        payload,
+        keys,
+      ).catch(() => null);
+      if (res?.gone) await deletePushRow(cfg, r.id);
+    }
   } catch {
     /* best-effort */
   }
