@@ -3325,15 +3325,33 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
       throw new Error(`Colonne mancanti — [${disc.preseVisioneMissing.join(", ")}]`);
     return disc.listPreseVisioneName ?? undefined;
   });
-  // PROBE email (Sprint 5, feature 7): verifica se il gateway consente le API
-  // Graph fuori da /sites (necessarie per l'invio email). Solo GET informativi,
-  // nessuna email inviata. Il passo non fallisce mai: riporta gli status code.
-  await step("email.probe", "Invio email (verifica permessi gateway)", async () => {
-    const me = await gatewayFetch(`/me`).catch(() => null);
-    const users = await gatewayFetch(`/users?$select=id&$top=1`).catch(() => null);
-    const meS = me ? me.status : "err";
-    const usersS = users ? users.status : "err";
-    return `GET /me → ${meS} · GET /users → ${usersS} (200 = invio email possibile via Graph)`;
+  // PROBE email (Sprint 5, feature 7): /me risponde 200 → il gateway espone le
+  // API Graph delegate. Verifica DEFINITIVA del permesso Mail.Send: invio reale
+  // di una mail di prova A SÉ STESSI (innocuo, non salvata negli Inviati).
+  await step("email.probe", "Invio email (probe reale a sé stessi)", async () => {
+    const meRes = await gatewayFetch(`/me?$select=mail,userPrincipalName`);
+    if (!meRes.ok) throw new Error(`GET /me → ${meRes.status}: API email non esposte dal gateway`);
+    const me = (await meRes.json()) as { mail?: string; userPrincipalName?: string };
+    const addr = (me.mail || me.userPrincipalName || "").trim();
+    if (!addr) throw new Error("Identità del connettore senza indirizzo email");
+    const send = await gatewayFetch(`/me/sendMail`, {
+      method: "POST",
+      body: JSON.stringify({
+        message: {
+          subject: "DR Portal — verifica invio email (ignorare)",
+          body: {
+            contentType: "Text",
+            content:
+              "Verifica automatica della capacità di invio email dal portale (self-test). Nessuna azione richiesta.",
+          },
+          toRecipients: [{ emailAddress: { address: addr } }],
+        },
+        saveToSentItems: false,
+      }),
+    });
+    if (send.status === 202) return `OK — invio funzionante da ${addr}`;
+    const body = await send.text().catch(() => "");
+    throw new Error(`POST /me/sendMail → ${send.status} ${body.slice(0, 120)}`);
   });
 
   await step("push.ready", "Notifiche push (lista + chiavi VAPID)", async () => {
