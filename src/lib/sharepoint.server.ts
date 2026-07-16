@@ -3192,6 +3192,17 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
       throw new Error(`Colonne mancanti — [${disc.preseVisioneMissing.join(", ")}]`);
     return disc.listPreseVisioneName ?? undefined;
   });
+  // PROBE email (Sprint 5, feature 7): verifica se il gateway consente le API
+  // Graph fuori da /sites (necessarie per l'invio email). Solo GET informativi,
+  // nessuna email inviata. Il passo non fallisce mai: riporta gli status code.
+  await step("email.probe", "Invio email (verifica permessi gateway)", async () => {
+    const me = await gatewayFetch(`/me`).catch(() => null);
+    const users = await gatewayFetch(`/users?$select=id&$top=1`).catch(() => null);
+    const meS = me ? me.status : "err";
+    const usersS = users ? users.status : "err";
+    return `GET /me → ${meS} · GET /users → ${usersS} (200 = invio email possibile via Graph)`;
+  });
+
   await step("push.ready", "Notifiche push (lista + chiavi VAPID)", async () => {
     if (!disc?.listPushSubscriptions) throw new Error("Lista 'PushSubscriptions' non trovata");
     if (disc.pushSubscriptionsMissing.length)
