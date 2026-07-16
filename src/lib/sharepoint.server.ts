@@ -2610,14 +2610,20 @@ async function deletePushRow(cfg: SpDiscovered, id: string): Promise<void> {
 export async function sendPushToSede(
   sedeDestinataria: string,
   payload: { title: string; body: string; url: string },
-): Promise<{ sent: number; failed: number }> {
+): Promise<{ sent: number; failed: number; errori: string[]; dispositivi: number }> {
   const cfg = await discoverSharePoint();
-  if (!cfg.listPushSubscriptions) return { sent: 0, failed: 0 };
+  if (!cfg.listPushSubscriptions)
+    return { sent: 0, failed: 0, errori: ["Lista PushSubscriptions non trovata"], dispositivi: 0 };
   let keys: VapidKeys;
   try {
     keys = await getVapidKeys();
-  } catch {
-    return { sent: 0, failed: 0 };
+  } catch (err) {
+    return {
+      sent: 0,
+      failed: 0,
+      errori: [err instanceof Error ? err.message : String(err)],
+      dispositivi: 0,
+    };
   }
   const rows = (await fetchPushRows(cfg)).filter((r) => r.title !== VAPID_ROW_TITLE);
   const sedeLow = (sedeDestinataria || "Tutte").trim().toLowerCase();
@@ -2659,7 +2665,7 @@ export async function sendPushToSede(
     "push.send",
     `Push "${payload.title}": inviate ${sent}, fallite ${failed}${errori.length ? ` — ${errori.join(" · ")}` : ""}`,
   );
-  return { sent, failed };
+  return { sent, failed, errori, dispositivi: target.length };
 }
 
 // ---------------------------------------------------------------------------

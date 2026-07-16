@@ -218,7 +218,7 @@ function ComunicazioniPage() {
         });
         allegatoUrl = up.webUrl;
       }
-      await spCreateComunicazione({
+      const res = (await spCreateComunicazione({
         data: {
           titolo: titolo.trim(),
           testo: testo.trim(),
@@ -227,8 +227,11 @@ function ComunicazioniPage() {
           allegato: allegatoUrl,
           richiedePresaVisione,
         },
+      })) as SpComunicazione & { pushEsito?: string };
+      toast.success("Comunicazione pubblicata", {
+        description: res.pushEsito || undefined,
+        duration: 8000,
       });
-      toast.success("Comunicazione pubblicata");
       setTitolo("");
       setTesto("");
       setAllegato(null);

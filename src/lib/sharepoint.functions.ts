@@ -411,7 +411,7 @@ export const spCreateComunicazione = createServerFn({ method: "POST" })
       richiedePresaVisione: Boolean(input.richiedePresaVisione),
     };
   })
-  .handler(async ({ data }): Promise<SpComunicazione> => {
+  .handler(async ({ data }): Promise<SpComunicazione & { pushEsito: string }> => {
     const me = await currentUser();
     assertCap(canPubblicare(me));
     const created = await createComunicazione({
@@ -420,16 +420,24 @@ export const spCreateComunicazione = createServerFn({ method: "POST" })
     });
     // Notifica push ai dispositivi registrati della sede destinataria.
     // Best-effort: un errore qui non deve annullare la pubblicazione.
+    // L'esito è restituito al pubblicatore per visibilità immediata.
+    let pushEsito = "";
     try {
-      await sendPushToSede(data.sede, {
+      const r = await sendPushToSede(data.sede, {
         title: data.tipo === "Riunione" ? "Nuova riunione" : "Nuova comunicazione",
         body: data.titolo,
         url: "/comunicazioni",
       });
-    } catch {
-      /* push best-effort */
+      pushEsito =
+        r.dispositivi === 0 && r.errori.length === 0
+          ? "Nessun dispositivo registrato per le notifiche push."
+          : `Notifiche push: ${r.sent} inviate su ${r.dispositivi} dispositivi${
+              r.failed ? `, ${r.failed} fallite (${r.errori.join(" · ")})` : ""
+            }${r.errori.length && !r.failed ? ` — ${r.errori.join(" · ")}` : ""}`;
+    } catch (err) {
+      pushEsito = `Notifiche push non inviate: ${err instanceof Error ? err.message : String(err)}`;
     }
-    return created;
+    return { ...created, pushEsito };
   });
 
 // Chi ha letto una comunicazione — solo pubblicatori.
