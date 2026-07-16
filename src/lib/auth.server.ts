@@ -12,7 +12,9 @@ import { getCookie, setCookie, deleteCookie } from "@tanstack/react-start/server
 import type { Ruolo, SessionSede } from "./session";
 
 const COOKIE_NAME = "dr:session";
-const MAX_AGE_S = 60 * 60 * 12; // 12 ore
+// 30 giorni: la sessione deve sopravvivere alla chiusura dell'app sul telefono
+// (tap su notifica push → dentro senza login). Firma HMAC + httpOnly restano.
+const MAX_AGE_S = 60 * 60 * 24 * 30;
 
 export interface ServerSessionUser {
   id: string;

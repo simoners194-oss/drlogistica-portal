@@ -32,20 +32,10 @@ import {
 export const Route = createFileRoute("/presenze")({
   head: () => ({ meta: [{ title: "Modulo Presenze — DR Portal" }] }),
   beforeLoad: ({ location }) => {
-    // La sessione vive in sessionStorage (client-only): su SSR/prerender
-    // non c'è nulla da controllare, la guardia scatta solo nel browser.
+    // La sessione è client-only: su SSR/prerender non c'è nulla da
+    // controllare, la guardia scatta solo nel browser.
     if (typeof window === "undefined") return;
-    let hasSession = false;
-    try {
-      const raw = window.sessionStorage.getItem("dr:currentUser");
-      if (raw) {
-        const parsed = JSON.parse(raw) as { id?: string } | null;
-        hasSession = Boolean(parsed?.id);
-      }
-    } catch {
-      hasSession = false;
-    }
-    if (!hasSession) {
+    if (!readSession()) {
       throw redirect({
         to: "/",
         search: { redirect: location.href },
@@ -65,19 +55,14 @@ function PresenzePage() {
   const avvisoOrarioRef = useRef(false);
 
   useEffect(() => {
-    let currentId: string | null = null;
-    try {
-      const raw = sessionStorage.getItem("dr:currentUser");
-      if (raw) currentId = (JSON.parse(raw) as { id?: string }).id ?? null;
-    } catch {
-      /* ignore */
-    }
+    const s = readSession();
+    const currentId = s?.id ?? null;
     if (!currentId) {
       toast.error("Sessione scaduta. Effettua di nuovo l'accesso.");
       navigate({ to: "/" });
       return;
     }
-    setOreSett(readSession()?.oreSettimanali ?? null);
+    setOreSett(s?.oreSettimanali ?? null);
     dataService
       .getDipendente(currentId)
       .then((d) => {

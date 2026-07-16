@@ -1,10 +1,12 @@
 // DR Portal — sessione client-side e ruoli.
 //
-// La sessione dell'utente vive in `sessionStorage` (chiave `dr:currentUser`).
-// Contiene solo dati non sensibili — id lista SharePoint, nome, cognome, sede
-// e ruolo — sufficienti per pilotare navigazione, sidebar e filtri di UI.
-// Le operazioni sensibili (creazione timbrature, letture privilegiate) sono
-// comunque validate lato server tramite le server function SharePoint.
+// La sessione dell'utente vive in `localStorage` (chiave `dr:currentUser`),
+// così sopravvive alla chiusura del browser/PWA (fondamentale sul telefono:
+// tap su una notifica → si entra senza rifare login). Contiene solo dati non
+// sensibili — id lista SharePoint, nome, cognome, sede e ruolo — sufficienti
+// per pilotare navigazione, sidebar e filtri di UI. Le operazioni sensibili
+// sono comunque validate lato server (cookie firmato httpOnly) tramite le
+// server function SharePoint.
 
 import { sedeTimbra, type SedeId } from "./mock-data";
 
@@ -70,7 +72,9 @@ const KEY = "dr:currentUser";
 export function readSession(): SessionUser | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(KEY);
+    // localStorage è la sede primaria; sessionStorage resta come fallback di
+    // migrazione per le sessioni create prima di questo cambio.
+    const raw = window.localStorage.getItem(KEY) ?? window.sessionStorage.getItem(KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<SessionUser> | null;
     if (!parsed?.id) return null;
@@ -92,7 +96,9 @@ export function readSession(): SessionUser | null {
 export function writeSession(u: SessionUser) {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(KEY, JSON.stringify(u));
+    window.localStorage.setItem(KEY, JSON.stringify(u));
+    // Rimuovi l'eventuale copia legacy per evitare disallineamenti.
+    window.sessionStorage.removeItem(KEY);
   } catch {
     /* ignore */
   }
@@ -101,6 +107,7 @@ export function writeSession(u: SessionUser) {
 export function clearSession() {
   if (typeof window === "undefined") return;
   try {
+    window.localStorage.removeItem(KEY);
     window.sessionStorage.removeItem(KEY);
   } catch {
     /* ignore */

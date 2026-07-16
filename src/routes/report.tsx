@@ -12,14 +12,7 @@ export const Route = createFileRoute("/report")({
   head: () => ({ meta: [{ title: "Rendiconto — DR Portal" }] }),
   beforeLoad: ({ location }) => {
     if (typeof window === "undefined") return;
-    let hasSession = false;
-    try {
-      const raw = window.sessionStorage.getItem("dr:currentUser");
-      if (raw) hasSession = Boolean((JSON.parse(raw) as { id?: string } | null)?.id);
-    } catch {
-      hasSession = false;
-    }
-    if (!hasSession) throw redirect({ to: "/", search: { redirect: location.href } });
+    if (!readSession()) throw redirect({ to: "/", search: { redirect: location.href } });
   },
   component: RendicontoPage,
 });
