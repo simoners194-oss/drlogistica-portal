@@ -13,7 +13,9 @@ import {
   CalendarDays,
   Paperclip,
   BellRing,
+  Download,
 } from "lucide-react";
+import { esportaCsvFile } from "@/lib/csv";
 import { checkPushSupport, enablePushNotifications, pushPermission } from "@/lib/push-client";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
@@ -369,8 +371,33 @@ function ComunicazioniPage() {
       )}
 
       <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
-        <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-          <Megaphone className="h-4 w-4 text-primary" /> Bacheca
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+            <Megaphone className="h-4 w-4 text-primary" /> Bacheca
+          </div>
+          {canPubblicare && (comunicazioni ?? []).length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                esportaCsvFile(
+                  "comunicazioni",
+                  ["Tipologia", "Titolo", "Testo", "Sede", "Data", "Autore", "Presa visione"],
+                  (comunicazioni ?? []).map((c) => [
+                    c.tipo,
+                    c.titolo,
+                    c.testo,
+                    c.sede || "Tutte",
+                    fmtDataOra(c.dataComunicazione || c.createdAt),
+                    c.autore,
+                    c.richiedePresaVisione ? "Sì" : "No",
+                  ]),
+                )
+              }
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
+            >
+              <Download className="h-4 w-4" /> Esporta CSV
+            </button>
+          )}
         </div>
 
         {comunicazioni === null ? (

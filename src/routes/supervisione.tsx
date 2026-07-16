@@ -10,7 +10,9 @@ import {
   CalendarDays,
   Clock,
   Receipt,
+  Download,
 } from "lucide-react";
+import { esportaCsvFile } from "@/lib/csv";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
   spGetRichieste,
@@ -214,9 +216,35 @@ function SupervisionePage() {
 
       {tab === "approvate" ? (
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
-          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-            <ShieldCheck className="h-4 w-4 text-primary" /> Richieste decise (approvate e
-            rifiutate)
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+              <ShieldCheck className="h-4 w-4 text-primary" /> Richieste decise (approvate e
+              rifiutate)
+            </div>
+            {filtrate.length > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  esportaCsvFile(
+                    "richieste-decise",
+                    ["Richiesta", "Stato", "Dipendente", "Tipo", "Dal", "Al", "Sede", "Documento"],
+                    filtrate.map((r) => [
+                      r.title || r.id,
+                      r.stato,
+                      nomeById.get(r.richiedenteId) || r.codiceRichiedente,
+                      r.tipo + (r.modalita ? ` (${r.modalita})` : ""),
+                      fmtData(r.dataInizio),
+                      fmtData(r.dataFine || r.dataInizio),
+                      r.sedeRichiedente,
+                      r.giustificativo ?? "",
+                    ]),
+                  )
+                }
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
+              >
+                <Download className="h-4 w-4" /> Esporta CSV
+              </button>
+            )}
           </div>
 
           {/* Filtri */}
@@ -365,8 +393,33 @@ function SupervisionePage() {
         </div>
       ) : tab === "rimborsi" ? (
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
-          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-            <Receipt className="h-4 w-4 text-primary" /> Rimborsi spese (decisi)
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+              <Receipt className="h-4 w-4 text-primary" /> Rimborsi spese (decisi)
+            </div>
+            {rimborsi.length > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  esportaCsvFile(
+                    "rimborsi",
+                    ["Dipendente", "Stato", "Sede", "Data", "Tipologia", "Importo", "Documento"],
+                    rimborsi.map((r) => [
+                      nomeById.get(r.richiedenteId) || r.codiceRichiedente,
+                      r.stato,
+                      r.sedeRichiedente,
+                      fmtData(r.dataInizio),
+                      r.tipoAcquisto ?? "",
+                      r.importo ?? "",
+                      r.giustificativo ?? "",
+                    ]),
+                  )
+                }
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
+              >
+                <Download className="h-4 w-4" /> Esporta CSV
+              </button>
+            )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-4 mb-4">

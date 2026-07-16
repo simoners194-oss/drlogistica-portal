@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
-import { FileText, Upload, Loader2, Building2, User } from "lucide-react";
+import { FileText, Upload, Loader2, Building2, User, Download } from "lucide-react";
+import { esportaCsvFile } from "@/lib/csv";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
   spGetDocumenti,
@@ -297,18 +298,55 @@ function DocumentiPage() {
             <FileText className="h-4 w-4 text-primary" />
             {canPubblicare ? "Tutti i documenti" : "I miei documenti"}
           </div>
-          <select
-            className="rounded-lg border border-border bg-background px-2 py-1 text-xs"
-            value={catF}
-            onChange={(e) => setCatF(e.target.value)}
-          >
-            <option value="tutte">Tutte le categorie</option>
-            {CATEGORIE.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              className="rounded-lg border border-border bg-background px-2 py-1 text-xs"
+              value={catF}
+              onChange={(e) => setCatF(e.target.value)}
+            >
+              <option value="tutte">Tutte le categorie</option>
+              {CATEGORIE.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            {canPubblicare && filtrati.length > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  esportaCsvFile(
+                    "documenti",
+                    [
+                      "Categoria",
+                      "Titolo",
+                      "Ambito",
+                      "Destinatario",
+                      "Sede",
+                      "Data",
+                      "Caricato da",
+                      "Link",
+                    ],
+                    filtrati.map((d) => [
+                      d.categoria,
+                      d.titolo,
+                      d.ambito,
+                      d.ambito === "Personale"
+                        ? nomeById.get(d.destinatarioId) || d.codiceDestinatario
+                        : "",
+                      d.sedeDestinatario,
+                      fmtData(d.dataDocumento || d.createdAt),
+                      d.caricatoDa,
+                      d.file,
+                    ]),
+                  )
+                }
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-secondary transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" /> CSV
+              </button>
+            )}
+          </div>
         </div>
 
         {documenti === null ? (
