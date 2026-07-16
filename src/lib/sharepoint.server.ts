@@ -2532,11 +2532,20 @@ export async function createDocumento(input: CreateDocumentoInput): Promise<SpDo
   );
   logSp("info", "create.documento", `Documento "${input.titolo}" (${input.categoria})`);
   // Documento personale → email al destinatario via coda (best-effort).
+  // Le buste paga usano il formato richiesto dalla Segreteria; gli altri
+  // documenti un testo generico.
   if (emailDestinatario && parseEmails(emailDestinatario).length) {
+    const isBustaPaga = input.categoria === "Busta paga";
+    // "Busta paga Giugno 2026" → periodo = titolo senza il prefisso categoria.
+    const periodo = input.titolo.replace(/^busta paga\s*/i, "").trim();
     await enqueueEmail({
       destinatari: parseEmails(emailDestinatario),
-      oggetto: `[DR Portal] Nuovo documento: ${input.titolo}`,
-      corpo: `È disponibile un nuovo documento nella tua area personale del portale DR Logistica.\n\nCategoria: ${input.categoria}\nTitolo: ${input.titolo}\n\nConsultalo su https://portal.drlogistica.it/documenti`,
+      oggetto: isBustaPaga
+        ? `Busta Paga ${periodo}`
+        : `[DR Portal] Nuovo documento: ${input.titolo}`,
+      corpo: isBustaPaga
+        ? `Buongiorno,\nin allegato il link alla busta paga relativa a ${periodo}:\n${input.file}\n\nLa ritrovi anche nella tua area personale: https://portal.drlogistica.it/documenti\n\nSaluti\nSegreteria DR`
+        : `È disponibile un nuovo documento nella tua area personale del portale DR Logistica.\n\nCategoria: ${input.categoria}\nTitolo: ${input.titolo}\n\nConsultalo su https://portal.drlogistica.it/documenti`,
       allegato: input.file,
     }).catch(() => {});
   }
