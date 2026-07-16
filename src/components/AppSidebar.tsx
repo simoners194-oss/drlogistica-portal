@@ -16,6 +16,7 @@ import { Logo } from "./Logo";
 import { MODULES } from "@/lib/modules";
 import { canAccess, readSession, type Ruolo, type SessionSede } from "@/lib/session";
 import { sedeTimbra, anySedeTimbra } from "@/lib/mock-data";
+import { isSedeStorica } from "@/lib/richieste-logic";
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -48,6 +49,16 @@ export function AppSidebar() {
     // Requisiti di capability obbligatori (AND col ruolo).
     if (m.requiresOperatore && !operatore) return false;
     if (m.requiresAutorizza && !autorizza) return false;
+    // Moduli riservati alle sedi storiche (es. Procurement): visibili anche
+    // ad autorizzatori (DR005 approva) e a chi ha sede "tutte" (admin).
+    if (
+      m.soloSediStoriche &&
+      sede != null &&
+      sede !== "tutte" &&
+      !isSedeStorica(sede) &&
+      !autorizza
+    )
+      return false;
     const roleOk = ruolo ? canAccess(m, ruolo) : canAccess(m, "dipendente");
     // Capability alternative: visibile se ruolo ammesso OPPURE capability.
     if (m.orCapabilities && m.orCapabilities.length) {

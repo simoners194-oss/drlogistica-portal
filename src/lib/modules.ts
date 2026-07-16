@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   FolderOpen,
   Megaphone,
+  ShoppingCart,
   type LucideIcon,
 } from "lucide-react";
 import type { Ruolo } from "./session";
@@ -49,6 +50,9 @@ export type AppModule = {
   /** Se true, la voce è visibile solo agli utenti la cui sede timbra
    *  (`sedeTimbra`). Le sedi che non timbrano non vedono il modulo. */
   richiedeTimbratura?: boolean;
+  /** Se true, la voce è visibile solo alle risorse delle sedi storiche
+   *  (Fiano Romano / San Giuliano), oltre ad autorizzatori e admin. */
+  soloSediStoriche?: boolean;
 };
 
 export const APP_NAME = "DR Portal";
@@ -82,6 +86,16 @@ export const MODULES: readonly AppModule[] = [
     ready: true,
     description: "Ferie, permessi, straordinari, smart working, malattia e reperibilità.",
     roles: ["dipendente", "responsabile", "amministratore_sistema"],
+  },
+  {
+    id: "procurement",
+    title: "Procurement",
+    url: "/procurement",
+    icon: ShoppingCart,
+    ready: true,
+    description: "Richieste di acquisto (sedi storiche, approvazione DR005).",
+    roles: ["dipendente", "responsabile", "amministratore_sistema"],
+    soloSediStoriche: true,
   },
   {
     id: "documenti",

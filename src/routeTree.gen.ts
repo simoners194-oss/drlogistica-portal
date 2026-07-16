@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SupervisioneRouteImport } from './routes/supervisione'
 import { Route as RichiesteRouteImport } from './routes/richieste'
 import { Route as ReportRouteImport } from './routes/report'
+import { Route as ProcurementRouteImport } from './routes/procurement'
 import { Route as PresenzeRouteImport } from './routes/presenze'
 import { Route as NovitaRouteImport } from './routes/novita'
 import { Route as GestioneTimbratureRouteImport } from './routes/gestione-timbrature'
@@ -34,6 +35,11 @@ const RichiesteRoute = RichiesteRouteImport.update({
 const ReportRoute = ReportRouteImport.update({
   id: '/report',
   path: '/report',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProcurementRoute = ProcurementRouteImport.update({
+  id: '/procurement',
+  path: '/procurement',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PresenzeRoute = PresenzeRouteImport.update({
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
+  '/procurement': typeof ProcurementRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
   '/supervisione': typeof SupervisioneRoute
@@ -99,6 +106,7 @@ export interface FileRoutesByTo {
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
+  '/procurement': typeof ProcurementRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
   '/supervisione': typeof SupervisioneRoute
@@ -113,6 +121,7 @@ export interface FileRoutesById {
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
+  '/procurement': typeof ProcurementRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
   '/supervisione': typeof SupervisioneRoute
@@ -128,6 +137,7 @@ export interface FileRouteTypes {
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
+    | '/procurement'
     | '/report'
     | '/richieste'
     | '/supervisione'
@@ -141,6 +151,7 @@ export interface FileRouteTypes {
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
+    | '/procurement'
     | '/report'
     | '/richieste'
     | '/supervisione'
@@ -154,6 +165,7 @@ export interface FileRouteTypes {
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
+    | '/procurement'
     | '/report'
     | '/richieste'
     | '/supervisione'
@@ -168,6 +180,7 @@ export interface RootRouteChildren {
   GestioneTimbratureRoute: typeof GestioneTimbratureRoute
   NovitaRoute: typeof NovitaRoute
   PresenzeRoute: typeof PresenzeRoute
+  ProcurementRoute: typeof ProcurementRoute
   ReportRoute: typeof ReportRoute
   RichiesteRoute: typeof RichiesteRoute
   SupervisioneRoute: typeof SupervisioneRoute
@@ -194,6 +207,13 @@ declare module '@tanstack/react-router' {
       path: '/report'
       fullPath: '/report'
       preLoaderRoute: typeof ReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/procurement': {
+      id: '/procurement'
+      path: '/procurement'
+      fullPath: '/procurement'
+      preLoaderRoute: typeof ProcurementRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/presenze': {
@@ -264,6 +284,7 @@ const rootRouteChildren: RootRouteChildren = {
   GestioneTimbratureRoute: GestioneTimbratureRoute,
   NovitaRoute: NovitaRoute,
   PresenzeRoute: PresenzeRoute,
+  ProcurementRoute: ProcurementRoute,
   ReportRoute: ReportRoute,
   RichiesteRoute: RichiesteRoute,
   SupervisioneRoute: SupervisioneRoute,

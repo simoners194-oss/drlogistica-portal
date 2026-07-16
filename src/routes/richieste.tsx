@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -22,8 +22,10 @@ import {
   spCancelRichiesta,
   spDecideRichiesta,
   spUploadGiustificativo,
+  spGetVoci,
+  spGetSaldoFerie,
 } from "@/lib/sharepoint.functions";
-import type { SpRichiesta } from "@/lib/sharepoint.server";
+import type { SpRichiesta, SpVoce, SaldoFerieRiga } from "@/lib/sharepoint.server";
 import {
   TIPI_RICHIESTA,
   MODALITA,
@@ -116,6 +118,12 @@ function RichiestePage() {
   const [protocolloInps, setProtocolloInps] = useState("");
   const [importo, setImporto] = useState("");
   const [tipoAcquisto, setTipoAcquisto] = useState<TipoAcquisto | "">("");
+  // Voci rimborso (macro → dettaglio) dalla lista SharePoint "Voci".
+  const [vociRimborso, setVociRimborso] = useState<SpVoce[]>([]);
+  const [voceMacro, setVoceMacro] = useState("");
+  const [voceDettaglio, setVoceDettaglio] = useState("");
+  // Saldo ferie/permessi per la coda approvatore (residui a colpo d'occhio).
+  const [saldoById, setSaldoById] = useState<Map<string, SaldoFerieRiga>>(new Map());
   const [giustificativo, setGiustificativo] = useState("");
   const [giustFile, setGiustFile] = useState<File | null>(null);
   const [formErrors, setFormErrors] = useState<string[]>([]);
@@ -157,8 +165,27 @@ function RichiestePage() {
     }
     setSession(s);
     void loadRichieste(s.id);
-    if (s.autorizza) void loadPending();
+    spGetVoci({ data: { ambito: "Rimborso" } })
+      .then((l) => setVociRimborso(l as SpVoce[]))
+      .catch(() => {});
+    if (s.autorizza) {
+      void loadPending();
+      // Saldo ferie/permessi per mostrare i residui accanto a ogni richiesta.
+      spGetSaldoFerie({ data: { anno: new Date().getFullYear() } })
+        .then((l) => {
+          const m = new Map<string, SaldoFerieRiga>();
+          for (const r of l as SaldoFerieRiga[]) m.set(r.dipendenteId, r);
+          setSaldoById(m);
+        })
+        .catch(() => {});
+    }
   }, []);
+
+  const vociMacros = useMemo(() => [...new Set(vociRimborso.map((v) => v.macro))], [vociRimborso]);
+  const vociDettagli = useMemo(
+    () => vociRimborso.filter((v) => v.macro === voceMacro && v.dettaglio).map((v) => v.dettaglio),
+    [vociRimborso, voceMacro],
+  );
 
   function resetForm() {
     setDataInizio("");
@@ -170,6 +197,8 @@ function RichiestePage() {
     setProtocolloInps("");
     setImporto("");
     setTipoAcquisto("");
+    setVoceMacro("");
+    setVoceDettaglio("");
     setGiustificativo("");
     setGiustFile(null);
     setFormErrors([]);
@@ -202,6 +231,11 @@ function RichiestePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!session || submitting) return;
+    // Con le voci a cascata il dettaglio è obbligatorio quando esiste.
+    if (isRimb && voceMacro && vociDettagli.length > 0 && !voceDettaglio) {
+      toast.error("Seleziona anche il dettaglio della tipologia");
+      return;
+    }
     const input = buildInput();
     const v = validateRichiesta(input);
     if (!v.ok) {
@@ -391,6 +425,26 @@ function RichiestePage() {
                           )}
                         </div>
                       )}
+                      {(() => {
+                        const saldo = saldoById.get(r.richiedenteId);
+                        if (!saldo) return null;
+                        return (
+                          <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
+                            <span
+                              className={`rounded-full px-2 py-0.5 font-medium ${saldo.residui <= 0 ? "bg-status-absent/15 text-status-absent" : "bg-secondary text-secondary-foreground"}`}
+                            >
+                              Ferie residue: {saldo.residui} gg
+                            </span>
+                            {saldo.permessiResiduiOre != null && (
+                              <span
+                                className={`rounded-full px-2 py-0.5 font-medium ${saldo.permessiResiduiOre <= 0 ? "bg-status-absent/15 text-status-absent" : "bg-secondary text-secondary-foreground"}`}
+                              >
+                                Permessi residui: {saldo.permessiResiduiOre} h
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div className="mt-0.5 text-[11px] text-muted-foreground/70">
                         {r.title || `#${r.id}`}
                         {r.protocolloInps ? ` · INPS ${r.protocolloInps}` : ""}
@@ -529,24 +583,72 @@ function RichiestePage() {
                       placeholder="0,00"
                     />
                   </div>
+                  {vociMacros.length > 0 ? (
+                    <div>
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Tipologia
+                      </label>
+                      <select
+                        className={`${inputCls} mt-1`}
+                        value={voceMacro}
+                        onChange={(e) => {
+                          const m = e.target.value;
+                          setVoceMacro(m);
+                          setVoceDettaglio("");
+                          setTipoAcquisto(m);
+                        }}
+                      >
+                        <option value="">— seleziona —</option>
+                        {vociMacros.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Tipologia
+                      </label>
+                      <select
+                        className={`${inputCls} mt-1`}
+                        value={tipoAcquisto}
+                        onChange={(e) => setTipoAcquisto(e.target.value as TipoAcquisto | "")}
+                      >
+                        <option value="">— seleziona —</option>
+                        {TIPI_ACQUISTO.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                {voceMacro && vociDettagli.length > 0 && (
                   <div>
                     <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                      Tipologia
+                      Dettaglio
                     </label>
                     <select
                       className={`${inputCls} mt-1`}
-                      value={tipoAcquisto}
-                      onChange={(e) => setTipoAcquisto(e.target.value as TipoAcquisto | "")}
+                      value={voceDettaglio}
+                      onChange={(e) => {
+                        const d = e.target.value;
+                        setVoceDettaglio(d);
+                        setTipoAcquisto(d ? `${voceMacro} › ${d}` : voceMacro);
+                      }}
                     >
                       <option value="">— seleziona —</option>
-                      {TIPI_ACQUISTO.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
+                      {vociDettagli.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
                         </option>
                       ))}
                     </select>
                   </div>
-                </div>
+                )}
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
                     Documento giustificativo{" "}

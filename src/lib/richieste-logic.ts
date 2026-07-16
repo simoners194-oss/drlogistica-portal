@@ -41,12 +41,14 @@ export const STATI_RICHIESTA: readonly StatoRichiesta[] = [
 ];
 export const MODALITA: readonly ModalitaStraordinario[] = ["Preventivo", "Consuntivo"];
 
-// Tipologia di acquisto per i rimborsi spese.
-export type TipoAcquisto = "Pasto" | "Viaggio" | "Alloggio" | "Altro";
+// Tipologia di acquisto per i rimborsi spese. Le voci sono gestite dalla
+// lista SharePoint "Voci" (macro → dettaglio): il tipo è quindi una stringa
+// libera. TIPI_ACQUISTO resta come fallback quando la lista Voci è vuota.
+export type TipoAcquisto = string;
 export const TIPI_ACQUISTO: readonly TipoAcquisto[] = ["Pasto", "Viaggio", "Alloggio", "Altro"];
 export function parseTipoAcquisto(v: unknown): TipoAcquisto | null {
   const s = String(v ?? "").trim();
-  return (TIPI_ACQUISTO as readonly string[]).includes(s) ? (s as TipoAcquisto) : null;
+  return s.length > 0 ? s : null;
 }
 export function isRimborso(tipo: TipoRichiesta): boolean {
   return tipo === "Rimborso spese";
@@ -201,8 +203,7 @@ export function validateRichiesta(input: RichiestaInput, now: Date = new Date())
     if (!isValidDate(input.dataInizio)) errors.push("Data di acquisto non valida.");
     if (input.importo == null || !(input.importo > 0))
       errors.push("Importo non valido (maggiore di 0).");
-    if (!parseTipoAcquisto(input.tipoAcquisto))
-      errors.push("Tipologia di acquisto obbligatoria (Pasto/Viaggio/Alloggio/Altro).");
+    if (!parseTipoAcquisto(input.tipoAcquisto)) errors.push("Tipologia di acquisto obbligatoria.");
     if (input.oraInizio || input.oraFine) errors.push("Il rimborso non prevede orari.");
     if (input.modalita) errors.push("Il rimborso non prevede una modalità.");
     return { ok: errors.length === 0, errors };
@@ -336,6 +337,12 @@ export function supervisionaSede(codiceAutorizzatore: string, sedeRichiedente: s
   return (
     (codiceAutorizzatore ?? "").trim().toUpperCase() === codiceSupervisoreDiSede(sedeRichiedente)
   );
+}
+
+// Sede "storica" (Fiano Romano / San Giuliano)? Usato dal Procurement: le
+// richieste di acquisto sono attive solo per le risorse delle sedi storiche.
+export function isSedeStorica(sede: string): boolean {
+  return SEDI_DR005.has((sede ?? "").trim().toLowerCase());
 }
 
 // Costruisce il Title leggibile: REQ-<anno>-<idNativo>.

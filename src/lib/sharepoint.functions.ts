@@ -45,6 +45,13 @@ import {
   getVapidPublicKey,
   savePushSubscription,
   sendPushToSede,
+  fetchVoci,
+  fetchAcquisti,
+  createAcquisto,
+  decideAcquisto,
+  type SpVoce,
+  type SpAcquisto,
+  type CreateAcquistoInput,
   type SpDocumento,
   type CreateDocumentoInput,
   type SpComunicazione,
@@ -459,6 +466,76 @@ export const spGetMiePreseVisione = createServerFn({ method: "GET" }).handler(
     return fetchPreseVisioneForUser(me.id);
   },
 );
+
+// ---------------------------------------------------------------------------
+// Voci di spesa + Procurement (richieste di acquisto)
+// ---------------------------------------------------------------------------
+export const spGetVoci = createServerFn({ method: "GET" })
+  .inputValidator((input: { ambito: string }) => {
+    if (input?.ambito !== "Rimborso" && input?.ambito !== "Acquisto")
+      throw new Error("Ambito non valido");
+    return { ambito: input.ambito };
+  })
+  .handler(async ({ data }): Promise<SpVoce[]> => {
+    await currentUser();
+    return fetchVoci(data.ambito);
+  });
+
+export const spGetAcquisti = createServerFn({ method: "GET" })
+  .inputValidator((input?: { mie?: boolean; stato?: string }) => ({
+    mie: Boolean(input?.mie),
+    stato: input?.stato ? String(input.stato) : undefined,
+  }))
+  .handler(async ({ data }): Promise<SpAcquisto[]> => {
+    const me = await currentUser();
+    if (data.mie) return fetchAcquisti({ richiedenteId: me.id, stato: data.stato });
+    // Vista completa: approvatori (DR005) e admin.
+    assertCap(me.autorizza || isAdmin(me));
+    return fetchAcquisti({ stato: data.stato });
+  });
+
+export const spCreateAcquisto = createServerFn({ method: "POST" })
+  .inputValidator((input: CreateAcquistoInput) => {
+    if (!input?.macro) throw new Error("Voce di acquisto mancante");
+    if (!input?.descrizione) throw new Error("Descrizione mancante");
+    return {
+      macro: String(input.macro),
+      dettaglio: String(input.dettaglio ?? ""),
+      descrizione: String(input.descrizione),
+      importo:
+        input.importo != null && Number.isFinite(Number(input.importo))
+          ? Number(input.importo)
+          : undefined,
+    };
+  })
+  .handler(async ({ data }): Promise<SpAcquisto> => {
+    const me = await currentUser();
+    // La sede storica è ri-verificata dentro createAcquisto sul record SP.
+    return createAcquisto(me.id, data);
+  });
+
+export const spDecideAcquisto = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      acquistoId: string;
+      decisione: "Approvata" | "Respinta";
+      noteDecisione?: string;
+    }) => {
+      if (!input?.acquistoId) throw new Error("acquistoId mancante");
+      if (input.decisione !== "Approvata" && input.decisione !== "Respinta")
+        throw new Error("decisione non valida");
+      return {
+        acquistoId: String(input.acquistoId),
+        decisione: input.decisione,
+        noteDecisione: input.noteDecisione ? String(input.noteDecisione) : undefined,
+      };
+    },
+  )
+  .handler(async ({ data }): Promise<SpAcquisto> => {
+    const me = await currentUser();
+    // L'autorizzazione vera (DR005/admin) è verificata server-side su SP.
+    return decideAcquisto({ ...data, approvatoreId: me.id });
+  });
 
 // --- Web Push: chiave pubblica + registrazione dispositivo -----------------
 export const spGetVapidPublicKey = createServerFn({ method: "GET" }).handler(

@@ -24,6 +24,7 @@ import {
   isAutoApprovazione,
   supervisionaSede,
   isSupervisoreGlobale,
+  isSedeStorica,
   richiedeApprovazione,
   misuraInGiorni,
   isRimborso,
@@ -79,6 +80,7 @@ export const SP_DISPLAY = {
     OreSettimanali: "OreSettimanali",
     Inquadramento: "Inquadramento",
     GiorniFerieAnnui: "GiorniFerieAnnui",
+    OrePermessiAnnui: "OrePermessiAnnui",
   },
   timbrature: {
     Dipendente: "Dipendente",
@@ -162,6 +164,28 @@ export const SP_DISPLAY = {
     DipendenteId: "DipendenteId",
     Sede: "Sede",
   },
+  // Voci di spesa (macro → dettaglio) per rimborsi e acquisti. Lista OPZIONALE
+  // gestita direttamente dall'azienda: aggiungere una voce = aggiungere una riga.
+  voci: {
+    Ambito: "Ambito",
+    Macro: "Macro",
+    Dettaglio: "Dettaglio",
+  },
+  // Richieste di acquisto (modulo Procurement). Lista OPZIONALE.
+  acquisti: {
+    Richiedente: "Richiedente",
+    CodiceRichiedente: "CodiceRichiedente",
+    SedeRichiedente: "SedeRichiedente",
+    Macro: "Macro",
+    Dettaglio: "Dettaglio",
+    Descrizione: "Descrizione",
+    Importo: "Importo",
+    Stato: "Stato",
+    DataRichiesta: "DataRichiesta",
+    Approvatore: "Approvatore",
+    DataDecisione: "DataDecisione",
+    NoteDecisione: "NoteDecisione",
+  },
 } as const;
 
 const REQUIRED_DIP_KEYS = [
@@ -187,6 +211,8 @@ const LIST_NAMES = {
   comunicazioni: ["Comunicazioni", "Comunicazione"],
   preseVisione: ["PreseVisione", "PresaVisione", "PreseVisioni"],
   pushSubscriptions: ["PushSubscriptions", "PushSubscription"],
+  voci: ["Voci", "Voce", "VociSpesa"],
+  acquisti: ["RichiesteAcquisto", "RichiestaAcquisto", "Acquisti"],
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -270,6 +296,14 @@ export interface SpDiscovered {
   listPushSubscriptionsName: string | null;
   pushSubscriptionsFields: Record<string, string>;
   pushSubscriptionsMissing: string[];
+  listVoci: string | null;
+  listVociName: string | null;
+  vociFields: Record<string, string>;
+  vociMissing: string[];
+  listAcquisti: string | null;
+  listAcquistiName: string | null;
+  acquistiFields: Record<string, string>;
+  acquistiMissing: string[];
   cachedAt: string;
   expiresAt: string;
 }
@@ -510,7 +544,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const timRes = resolveInternalNames(timCols, SP_DISPLAY.timbrature);
   // Colonne Dipendenti facoltative: la loro assenza NON segna la salute rossa
   // (il codice ha default: Inquadramento="" e GiorniFerieAnnui=26).
-  const OPTIONAL_DIP = new Set(["Inquadramento", "GiorniFerieAnnui"]);
+  const OPTIONAL_DIP = new Set(["Inquadramento", "GiorniFerieAnnui", "OrePermessiAnnui"]);
   dipRes.missing = dipRes.missing.filter((m) => !OPTIONAL_DIP.has(m));
 
   // 5) Discovery SOFT della lista Richieste (Sprint 2): se assente o non
@@ -563,6 +597,8 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const coms = await softList(LIST_NAMES.comunicazioni, SP_DISPLAY.comunicazioni);
   const pv = await softList(LIST_NAMES.preseVisione, SP_DISPLAY.preseVisione);
   const push = await softList(LIST_NAMES.pushSubscriptions, SP_DISPLAY.pushSubscriptions);
+  const voci = await softList(LIST_NAMES.voci, SP_DISPLAY.voci);
+  const acq = await softList(LIST_NAMES.acquisti, SP_DISPLAY.acquisti);
 
   const now = Date.now();
   discoveredCache = {
@@ -597,6 +633,14 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listPushSubscriptionsName: push.name,
     pushSubscriptionsFields: push.fields,
     pushSubscriptionsMissing: push.missing,
+    listVoci: voci.id,
+    listVociName: voci.name,
+    vociFields: voci.fields,
+    vociMissing: voci.missing,
+    listAcquisti: acq.id,
+    listAcquistiName: acq.name,
+    acquistiFields: acq.fields,
+    acquistiMissing: acq.missing,
     cachedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CACHE_TTL_MS).toISOString(),
   };
@@ -699,6 +743,9 @@ export interface SpDipendente {
   // Giorni di ferie spettanti nell'anno (per il saldo residuo). null se non
   // impostato → si usa il default DEFAULT_FERIE_ANNUE.
   giorniFerieAnnui: number | null;
+  // Ore di permesso annue (ROL/ex festività). null se non impostate → il
+  // residuo permessi non viene mostrato (nessun default inventato).
+  orePermessiAnnui: number | null;
 }
 
 // Parsing tollerante di un campo booleano SharePoint (Sì/No).
@@ -749,6 +796,10 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
         inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
         giorniFerieAnnui: parseSpNumber(
           F.GiorniFerieAnnui ? f[F.GiorniFerieAnnui] : undefined,
+          null,
+        ),
+        orePermessiAnnui: parseSpNumber(
+          F.OrePermessiAnnui ? f[F.OrePermessiAnnui] : undefined,
           null,
         ),
       };
@@ -1074,6 +1125,7 @@ export async function loginByCodicePin(
     oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
     inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
     giorniFerieAnnui: parseSpNumber(F.GiorniFerieAnnui ? f[F.GiorniFerieAnnui] : undefined, null),
+    orePermessiAnnui: parseSpNumber(F.OrePermessiAnnui ? f[F.OrePermessiAnnui] : undefined, null),
   };
   logSp("info", "login", `Login ok per ${codice} (id=${dipendente.id})`, {
     durataMs: Date.now() - started,
@@ -1311,30 +1363,49 @@ export interface SaldoFerieRiga {
   spettanti: number;
   godute: number;
   residui: number;
+  // Permessi (ore). null se OrePermessiAnnui non è impostato per il dipendente.
+  permessiSpettantiOre: number | null;
+  permessiGoduteOre: number;
+  permessiResiduiOre: number | null;
 }
 
-// Saldo ferie per l'anno: spettanti (da colonna o default) meno i giorni di
-// Ferie approvate nell'anno.
+// Saldo ferie e permessi per l'anno: spettanti (da colonna o default) meno
+// quanto approvato nell'anno.
 export async function computeSaldoFerie(anno: number): Promise<SaldoFerieRiga[]> {
   const [dipendenti, richieste] = await Promise.all([
     fetchDipendenti(),
     fetchRichieste({ stato: "Approvata" }),
   ]);
   const goduteById = new Map<string, number>();
+  const permessiById = new Map<string, number>();
   for (const r of richieste) {
-    if (r.tipo !== "Ferie") continue;
     if (Number((r.dataInizio || "").slice(0, 4)) !== anno) continue;
-    const gg =
-      r.durataGiorni && r.durataGiorni > 0
-        ? r.durataGiorni
-        : computeDurataGiorni(r.dataInizio.slice(0, 10), (r.dataFine || r.dataInizio).slice(0, 10));
-    goduteById.set(r.richiedenteId, (goduteById.get(r.richiedenteId) ?? 0) + gg);
+    if (r.tipo === "Ferie") {
+      const gg =
+        r.durataGiorni && r.durataGiorni > 0
+          ? r.durataGiorni
+          : computeDurataGiorni(
+              r.dataInizio.slice(0, 10),
+              (r.dataFine || r.dataInizio).slice(0, 10),
+            );
+      goduteById.set(r.richiedenteId, (goduteById.get(r.richiedenteId) ?? 0) + gg);
+    } else if (r.tipo === "Permesso") {
+      const ore =
+        r.durataOre && r.durataOre > 0
+          ? r.durataOre
+          : r.oraInizio && r.oraFine
+            ? computeDurataOre(r.oraInizio, r.oraFine)
+            : 0;
+      permessiById.set(r.richiedenteId, (permessiById.get(r.richiedenteId) ?? 0) + ore);
+    }
   }
   return dipendenti
     .filter((d) => d.visibile)
     .map((d) => {
       const spettanti = d.giorniFerieAnnui ?? DEFAULT_FERIE_ANNUE;
       const godute = goduteById.get(d.id) ?? 0;
+      const permessiGoduteOre = round2(permessiById.get(d.id) ?? 0);
+      const permessiSpettantiOre = d.orePermessiAnnui;
       return {
         dipendenteId: d.id,
         nomeCompleto: d.nomeCompleto || `${d.cognome} ${d.nome}`,
@@ -1342,6 +1413,10 @@ export async function computeSaldoFerie(anno: number): Promise<SaldoFerieRiga[]>
         spettanti,
         godute,
         residui: spettanti - godute,
+        permessiSpettantiOre,
+        permessiGoduteOre,
+        permessiResiduiOre:
+          permessiSpettantiOre != null ? round2(permessiSpettantiOre - permessiGoduteOre) : null,
       };
     })
     .sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto));
@@ -2465,6 +2540,216 @@ export async function markPresaVisione(
     }),
   );
   logSp("info", "presa.visione", `Comunicazione #${comunicazioneId} letta da #${dipendenteId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Voci di spesa (macro → dettaglio) — lista gestita dall'azienda
+// ---------------------------------------------------------------------------
+export interface SpVoce {
+  macro: string;
+  dettaglio: string;
+}
+
+// Voci per ambito ("Rimborso" | "Acquisto"), raggruppate macro → dettagli.
+export async function fetchVoci(ambito: string): Promise<SpVoce[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listVoci) return [];
+  const F = cfg.vociFields;
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listVoci}/items?expand=fields&$top=999`,
+    ),
+  );
+  const amb = ambito.trim().toLowerCase();
+  return res.value
+    .map((it) => {
+      const f = it.fields ?? {};
+      return {
+        ambito: F.Ambito ? String(f[F.Ambito] ?? "").trim() : "",
+        macro: F.Macro ? String(f[F.Macro] ?? "").trim() : "",
+        dettaglio: F.Dettaglio ? String(f[F.Dettaglio] ?? "").trim() : "",
+      };
+    })
+    .filter((v) => v.macro && v.ambito.toLowerCase() === amb)
+    .map(({ macro, dettaglio }) => ({ macro, dettaglio }))
+    .sort((a, b) => a.macro.localeCompare(b.macro) || a.dettaglio.localeCompare(b.dettaglio));
+}
+
+// ---------------------------------------------------------------------------
+// Procurement — richieste di acquisto (solo sedi storiche, approva DR005)
+// ---------------------------------------------------------------------------
+function requireAcquistiList(cfg: SpDiscovered): string {
+  if (!cfg.listAcquisti)
+    throw new Error(
+      'Lista "RichiesteAcquisto" non trovata su SharePoint. Crearla sul sito DRPORTAL.',
+    );
+  return cfg.listAcquisti;
+}
+
+export interface SpAcquisto {
+  id: string;
+  title: string;
+  richiedenteId: string;
+  codiceRichiedente: string;
+  sedeRichiedente: string;
+  macro: string;
+  dettaglio: string;
+  descrizione: string;
+  importo?: number;
+  stato: string;
+  dataRichiesta: string;
+  approvatoreId?: string;
+  dataDecisione?: string;
+  noteDecisione?: string;
+  createdAt?: string;
+}
+export interface CreateAcquistoInput {
+  macro: string;
+  dettaglio: string;
+  descrizione: string;
+  importo?: number;
+}
+
+function mapAcquisto(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>): SpAcquisto {
+  const F = cfg.acquistiFields;
+  const f = it.fields ?? {};
+  const richLookup = F.Richiedente ? f[lookupIdFieldName(F.Richiedente)] : undefined;
+  const appLookup = F.Approvatore ? f[lookupIdFieldName(F.Approvatore)] : undefined;
+  return {
+    id: String(it.id),
+    title: String(f["Title"] ?? ""),
+    richiedenteId: richLookup != null ? String(richLookup) : "",
+    codiceRichiedente: F.CodiceRichiedente ? String(f[F.CodiceRichiedente] ?? "") : "",
+    sedeRichiedente: F.SedeRichiedente ? String(f[F.SedeRichiedente] ?? "") : "",
+    macro: F.Macro ? String(f[F.Macro] ?? "") : "",
+    dettaglio: F.Dettaglio ? String(f[F.Dettaglio] ?? "") : "",
+    descrizione: F.Descrizione ? String(f[F.Descrizione] ?? "") : "",
+    importo: F.Importo ? numOrUndef(f[F.Importo]) : undefined,
+    stato: F.Stato ? String(f[F.Stato] ?? "") : "",
+    dataRichiesta: F.DataRichiesta ? String(f[F.DataRichiesta] ?? "") : "",
+    approvatoreId: appLookup != null ? String(appLookup) : undefined,
+    dataDecisione: F.DataDecisione ? (f[F.DataDecisione] as string | undefined) : undefined,
+    noteDecisione: F.NoteDecisione ? (f[F.NoteDecisione] as string | undefined) : undefined,
+    createdAt: (f["Created"] as string | undefined) ?? undefined,
+  };
+}
+
+export async function fetchAcquisti(filter: {
+  richiedenteId?: string;
+  stato?: string;
+}): Promise<SpAcquisto[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listAcquisti) return [];
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listAcquisti}/items?expand=fields&$top=999`,
+    ),
+  );
+  let out = res.value.map((it) => mapAcquisto(cfg, it));
+  if (filter.richiedenteId) out = out.filter((r) => r.richiedenteId === filter.richiedenteId);
+  if (filter.stato) out = out.filter((r) => r.stato === filter.stato);
+  out.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  return out;
+}
+
+export async function createAcquisto(
+  richiedenteId: string,
+  input: CreateAcquistoInput,
+): Promise<SpAcquisto> {
+  const cfg = await discoverSharePoint();
+  const listId = requireAcquistiList(cfg);
+  const F = cfg.acquistiFields;
+  if (!input.macro.trim()) throw new Error("Seleziona la voce di acquisto.");
+  if (!input.descrizione.trim()) throw new Error("Descrivi cosa serve acquistare.");
+
+  // Denormalizzazione codice/sede dal record autorevole del richiedente e
+  // enforcement: il Procurement è attivo SOLO per le sedi storiche.
+  const DF = cfg.dipendentiFields;
+  const dipFields = await fetchDipendenteFields(cfg, richiedenteId);
+  const codice = DF.Codice ? String(dipFields[DF.Codice] ?? "").trim() : "";
+  const sedeRaw = DF.Sede ? String(dipFields[DF.Sede] ?? "").trim() : "";
+  if (!isSedeStorica(sedeRaw))
+    throw new Error("Le richieste di acquisto sono attive solo per le sedi storiche.");
+
+  const richiedenteNum = Number(richiedenteId);
+  const fields: Record<string, unknown> = { Title: "ACQ-TMP" };
+  if (F.Richiedente && Number.isFinite(richiedenteNum))
+    fields[lookupIdFieldName(F.Richiedente)] = richiedenteNum;
+  if (F.CodiceRichiedente && codice) fields[F.CodiceRichiedente] = codice;
+  if (F.SedeRichiedente && sedeRaw) fields[F.SedeRichiedente] = sedeRaw;
+  if (F.Macro) fields[F.Macro] = input.macro.trim();
+  if (F.Dettaglio && input.dettaglio) fields[F.Dettaglio] = input.dettaglio.trim();
+  if (F.Descrizione) fields[F.Descrizione] = input.descrizione.trim();
+  if (F.Importo && input.importo != null) fields[F.Importo] = input.importo;
+  if (F.Stato) fields[F.Stato] = "Inviata";
+  if (F.DataRichiesta) fields[F.DataRichiesta] = new Date().toISOString();
+
+  const created = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${listId}/items`,
+      { method: "POST", body: JSON.stringify({ fields }) },
+    ),
+  );
+  const anno = new Date().getFullYear();
+  try {
+    await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${created.id}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify({ Title: `ACQ-${anno}-${created.id}` }),
+    });
+  } catch {
+    /* solo titolo, non bloccante */
+  }
+  logSp("info", "create.acquisto", `Acquisto ACQ-${anno}-${created.id} (${input.macro})`);
+  return mapAcquisto(cfg, { id: created.id, fields });
+}
+
+// Approvazione/rifiuto: SOLO il supervisore globale DR005 (o l'admin).
+export async function decideAcquisto(input: {
+  acquistoId: string;
+  approvatoreId: string;
+  decisione: "Approvata" | "Respinta";
+  noteDecisione?: string;
+}): Promise<SpAcquisto> {
+  const cfg = await discoverSharePoint();
+  const listId = requireAcquistiList(cfg);
+  const F = cfg.acquistiFields;
+
+  const DF = cfg.dipendentiFields;
+  const dipFields = await fetchDipendenteFields(cfg, input.approvatoreId);
+  const autorizza = DF.Autorizza ? Boolean(dipFields[DF.Autorizza]) : false;
+  const codice = DF.Codice ? String(dipFields[DF.Codice] ?? "").trim() : "";
+  const ruolo = DF.Ruolo ? normalizeRuolo(String(dipFields[DF.Ruolo] ?? "")) : "dipendente";
+  const isAdminRole = ruolo === "amministratore_sistema";
+  if (!isAdminRole && !(autorizza && isSupervisoreGlobale(codice))) {
+    logSp("warn", "decide.acquisto", `Tentativo non autorizzato da id=${input.approvatoreId}`);
+    throw new Error("Le richieste di acquisto possono essere approvate solo da DR005.");
+  }
+  if (input.decisione === "Respinta" && !input.noteDecisione?.trim())
+    throw new Error("Il motivo del rifiuto è obbligatorio.");
+
+  const current = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${listId}/items/${input.acquistoId}?expand=fields`,
+    ),
+  ).then((it) => mapAcquisto(cfg, it));
+  if (current.stato !== "Inviata")
+    throw new Error(`Richiesta non decidibile nello stato "${current.stato}".`);
+
+  const approvatoreNum = Number(input.approvatoreId);
+  const fields: Record<string, unknown> = {};
+  if (F.Stato) fields[F.Stato] = input.decisione;
+  if (F.Approvatore && Number.isFinite(approvatoreNum))
+    fields[lookupIdFieldName(F.Approvatore)] = approvatoreNum;
+  if (F.DataDecisione) fields[F.DataDecisione] = new Date().toISOString();
+  if (F.NoteDecisione && input.noteDecisione) fields[F.NoteDecisione] = input.noteDecisione.trim();
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${input.acquistoId}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    }),
+  );
+  logSp("info", "decide.acquisto", `Acquisto #${input.acquistoId} → ${input.decisione}`);
+  return { ...current, stato: input.decisione };
 }
 
 // ---------------------------------------------------------------------------
