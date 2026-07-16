@@ -40,6 +40,12 @@ import {
 import { anomalieDelGiorno, type TipoAnomalia } from "./presenze-logic";
 import { normalizeRuolo } from "./session";
 import {
+  generateVapidKeys,
+  sendWebPush,
+  type PushSubscriptionData,
+  type VapidKeys,
+} from "./webpush.server";
+import {
   oreLavorateGiorno,
   isoDow,
   lunediDellaSettimana,
@@ -147,6 +153,15 @@ export const SP_DISPLAY = {
     CodiceDipendente: "CodiceDipendente",
     DataLettura: "DataLettura",
   },
+  // Sottoscrizioni Web Push (notifiche telefono). Lista OPZIONALE. Contiene
+  // anche la riga speciale "__vapid__" con le chiavi applicative.
+  pushSubscriptions: {
+    Endpoint: "Endpoint",
+    P256dh: "P256dh",
+    Auth: "Auth",
+    DipendenteId: "DipendenteId",
+    Sede: "Sede",
+  },
 } as const;
 
 const REQUIRED_DIP_KEYS = [
@@ -171,6 +186,7 @@ const LIST_NAMES = {
   documenti: ["DocumentiDipendenti", "DocumentoDipendente"],
   comunicazioni: ["Comunicazioni", "Comunicazione"],
   preseVisione: ["PreseVisione", "PresaVisione", "PreseVisioni"],
+  pushSubscriptions: ["PushSubscriptions", "PushSubscription"],
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -250,6 +266,10 @@ export interface SpDiscovered {
   listPreseVisioneName: string | null;
   preseVisioneFields: Record<string, string>;
   preseVisioneMissing: string[];
+  listPushSubscriptions: string | null;
+  listPushSubscriptionsName: string | null;
+  pushSubscriptionsFields: Record<string, string>;
+  pushSubscriptionsMissing: string[];
   cachedAt: string;
   expiresAt: string;
 }
@@ -538,6 +558,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const docs = await softList(LIST_NAMES.documenti, SP_DISPLAY.documenti);
   const coms = await softList(LIST_NAMES.comunicazioni, SP_DISPLAY.comunicazioni);
   const pv = await softList(LIST_NAMES.preseVisione, SP_DISPLAY.preseVisione);
+  const push = await softList(LIST_NAMES.pushSubscriptions, SP_DISPLAY.pushSubscriptions);
 
   const now = Date.now();
   discoveredCache = {
@@ -568,6 +589,10 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listPreseVisioneName: pv.name,
     preseVisioneFields: pv.fields,
     preseVisioneMissing: pv.missing,
+    listPushSubscriptions: push.id,
+    listPushSubscriptionsName: push.name,
+    pushSubscriptionsFields: push.fields,
+    pushSubscriptionsMissing: push.missing,
     cachedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CACHE_TTL_MS).toISOString(),
   };
@@ -2436,6 +2461,177 @@ export async function markPresaVisione(
     }),
   );
   logSp("info", "presa.visione", `Comunicazione #${comunicazioneId} letta da #${dipendenteId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Web Push — storage subscription + chiavi VAPID su lista PushSubscriptions
+// ---------------------------------------------------------------------------
+// La riga speciale Title="__vapid__" contiene le chiavi applicative (pubblica
+// nel campo P256dh, privata JWK nel campo Endpoint multiriga). Niente secret
+// esterni: tutto vive su SharePoint, protetto dalle credenziali del gateway.
+const VAPID_ROW_TITLE = "__vapid__";
+
+function requirePushList(cfg: SpDiscovered): string {
+  if (!cfg.listPushSubscriptions)
+    throw new Error(
+      'Lista "PushSubscriptions" non trovata su SharePoint. Crearla sul sito DRPORTAL.',
+    );
+  return cfg.listPushSubscriptions;
+}
+
+interface PushRow {
+  id: string;
+  title: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  dipendenteId: string;
+  sede: string;
+}
+
+function mapPushRow(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>): PushRow {
+  const F = cfg.pushSubscriptionsFields;
+  const f = it.fields ?? {};
+  return {
+    id: String(it.id),
+    title: String(f["Title"] ?? ""),
+    endpoint: F.Endpoint ? String(f[F.Endpoint] ?? "") : "",
+    p256dh: F.P256dh ? String(f[F.P256dh] ?? "") : "",
+    auth: F.Auth ? String(f[F.Auth] ?? "") : "",
+    dipendenteId: F.DipendenteId ? String(f[F.DipendenteId] ?? "") : "",
+    sede: F.Sede ? String(f[F.Sede] ?? "") : "",
+  };
+}
+
+async function fetchPushRows(cfg: SpDiscovered): Promise<PushRow[]> {
+  if (!cfg.listPushSubscriptions) return [];
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listPushSubscriptions}/items?expand=fields&$top=999`,
+    ),
+  );
+  return res.value.map((it) => mapPushRow(cfg, it));
+}
+
+// Chiavi VAPID: lette dalla riga __vapid__, generate e salvate al primo uso.
+export async function getVapidKeys(): Promise<VapidKeys> {
+  const cfg = await discoverSharePoint();
+  const listId = requirePushList(cfg);
+  const rows = await fetchPushRows(cfg);
+  const existing = rows.find((r) => r.title === VAPID_ROW_TITLE);
+  if (existing && existing.p256dh && existing.endpoint) {
+    return { publicKey: existing.p256dh, privateJwk: existing.endpoint };
+  }
+  const keys = await generateVapidKeys();
+  const F = cfg.pushSubscriptionsFields;
+  const fields: Record<string, unknown> = { Title: VAPID_ROW_TITLE };
+  if (F.P256dh) fields[F.P256dh] = keys.publicKey;
+  if (F.Endpoint) fields[F.Endpoint] = keys.privateJwk;
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
+      method: "POST",
+      body: JSON.stringify({ fields }),
+    }),
+  );
+  logSp("info", "push.vapid", "Chiavi VAPID generate e salvate");
+  return keys;
+}
+
+export async function getVapidPublicKey(): Promise<string> {
+  return (await getVapidKeys()).publicKey;
+}
+
+// Registra (o aggiorna) la subscription del dispositivo di un dipendente.
+export async function savePushSubscription(
+  dipendenteId: string,
+  sede: string,
+  sub: PushSubscriptionData,
+): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requirePushList(cfg);
+  const F = cfg.pushSubscriptionsFields;
+  const rows = await fetchPushRows(cfg);
+  const dup = rows.find((r) => r.endpoint === sub.endpoint && r.title !== VAPID_ROW_TITLE);
+  const fields: Record<string, unknown> = { Title: `push-${dipendenteId}` };
+  if (F.Endpoint) fields[F.Endpoint] = sub.endpoint;
+  if (F.P256dh) fields[F.P256dh] = sub.p256dh;
+  if (F.Auth) fields[F.Auth] = sub.auth;
+  if (F.DipendenteId) fields[F.DipendenteId] = dipendenteId;
+  if (F.Sede) fields[F.Sede] = sede;
+  if (dup) {
+    await withDiscoveryRetry(() =>
+      gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${dup.id}/fields`, {
+        method: "PATCH",
+        body: JSON.stringify(fields),
+      }),
+    );
+  } else {
+    await withDiscoveryRetry(() =>
+      gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
+        method: "POST",
+        body: JSON.stringify({ fields }),
+      }),
+    );
+  }
+  logSp("info", "push.subscribe", `Subscription registrata per #${dipendenteId}`);
+}
+
+async function deletePushRow(cfg: SpDiscovered, id: string): Promise<void> {
+  try {
+    await gatewayFetch(`/sites/${cfg.siteId}/lists/${cfg.listPushSubscriptions}/items/${id}`, {
+      method: "DELETE",
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Invia una notifica push a tutti i dispositivi registrati della sede
+// destinataria ("Tutte" → tutti). Best-effort: gli errori non bloccano la
+// pubblicazione; le subscription morte (404/410) vengono ripulite.
+export async function sendPushToSede(
+  sedeDestinataria: string,
+  payload: { title: string; body: string; url: string },
+): Promise<{ sent: number; failed: number }> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listPushSubscriptions) return { sent: 0, failed: 0 };
+  let keys: VapidKeys;
+  try {
+    keys = await getVapidKeys();
+  } catch {
+    return { sent: 0, failed: 0 };
+  }
+  const rows = (await fetchPushRows(cfg)).filter((r) => r.title !== VAPID_ROW_TITLE);
+  const sedeLow = (sedeDestinataria || "Tutte").trim().toLowerCase();
+  const target = rows.filter((r) => {
+    if (sedeLow === "" || sedeLow === "tutte") return true;
+    const s = (r.sede || "").trim().toLowerCase();
+    return s === "" || s === "tutte" || s === sedeLow;
+  });
+  let sent = 0;
+  let failed = 0;
+  // Massimo 100 invii per pubblicazione (backstop). Sequenziale a gruppi di 5.
+  const MAX = 100;
+  const batch = target.slice(0, MAX);
+  for (let i = 0; i < batch.length; i += 5) {
+    const results = await Promise.allSettled(
+      batch.slice(i, i + 5).map(async (r) => {
+        const res = await sendWebPush(
+          { endpoint: r.endpoint, p256dh: r.p256dh, auth: r.auth },
+          payload,
+          keys,
+        );
+        if (res.gone) await deletePushRow(cfg, r.id);
+        return res.ok;
+      }),
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value) sent++;
+      else failed++;
+    }
+  }
+  logSp("info", "push.send", `Push "${payload.title}": inviate ${sent}, fallite ${failed}`);
+  return { sent, failed };
 }
 
 // ---------------------------------------------------------------------------

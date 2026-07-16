@@ -42,6 +42,9 @@ import {
   markPresaVisione,
   fetchPreseVisione,
   fetchPreseVisioneForUser,
+  getVapidPublicKey,
+  savePushSubscription,
+  sendPushToSede,
   type SpDocumento,
   type CreateDocumentoInput,
   type SpComunicazione,
@@ -411,7 +414,22 @@ export const spCreateComunicazione = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<SpComunicazione> => {
     const me = await currentUser();
     assertCap(canPubblicare(me));
-    return createComunicazione({ ...data, autore: `${me.nome} ${me.cognome}`.trim() });
+    const created = await createComunicazione({
+      ...data,
+      autore: `${me.nome} ${me.cognome}`.trim(),
+    });
+    // Notifica push ai dispositivi registrati della sede destinataria.
+    // Best-effort: un errore qui non deve annullare la pubblicazione.
+    try {
+      await sendPushToSede(data.sede, {
+        title: data.tipo === "Riunione" ? "Nuova riunione" : "Nuova comunicazione",
+        body: data.titolo,
+        url: "/comunicazioni",
+      });
+    } catch {
+      /* push best-effort */
+    }
+    return created;
   });
 
 // Chi ha letto una comunicazione — solo pubblicatori.
@@ -433,6 +451,30 @@ export const spGetMiePreseVisione = createServerFn({ method: "GET" }).handler(
     return fetchPreseVisioneForUser(me.id);
   },
 );
+
+// --- Web Push: chiave pubblica + registrazione dispositivo -----------------
+export const spGetVapidPublicKey = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ publicKey: string }> => {
+    await currentUser(); // basta una sessione valida
+    return { publicKey: await getVapidPublicKey() };
+  },
+);
+
+export const spSavePushSubscription = createServerFn({ method: "POST" })
+  .inputValidator((input: { endpoint: string; p256dh: string; auth: string }) => {
+    if (!input?.endpoint?.startsWith("https://")) throw new Error("Endpoint non valido");
+    if (!input?.p256dh || !input?.auth) throw new Error("Chiavi subscription mancanti");
+    return {
+      endpoint: String(input.endpoint),
+      p256dh: String(input.p256dh),
+      auth: String(input.auth),
+    };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    const me = await currentUser();
+    await savePushSubscription(me.id, String(me.sede), data);
+    return { ok: true };
+  });
 
 export const spMarkPresaVisione = createServerFn({ method: "POST" })
   .inputValidator((input: { comunicazioneId: string }) => {

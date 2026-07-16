@@ -12,7 +12,9 @@ import {
   Users,
   CalendarDays,
   Paperclip,
+  BellRing,
 } from "lucide-react";
+import { checkPushSupport, enablePushNotifications, pushPermission } from "@/lib/push-client";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
   spGetComunicazioni,
@@ -79,6 +81,10 @@ function ComunicazioniPage() {
   const [allegato, setAllegato] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Banner attivazione notifiche push (client-only, dopo il mount).
+  const [pushBanner, setPushBanner] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+
   const canPubblicare =
     session != null &&
     (session.ruolo === "responsabile" ||
@@ -112,8 +118,32 @@ function ComunicazioniPage() {
         .then((l) => setDipendenti(l as SpDipendente[]))
         .catch(() => {});
     }
+    // Mostra il banner push se il dispositivo può riceverle e non sono attive
+    // (o se su iOS serve prima installare la PWA).
+    const support = checkPushSupport();
+    if (support === "ok" && pushPermission() !== "granted") setPushBanner(true);
+    if (support === "ios-not-installed") setPushBanner(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const attivaPush = async () => {
+    setPushBusy(true);
+    try {
+      const err = await enablePushNotifications();
+      if (err) {
+        toast.error("Notifiche non attivate", { description: err });
+      } else {
+        toast.success("Notifiche attivate su questo dispositivo");
+        setPushBanner(false);
+      }
+    } catch (e) {
+      toast.error("Errore attivazione notifiche", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const sediOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -209,6 +239,38 @@ function ComunicazioniPage() {
 
   return (
     <AppShell title="Comunicazioni" subtitle="Comunicazioni interne e avvisi">
+      {pushBanner && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 shadow-[var(--shadow-card)]">
+          <div className="flex items-start gap-3 min-w-0">
+            <span className="h-9 w-9 shrink-0 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+              <BellRing className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-foreground">
+                Ricevi le comunicazioni sul telefono
+              </div>
+              <p className="text-[13px] text-muted-foreground mt-0.5">
+                Attiva le notifiche per essere avvisato quando esce una nuova comunicazione, anche
+                ad app chiusa.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button type="button" size="sm" onClick={attivaPush} disabled={pushBusy}>
+              {pushBusy ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <BellRing className="h-4 w-4 mr-2" />
+              )}
+              Attiva notifiche
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setPushBanner(false)}>
+              Non ora
+            </Button>
+          </div>
+        </div>
+      )}
+
       {canPubblicare && (
         <div className="mb-6 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
