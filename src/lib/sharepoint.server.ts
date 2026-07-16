@@ -2628,6 +2628,7 @@ export async function sendPushToSede(
   });
   let sent = 0;
   let failed = 0;
+  const errori: string[] = [];
   // Massimo 100 invii per pubblicazione (backstop). Sequenziale a gruppi di 5.
   const MAX = 100;
   const batch = target.slice(0, MAX);
@@ -2640,15 +2641,24 @@ export async function sendPushToSede(
           keys,
         );
         if (res.gone) await deletePushRow(cfg, r.id);
-        return res.ok;
+        if (!res.ok) throw new Error(`HTTP ${res.status} da ${new URL(r.endpoint).host}`);
+        return true;
       }),
     );
     for (const r of results) {
-      if (r.status === "fulfilled" && r.value) sent++;
-      else failed++;
+      if (r.status === "fulfilled") sent++;
+      else {
+        failed++;
+        if (errori.length < 3)
+          errori.push(r.reason instanceof Error ? r.reason.message : String(r.reason));
+      }
     }
   }
-  logSp("info", "push.send", `Push "${payload.title}": inviate ${sent}, fallite ${failed}`);
+  logSp(
+    failed > 0 ? "warn" : "info",
+    "push.send",
+    `Push "${payload.title}": inviate ${sent}, fallite ${failed}${errori.length ? ` — ${errori.join(" · ")}` : ""}`,
+  );
   return { sent, failed };
 }
 
