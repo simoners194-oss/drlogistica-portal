@@ -75,9 +75,16 @@ function DocumentiPage() {
   // Filtri elenco
   const [catF, setCatF] = useState<string>("tutte");
 
-  // Buste paga (multi-upload con abbinamento per codice fiscale)
+  // Buste paga (multi-upload con abbinamento per codice fiscale).
+  // Il periodo è precompilato col MESE SCORSO (es. a gennaio 2026 → "Dicembre
+  // 2025"), modificabile.
   const [bpFiles, setBpFiles] = useState<File[]>([]);
-  const [bpPeriodo, setBpPeriodo] = useState("");
+  const [bpPeriodo, setBpPeriodo] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    const mese = d.toLocaleDateString("it-IT", { month: "long" });
+    return `${mese.charAt(0).toUpperCase()}${mese.slice(1)} ${d.getFullYear()}`;
+  });
   const [bpBusy, setBpBusy] = useState(false);
   const [bpEsiti, setBpEsiti] = useState<{ nome: string; esito: string; ok: boolean }[]>([]);
 
