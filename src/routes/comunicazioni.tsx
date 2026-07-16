@@ -112,10 +112,23 @@ function ComunicazioniPage() {
         .catch(() => {});
     }
     // Mostra il banner push se il dispositivo può riceverle e non sono attive
-    // (o se su iOS serve prima installare la PWA).
+    // (o se su iOS serve prima installare la PWA). Con permesso già concesso
+    // verifica che esista DAVVERO una subscription: se la prima attivazione è
+    // fallita a metà, il banner deve ricomparire per riprovare.
     const support = checkPushSupport();
-    if (support === "ok" && pushPermission() !== "granted") setPushBanner(true);
     if (support === "ios-not-installed") setPushBanner(true);
+    else if (support === "ok") {
+      if (pushPermission() !== "granted") setPushBanner(true);
+      else {
+        navigator.serviceWorker
+          .getRegistration("/sw.js")
+          .then((reg) => reg?.pushManager.getSubscription() ?? null)
+          .then((sub) => {
+            if (!sub) setPushBanner(true);
+          })
+          .catch(() => setPushBanner(true));
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

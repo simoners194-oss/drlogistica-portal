@@ -2489,15 +2489,29 @@ interface PushRow {
   sede: string;
 }
 
+// Le colonne "più righe di testo" possono essere in modalità testo FORMATTATO:
+// SharePoint avvolge il valore in HTML (<div>…</div>) e corromperebbe endpoint
+// e chiavi. Rimuovi i tag e decodifica le entità minime, difensivamente.
+function stripHtml(v: string): string {
+  return v
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .trim();
+}
+
 function mapPushRow(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>): PushRow {
   const F = cfg.pushSubscriptionsFields;
   const f = it.fields ?? {};
   return {
     id: String(it.id),
     title: String(f["Title"] ?? ""),
-    endpoint: F.Endpoint ? String(f[F.Endpoint] ?? "") : "",
-    p256dh: F.P256dh ? String(f[F.P256dh] ?? "") : "",
-    auth: F.Auth ? String(f[F.Auth] ?? "") : "",
+    endpoint: stripHtml(String((F.Endpoint ? f[F.Endpoint] : "") ?? "")),
+    p256dh: stripHtml(String((F.P256dh ? f[F.P256dh] : "") ?? "")),
+    auth: stripHtml(String((F.Auth ? f[F.Auth] : "") ?? "")),
     dipendenteId: F.DipendenteId ? String(f[F.DipendenteId] ?? "") : "",
     sede: F.Sede ? String(f[F.Sede] ?? "") : "",
   };
