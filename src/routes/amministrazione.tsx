@@ -23,7 +23,8 @@ import {
   type IntegrationStatus,
 } from "@/lib/data-service";
 import type { SpSelfTestResult, SpHealth, ImportDipendentiResult } from "@/lib/sharepoint.server";
-import { spImportDipendenti } from "@/lib/sharepoint.functions";
+import { spImportDipendenti, spProtectPins } from "@/lib/sharepoint.functions";
+import { toast } from "sonner";
 import { readSession } from "@/lib/session";
 import {
   microsoftAuthConfig,
@@ -221,7 +222,7 @@ function AmministrazionePage() {
 
         <ImportDipendentiCard onDone={() => refresh(true)} />
 
-        <MicrosoftAuthTestCard />
+        <ProtezionePinCard />
       </div>
     </AppShell>
   );
@@ -510,6 +511,58 @@ function ImportDipendentiCard({ onDone }: { onDone: () => void }) {
             </ul>
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// S3: protezione dei PIN. I PIN in chiaro si convertono in hash da soli al
+// primo login di ciascun utente; questo pulsante li converte TUTTI subito.
+function ProtezionePinCard() {
+  const [busy, setBusy] = useState(false);
+  const [esito, setEsito] = useState<string | null>(null);
+
+  const proteggi = async () => {
+    setBusy(true);
+    try {
+      const r = (await spProtectPins()) as { protetti: number; giaProtetti: number };
+      setEsito(`PIN protetti ora: ${r.protetti} · già protetti: ${r.giaProtetti}`);
+      toast.success("PIN protetti", {
+        description: `${r.protetti} convertiti in hash, ${r.giaProtetti} già protetti.`,
+      });
+    } catch (err) {
+      toast.error("Errore protezione PIN", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="space-y-1">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <KeyRound className="h-5 w-5 text-primary" />
+          Protezione PIN
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Converte i PIN salvati in chiaro su SharePoint in hash non reversibili (il login continua
+          a funzionare normalmente). La conversione avviene comunque da sola al primo accesso di
+          ciascun utente. Per assegnare un nuovo PIN: scrivere il valore in chiaro nella colonna PIN
+          — verrà protetto automaticamente.
+        </p>
+      </CardHeader>
+      <CardContent className="flex flex-wrap items-center gap-3">
+        <Button size="sm" onClick={proteggi} disabled={busy}>
+          {busy ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <KeyRound className="h-4 w-4 mr-2" />
+          )}
+          Proteggi tutti i PIN adesso
+        </Button>
+        {esito && <span className="text-xs text-muted-foreground">{esito}</span>}
       </CardContent>
     </Card>
   );

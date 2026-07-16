@@ -33,6 +33,7 @@ import {
   fetchTimbratureManuali,
   importDipendenti,
   type ImportDipendentiResult,
+  protectAllPins,
   uploadFileToLibrary,
   fetchDocumentiAll,
   fetchDocumentiForUser,
@@ -345,6 +346,15 @@ export const spImportDipendenti = createServerFn({ method: "POST" })
     assertCap(isAdmin(me));
     return importDipendenti(data.csv, data.dryRun);
   });
+
+// Protezione massiva dei PIN (S3): converte in hash tutti i PIN in chiaro.
+// SOLO amministratore.
+export const spProtectPins = createServerFn({ method: "POST" }).handler(
+  async (): Promise<{ protetti: number; giaProtetti: number }> => {
+    assertCap(isAdmin(await currentUser()));
+    return protectAllPins();
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Documenti + Comunicazioni interne (Sprint 4)

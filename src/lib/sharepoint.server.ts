@@ -1067,6 +1067,75 @@ function normalizePin(v: unknown): string {
   return String(v ?? "").trim();
 }
 
+// --- S3: protezione PIN (hash) + rate limiting ------------------------------
+// Il PIN è salvato come `sha256$<salt>$<hash>` dove hash = SHA-256(salt:pin:pepper).
+// Il "pepper" è un segreto solo-server: chi legge la lista SharePoint non può
+// forzare i PIN (4 cifre) senza di esso. I PIN in chiaro (legacy) vengono
+// migrati ad hash al primo login riuscito, senza azioni manuali.
+const PIN_HASH_PREFIX = "sha256$";
+function pinPepper(): string {
+  return process.env.SESSION_SECRET || process.env.MICROSOFT_SHAREPOINT_API_KEY || "";
+}
+function bytesToHex(b: Uint8Array): string {
+  return Array.from(b)
+    .map((x) => x.toString(16).padStart(2, "0"))
+    .join("");
+}
+async function hashPin(pin: string, saltHex: string): Promise<string> {
+  const data = new TextEncoder().encode(`${saltHex}:${pin}:${pinPepper()}`);
+  const buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  return bytesToHex(new Uint8Array(await crypto.subtle.digest("SHA-256", buf)));
+}
+async function makeStoredPin(pin: string): Promise<string> {
+  const salt = bytesToHex(crypto.getRandomValues(new Uint8Array(8)));
+  return `${PIN_HASH_PREFIX}${salt}$${await hashPin(pin, salt)}`;
+}
+async function verifyStoredPin(input: string, stored: string): Promise<boolean> {
+  if (stored.startsWith(PIN_HASH_PREFIX)) {
+    const parts = stored.split("$");
+    if (parts.length !== 3) return false;
+    return (await hashPin(input, parts[1])) === parts[2];
+  }
+  return stored === input; // legacy: PIN ancora in chiaro
+}
+
+// Rate limiting per codice: max 5 tentativi falliti in 10 minuti. In-memory
+// (best-effort sugli isolate dei Workers), sufficiente a fermare i tentativi
+// manuali ripetuti.
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 10 * 60 * 1000;
+
+// Protezione massiva (admin): converte in hash tutti i PIN ancora in chiaro.
+export async function protectAllPins(): Promise<{ protetti: number; giaProtetti: number }> {
+  const cfg = await discoverSharePoint();
+  const F = cfg.dipendentiFields;
+  const pinField = F.PIN;
+  if (!pinField) throw new Error('Colonna "PIN" non trovata su Dipendenti.');
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items?expand=fields&$top=999`,
+    ),
+  );
+  let protetti = 0;
+  let giaProtetti = 0;
+  for (const it of res.value) {
+    const raw = normalizePin((it.fields ?? {})[pinField]);
+    if (!raw) continue;
+    if (raw.startsWith(PIN_HASH_PREFIX)) {
+      giaProtetti++;
+      continue;
+    }
+    await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items/${it.id}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify({ [pinField]: await makeStoredPin(raw) }),
+    });
+    protetti++;
+  }
+  logSp("info", "pin.protect", `PIN protetti: ${protetti} (già protetti: ${giaProtetti})`);
+  return { protetti, giaProtetti };
+}
+
 export async function loginByCodicePin(
   codiceInput: string,
   pinInput: string,
@@ -1093,24 +1162,52 @@ export async function loginByCodicePin(
         'Login non configurato: aggiungere le colonne "Codice" e "PIN" alla lista SharePoint "Dipendenti".',
     };
   }
+  // Rate limiting: blocca il codice dopo troppi tentativi falliti ravvicinati.
+  const now = Date.now();
+  const rl = loginAttempts.get(codice);
+  if (rl && rl.resetAt > now && rl.count >= LOGIN_MAX_ATTEMPTS) {
+    const min = Math.max(1, Math.ceil((rl.resetAt - now) / 60000));
+    logSp("warn", "login", `Rate limit attivo per codice="${codice}"`);
+    return { ok: false, error: `Troppi tentativi falliti. Riprova tra ${min} minuti.` };
+  }
+
   const res = await withDiscoveryRetry(() =>
     gatewayJson<GraphListResponse<Record<string, unknown>>>(
       `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items?expand=fields&$top=999`,
     ),
   );
   const attivoField = F.Attivo;
-  const match = res.value.find((it) => {
+  const candidato = res.value.find((it) => {
     const f = it.fields ?? {};
-    const c = normalizeCodice(f[codiceField]);
-    const p = normalizePin(f[pinField]);
     const attivo = attivoField ? Boolean(f[attivoField]) : true;
-    return attivo && c === codice && p === pin;
+    return attivo && normalizeCodice(f[codiceField]) === codice;
   });
-  if (!match) {
+  const storedPin = candidato ? normalizePin((candidato.fields ?? {})[pinField]) : "";
+  const pinOk = candidato && storedPin ? await verifyStoredPin(pin, storedPin) : false;
+  if (!candidato || !pinOk) {
+    const cur = loginAttempts.get(codice);
+    if (cur && cur.resetAt > now) cur.count++;
+    else loginAttempts.set(codice, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
     logSp("warn", "login", `Tentativo fallito per codice="${codice}"`, {
       durataMs: Date.now() - started,
     });
     return { ok: false, error: "Codice o PIN non validi." };
+  }
+  loginAttempts.delete(codice);
+  const match = candidato;
+
+  // Migrazione trasparente S3: PIN ancora in chiaro → sostituito con l'hash
+  // al primo login riuscito (best-effort, non blocca l'accesso).
+  if (!storedPin.startsWith(PIN_HASH_PREFIX)) {
+    try {
+      await gatewayJson(
+        `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items/${match.id}/fields`,
+        { method: "PATCH", body: JSON.stringify({ [pinField]: await makeStoredPin(pin) }) },
+      );
+      logSp("info", "login", `PIN protetto (hash) per ${codice}`);
+    } catch {
+      /* riproverà al prossimo login */
+    }
   }
   const f = match.fields ?? {};
   const nome = String(f[F.Nome ?? ""] ?? "").trim();

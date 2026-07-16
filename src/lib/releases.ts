@@ -28,6 +28,56 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.5.0",
+    date: "2026-07-16",
+    codename: "Procurement e buste paga",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        title: "Procurement — richieste di acquisto",
+        description:
+          "Le risorse delle sedi storiche inviano richieste di acquisto con voce e dettaglio; l'approvazione è riservata alla direzione, con coda dedicata ed esportazione Excel.",
+      },
+      {
+        tag: "feature",
+        title: "Buste paga automatiche",
+        description:
+          "Caricamento di tutti i cedolini in un colpo solo: l'abbinamento al dipendente avviene dal codice fiscale nel nome del file, con anteprima. Ognuno riceve il documento e una notifica.",
+      },
+      {
+        tag: "feature",
+        title: "Notifiche push sul telefono",
+        description:
+          "Le comunicazioni e i nuovi documenti personali arrivano come notifica sul telefono, anche ad app chiusa. Attivazione con un tocco dalla pagina Comunicazioni.",
+      },
+      {
+        tag: "feature",
+        title: "Rendiconto per settimana",
+        description:
+          "Il rendiconto è ora filtrabile anche per settimana fiscale dell'anno o per settimana del mese (lun-dom), oltre che per mese.",
+      },
+      {
+        tag: "improvement",
+        title: "Voci di spesa dettagliate e residui a colpo d'occhio",
+        description:
+          "Rimborsi e acquisti usano voci macro con sotto-dettaglio gestibili dall'azienda; gli approvatori vedono ferie e permessi residui accanto a ogni richiesta.",
+      },
+      {
+        tag: "improvement",
+        title: "Resta connesso",
+        description:
+          "L'accesso resta attivo alla chiusura dell'app: niente più login a ogni apertura (fino a 30 giorni o al logout).",
+      },
+      {
+        tag: "security",
+        title: "PIN protetti",
+        description:
+          "I PIN non sono più leggibili da chi accede agli archivi: vengono conservati in forma cifrata, con blocco automatico dopo troppi tentativi errati.",
+      },
+    ],
+  },
+  {
     version: "1.4.0",
     date: "2026-07-15",
     codename: "Documenti e Comunicazioni",
