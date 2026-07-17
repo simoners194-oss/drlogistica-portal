@@ -22,6 +22,7 @@ import {
 } from "@/lib/sharepoint.functions";
 import type { SpVoce, SpAcquisto } from "@/lib/sharepoint.server";
 import { isSedeStorica } from "@/lib/richieste-logic";
+import { useLang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/procurement")({
   head: () => ({ meta: [{ title: "Procurement — DR Portal" }] }),
@@ -91,6 +92,7 @@ function esportaCsv(righe: SpAcquisto[]): void {
 }
 
 function ProcurementPage() {
+  const { t, tStato } = useLang();
   const [session, setSession] = useState<SessionUser | null>(null);
   const [voci, setVoci] = useState<SpVoce[]>([]);
   const [mie, setMie] = useState<SpAcquisto[] | null>(null);
@@ -120,7 +122,7 @@ function ProcurementPage() {
       .then((l) => setMie(l as SpAcquisto[]))
       .catch((err) => {
         setMie([]);
-        toast.error("Errore richieste", {
+        toast.error(t("sup.errRequests"), {
           description: err instanceof Error ? err.message : String(err),
         });
       });
@@ -157,15 +159,15 @@ function ProcurementPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!macro) {
-      toast.error("Seleziona la voce di acquisto");
+      toast.error(t("proc.selectItem"));
       return;
     }
     if (dettagli.length > 0 && !dettaglio) {
-      toast.error("Seleziona il dettaglio della voce");
+      toast.error(t("proc.selectItemDetail"));
       return;
     }
     if (!descrizione.trim()) {
-      toast.error("Descrivi cosa serve acquistare");
+      toast.error(t("proc.needDesc"));
       return;
     }
     setSubmitting(true);
@@ -178,7 +180,7 @@ function ProcurementPage() {
           importo: importo ? Number(importo.replace(",", ".")) : undefined,
         },
       });
-      toast.success("Richiesta di acquisto inviata");
+      toast.success(t("proc.submitted"));
       setMacro("");
       setDettaglio("");
       setDescrizione("");
@@ -186,7 +188,7 @@ function ProcurementPage() {
       loadMie();
       if (isApprovatore) loadTutte();
     } catch (err) {
-      toast.error("Errore invio richiesta", {
+      toast.error(t("proc.submitErr"), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -200,13 +202,13 @@ function ProcurementPage() {
       await spDecideAcquisto({
         data: { acquistoId: r.id, decisione, noteDecisione: nota?.trim() || undefined },
       });
-      toast.success(decisione === "Approvata" ? "Richiesta approvata" : "Richiesta respinta");
+      toast.success(decisione === "Approvata" ? t("rich.approvedToast") : t("rich.rejectedToast"));
       setRejectingId(null);
       setRejectNote("");
       loadTutte();
       loadMie();
     } catch (err) {
-      toast.error("Errore decisione", {
+      toast.error(t("proc.decideErr"), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -216,17 +218,14 @@ function ProcurementPage() {
 
   if (session && !puoRichiedere && !isApprovatore) {
     return (
-      <AppShell title="Procurement">
+      <AppShell title={t("proc.title")}>
         <div className="flex items-start gap-3 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <span className="h-9 w-9 shrink-0 rounded-lg bg-muted text-muted-foreground flex items-center justify-center">
             <Lock className="h-4 w-4" />
           </span>
           <div>
-            <div className="text-sm font-semibold text-foreground">Sezione non attiva</div>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
-              Le richieste di acquisto sono attive solo per le sedi storiche (Fiano Romano e San
-              Giuliano).
-            </p>
+            <div className="text-sm font-semibold text-foreground">{t("proc.notActive")}</div>
+            <p className="text-[13px] text-muted-foreground mt-0.5">{t("proc.notActiveMsg")}</p>
           </div>
         </div>
       </AppShell>
@@ -234,7 +233,7 @@ function ProcurementPage() {
   }
 
   return (
-    <AppShell title="Procurement" subtitle="Richieste di acquisto">
+    <AppShell title={t("proc.title")} subtitle={t("proc.subtitle")}>
       {isApprovatore && (
         <div className="mb-4 inline-flex rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
           <button
@@ -242,14 +241,14 @@ function ProcurementPage() {
             onClick={() => setView("mie")}
             className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${view === "mie" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
-            Le mie richieste
+            {t("proc.myRequests")}
           </button>
           <button
             type="button"
             onClick={() => setView("coda")}
             className={`rounded-lg px-3 py-1.5 font-medium transition-colors inline-flex items-center gap-2 ${view === "coda" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
-            Da approvare
+            {t("proc.toApprove")}
             {pending.length > 0 && (
               <span
                 className={`rounded-full px-1.5 text-[11px] ${view === "coda" ? "bg-primary-foreground/20" : "bg-primary/10 text-primary"}`}
@@ -265,12 +264,12 @@ function ProcurementPage() {
         <div className="space-y-6">
           <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
             <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-              <Inbox className="h-4 w-4 text-primary" /> Richieste di acquisto da approvare
+              <Inbox className="h-4 w-4 text-primary" /> {t("proc.queueTitle")}
             </div>
             {tutte === null ? (
-              <div className="text-sm text-muted-foreground">Caricamento…</div>
+              <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
             ) : pending.length === 0 ? (
-              <div className="text-sm text-muted-foreground">Nessuna richiesta in attesa.</div>
+              <div className="text-sm text-muted-foreground">{t("proc.nonePending")}</div>
             ) : (
               <ul className="space-y-3">
                 {pending.map((r) => (
@@ -304,7 +303,7 @@ function ProcurementPage() {
                           disabled={decidingId === r.id}
                           onClick={() => decide(r, "Approvata")}
                         >
-                          <CheckCircle2 className="h-4 w-4" /> Approva
+                          <CheckCircle2 className="h-4 w-4" /> {t("common.approve")}
                         </Button>
                         <Button
                           type="button"
@@ -314,14 +313,15 @@ function ProcurementPage() {
                           disabled={decidingId === r.id}
                           onClick={() => setRejectingId((cur) => (cur === r.id ? null : r.id))}
                         >
-                          <XCircle className="h-4 w-4" /> Respingi
+                          <XCircle className="h-4 w-4" /> {t("common.reject")}
                         </Button>
                       </div>
                     </div>
                     {rejectingId === r.id && (
                       <div className="mt-3 rounded-lg bg-status-absent/5 p-3">
                         <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                          Motivo del rifiuto <span className="normal-case">(obbligatorio)</span>
+                          {t("common.rejectReason")}{" "}
+                          <span className="normal-case">{t("common.required")}</span>
                         </label>
                         <textarea
                           className={`${inputCls} mt-1 min-h-[60px] resize-y`}
@@ -339,7 +339,7 @@ function ProcurementPage() {
                               setRejectNote("");
                             }}
                           >
-                            Annulla
+                            {t("common.cancel")}
                           </Button>
                           <Button
                             type="button"
@@ -348,7 +348,7 @@ function ProcurementPage() {
                             disabled={decidingId === r.id || !rejectNote.trim()}
                             onClick={() => decide(r, "Respinta", rejectNote)}
                           >
-                            Conferma rifiuto
+                            {t("common.confirmReject")}
                           </Button>
                         </div>
                       </div>
@@ -362,7 +362,7 @@ function ProcurementPage() {
           <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
-                <ShoppingCart className="h-4 w-4 text-primary" /> Tutte le richieste
+                <ShoppingCart className="h-4 w-4 text-primary" /> {t("proc.allRequests")}
               </div>
               {(tutte ?? []).length > 0 && (
                 <button
@@ -370,25 +370,25 @@ function ProcurementPage() {
                   onClick={() => esportaCsv(tutte ?? [])}
                   className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
                 >
-                  <Download className="h-4 w-4" /> Esporta CSV
+                  <Download className="h-4 w-4" /> {t("common.exportCsv")}
                 </button>
               )}
             </div>
             {tutte === null ? (
-              <div className="text-sm text-muted-foreground">Caricamento…</div>
+              <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
             ) : (tutte ?? []).length === 0 ? (
-              <div className="text-sm text-muted-foreground">Nessuna richiesta di acquisto.</div>
+              <div className="text-sm text-muted-foreground">{t("proc.none")}</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                      <th className="py-2 pr-3">Richiesta</th>
-                      <th className="py-2 pr-3">Stato</th>
-                      <th className="py-2 pr-3">Richiedente</th>
-                      <th className="py-2 pr-3">Voce</th>
-                      <th className="py-2 pr-3 text-right">Importo</th>
-                      <th className="py-2 pr-3">Data</th>
+                      <th className="py-2 pr-3">{t("sup.colRichiesta")}</th>
+                      <th className="py-2 pr-3">{t("common.status")}</th>
+                      <th className="py-2 pr-3">{t("common.employee")}</th>
+                      <th className="py-2 pr-3">{t("proc.item")}</th>
+                      <th className="py-2 pr-3 text-right">{t("common.amount")}</th>
+                      <th className="py-2 pr-3">{t("common.date")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -399,7 +399,7 @@ function ProcurementPage() {
                           <span
                             className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATO_STYLE[r.stato] ?? "bg-muted text-muted-foreground"}`}
                           >
-                            {r.stato}
+                            {tStato(r.stato)}
                           </span>
                         </td>
                         <td className="py-2 pr-3 text-foreground">{r.codiceRichiedente}</td>
@@ -429,12 +429,12 @@ function ProcurementPage() {
               className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]"
             >
               <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-                <ShoppingCart className="h-4 w-4 text-primary" /> Nuova richiesta di acquisto
+                <ShoppingCart className="h-4 w-4 text-primary" /> {t("proc.newTitle")}
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Voce
+                    {t("proc.item")}
                   </label>
                   <select
                     className={`${inputCls} mt-1`}
@@ -444,7 +444,7 @@ function ProcurementPage() {
                       setDettaglio("");
                     }}
                   >
-                    <option value="">— seleziona —</option>
+                    <option value="">{t("common.select")}</option>
                     {macros.map((m) => (
                       <option key={m} value={m}>
                         {m}
@@ -452,15 +452,12 @@ function ProcurementPage() {
                     ))}
                   </select>
                   {macros.length === 0 && (
-                    <p className="mt-1 text-[11px] text-status-absent">
-                      Nessuna voce configurata: aggiungere righe con Ambito "Acquisto" alla lista
-                      "Voci" su SharePoint.
-                    </p>
+                    <p className="mt-1 text-[11px] text-status-absent">{t("proc.noVoci")}</p>
                   )}
                 </div>
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Dettaglio
+                    {t("proc.detail")}
                   </label>
                   <select
                     className={`${inputCls} mt-1`}
@@ -469,7 +466,7 @@ function ProcurementPage() {
                     disabled={dettagli.length === 0}
                   >
                     <option value="">
-                      {dettagli.length === 0 ? "— nessun dettaglio —" : "— seleziona —"}
+                      {dettagli.length === 0 ? t("proc.noDetail") : t("common.select")}
                     </option>
                     {dettagli.map((d) => (
                       <option key={d} value={d}>
@@ -480,18 +477,18 @@ function ProcurementPage() {
                 </div>
                 <div className="sm:col-span-2">
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Descrizione
+                    {t("proc.desc")}
                   </label>
                   <textarea
                     className={`${inputCls} mt-1 min-h-[70px] resize-y`}
                     value={descrizione}
                     onChange={(e) => setDescrizione(e.target.value)}
-                    placeholder="Cosa serve, quantità, eventuale fornitore…"
+                    placeholder={t("proc.descPh")}
                   />
                 </div>
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Importo stimato (€, facoltativo)
+                    {t("proc.estAmount")}
                   </label>
                   <input
                     className={`${inputCls} mt-1`}
@@ -509,7 +506,7 @@ function ProcurementPage() {
                   ) : (
                     <Send className="h-4 w-4 mr-2" />
                   )}
-                  Invia richiesta
+                  {t("proc.submit")}
                 </Button>
               </div>
             </form>
@@ -517,12 +514,12 @@ function ProcurementPage() {
 
           <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
             <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-              <ShoppingCart className="h-4 w-4 text-primary" /> Le mie richieste
+              <ShoppingCart className="h-4 w-4 text-primary" /> {t("proc.myRequests")}
             </div>
             {mie === null ? (
-              <div className="text-sm text-muted-foreground">Caricamento…</div>
+              <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
             ) : mie.length === 0 ? (
-              <div className="text-sm text-muted-foreground">Nessuna richiesta inviata.</div>
+              <div className="text-sm text-muted-foreground">{t("proc.mineNone")}</div>
             ) : (
               <ul className="space-y-2">
                 {mie.map((r) => (
@@ -535,7 +532,7 @@ function ProcurementPage() {
                         <span
                           className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATO_STYLE[r.stato] ?? "bg-muted text-muted-foreground"}`}
                         >
-                          {r.stato}
+                          {tStato(r.stato)}
                         </span>
                         <span className="font-medium text-foreground">{r.macro}</span>
                         {r.dettaglio && (
