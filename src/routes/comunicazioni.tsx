@@ -16,6 +16,7 @@ import {
   Download,
 } from "lucide-react";
 import { esportaCsvFile } from "@/lib/csv";
+import { useLang } from "@/lib/i18n";
 import { checkPushSupport, enablePushNotifications, pushPermission } from "@/lib/push-client";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
@@ -58,6 +59,7 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 function ComunicazioniPage() {
+  const { t, tVal } = useLang();
   const [session, setSession] = useState<SessionUser | null>(null);
   const [comunicazioni, setComunicazioni] = useState<SpComunicazione[] | null>(null);
   const [mieViste, setMieViste] = useState<string[]>([]);
@@ -92,7 +94,7 @@ function ComunicazioniPage() {
       .then((l) => setComunicazioni(l as SpComunicazione[]))
       .catch((err) => {
         setComunicazioni([]);
-        toast.error("Errore comunicazioni", {
+        toast.error(t("com.errCom"), {
           description: err instanceof Error ? err.message : String(err),
         });
       });
@@ -140,13 +142,13 @@ function ComunicazioniPage() {
     try {
       const err = await enablePushNotifications();
       if (err) {
-        toast.error("Notifiche non attivate", { description: err });
+        toast.error(t("com.pushOffErr"), { description: err });
       } else {
-        toast.success("Notifiche attivate su questo dispositivo");
+        toast.success(t("com.pushOn"));
         setPushBanner(false);
       }
     } catch (e) {
-      toast.error("Errore attivazione notifiche", {
+      toast.error(t("com.pushErr"), {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -178,9 +180,11 @@ function ComunicazioniPage() {
     try {
       await spMarkPresaVisione({ data: { comunicazioneId: c.id } });
       setMieViste((v) => (v.includes(c.id) ? v : [...v, c.id]));
-      toast.success("Presa visione registrata");
+      toast.success(t("com.acked"));
     } catch (err) {
-      toast.error("Errore", { description: err instanceof Error ? err.message : String(err) });
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setConfermando(null);
     }
@@ -198,17 +202,19 @@ function ComunicazioniPage() {
       const pv = (await spGetPreseVisione({ data: { comunicazioneId: c.id } })) as SpPresaVisione[];
       setLetture((l) => ({ ...l, [c.id]: pv }));
     } catch (err) {
-      toast.error("Errore", { description: err instanceof Error ? err.message : String(err) });
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
     }
   };
 
   const submit = async () => {
     if (!titolo.trim() || !testo.trim()) {
-      toast.error("Titolo e testo sono obbligatori");
+      toast.error(t("com.needTitleText"));
       return;
     }
     if (allegato && allegato.size > 8 * 1024 * 1024) {
-      toast.error("Allegato troppo grande: il limite è 8 MB.");
+      toast.error(t("com.attTooBig"));
       return;
     }
     setSubmitting(true);
@@ -232,7 +238,7 @@ function ComunicazioniPage() {
           destinatariEmail: destEmail.trim() || undefined,
         },
       })) as SpComunicazione & { pushEsito?: string };
-      toast.success("Comunicazione pubblicata", {
+      toast.success(t("com.published"), {
         description: res.pushEsito || undefined,
         duration: 8000,
       });
@@ -243,7 +249,7 @@ function ComunicazioniPage() {
       setDestEmail("");
       load();
     } catch (err) {
-      toast.error("Errore nella pubblicazione", {
+      toast.error(t("com.publishErr"), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -252,7 +258,7 @@ function ComunicazioniPage() {
   };
 
   return (
-    <AppShell title="Comunicazioni" subtitle="Comunicazioni interne e avvisi">
+    <AppShell title={t("com.title")} subtitle={t("com.subtitle")}>
       {pushBanner && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 shadow-[var(--shadow-card)]">
           <div className="flex items-start gap-3 min-w-0">
@@ -261,12 +267,9 @@ function ComunicazioniPage() {
             </span>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-foreground">
-                Ricevi le comunicazioni sul telefono
+                {t("com.pushBannerTitle")}
               </div>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
-                Attiva le notifiche per essere avvisato quando esce una nuova comunicazione, anche
-                ad app chiusa.
-              </p>
+              <p className="text-[13px] text-muted-foreground mt-0.5">{t("com.pushBannerDesc")}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -276,10 +279,10 @@ function ComunicazioniPage() {
               ) : (
                 <BellRing className="h-4 w-4 mr-2" />
               )}
-              Attiva notifiche
+              {t("com.pushEnable")}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setPushBanner(false)}>
-              Non ora
+              {t("com.pushLater")}
             </Button>
           </div>
         </div>
@@ -288,18 +291,18 @@ function ComunicazioniPage() {
       {canPubblicare && (
         <div className="mb-6 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-            <Send className="h-4 w-4 text-primary" /> Nuova comunicazione
+            <Send className="h-4 w-4 text-primary" /> {t("com.newTitle")}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Titolo
+                {t("com.fieldTitle")}
               </label>
               <input
                 className={`${inputCls} mt-1`}
                 value={titolo}
                 onChange={(e) => setTitolo(e.target.value)}
-                placeholder="Es. Riunione mensile, Uso obbligatorio DPI…"
+                placeholder={t("com.titlePh")}
               />
             </div>
             <div className="sm:col-span-2">
@@ -313,26 +316,28 @@ function ComunicazioniPage() {
               />
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Tipo</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("com.fieldType")}
+              </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={tipo}
                 onChange={(e) => setTipo(e.target.value as "Comunicazione" | "Riunione")}
               >
-                <option value="Comunicazione">Comunicazione</option>
-                <option value="Riunione">Riunione</option>
+                <option value="Comunicazione">{t("com.typeCom")}</option>
+                <option value="Riunione">{t("com.typeMeeting")}</option>
               </select>
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Destinatari
+                {t("com.recipients")}
               </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={sede}
                 onChange={(e) => setSede(e.target.value)}
               >
-                <option value="Tutte">Tutte le sedi</option>
+                <option value="Tutte">{t("common.allSites")}</option>
                 {sediOptions.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -342,14 +347,14 @@ function ComunicazioniPage() {
             </div>
             <div className="sm:col-span-2">
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Invia anche via email a{" "}
-                <span className="normal-case text-muted-foreground/70">(opzionale)</span>
+                {t("com.emailTo")}{" "}
+                <span className="normal-case text-muted-foreground/70">{t("common.optional")}</span>
               </label>
               <input
                 className={`${inputCls} mt-1`}
                 value={destEmail}
                 onChange={(e) => setDestEmail(e.target.value)}
-                placeholder="email1@esempio.it; email2@esempio.it — anche esterni, separati da ; o ,"
+                placeholder={t("com.emailPh")}
               />
             </div>
             <div className="sm:col-span-2 flex flex-wrap items-center gap-4">
@@ -359,7 +364,7 @@ function ComunicazioniPage() {
                   checked={richiedePresaVisione}
                   onChange={(e) => setRichiedePresaVisione(e.target.checked)}
                 />
-                Richiedi presa visione
+                {t("com.requireAck")}
               </label>
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Paperclip className="h-4 w-4" />
@@ -379,7 +384,7 @@ function ComunicazioniPage() {
               ) : (
                 <Send className="h-4 w-4 mr-2" />
               )}
-              Pubblica
+              {t("com.publish")}
             </Button>
           </div>
         </div>
@@ -388,7 +393,7 @@ function ComunicazioniPage() {
       <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
-            <Megaphone className="h-4 w-4 text-primary" /> Bacheca
+            <Megaphone className="h-4 w-4 text-primary" /> {t("com.board")}
           </div>
           {canPubblicare && (comunicazioni ?? []).length > 0 && (
             <button
@@ -410,15 +415,15 @@ function ComunicazioniPage() {
               }
               className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
             >
-              <Download className="h-4 w-4" /> Esporta CSV
+              <Download className="h-4 w-4" /> {t("common.exportCsv")}
             </button>
           )}
         </div>
 
         {comunicazioni === null ? (
-          <div className="text-sm text-muted-foreground">Caricamento…</div>
+          <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
         ) : comunicazioni.length === 0 ? (
-          <div className="text-sm text-muted-foreground">Nessuna comunicazione.</div>
+          <div className="text-sm text-muted-foreground">{t("com.none")}</div>
         ) : (
           <ul className="space-y-3">
             {comunicazioni.map((c) => {
@@ -429,13 +434,13 @@ function ComunicazioniPage() {
                     <span
                       className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${c.tipo === "Riunione" ? "bg-status-break/15 text-status-break" : "bg-primary/10 text-primary"}`}
                     >
-                      {c.tipo || "Comunicazione"}
+                      {c.tipo ? tVal("tipoC", c.tipo) : t("com.typeCom")}
                     </span>
                     <span className="font-semibold text-foreground">{c.titolo}</span>
                     <span className="text-[11px] text-muted-foreground">· {c.sede || "Tutte"}</span>
                     {c.richiedePresaVisione && (
                       <span className="rounded-full bg-status-out/15 text-status-out px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider">
-                        presa visione
+                        {t("com.ackBadge")}
                       </span>
                     )}
                   </div>
@@ -455,7 +460,7 @@ function ComunicazioniPage() {
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-primary underline"
                       >
-                        <Paperclip className="h-3.5 w-3.5" /> allegato
+                        <Paperclip className="h-3.5 w-3.5" /> {t("common.attachment")}
                       </a>
                     )}
                   </div>
@@ -464,7 +469,7 @@ function ComunicazioniPage() {
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       {vista ? (
                         <span className="inline-flex items-center gap-1 text-[13px] text-status-present">
-                          <CheckCircle2 className="h-4 w-4" /> Presa visione
+                          <CheckCircle2 className="h-4 w-4" /> {t("com.ackedLabel")}
                         </span>
                       ) : (
                         <Button
@@ -478,7 +483,7 @@ function ComunicazioniPage() {
                           ) : (
                             <CheckCircle2 className="h-4 w-4 mr-2" />
                           )}
-                          Conferma presa visione
+                          {t("com.ackButton")}
                         </Button>
                       )}
                       {canPubblicare && (
@@ -488,7 +493,7 @@ function ComunicazioniPage() {
                           className="inline-flex items-center gap-1 text-[13px] text-primary hover:underline"
                         >
                           <Eye className="h-3.5 w-3.5" />
-                          {letture[c.id] ? "Nascondi letture" : "Chi ha letto"}
+                          {letture[c.id] ? t("com.hideReads") : t("com.whoRead")}
                         </button>
                       )}
                     </div>
@@ -497,10 +502,10 @@ function ComunicazioniPage() {
                   {canPubblicare && letture[c.id] && (
                     <div className="mt-2 rounded-lg bg-secondary/40 p-2 text-[12px]">
                       <div className="flex items-center gap-1 text-muted-foreground mb-1">
-                        <Users className="h-3.5 w-3.5" /> {letture[c.id].length} letture
+                        <Users className="h-3.5 w-3.5" /> {letture[c.id].length} {t("com.reads")}
                       </div>
                       {letture[c.id].length === 0 ? (
-                        <span className="text-muted-foreground">Nessuno ha ancora letto.</span>
+                        <span className="text-muted-foreground">{t("com.noneRead")}</span>
                       ) : (
                         <ul className="space-y-0.5">
                           {letture[c.id].map((p) => (
