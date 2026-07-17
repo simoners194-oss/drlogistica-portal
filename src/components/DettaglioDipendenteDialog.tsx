@@ -5,7 +5,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatOra, labelTipo, type Dipendente } from "@/lib/mock-data";
+import { formatOra, type Dipendente } from "@/lib/mock-data";
+import { useLang } from "@/lib/i18n";
 import { computeOreOggi, formatDurata, type EventoTimbratura } from "@/lib/presenze-logic";
 import { LogIn, Coffee, Hourglass, TrendingUp, ListChecks, Lock } from "lucide-react";
 
@@ -20,6 +21,7 @@ export function DettaglioDipendenteDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t, tVal } = useLang();
   const eventi = dipendente?.eventiOggi ?? [];
   const ore = computeOreOggi(eventi);
 
@@ -41,41 +43,41 @@ export function DettaglioDipendenteDialog({
               </span>
             </span>
           </DialogTitle>
-          <DialogDescription>Dettaglio presenze di oggi — sola lettura.</DialogDescription>
+          <DialogDescription>{t("dlg.subtitle")}</DialogDescription>
         </DialogHeader>
 
         {ore.chiusa && (
           <div className="flex items-start gap-2.5 rounded-xl border border-status-out/40 bg-status-out/5 p-3">
             <Lock className="h-4 w-4 text-status-out mt-0.5 shrink-0" />
-            <div className="text-xs text-muted-foreground">Giornata lavorativa chiusa.</div>
+            <div className="text-xs text-muted-foreground">{t("dlg.dayClosed")}</div>
           </div>
         )}
 
         <div className="grid grid-cols-2 gap-3">
           <MiniStat
             Icon={LogIn}
-            label="Entrata"
+            label={t("evento.entrata")}
             value={ore.entrataOra ? formatOra(ore.entrataOra) : "—"}
           />
           <MiniStat
             Icon={LogIn}
-            label="Uscita"
+            label={t("evento.uscita")}
             value={ore.uscitaOra ? formatOra(ore.uscitaOra) : "—"}
           />
           <MiniStat
             Icon={Coffee}
-            label="Pausa totale"
+            label={t("presenze.totalBreak")}
             value={formatDurata(ore.pausaMinuti)}
-            hint={ore.inPausa ? "In corso" : undefined}
+            hint={ore.inPausa ? t("presenze.inProgress") : undefined}
           />
           <MiniStat
             Icon={Hourglass}
-            label="Ore lavorate"
+            label={t("presenze.workedHours")}
             value={formatDurata(ore.oreLavorateMinuti)}
           />
           <MiniStat
             Icon={TrendingUp}
-            label="In straordinario"
+            label={t("dash.kpiOvertime")}
             value={ore.oltreOrarioMinuti > 0 ? `+${formatDurata(ore.oltreOrarioMinuti)}` : "—"}
             highlight={ore.oltreOrarioMinuti > 0}
             className="col-span-2"
@@ -84,10 +86,10 @@ export function DettaglioDipendenteDialog({
 
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-center gap-2 text-[13px] text-muted-foreground mb-3">
-            <ListChecks className="h-4 w-4" /> Timbrature di oggi
+            <ListChecks className="h-4 w-4" /> {t("presenze.todayEntries")}
           </div>
           {eventi.length === 0 ? (
-            <div className="text-sm text-muted-foreground">Nessuna timbratura registrata oggi.</div>
+            <div className="text-sm text-muted-foreground">{t("presenze.noneToday")}</div>
           ) : (
             <ol className="relative border-l border-border ml-2 space-y-3">
               {eventi.map((e, i) => (
@@ -97,7 +99,7 @@ export function DettaglioDipendenteDialog({
                   />
                   <div className="flex items-baseline justify-between gap-3">
                     <div className="text-[14px] font-medium text-foreground">
-                      {labelTipo(e.tipo)}
+                      {tVal("evento", e.tipo)}
                     </div>
                     <div className="text-[15px] font-semibold tabular-nums text-primary">
                       {formatOra(e.ora)}

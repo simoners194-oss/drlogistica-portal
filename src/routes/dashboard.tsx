@@ -23,15 +23,15 @@ import {
   bySede,
   displayStato,
   DISPLAY_DOT,
-  DISPLAY_LABEL,
   type DisplayStato,
 } from "@/lib/data-service";
-import { sedeTimbra, formatOra, labelTipo, type SedeId, type Dipendente } from "@/lib/mock-data";
+import { sedeTimbra, formatOra, type SedeId, type Dipendente } from "@/lib/mock-data";
 import { useLivePresenze } from "@/lib/use-live-presenze";
 import { formatDurata } from "@/lib/presenze-logic";
 import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
 import { DettaglioDipendenteDialog } from "@/components/DettaglioDipendenteDialog";
 import { readSession, type Ruolo, type SessionUser } from "@/lib/session";
+import { useLang } from "@/lib/i18n";
 import { QuickAccess, type QuickAccessItem } from "@/components/QuickAccess";
 
 export const Route = createFileRoute("/dashboard")({
@@ -55,6 +55,8 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function DashboardPage() {
+  const { t, tVal, lang } = useLang();
+  const locale = lang === "it" ? "it-IT" : "en-GB";
   const { data, lastUpdate, error, refresh, loading } = useLivePresenze(15000);
   const [refreshing, setRefreshing] = useState(false);
   const [session, setSession] = useState<SessionUser | null>(null);
@@ -73,34 +75,34 @@ function DashboardPage() {
   const quickItems: QuickAccessItem[] = isAdmin
     ? [
         {
-          label: "Presenze",
+          label: t("module.presenze"),
           to: "/presenze",
           Icon: Clock,
           ready: timbraturaAttiva,
-          disabledNote: "Sede senza timbratura",
+          disabledNote: t("dash.qaNoClockin"),
         },
-        { label: "Report", to: "/report", Icon: BarChart3, ready: false },
-        { label: "Dipendenti", Icon: Users, ready: false },
-        { label: "Amministrazione", to: "/amministrazione", Icon: Settings, ready: true },
+        { label: t("module.report"), to: "/report", Icon: BarChart3, ready: false },
+        { label: t("dash.qaEmployees"), Icon: Users, ready: false },
+        { label: t("module.amministrazione"), to: "/amministrazione", Icon: Settings, ready: true },
         {
-          label: "Diagnostica",
+          label: t("dash.qaDiag"),
           to: "/amministrazione",
           Icon: Activity,
           ready: true,
-          description: "Health & self-test",
+          description: t("dash.qaDiagDesc"),
         },
       ]
     : [
         {
-          label: "Presenze",
+          label: t("module.presenze"),
           to: "/presenze",
           Icon: Clock,
           ready: timbraturaAttiva,
-          disabledNote: "Sede senza timbratura",
+          disabledNote: t("dash.qaNoClockin"),
         },
-        { label: "Report", to: "/report", Icon: BarChart3, ready: false },
-        { label: "Dipendenti", Icon: Users, ready: false },
-        { label: "Richieste", to: "/richieste", Icon: FileText, ready: false },
+        { label: t("module.report"), to: "/report", Icon: BarChart3, ready: false },
+        { label: t("dash.qaEmployees"), Icon: Users, ready: false },
+        { label: t("module.richieste"), to: "/richieste", Icon: FileText, ready: false },
       ];
 
   // Sia il Responsabile sia l'Amministratore di sistema vedono i dati di
@@ -150,10 +152,8 @@ function DashboardPage() {
     [sediStats, sedeFilter],
   );
 
-  const title = isResponsabile ? "Dashboard responsabili" : "Dashboard presenze";
-  const subtitle = isResponsabile
-    ? "Panoramica live · sola lettura · tutte le sedi"
-    : "Monitoraggio live sedi DR Logistica";
+  const title = isResponsabile ? t("dash.titleResp") : t("dash.titlePres");
+  const subtitle = isResponsabile ? t("dash.subResp") : t("dash.subPres");
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -167,13 +167,8 @@ function DashboardPage() {
         <div className="mb-4 rounded-lg border border-status-absent/40 bg-status-absent/5 p-3 flex items-start gap-2">
           <AlertTriangle className="h-4 w-4 text-status-absent mt-0.5 shrink-0" />
           <div className="text-xs">
-            <p className="font-medium text-status-absent">
-              Sistema momentaneamente non disponibile
-            </p>
-            <p className="text-muted-foreground mt-0.5">
-              Impossibile leggere i dati da SharePoint. Le timbrature sono temporaneamente
-              disabilitate. Dettagli tecnici in Amministrazione.
-            </p>
+            <p className="font-medium text-status-absent">{t("dash.sysDown")}</p>
+            <p className="text-muted-foreground mt-0.5">{t("dash.sysDownMsg")}</p>
           </div>
         </div>
       )}
@@ -182,10 +177,9 @@ function DashboardPage() {
         <DashboardSkeleton />
       ) : !timbraturaAttiva ? (
         <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-[var(--shadow-card)]">
-          <div className="text-sm font-semibold text-foreground">Timbrature non attive</div>
+          <div className="text-sm font-semibold text-foreground">{t("dash.noTimbratura")}</div>
           <p className="text-[13px] text-muted-foreground mt-1 max-w-md mx-auto">
-            Nessuna sede ha la timbratura attiva: la panoramica presenze comparirà automaticamente
-            quando una sede abiliterà la timbratura.
+            {t("dash.noTimbraturaMsg")}
           </p>
         </div>
       ) : (
@@ -195,7 +189,7 @@ function DashboardPage() {
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 mb-5 sm:flex sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <h2 className="text-[17px] sm:text-lg md:text-xl font-semibold text-foreground tracking-tight leading-tight">
-                  Sintesi presenze per sede
+                  {t("dash.summaryTitle")}
                 </h2>
                 <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
                   <span className="relative flex h-1.5 w-1.5 shrink-0">
@@ -203,8 +197,8 @@ function DashboardPage() {
                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-status-present" />
                   </span>
                   <span className="truncate">
-                    Aggiornato alle{" "}
-                    {lastUpdate.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+                    {t("dash.updatedAt")}{" "}
+                    {lastUpdate.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </p>
               </div>
@@ -215,7 +209,7 @@ function DashboardPage() {
                   value={sedeFilter}
                   onChange={(e) => setSedeFilter(e.target.value)}
                 >
-                  <option value="tutte">Tutte le sedi</option>
+                  <option value="tutte">{t("common.allSites")}</option>
                   {sediStats.map((s) => (
                     <option key={s.id} value={s.nome}>
                       {s.nome}
@@ -229,8 +223,8 @@ function DashboardPage() {
                   className="shrink-0 inline-flex items-center gap-2 rounded-full bg-primary px-4 h-11 sm:h-9 min-w-11 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-[var(--shadow-elegant)] transition-all active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed touch-manipulation"
                 >
                   <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-                  <span className="hidden sm:inline">Aggiorna ora</span>
-                  <span className="sm:hidden">Aggiorna</span>
+                  <span className="hidden sm:inline">{t("dash.refreshNow")}</span>
+                  <span className="sm:hidden">{t("dash.refresh")}</span>
                 </button>
               </div>
             </div>
@@ -247,10 +241,10 @@ function DashboardPage() {
                     </span>
                     <div className="min-w-0">
                       <div className="text-[15px] font-semibold text-foreground truncate leading-tight">
-                        Sede {s.nome}
+                        {t("dash.sitePrefix")} {s.nome}
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5">
-                        {s.totale} dipendenti totali
+                        {s.totale} {t("dash.totalEmployees")}
                       </div>
                     </div>
                   </div>
@@ -262,7 +256,7 @@ function DashboardPage() {
                       </span>
                     </div>
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
-                      Presenti
+                      {t("dash.kpiPresent")}
                     </div>
                   </div>
                 </div>
@@ -272,12 +266,22 @@ function DashboardPage() {
 
           {/* KPI: presenti, in pausa, usciti, non timbrati, in straordinario */}
           <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
-            <KpiCard label="Presenti" value={totals.presenti} Icon={UserCheck} tone="present" />
-            <KpiCard label="In pausa" value={totals.pausa} Icon={Coffee} tone="break" />
-            <KpiCard label="Usciti" value={totals.usciti} Icon={LogOut} tone="primary" />
-            <KpiCard label="Non timbrati" value={totals.assenti} Icon={UserX} tone="absent" />
             <KpiCard
-              label="In straordinario"
+              label={t("dash.kpiPresent")}
+              value={totals.presenti}
+              Icon={UserCheck}
+              tone="present"
+            />
+            <KpiCard label={t("dash.kpiBreak")} value={totals.pausa} Icon={Coffee} tone="break" />
+            <KpiCard label={t("dash.kpiOut")} value={totals.usciti} Icon={LogOut} tone="primary" />
+            <KpiCard
+              label={t("dash.kpiAbsent")}
+              value={totals.assenti}
+              Icon={UserX}
+              tone="absent"
+            />
+            <KpiCard
+              label={t("dash.kpiOvertime")}
               value={totals.oltre}
               Icon={TrendingUp}
               tone="out"
@@ -304,15 +308,15 @@ function DashboardPage() {
               <AlertPanel
                 Icon={AlertTriangle}
                 tone="warn"
-                title="Ritardi"
+                title={t("dash.alertDelays")}
                 items={presenzeData.filter((d) => (d.ritardoMinuti ?? 0) > 0)}
-                renderMeta={(d) => `Atteso ${d.orarioAtteso} · ${sedeLabel(d.sede)}`}
+                renderMeta={(d) => `${t("dash.expected")} ${d.orarioAtteso} · ${sedeLabel(d.sede)}`}
                 renderValue={(d) => `+${d.ritardoMinuti} min`}
               />
               <AlertPanel
                 Icon={TrendingUp}
                 tone="ok"
-                title="In straordinario"
+                title={t("dash.kpiOvertime")}
                 items={presenzeData.filter((d) => (d.oltreOrarioMinuti ?? 0) > 0)}
                 renderMeta={(d) => `${d.ruolo} · ${sedeLabel(d.sede)}`}
                 renderValue={(d) => `+${formatDurata(d.oltreOrarioMinuti ?? 0)}`}
@@ -320,10 +324,10 @@ function DashboardPage() {
               <AlertPanel
                 Icon={UserX}
                 tone="danger"
-                title="Non timbrati"
+                title={t("dash.kpiAbsent")}
                 items={presenzeData.filter((d) => d.stato === "non-timbrato")}
                 renderMeta={(d) => `${d.ruolo} · ${sedeLabel(d.sede)}`}
-                renderValue={(d) => `orario ${d.orarioAtteso}`}
+                renderValue={(d) => `${t("dash.expectedLower")} ${d.orarioAtteso}`}
               />
             </div>
           )}
@@ -396,6 +400,7 @@ function SedePanel({
   dipendenti: Dipendente[];
   onSelect?: (d: Dipendente) => void;
 }) {
+  const { t, tVal } = useLang();
   const [filter, setFilter] = useState<DisplayStato | "tutti">("tutti");
   const filtered =
     filter === "tutti" ? dipendenti : dipendenti.filter((d) => displayStato(d) === filter);
@@ -409,9 +414,11 @@ function SedePanel({
       <header className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-border">
         <div className="min-w-0">
           <h2 className="text-[15px] sm:text-base font-semibold text-foreground truncate">
-            Sede {sedeName}
+            {t("dash.sitePrefix")} {sedeName}
           </h2>
-          <p className="text-xs text-muted-foreground">{dipendenti.length} dipendenti totali</p>
+          <p className="text-xs text-muted-foreground">
+            {dipendenti.length} {t("dash.totalEmployees")}
+          </p>
         </div>
         <div className="text-right shrink-0">
           <div className="text-2xl font-semibold tabular-nums text-foreground leading-none">
@@ -419,7 +426,7 @@ function SedePanel({
             <span className="text-muted-foreground text-base">/{dipendenti.length}</span>
           </div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
-            In sede
+            {t("dash.inSede")}
           </div>
         </div>
       </header>
@@ -435,7 +442,7 @@ function SedePanel({
                 : "text-muted-foreground bg-secondary/50 hover:bg-secondary"
             }`}
           >
-            {f === "tutti" ? "Tutti" : DISPLAY_LABEL[f]}
+            {f === "tutti" ? t("common.all") : tVal("dstato", f)}
           </button>
         ))}
       </div>
@@ -468,7 +475,8 @@ function SedePanel({
                     {d.ultimaTimbratura && (
                       <>
                         {" "}
-                        · {labelTipo(d.ultimaTimbratura.tipo)} {formatOra(d.ultimaTimbratura.ora)}
+                        · {tVal("evento", d.ultimaTimbratura.tipo)}{" "}
+                        {formatOra(d.ultimaTimbratura.ora)}
                       </>
                     )}
                   </div>
@@ -477,8 +485,8 @@ function SedePanel({
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-medium bg-secondary text-secondary-foreground shrink-0`}
                 >
                   <span className={`h-2 w-2 rounded-full ${DISPLAY_DOT[ds]}`} />
-                  <span className="hidden sm:inline">{DISPLAY_LABEL[ds]}</span>
-                  <span className="sm:hidden">{DISPLAY_LABEL[ds].slice(0, 3)}.</span>
+                  <span className="hidden sm:inline">{tVal("dstato", ds)}</span>
+                  <span className="sm:hidden">{tVal("dstato", ds).slice(0, 3)}.</span>
                 </span>
                 {clickable && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
               </button>
@@ -487,14 +495,16 @@ function SedePanel({
         })}
         {filtered.length === 0 && (
           <li className="text-center text-sm text-muted-foreground py-8">
-            Nessun dipendente in questo stato
+            {t("dash.noneInState")}
           </li>
         )}
       </ul>
 
       <footer className="px-4 sm:px-5 py-3 border-t border-border bg-secondary/30 text-xs text-muted-foreground flex items-center justify-between gap-2">
         <span>
-          Presenti <strong className="text-foreground tabular-nums">{presenti}</strong> / Totale{" "}
+          {t("dash.footerPresent")}{" "}
+          <strong className="text-foreground tabular-nums">{presenti}</strong> /{" "}
+          {t("dash.footerTotal")}{" "}
           <strong className="text-foreground tabular-nums">{dipendenti.length}</strong>
         </span>
         <span className="flex items-center gap-1 shrink-0">
@@ -520,6 +530,7 @@ function AlertPanel({
   renderMeta: (d: Dipendente) => string;
   renderValue: (d: Dipendente) => string;
 }) {
+  const { t: tAlert } = useLang();
   const color =
     tone === "warn"
       ? "text-status-break"
@@ -547,7 +558,9 @@ function AlertPanel({
       </div>
       <div className="p-2">
         {items.length === 0 ? (
-          <div className="px-3 py-6 text-center text-sm text-muted-foreground">Nessun elemento</div>
+          <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+            {tAlert("dash.noItems")}
+          </div>
         ) : (
           items.map((d) => (
             <div
