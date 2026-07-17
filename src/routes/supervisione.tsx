@@ -13,6 +13,7 @@ import {
   Download,
 } from "lucide-react";
 import { esportaCsvFile } from "@/lib/csv";
+import { useLang } from "@/lib/i18n";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
   spGetRichieste,
@@ -20,7 +21,7 @@ import {
   spGetTimbratureManuali,
 } from "@/lib/sharepoint.functions";
 import type { SpRichiesta, SpDipendente, TimbraturaManualeItem } from "@/lib/sharepoint.server";
-import { labelTipo, type SedeId } from "@/lib/mock-data";
+import { type SedeId } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/supervisione")({
   head: () => ({ meta: [{ title: "Supervisione — DR Portal" }] }),
@@ -67,17 +68,18 @@ const STATO_BADGE: Record<string, string> = {
   Approvata: "bg-status-present/15 text-status-present",
   Respinta: "bg-status-absent/15 text-status-absent",
 };
-function StatoBadge({ stato }: { stato: string }) {
+function StatoBadge({ stato, label }: { stato: string; label?: string }) {
   return (
     <span
       className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATO_BADGE[stato] ?? "bg-muted text-muted-foreground"}`}
     >
-      {stato}
+      {label ?? stato}
     </span>
   );
 }
 
 function SupervisionePage() {
+  const { t, tStato, tVal } = useLang();
   const [session, setSession] = useState<SessionUser | null>(null);
   const [tab, setTab] = useState<"approvate" | "rimborsi" | "manuali">("approvate");
 
@@ -112,7 +114,7 @@ function SupervisionePage() {
       .then(([a, r]) => setDecise([...(a as SpRichiesta[]), ...(r as SpRichiesta[])]))
       .catch((err) => {
         setDecise([]);
-        toast.error("Errore richieste", {
+        toast.error(t("sup.errRequests"), {
           description: err instanceof Error ? err.message : String(err),
         });
       });
@@ -123,7 +125,7 @@ function SupervisionePage() {
       .then((l) => setManuali(l as TimbraturaManualeItem[]))
       .catch((err) => {
         setManuali([]);
-        toast.error("Errore timbrature", {
+        toast.error(t("sup.errEntries"), {
           description: err instanceof Error ? err.message : String(err),
         });
       });
@@ -172,16 +174,14 @@ function SupervisionePage() {
 
   if (session && !puoVedere) {
     return (
-      <AppShell title="Supervisione">
+      <AppShell title={t("sup.title")}>
         <div className="flex items-start gap-3 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <span className="h-9 w-9 shrink-0 rounded-lg bg-muted text-muted-foreground flex items-center justify-center">
             <Lock className="h-4 w-4" />
           </span>
           <div>
-            <div className="text-sm font-semibold text-foreground">Accesso riservato</div>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
-              Questa sezione è riservata ai supervisori.
-            </p>
+            <div className="text-sm font-semibold text-foreground">{t("common.restricted")}</div>
+            <p className="text-[13px] text-muted-foreground mt-0.5">{t("sup.restrictedMsg")}</p>
           </div>
         </div>
       </AppShell>
@@ -189,28 +189,28 @@ function SupervisionePage() {
   }
 
   return (
-    <AppShell title="Supervisione" subtitle="Approvazioni e timbrature manuali">
+    <AppShell title={t("sup.title")} subtitle={t("sup.subtitle")}>
       <div className="mb-4 inline-flex rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
         <button
           type="button"
           onClick={() => setTab("approvate")}
           className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${tab === "approvate" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          <CheckCircle2 className="h-4 w-4" /> Richieste decise
+          <CheckCircle2 className="h-4 w-4" /> {t("sup.tabDecise")}
         </button>
         <button
           type="button"
           onClick={() => setTab("manuali")}
           className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${tab === "manuali" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          <ClipboardList className="h-4 w-4" /> Timbrature manuali
+          <ClipboardList className="h-4 w-4" /> {t("sup.tabManuali")}
         </button>
         <button
           type="button"
           onClick={() => setTab("rimborsi")}
           className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${tab === "rimborsi" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          <Receipt className="h-4 w-4" /> Rimborsi
+          <Receipt className="h-4 w-4" /> {t("sup.tabRimborsi")}
         </button>
       </div>
 
@@ -218,8 +218,7 @@ function SupervisionePage() {
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
-              <ShieldCheck className="h-4 w-4 text-primary" /> Richieste decise (approvate e
-              rifiutate)
+              <ShieldCheck className="h-4 w-4 text-primary" /> {t("sup.deciseTitle")}
             </div>
             {filtrate.length > 0 && (
               <button
@@ -242,7 +241,7 @@ function SupervisionePage() {
                 }
                 className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
               >
-                <Download className="h-4 w-4" /> Esporta CSV
+                <Download className="h-4 w-4" /> {t("common.exportCsv")}
               </button>
             )}
           </div>
@@ -258,19 +257,21 @@ function SupervisionePage() {
                 value={statoF}
                 onChange={(e) => setStatoF(e.target.value as "tutte" | "Approvata" | "Respinta")}
               >
-                <option value="tutte">Tutte</option>
-                <option value="Approvata">Approvate</option>
-                <option value="Respinta">Rifiutate</option>
+                <option value="tutte">{t("common.allF")}</option>
+                <option value="Approvata">{t("sup.approvate")}</option>
+                <option value="Respinta">{t("sup.rifiutate")}</option>
               </select>
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Sede</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("common.site")}
+              </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={sedeF}
                 onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
               >
-                <option value="tutte">Tutte</option>
+                <option value="tutte">{t("common.allF")}</option>
                 {sediOptions.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -280,14 +281,14 @@ function SupervisionePage() {
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Dipendente
+                {t("common.employee")}
               </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={dipF}
                 onChange={(e) => setDipF(e.target.value)}
               >
-                <option value="">Tutti</option>
+                <option value="">{t("common.all")}</option>
                 {[...dipendenti]
                   .sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`))
                   .map((d) => (
@@ -298,7 +299,9 @@ function SupervisionePage() {
               </select>
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Dal</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("common.from")}
+              </label>
               <input
                 type="date"
                 className={`${inputCls} mt-1`}
@@ -307,7 +310,9 @@ function SupervisionePage() {
               />
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Al</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("common.to")}
+              </label>
               <input
                 type="date"
                 className={`${inputCls} mt-1`}
@@ -318,23 +323,21 @@ function SupervisionePage() {
           </div>
 
           {decise === null ? (
-            <div className="text-sm text-muted-foreground">Caricamento…</div>
+            <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
           ) : filtrate.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              Nessuna richiesta decisa con questi filtri.
-            </div>
+            <div className="text-sm text-muted-foreground">{t("sup.deciseNone")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                    <th className="py-2 pr-3">Richiesta</th>
-                    <th className="py-2 pr-3">Stato</th>
-                    <th className="py-2 pr-3">Dipendente</th>
-                    <th className="py-2 pr-3">Tipo</th>
-                    <th className="py-2 pr-3">Periodo</th>
-                    <th className="py-2 pr-3">Sede</th>
-                    <th className="py-2 pr-3">Doc.</th>
+                    <th className="py-2 pr-3">{t("sup.colRichiesta")}</th>
+                    <th className="py-2 pr-3">{t("common.status")}</th>
+                    <th className="py-2 pr-3">{t("common.employee")}</th>
+                    <th className="py-2 pr-3">{t("common.type")}</th>
+                    <th className="py-2 pr-3">{t("sup.colPeriodo")}</th>
+                    <th className="py-2 pr-3">{t("common.site")}</th>
+                    <th className="py-2 pr-3">{t("common.doc")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -348,7 +351,7 @@ function SupervisionePage() {
                       <tr key={r.id} className="border-b border-border/60">
                         <td className="py-2 pr-3 text-muted-foreground">{r.title || `#${r.id}`}</td>
                         <td className="py-2 pr-3">
-                          <StatoBadge stato={r.stato} />
+                          <StatoBadge stato={r.stato} label={tStato(r.stato)} />
                         </td>
                         <td className="py-2 pr-3 text-foreground">
                           {nomeById.get(r.richiedenteId) ||
@@ -356,8 +359,8 @@ function SupervisionePage() {
                             `#${r.richiedenteId}`}
                         </td>
                         <td className="py-2 pr-3">
-                          {r.tipo}
-                          {r.modalita ? ` (${r.modalita})` : ""}
+                          {tVal("tipoR", r.tipo)}
+                          {r.modalita ? ` (${tVal("mod", r.modalita)})` : ""}
                         </td>
                         <td className="py-2 pr-3 whitespace-nowrap">
                           {periodo}
@@ -374,7 +377,7 @@ function SupervisionePage() {
                               rel="noreferrer"
                               className="text-primary underline"
                             >
-                              apri
+                              {t("common.open")}
                             </a>
                           ) : (
                             "—"
@@ -386,7 +389,7 @@ function SupervisionePage() {
                 </tbody>
               </table>
               <div className="mt-3 text-[12px] text-muted-foreground">
-                {filtrate.length} richiest{filtrate.length === 1 ? "a" : "e"}.
+                {filtrate.length} {filtrate.length === 1 ? t("sup.request") : t("sup.requests")}.
               </div>
             </div>
           )}
@@ -395,7 +398,7 @@ function SupervisionePage() {
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
-              <Receipt className="h-4 w-4 text-primary" /> Rimborsi spese (decisi)
+              <Receipt className="h-4 w-4 text-primary" /> {t("sup.rimborsiTitle")}
             </div>
             {rimborsi.length > 0 && (
               <button
@@ -417,20 +420,22 @@ function SupervisionePage() {
                 }
                 className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
               >
-                <Download className="h-4 w-4" /> Esporta CSV
+                <Download className="h-4 w-4" /> {t("common.exportCsv")}
               </button>
             )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-4 mb-4">
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Sede</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("common.site")}
+              </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={sedeF}
                 onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
               >
-                <option value="tutte">Tutte</option>
+                <option value="tutte">{t("common.allF")}</option>
                 {sediOptions.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -440,14 +445,14 @@ function SupervisionePage() {
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Dipendente
+                {t("common.employee")}
               </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={dipF}
                 onChange={(e) => setDipF(e.target.value)}
               >
-                <option value="">Tutti</option>
+                <option value="">{t("common.all")}</option>
                 {[...dipendenti]
                   .sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`))
                   .map((d) => (
@@ -458,7 +463,9 @@ function SupervisionePage() {
               </select>
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Dal</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("common.from")}
+              </label>
               <input
                 type="date"
                 className={`${inputCls} mt-1`}
@@ -467,7 +474,9 @@ function SupervisionePage() {
               />
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Al</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("common.to")}
+              </label>
               <input
                 type="date"
                 className={`${inputCls} mt-1`}
@@ -478,7 +487,7 @@ function SupervisionePage() {
           </div>
 
           {decise === null ? (
-            <div className="text-sm text-muted-foreground">Caricamento…</div>
+            <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
           ) : rimborsi.length === 0 ? (
             <div className="text-sm text-muted-foreground">Nessun rimborso con questi filtri.</div>
           ) : (
@@ -486,13 +495,13 @@ function SupervisionePage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                    <th className="py-2 pr-3">Dipendente</th>
-                    <th className="py-2 pr-3">Stato</th>
-                    <th className="py-2 pr-3">Sede</th>
-                    <th className="py-2 pr-3">Data</th>
-                    <th className="py-2 pr-3">Tipologia</th>
-                    <th className="py-2 pr-3 text-right">Importo</th>
-                    <th className="py-2 pr-3">Doc.</th>
+                    <th className="py-2 pr-3">{t("common.employee")}</th>
+                    <th className="py-2 pr-3">{t("common.status")}</th>
+                    <th className="py-2 pr-3">{t("common.site")}</th>
+                    <th className="py-2 pr-3">{t("common.date")}</th>
+                    <th className="py-2 pr-3">{t("sup.colTipologia")}</th>
+                    <th className="py-2 pr-3 text-right">{t("common.amount")}</th>
+                    <th className="py-2 pr-3">{t("common.doc")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -504,7 +513,7 @@ function SupervisionePage() {
                           `#${r.richiedenteId}`}
                       </td>
                       <td className="py-2 pr-3">
-                        <StatoBadge stato={r.stato} />
+                        <StatoBadge stato={r.stato} label={tStato(r.stato)} />
                       </td>
                       <td className="py-2 pr-3 text-muted-foreground">
                         {r.sedeRichiedente || "—"}
@@ -522,7 +531,7 @@ function SupervisionePage() {
                             rel="noreferrer"
                             className="text-primary underline"
                           >
-                            apri
+                            {t("common.open")}
                           </a>
                         ) : (
                           "—"
@@ -534,7 +543,8 @@ function SupervisionePage() {
                 <tfoot>
                   <tr className="border-t border-border font-semibold">
                     <td className="py-2 pr-3" colSpan={5}>
-                      Totale approvati ({rimborsi.filter((r) => r.stato === "Approvata").length})
+                      {t("sup.totApproved")} (
+                      {rimborsi.filter((r) => r.stato === "Approvata").length})
                     </td>
                     <td className="py-2 pr-3 text-right tabular-nums">
                       € {totaleImporto.toFixed(2)}
@@ -549,18 +559,14 @@ function SupervisionePage() {
       ) : (
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-1">
-            <ClipboardList className="h-4 w-4 text-primary" /> Timbrature manuali (ultimi 30 giorni)
+            <ClipboardList className="h-4 w-4 text-primary" /> {t("sup.manualiTitle")}
           </div>
-          <p className="text-[12px] text-muted-foreground mb-4">
-            Inserimenti fatti dall'operatore (origine Manuale), per visione.
-          </p>
+          <p className="text-[12px] text-muted-foreground mb-4">{t("sup.manualiDesc")}</p>
 
           {manuali === null ? (
-            <div className="text-sm text-muted-foreground">Caricamento…</div>
+            <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
           ) : manuali.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              Nessuna timbratura manuale nel periodo.
-            </div>
+            <div className="text-sm text-muted-foreground">{t("sup.manualiNone")}</div>
           ) : (
             <ul className="space-y-2">
               {manuali.map((t) => (
@@ -572,7 +578,7 @@ function SupervisionePage() {
                     <div className="font-medium text-foreground truncate">{t.nomeCompleto}</div>
                     <div className="mt-0.5 flex items-center gap-2 text-[13px] text-muted-foreground">
                       <Clock className="h-3.5 w-3.5" />
-                      {labelTipo(t.evento)} · {fmtDataOra(t.dataOra)}
+                      {tVal("evento", t.evento)} · {fmtDataOra(t.dataOra)}
                       {t.sede ? ` · ${sedeNome(t.sede)}` : ""}
                     </div>
                     {t.note && (
