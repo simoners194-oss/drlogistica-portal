@@ -17,9 +17,11 @@ import { MODULES } from "@/lib/modules";
 import { canAccess, readSession, type Ruolo, type SessionSede } from "@/lib/session";
 import { sedeTimbra, anySedeTimbra } from "@/lib/mock-data";
 import { isSedeStorica } from "@/lib/richieste-logic";
+import { useLang } from "@/lib/i18n";
 
 export function AppSidebar() {
   const { state } = useSidebar();
+  const { t, tModule } = useLang();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   // Il ruolo viene letto client-side (sessionStorage) dopo il mount per
@@ -77,7 +79,7 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Moduli</SidebarGroupLabel>
+          <SidebarGroupLabel>{t("nav.modules")}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {visibleModules.map((item) => {
@@ -85,11 +87,10 @@ export function AppSidebar() {
                 // Voci disabilitate: "In arrivo" (non pronte) oppure timbratura
                 // non attiva per la sede. Non cliccabili, aspetto attenuato.
                 const disabledTimbratura = item.richiedeTimbratura && !presenzeAttive;
+                const titolo = tModule(item.id, item.title);
                 if (!item.ready || disabledTimbratura) {
-                  const badge = !item.ready ? "In arrivo" : "Non attivo";
-                  const tip = !item.ready
-                    ? `${item.title} — In arrivo`
-                    : `${item.title} — timbratura non attiva per la tua sede`;
+                  const badge = !item.ready ? t("nav.comingSoon") : t("nav.notActive");
+                  const tip = `${titolo} — ${badge}`;
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
@@ -101,7 +102,7 @@ export function AppSidebar() {
                         <item.icon className="h-4 w-4 shrink-0" />
                         {!collapsed && (
                           <span className="flex-1 flex items-center justify-between">
-                            {item.title}
+                            {titolo}
                             <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
                               {badge}
                             </span>
@@ -116,7 +117,7 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       asChild
                       isActive={active}
-                      tooltip={item.title}
+                      tooltip={titolo}
                       className={
                         active
                           ? "bg-primary/10 text-primary font-medium border-l-2 border-primary rounded-l-none pl-[calc(0.5rem-2px)]"
@@ -125,7 +126,7 @@ export function AppSidebar() {
                     >
                       <Link to={item.url} className="flex items-center gap-2">
                         <item.icon className="h-4 w-4 shrink-0" />
-                        {!collapsed && <span className="flex-1">{item.title}</span>}
+                        {!collapsed && <span className="flex-1">{titolo}</span>}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

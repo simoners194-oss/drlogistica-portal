@@ -10,6 +10,7 @@ import { APP_NAME, APP_TAGLINE } from "@/lib/modules";
 import { defaultLandingFor, normalizeRuolo, writeSession } from "@/lib/session";
 import { AppFooter } from "@/components/AppFooter";
 import { APP_INFO } from "@/lib/version";
+import { LangSwitcher, useLang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const navigate = useNavigate();
+  const { t } = useLang();
   const [codice, setCodice] = useState("");
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,14 +39,14 @@ function Index() {
     if (busy) return;
     setError(null);
     if (!codice.trim() || !pin.trim()) {
-      setError("Codice o PIN non validi.");
+      setError(t("login.invalid"));
       return;
     }
     setBusy(true);
     try {
       const res = await spLogin({ data: { codice: codice.trim(), pin: pin.trim() } });
       if (!res.ok || !res.dipendente) {
-        setError(res.error ?? "Codice o PIN non validi.");
+        setError(res.error ?? t("login.invalid"));
         return;
       }
       const d = res.dipendente;
@@ -60,14 +62,11 @@ function Index() {
         oreSettimanali: d.oreSettimanali,
       });
       // S1: conferma che la sessione server firmata è attiva (cookie httpOnly).
-      const who = await spWhoAmI().catch(() => null);
-      toast.success(
-        `Benvenuto ${d.nome}`,
-        who?.user ? { description: "Sessione server attiva ✓" } : undefined,
-      );
+      await spWhoAmI().catch(() => null);
+      toast.success(`${t("login.welcome")} ${d.nome}`);
       navigate({ to: defaultLandingFor(ruolo, d.sede) });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Codice o PIN non validi.");
+      setError(err instanceof Error ? err.message : t("login.invalid"));
     } finally {
       setBusy(false);
     }
@@ -84,31 +83,27 @@ function Index() {
           <div>
             <h1 className="text-4xl font-semibold tracking-tight leading-tight">{APP_NAME}</h1>
             <p className="mt-3 text-lg text-white/90 max-w-md">{APP_TAGLINE}</p>
-            <p className="mt-4 text-sm text-white/70 max-w-md">
-              Una piattaforma modulare che unisce Presenze, Richieste, Report e Amministrazione in
-              un'unica esperienza integrata.
-            </p>
+            <p className="mt-4 text-sm text-white/70 max-w-md">{t("login.hero")}</p>
           </div>
           <div className="text-xs text-white/60">
             {APP_INFO.copyright} — Powered by Microsoft 365 · v{APP_INFO.version}
           </div>
         </div>
 
-        <div className="flex items-center justify-center p-6 lg:p-12">
+        <div className="relative flex items-center justify-center p-6 lg:p-12">
+          <LangSwitcher className="absolute top-4 right-4" />
           <div className="w-full max-w-sm">
             <div className="lg:hidden mb-10 flex justify-center">
               <Logo size={144} />
             </div>
-            <h2 className="text-2xl font-semibold text-foreground">Accedi</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Inserisci il tuo codice dipendente e il PIN aziendale.
-            </p>
+            <h2 className="text-2xl font-semibold text-foreground">{t("login.title")}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t("login.subtitle")}</p>
 
             <form onSubmit={handleLogin} className="mt-6 space-y-3">
               <Input
                 autoFocus
                 autoComplete="username"
-                placeholder="Codice dipendente"
+                placeholder={t("login.codePlaceholder")}
                 value={codice}
                 onChange={(e) => {
                   setCodice(e.target.value.toUpperCase());
@@ -120,7 +115,7 @@ function Index() {
                 type="password"
                 inputMode="numeric"
                 autoComplete="current-password"
-                placeholder="PIN"
+                placeholder={t("login.pinPlaceholder")}
                 value={pin}
                 onChange={(e) => {
                   setPin(e.target.value.replace(/\D/g, "").slice(0, 10));
@@ -138,12 +133,12 @@ function Index() {
                 className="w-full h-11"
                 disabled={busy || !codice.trim() || !pin.trim()}
               >
-                {busy ? "Verifica in corso…" : "Accedi"}
+                {busy ? t("login.checking") : t("login.submit")}
               </Button>
             </form>
 
             <p className="mt-6 text-[11px] text-muted-foreground text-center">
-              L'autenticazione Microsoft 365 sarà attivata prossimamente.
+              {t("login.msSoon")}
             </p>
           </div>
         </div>

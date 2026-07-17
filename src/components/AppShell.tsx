@@ -7,7 +7,8 @@ import { Notifiche } from "./Notifiche";
 import { PageProgress } from "./PageProgress";
 import { AppFooter } from "./AppFooter";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { clearSession, readSession, RUOLO_LABEL, type SessionUser } from "@/lib/session";
+import { clearSession, readSession, type SessionUser } from "@/lib/session";
+import { LangSwitcher, useLang } from "@/lib/i18n";
 
 export function AppShell({
   children,
@@ -19,6 +20,7 @@ export function AppShell({
   subtitle?: string;
 }) {
   const navigate = useNavigate();
+  const { t } = useLang();
   // Deferred to client only to avoid SSR/CSR hydration mismatch on the
   // user pill (sessionStorage is not available during prerender).
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -27,7 +29,7 @@ export function AppShell({
   }, []);
 
   const handleLogout = () => {
-    if (typeof window !== "undefined" && !window.confirm("Sei sicuro di voler uscire?")) {
+    if (typeof window !== "undefined" && !window.confirm(t("shell.logoutConfirm"))) {
       return;
     }
     clearSession();
@@ -54,6 +56,7 @@ export function AppShell({
               {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
             </div>
             <div className="flex items-center gap-2">
+              <LangSwitcher />
               {user && (
                 <div className="hidden sm:flex items-center gap-2 px-3 h-9 rounded-full bg-secondary text-sm animate-fade-in">
                   <div className="h-6 w-6 rounded-full bg-gradient-to-br from-primary to-[color:var(--primary-glow)] text-primary-foreground text-[10px] font-semibold flex items-center justify-center shadow-sm">
@@ -64,7 +67,7 @@ export function AppShell({
                     {user.nome} {user.cognome}
                   </span>
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground border-l border-border pl-2 ml-0.5">
-                    {RUOLO_LABEL[user.ruolo]}
+                    {t(`shell.role.${user.ruolo}`)}
                   </span>
                 </div>
               )}
@@ -72,10 +75,10 @@ export function AppShell({
                 type="button"
                 onClick={handleLogout}
                 className="inline-flex items-center gap-1.5 px-2.5 h-9 rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                aria-label="Esci"
+                aria-label={t("shell.logout")}
               >
                 <LogOut className="h-4 w-4" />
-                <span className="hidden sm:inline text-sm">Esci</span>
+                <span className="hidden sm:inline text-sm">{t("shell.logout")}</span>
               </button>
             </div>
           </header>

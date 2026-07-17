@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { LanguageProvider } from "@/lib/i18n";
 
 function NotFoundComponent() {
   return (
@@ -79,17 +80,37 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "DR Portal — Il portale aziendale di DR Logistica" },
-      { name: "description", content: "DR Portal è la piattaforma aziendale di DR Logistica: presenze, richieste, report e amministrazione in un'unica esperienza integrata." },
+      {
+        name: "description",
+        content:
+          "DR Portal è la piattaforma aziendale di DR Logistica: presenze, richieste, report e amministrazione in un'unica esperienza integrata.",
+      },
       { name: "author", content: "DR Logistica" },
       { name: "theme-color", content: "#1e40af" },
       { property: "og:title", content: "DR Portal — Il portale aziendale di DR Logistica" },
-      { property: "og:description", content: "DR Portal è la piattaforma aziendale di DR Logistica: presenze, richieste, report e amministrazione in un'unica esperienza integrata." },
+      {
+        property: "og:description",
+        content:
+          "DR Portal è la piattaforma aziendale di DR Logistica: presenze, richieste, report e amministrazione in un'unica esperienza integrata.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "DR Portal — Il portale aziendale di DR Logistica" },
-      { name: "twitter:description", content: "DR Portal è la piattaforma aziendale di DR Logistica: presenze, richieste, report e amministrazione in un'unica esperienza integrata." },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/6fcae871-1cde-4411-860e-fb44355c615d" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/6fcae871-1cde-4411-860e-fb44355c615d" },
+      {
+        name: "twitter:description",
+        content:
+          "DR Portal è la piattaforma aziendale di DR Logistica: presenze, richieste, report e amministrazione in un'unica esperienza integrata.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/6fcae871-1cde-4411-860e-fb44355c615d",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/6fcae871-1cde-4411-860e-fb44355c615d",
+      },
     ],
     links: [
       {
@@ -126,9 +147,11 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
-      <Toaster position="top-right" richColors closeButton />
+      <LanguageProvider>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Outlet />
+        <Toaster position="top-right" richColors closeButton />
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }
