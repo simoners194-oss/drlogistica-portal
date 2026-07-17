@@ -477,10 +477,15 @@ export const spCreateComunicazione = createServerFn({ method: "POST" })
     // alla connessione del flusso); chi pubblica è indicato nella firma.
     const emails = parseEmails(destinatariEmail ?? "");
     if (emails.length) {
+      // Il corpo deve essere AUTOSUFFICIENTE: i destinatari possono essere
+      // esterni senza accesso al portale. Niente rimandi al portale; l'eventuale
+      // allegato è linkato esplicitamente (NB: richiede accesso SharePoint).
       const ok = await enqueueEmail({
         destinatari: emails,
         oggetto: `[DR Logistica] ${data.tipo === "Riunione" ? "Riunione" : "Comunicazione"}: ${data.titolo}`,
-        corpo: `${data.testo}\n\n— ${autore}\nPortale DR Logistica: https://portal.drlogistica.it/comunicazioni`,
+        corpo:
+          `${data.testo}\n\n— ${autore}\nDR Logistica` +
+          (data.allegato ? `\n\nAllegato: ${data.allegato}` : ""),
         allegato: data.allegato,
       }).catch(() => false);
       pushEsito += ok
