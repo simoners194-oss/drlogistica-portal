@@ -124,6 +124,60 @@ const en = {
   "presenze.entryRecorded": "Clock event recorded:",
   "presenze.entryNotSaved": "Clock event not saved",
   "presenze.notAllowedNow": "This clock event is not allowed right now.",
+  // --- Tipi richiesta / modalità (valore dato → etichetta) ---
+  "tipoR.Ferie": "Leave",
+  "tipoR.Permesso": "Permit",
+  "tipoR.Straordinario": "Overtime",
+  "tipoR.Smart Working": "Smart working",
+  "tipoR.Malattia": "Sick leave",
+  "tipoR.Reperibilità": "On-call",
+  "tipoR.Rimborso spese": "Expense reimbursement",
+  "mod.Preventivo": "Planned",
+  "mod.Consuntivo": "Actual",
+  // --- Richieste ---
+  "rich.title": "Requests",
+  "rich.subtitle": "Leave, permits and reimbursements",
+  "rich.myRequests": "My requests",
+  "rich.toApprove": "To approve",
+  "rich.queueTitle": "Requests awaiting approval",
+  "rich.loadError": "Load error:",
+  "rich.nonePending": "No requests awaiting approval.",
+  "rich.ferieResidue": "Remaining leave:",
+  "rich.permessiResidui": "Remaining permit hours:",
+  "rich.newRequest": "New request",
+  "rich.commNote": "This is a notification: it does not require approval and is recorded directly.",
+  "rich.purchaseDate": "Purchase date",
+  "rich.amountEur": "Amount (€)",
+  "rich.typology": "Category",
+  "rich.detail": "Detail",
+  "rich.receiptDoc": "Receipt document",
+  "rich.fileOptional": "(file, optional)",
+  "rich.receiptHint":
+    "Photo or PDF of the receipt/invoice · max 8 MB. Alternatively paste a link below.",
+  "rich.receiptLinkPh": "Or a link to the document (optional)",
+  "rich.day": "Day",
+  "rich.fromTime": "From",
+  "rich.toTime": "To",
+  "rich.mode": "Mode",
+  "rich.inpsProto": "INPS protocol",
+  "rich.inpsPh": "Certificate protocol number",
+  "rich.reason": "Reason",
+  "rich.sending": "Sending…",
+  "rich.notify": "Notify",
+  "rich.submit": "Submit request",
+  "rich.noneYet": "No requests yet. Create one from the panel on the left.",
+  "rich.reasonPrefix": "Reason:",
+  "rich.cancelledToast": "Request cancelled",
+  "rich.cancelFailed": "Cancellation failed",
+  "rich.needRejectNote": "A note is required to reject the request",
+  "rich.approvedToast": "Request approved",
+  "rich.rejectedToast": "Request rejected",
+  "rich.opFailed": "Operation failed",
+  "rich.notifSent": "Notification sent",
+  "rich.reqSent": "Request submitted",
+  "rich.checkFields": "Please check the request fields",
+  "rich.selectDetail": "Please also select the category detail",
+  "rich.fileTooBig": "File too large: the limit is 8 MB.",
 } as const;
 
 type DictKey = keyof typeof en;
@@ -230,6 +284,59 @@ const it: Record<DictKey, string> = {
   "presenze.entryRecorded": "Timbratura registrata:",
   "presenze.entryNotSaved": "Timbratura non salvata",
   "presenze.notAllowedNow": "Timbratura non consentita in questo momento.",
+  "tipoR.Ferie": "Ferie",
+  "tipoR.Permesso": "Permesso",
+  "tipoR.Straordinario": "Straordinario",
+  "tipoR.Smart Working": "Smart Working",
+  "tipoR.Malattia": "Malattia",
+  "tipoR.Reperibilità": "Reperibilità",
+  "tipoR.Rimborso spese": "Rimborso spese",
+  "mod.Preventivo": "Preventivo",
+  "mod.Consuntivo": "Consuntivo",
+  "rich.title": "Richieste",
+  "rich.subtitle": "Ferie, permessi e giustificativi",
+  "rich.myRequests": "Le mie richieste",
+  "rich.toApprove": "Da approvare",
+  "rich.queueTitle": "Richieste da approvare",
+  "rich.loadError": "Errore nel caricamento:",
+  "rich.nonePending": "Nessuna richiesta in attesa di approvazione.",
+  "rich.ferieResidue": "Ferie residue:",
+  "rich.permessiResidui": "Permessi residui:",
+  "rich.newRequest": "Nuova richiesta",
+  "rich.commNote":
+    "Questa è una comunicazione: non richiede approvazione, viene registrata direttamente.",
+  "rich.purchaseDate": "Data acquisto",
+  "rich.amountEur": "Importo (€)",
+  "rich.typology": "Tipologia",
+  "rich.detail": "Dettaglio",
+  "rich.receiptDoc": "Documento giustificativo",
+  "rich.fileOptional": "(file, opzionale)",
+  "rich.receiptHint":
+    "Foto o PDF dello scontrino/fattura · max 8 MB. In alternativa incolla un link qui sotto.",
+  "rich.receiptLinkPh": "Oppure link al documento (opzionale)",
+  "rich.day": "Giorno",
+  "rich.fromTime": "Dalle",
+  "rich.toTime": "Alle",
+  "rich.mode": "Modalità",
+  "rich.inpsProto": "Protocollo INPS",
+  "rich.inpsPh": "Numero di protocollo del certificato",
+  "rich.reason": "Motivazione",
+  "rich.sending": "Invio in corso…",
+  "rich.notify": "Comunica",
+  "rich.submit": "Invia richiesta",
+  "rich.noneYet": "Nessuna richiesta ancora. Creane una dal riquadro a sinistra.",
+  "rich.reasonPrefix": "Motivo:",
+  "rich.cancelledToast": "Richiesta annullata",
+  "rich.cancelFailed": "Annullamento non riuscito",
+  "rich.needRejectNote": "Serve una nota per respingere la richiesta",
+  "rich.approvedToast": "Richiesta approvata",
+  "rich.rejectedToast": "Richiesta respinta",
+  "rich.opFailed": "Operazione non riuscita",
+  "rich.notifSent": "Comunicazione inviata",
+  "rich.reqSent": "Richiesta inviata",
+  "rich.checkFields": "Controlla i campi della richiesta",
+  "rich.selectDetail": "Seleziona anche il dettaglio della tipologia",
+  "rich.fileTooBig": "File troppo grande: il limite è 8 MB.",
 };
 
 const dictionaries: Record<Lang, Record<DictKey, string>> = { en, it };
@@ -243,6 +350,9 @@ interface LangContextValue {
   tStato: (stato: string) => string;
   /** Titolo di un modulo del menu per id, con fallback al titolo registrato. */
   tModule: (id: string, fallback: string) => string;
+  /** Traduzione generica di un VALORE dato con prefisso (es. tVal("tipoR",
+   *  "Ferie") → "Leave"); valore sconosciuto → restituito com'è. */
+  tVal: (prefix: string, value: string) => string;
 }
 
 const LangContext = createContext<LangContextValue>({
@@ -251,6 +361,7 @@ const LangContext = createContext<LangContextValue>({
   t: (k) => en[k] ?? k,
   tStato: (s) => s,
   tModule: (_id, fallback) => fallback,
+  tVal: (_p, v) => v,
 });
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
@@ -282,8 +393,12 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     const key = `module.${id}` as DictKey;
     return dictionaries[lang][key] ?? fallback;
   };
+  const tVal = (prefix: string, value: string): string => {
+    const key = `${prefix}.${value}` as DictKey;
+    return dictionaries[lang][key] ?? value;
+  };
   return (
-    <LangContext.Provider value={{ lang, setLang, t, tStato, tModule }}>
+    <LangContext.Provider value={{ lang, setLang, t, tStato, tModule, tVal }}>
       {children}
     </LangContext.Provider>
   );

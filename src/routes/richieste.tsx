@@ -16,6 +16,7 @@ import {
   Receipt,
 } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
+import { useLang } from "@/lib/i18n";
 import {
   spGetRichieste,
   spCreateRichiesta,
@@ -92,6 +93,7 @@ function periodoLabel(r: SpRichiesta): string {
 }
 
 function RichiestePage() {
+  const { t, tStato, tVal } = useLang();
   const [session, setSession] = useState<SessionUser | null>(null);
   const [view, setView] = useState<"mie" | "coda">("mie");
 
@@ -233,14 +235,14 @@ function RichiestePage() {
     if (!session || submitting) return;
     // Con le voci a cascata il dettaglio è obbligatorio quando esiste.
     if (isRimb && voceMacro && vociDettagli.length > 0 && !voceDettaglio) {
-      toast.error("Seleziona anche il dettaglio della tipologia");
+      toast.error(t("rich.selectDetail"));
       return;
     }
     const input = buildInput();
     const v = validateRichiesta(input);
     if (!v.ok) {
       setFormErrors(v.errors);
-      toast.error("Controlla i campi della richiesta", { description: v.errors[0] });
+      toast.error(t("rich.checkFields"), { description: v.errors[0] });
       return;
     }
     setFormErrors([]);
@@ -250,7 +252,7 @@ function RichiestePage() {
       // libreria documenti e uso il webUrl restituito come "Giustificativo".
       if (isRimb && giustFile) {
         if (giustFile.size > 8 * 1024 * 1024) {
-          throw new Error("File troppo grande: il limite è 8 MB.");
+          throw new Error(t("rich.fileTooBig"));
         }
         const contentBase64 = await fileToDataUrl(giustFile);
         const up = await spUploadGiustificativo({
@@ -259,7 +261,7 @@ function RichiestePage() {
         input.giustificativo = up.webUrl || input.giustificativo;
       }
       await spCreateRichiesta({ data: { richiedenteId: session.id, ...input, submit: true } });
-      toast.success(senzaApprovazione ? "Comunicazione inviata" : "Richiesta inviata", {
+      toast.success(senzaApprovazione ? t("rich.notifSent") : t("rich.reqSent"), {
         description: `${tipo} · ${fmtData(input.dataInizio)}`,
       });
       resetForm();
@@ -278,10 +280,10 @@ function RichiestePage() {
     setCancelingId(r.id);
     try {
       await spCancelRichiesta({ data: { richiestaId: r.id, richiedenteId: session.id } });
-      toast.success(`Richiesta ${r.title || `#${r.id}`} annullata`);
+      toast.success(t("rich.cancelledToast"));
       await loadRichieste(session.id);
     } catch (err) {
-      toast.error("Annullamento non riuscito", {
+      toast.error(t("rich.cancelFailed"), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -292,7 +294,7 @@ function RichiestePage() {
   async function decide(r: SpRichiesta, decisione: DecisioneRichiesta, note?: string) {
     if (!session || decidingId) return;
     if (decisione === "Respinta" && (!note || !note.trim())) {
-      toast.error("Serve una nota per respingere la richiesta");
+      toast.error(t("rich.needRejectNote"));
       return;
     }
     setDecidingId(r.id);
@@ -305,12 +307,12 @@ function RichiestePage() {
           noteDecisione: note?.trim() || undefined,
         },
       });
-      toast.success(decisione === "Approvata" ? "Richiesta approvata" : "Richiesta respinta");
+      toast.success(decisione === "Approvata" ? t("rich.approvedToast") : t("rich.rejectedToast"));
       setRejectingId(null);
       setRejectNote("");
       await loadPending();
     } catch (err) {
-      toast.error("Operazione non riuscita", {
+      toast.error(t("rich.opFailed"), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -321,7 +323,7 @@ function RichiestePage() {
   const pendingCount = pending?.length ?? 0;
 
   return (
-    <AppShell title="Richieste" subtitle="Ferie, permessi e giustificativi">
+    <AppShell title={t("rich.title")} subtitle={t("rich.subtitle")}>
       {/* Tab di navigazione — solo per gli approvatori */}
       {isApprovatore && (
         <div className="mb-4 inline-flex rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
@@ -330,14 +332,14 @@ function RichiestePage() {
             onClick={() => setView("mie")}
             className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${view === "mie" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
-            Le mie richieste
+            {t("rich.myRequests")}
           </button>
           <button
             type="button"
             onClick={() => setView("coda")}
             className={`rounded-lg px-3 py-1.5 font-medium transition-colors inline-flex items-center gap-2 ${view === "coda" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
-            Da approvare
+            {t("rich.toApprove")}
             {pendingCount > 0 && (
               <span
                 className={`rounded-full px-1.5 text-[11px] ${view === "coda" ? "bg-primary-foreground/20" : "bg-primary/10 text-primary"}`}
@@ -353,21 +355,19 @@ function RichiestePage() {
         /* ---------------- Coda approvatore ---------------- */
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-            <Inbox className="h-4 w-4 text-primary" /> Richieste da approvare
+            <Inbox className="h-4 w-4 text-primary" /> {t("rich.queueTitle")}
           </div>
 
           {pendingError && (
             <div className="rounded-lg bg-status-absent/10 p-3 text-[13px] text-status-absent mb-3">
-              Errore nel caricamento: {pendingError}
+              {t("rich.loadError")} {pendingError}
             </div>
           )}
 
           {pending === null ? (
-            <div className="text-sm text-muted-foreground">Caricamento in corso…</div>
+            <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
           ) : pending.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              Nessuna richiesta in attesa di approvazione.
-            </div>
+            <div className="text-sm text-muted-foreground">{t("rich.nonePending")}</div>
           ) : (
             <ul className="space-y-3">
               {pending.map((r) => (
@@ -375,14 +375,18 @@ function RichiestePage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-foreground">{r.tipo || "—"}</span>
+                        <span className="font-semibold text-foreground">
+                          {r.tipo ? tVal("tipoR", r.tipo) : "—"}
+                        </span>
                         {r.codiceRichiedente && (
                           <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                             {r.codiceRichiedente}
                           </span>
                         )}
                         {r.modalita && (
-                          <span className="text-[11px] text-muted-foreground">({r.modalita})</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            ({tVal("mod", r.modalita)})
+                          </span>
                         )}
                         {r.sedeRichiedente && (
                           <span className="text-[11px] text-muted-foreground">
@@ -433,13 +437,13 @@ function RichiestePage() {
                             <span
                               className={`rounded-full px-2 py-0.5 font-medium ${saldo.residui <= 0 ? "bg-status-absent/15 text-status-absent" : "bg-secondary text-secondary-foreground"}`}
                             >
-                              Ferie residue: {saldo.residui} gg
+                              {t("rich.ferieResidue")} {saldo.residui} gg
                             </span>
                             {saldo.permessiResiduiOre != null && (
                               <span
                                 className={`rounded-full px-2 py-0.5 font-medium ${saldo.permessiResiduiOre <= 0 ? "bg-status-absent/15 text-status-absent" : "bg-secondary text-secondary-foreground"}`}
                               >
-                                Permessi residui: {saldo.permessiResiduiOre} h
+                                {t("rich.permessiResidui")} {saldo.permessiResiduiOre} h
                               </span>
                             )}
                           </div>
@@ -459,7 +463,7 @@ function RichiestePage() {
                         onClick={() => decide(r, "Approvata")}
                       >
                         <CheckCircle2 className="h-4 w-4" />
-                        Approva
+                        {t("common.approve")}
                       </Button>
                       <Button
                         type="button"
@@ -470,7 +474,7 @@ function RichiestePage() {
                         onClick={() => setRejectingId((cur) => (cur === r.id ? null : r.id))}
                       >
                         <XCircle className="h-4 w-4" />
-                        Respingi
+                        {t("common.reject")}
                       </Button>
                     </div>
                   </div>
@@ -478,7 +482,8 @@ function RichiestePage() {
                   {rejectingId === r.id && (
                     <div className="mt-3 rounded-lg bg-status-absent/5 p-3">
                       <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                        Motivo del rifiuto <span className="normal-case">(obbligatorio)</span>
+                        {t("common.rejectReason")}{" "}
+                        <span className="normal-case">{t("common.required")}</span>
                       </label>
                       <textarea
                         className={`${inputCls} mt-1 min-h-[60px] resize-y`}
@@ -496,7 +501,7 @@ function RichiestePage() {
                             setRejectNote("");
                           }}
                         >
-                          Annulla
+                          {t("common.cancel")}
                         </Button>
                         <Button
                           type="button"
@@ -505,7 +510,7 @@ function RichiestePage() {
                           disabled={decidingId === r.id || !rejectNote.trim()}
                           onClick={() => decide(r, "Respinta", rejectNote)}
                         >
-                          Conferma rifiuto
+                          {t("common.confirmReject")}
                         </Button>
                       </div>
                     </div>
@@ -524,12 +529,14 @@ function RichiestePage() {
             className="lg:col-span-2 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)] space-y-4"
           >
             <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
-              <Plus className="h-4 w-4 text-primary" /> Nuova richiesta
+              <Plus className="h-4 w-4 text-primary" /> {t("rich.newRequest")}
             </div>
 
             {/* Tipo */}
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Tipo</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("common.type")}
+              </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={tipo}
@@ -538,9 +545,9 @@ function RichiestePage() {
                   setFormErrors([]);
                 }}
               >
-                {TIPI_RICHIESTA.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
+                {TIPI_RICHIESTA.map((tp) => (
+                  <option key={tp} value={tp}>
+                    {tVal("tipoR", tp)}
                   </option>
                 ))}
               </select>
@@ -549,8 +556,7 @@ function RichiestePage() {
             {senzaApprovazione && (
               <div className="flex items-start gap-2 rounded-lg bg-primary/5 p-3 text-[13px] text-muted-foreground">
                 <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
-                Questa è una <strong className="text-foreground">comunicazione</strong>: non
-                richiede approvazione, viene registrata direttamente.
+                {t("rich.commNote")}
               </div>
             )}
 
@@ -559,7 +565,7 @@ function RichiestePage() {
               <div className="space-y-3">
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Data acquisto
+                    {t("rich.purchaseDate")}
                   </label>
                   <input
                     type="date"
@@ -571,7 +577,7 @@ function RichiestePage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                      Importo (€)
+                      {t("rich.amountEur")}
                     </label>
                     <input
                       type="number"
@@ -586,7 +592,7 @@ function RichiestePage() {
                   {vociMacros.length > 0 ? (
                     <div>
                       <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                        Tipologia
+                        {t("rich.typology")}
                       </label>
                       <select
                         className={`${inputCls} mt-1`}
@@ -598,7 +604,7 @@ function RichiestePage() {
                           setTipoAcquisto(m);
                         }}
                       >
-                        <option value="">— seleziona —</option>
+                        <option value="">{t("common.select")}</option>
                         {vociMacros.map((m) => (
                           <option key={m} value={m}>
                             {m}
@@ -609,14 +615,14 @@ function RichiestePage() {
                   ) : (
                     <div>
                       <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                        Tipologia
+                        {t("rich.typology")}
                       </label>
                       <select
                         className={`${inputCls} mt-1`}
                         value={tipoAcquisto}
                         onChange={(e) => setTipoAcquisto(e.target.value as TipoAcquisto | "")}
                       >
-                        <option value="">— seleziona —</option>
+                        <option value="">{t("common.select")}</option>
                         {TIPI_ACQUISTO.map((t) => (
                           <option key={t} value={t}>
                             {t}
@@ -629,7 +635,7 @@ function RichiestePage() {
                 {voceMacro && vociDettagli.length > 0 && (
                   <div>
                     <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                      Dettaglio
+                      {t("rich.detail")}
                     </label>
                     <select
                       className={`${inputCls} mt-1`}
@@ -640,7 +646,7 @@ function RichiestePage() {
                         setTipoAcquisto(d ? `${voceMacro} › ${d}` : voceMacro);
                       }}
                     >
-                      <option value="">— seleziona —</option>
+                      <option value="">{t("common.select")}</option>
                       {vociDettagli.map((d) => (
                         <option key={d} value={d}>
                           {d}
@@ -651,8 +657,10 @@ function RichiestePage() {
                 )}
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Documento giustificativo{" "}
-                    <span className="normal-case text-muted-foreground/70">(file, opzionale)</span>
+                    {t("rich.receiptDoc")}{" "}
+                    <span className="normal-case text-muted-foreground/70">
+                      {t("rich.fileOptional")}
+                    </span>
                   </label>
                   <input
                     type="file"
@@ -660,16 +668,13 @@ function RichiestePage() {
                     className={`${inputCls} mt-1 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1 file:text-xs file:font-medium file:text-foreground`}
                     onChange={(e) => setGiustFile(e.target.files?.[0] ?? null)}
                   />
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    Foto o PDF dello scontrino/fattura · max 8 MB. In alternativa incolla un link
-                    qui sotto.
-                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{t("rich.receiptHint")}</p>
                   <input
                     type="text"
                     className={`${inputCls} mt-2`}
                     value={giustificativo}
                     onChange={(e) => setGiustificativo(e.target.value)}
-                    placeholder="Oppure link al documento (opzionale)"
+                    placeholder={t("rich.receiptLinkPh")}
                   />
                 </div>
               </div>
@@ -677,7 +682,7 @@ function RichiestePage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Dal
+                    {t("common.from")}
                   </label>
                   <input
                     type="date"
@@ -688,7 +693,7 @@ function RichiestePage() {
                 </div>
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Al
+                    {t("common.to")}
                   </label>
                   <input
                     type="date"
@@ -702,7 +707,7 @@ function RichiestePage() {
               <div className="space-y-3">
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Giorno
+                    {t("rich.day")}
                   </label>
                   <input
                     type="date"
@@ -714,7 +719,7 @@ function RichiestePage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                      Dalle
+                      {t("rich.fromTime")}
                     </label>
                     <input
                       type="time"
@@ -725,7 +730,7 @@ function RichiestePage() {
                   </div>
                   <div>
                     <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                      Alle
+                      {t("rich.toTime")}
                     </label>
                     <input
                       type="time"
@@ -742,17 +747,17 @@ function RichiestePage() {
             {tipo === "Straordinario" && (
               <div>
                 <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Modalità
+                  {t("rich.mode")}
                 </label>
                 <select
                   className={`${inputCls} mt-1`}
                   value={modalita}
                   onChange={(e) => setModalita(e.target.value as ModalitaStraordinario | "")}
                 >
-                  <option value="">— seleziona —</option>
+                  <option value="">{t("common.select")}</option>
                   {MODALITA.map((m) => (
                     <option key={m} value={m}>
-                      {m}
+                      {tVal("mod", m)}
                     </option>
                   ))}
                 </select>
@@ -763,15 +768,17 @@ function RichiestePage() {
             {tipo === "Malattia" && (
               <div>
                 <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Protocollo INPS{" "}
-                  <span className="normal-case text-muted-foreground/70">(facoltativo)</span>
+                  {t("rich.inpsProto")}{" "}
+                  <span className="normal-case text-muted-foreground/70">
+                    {t("common.optional")}
+                  </span>
                 </label>
                 <input
                   type="text"
                   className={`${inputCls} mt-1`}
                   value={protocolloInps}
                   onChange={(e) => setProtocolloInps(e.target.value)}
-                  placeholder="Numero di protocollo del certificato"
+                  placeholder={t("rich.inpsPh")}
                 />
               </div>
             )}
@@ -779,11 +786,13 @@ function RichiestePage() {
             {/* Motivazione */}
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Motivazione{" "}
+                {t("rich.reason")}{" "}
                 {motivObbligatoria ? (
-                  <span className="text-status-absent normal-case">(obbligatoria)</span>
+                  <span className="text-status-absent normal-case">{t("common.required")}</span>
                 ) : (
-                  <span className="normal-case text-muted-foreground/70">(facoltativa)</span>
+                  <span className="normal-case text-muted-foreground/70">
+                    {t("common.optional")}
+                  </span>
                 )}
               </label>
               <textarea
@@ -803,28 +812,30 @@ function RichiestePage() {
 
             <Button type="submit" className="w-full" disabled={submitting}>
               <Send className="h-4 w-4" />
-              {submitting ? "Invio in corso…" : senzaApprovazione ? "Comunica" : "Invia richiesta"}
+              {submitting
+                ? t("rich.sending")
+                : senzaApprovazione
+                  ? t("rich.notify")
+                  : t("rich.submit")}
             </Button>
           </form>
 
           {/* Le mie richieste */}
           <div className="lg:col-span-3 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
             <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-              <FileText className="h-4 w-4 text-primary" /> Le mie richieste
+              <FileText className="h-4 w-4 text-primary" /> {t("rich.myRequests")}
             </div>
 
             {loadError && (
               <div className="rounded-lg bg-status-absent/10 p-3 text-[13px] text-status-absent mb-3">
-                Errore nel caricamento: {loadError}
+                {t("rich.loadError")} {loadError}
               </div>
             )}
 
             {richieste === null ? (
-              <div className="text-sm text-muted-foreground">Caricamento in corso…</div>
+              <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
             ) : richieste.length === 0 ? (
-              <div className="text-sm text-muted-foreground">
-                Nessuna richiesta ancora. Creane una dal riquadro a sinistra.
-              </div>
+              <div className="text-sm text-muted-foreground">{t("rich.noneYet")}</div>
             ) : (
               <ul className="space-y-3">
                 {richieste.map((r) => {
@@ -837,15 +848,17 @@ function RichiestePage() {
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-foreground">{r.tipo || "—"}</span>
+                          <span className="font-semibold text-foreground">
+                            {r.tipo ? tVal("tipoR", r.tipo) : "—"}
+                          </span>
                           <span
                             className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATO_STYLE[stato] ?? "bg-muted text-muted-foreground"}`}
                           >
-                            {stato}
+                            {tStato(stato)}
                           </span>
                           {r.modalita && (
                             <span className="text-[11px] text-muted-foreground">
-                              ({r.modalita})
+                              ({tVal("mod", r.modalita)})
                             </span>
                           )}
                         </div>
@@ -859,7 +872,7 @@ function RichiestePage() {
                         </div>
                         {r.noteDecisione && stato === "Respinta" && (
                           <div className="mt-1 text-[12px] text-status-absent">
-                            Motivo: {r.noteDecisione}
+                            {t("rich.reasonPrefix")} {r.noteDecisione}
                           </div>
                         )}
                         <div className="mt-0.5 text-[11px] text-muted-foreground/70">
@@ -877,7 +890,7 @@ function RichiestePage() {
                           onClick={() => handleCancel(r)}
                         >
                           <XCircle className="h-4 w-4" />
-                          {cancelingId === r.id ? "…" : "Annulla"}
+                          {cancelingId === r.id ? "…" : t("common.cancel")}
                         </Button>
                       )}
                     </li>
