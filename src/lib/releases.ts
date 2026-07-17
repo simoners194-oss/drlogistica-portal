@@ -28,6 +28,20 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.6.0",
+    date: "2026-07-17",
+    codename: "English / Italiano",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        title: "Portale bilingue inglese/italiano",
+        description:
+          "Tutta l'interfaccia è disponibile in inglese e in italiano: si cambia lingua con le bandierine in alto a destra e la scelta viene ricordata sul dispositivo. Lingua predefinita: inglese.",
+      },
+    ],
+  },
+  {
     version: "1.5.0",
     date: "2026-07-16",
     codename: "Procurement e buste paga",
