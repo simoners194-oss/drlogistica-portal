@@ -50,7 +50,6 @@ import {
   sendPushToDipendente,
   enqueueEmail,
   parseEmails,
-  getEmailDipendente,
   fetchVoci,
   fetchAcquisti,
   createAcquisto,
@@ -474,16 +473,15 @@ export const spCreateComunicazione = createServerFn({ method: "POST" })
       pushEsito = `Notifiche push non inviate: ${err instanceof Error ? err.message : String(err)}`;
     }
     // Invio email (via coda + Power Automate) ai destinatari indicati.
-    // Mittente = email di chi pubblica (fallback: casella Segreteria).
+    // Mittente SEMPRE la casella Segreteria (unica con "Invia come" concesso
+    // alla connessione del flusso); chi pubblica è indicato nella firma.
     const emails = parseEmails(destinatariEmail ?? "");
     if (emails.length) {
-      const mittente = await getEmailDipendente(me.id).catch(() => "");
       const ok = await enqueueEmail({
         destinatari: emails,
         oggetto: `[DR Logistica] ${data.tipo === "Riunione" ? "Riunione" : "Comunicazione"}: ${data.titolo}`,
         corpo: `${data.testo}\n\n— ${autore}\nPortale DR Logistica: https://portal.drlogistica.it/comunicazioni`,
         allegato: data.allegato,
-        mittente,
       }).catch(() => false);
       pushEsito += ok
         ? ` · Email in coda per ${emails.length} destinatari.`
