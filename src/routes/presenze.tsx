@@ -16,13 +16,13 @@ import {
 } from "lucide-react";
 import { Lock, FileText, History, User } from "lucide-react";
 import { QuickAccess } from "@/components/QuickAccess";
-import { formatOra, labelTipo, type Dipendente, type Timbratura } from "@/lib/mock-data";
-import { dataService, displayStato, DISPLAY_DOT, DISPLAY_LABEL } from "@/lib/data-service";
+import { formatOra, type Dipendente, type Timbratura } from "@/lib/mock-data";
+import { dataService, displayStato, DISPLAY_DOT } from "@/lib/data-service";
 import { readSession } from "@/lib/session";
+import { useLang } from "@/lib/i18n";
 import {
   computeOreOggi,
   formatDurata,
-  GIORNATA_CHIUSA_MESSAGE,
   isTransitionAllowed,
   lastEvento,
   reasonNotAllowed,
@@ -47,6 +47,8 @@ export const Route = createFileRoute("/presenze")({
 
 function PresenzePage() {
   const navigate = useNavigate();
+  const { t, lang } = useLang();
+  const locale = lang === "it" ? "it-IT" : "en-GB";
   const [now, setNow] = useState(new Date());
   const [me, setMe] = useState<Dipendente | undefined>(undefined);
   const [errore, setErrore] = useState<string | null>(null);
@@ -82,9 +84,8 @@ function PresenzePage() {
     const quotaMin = (oreSett / 5) * 60;
     if (!o.chiusa && o.oreLavorateMinuti >= quotaMin && !avvisoOrarioRef.current) {
       avvisoOrarioRef.current = true;
-      const oreGiorno = oreSett / 5;
-      toast("Monte ore giornaliero raggiunto", {
-        description: `Hai raggiunto le ${oreGiorno.toFixed(oreSett % 5 === 0 ? 0 : 1)} ore previste per oggi.`,
+      toast(t("presenze.dailyQuotaTitle"), {
+        description: t("presenze.dailyQuotaMsg"),
         duration: 8000,
       });
     }
@@ -95,22 +96,21 @@ function PresenzePage() {
     const last = lastEvento(me.eventiOggi ?? []);
     if (!isTransitionAllowed(tipo, last)) {
       const chiusa = last === "uscita";
-      const motivo = reasonNotAllowed(tipo, last) ?? "Timbratura non consentita in questo momento.";
-      toast.error(
-        chiusa ? "Giornata lavorativa chiusa" : "Timbratura non consentita in questo momento.",
-        { description: motivo },
-      );
+      const motivo = reasonNotAllowed(tipo, last) ?? t("presenze.notAllowedNow");
+      toast.error(chiusa ? t("presenze.dayClosedTitle") : t("presenze.notAllowedNow"), {
+        description: motivo,
+      });
       return;
     }
     setBusy(true);
     try {
       const updated = await dataService.timbra(me.id, tipo);
       setMe(updated);
-      toast.success(`Timbratura registrata: ${labelTipo(tipo)}`, {
-        description: `Ore ${formatOra(updated.ultimaTimbratura?.ora)} · Stato: ${DISPLAY_LABEL[displayStato(updated)]}`,
+      toast.success(`${t("presenze.entryRecorded")} ${t(`evento.${tipo}`)}`, {
+        description: `${formatOra(updated.ultimaTimbratura?.ora)} · ${t("presenze.statusLabel")} ${t(`dstato.${displayStato(updated)}`)}`,
       });
     } catch (err) {
-      toast.error("Timbratura non salvata", {
+      toast.error(t("presenze.entryNotSaved"), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -120,7 +120,7 @@ function PresenzePage() {
 
   if (errore) {
     return (
-      <AppShell title="Le mie presenze">
+      <AppShell title={t("presenze.title")}>
         <div className="text-sm text-status-absent">{errore}</div>
       </AppShell>
     );
@@ -128,7 +128,7 @@ function PresenzePage() {
 
   if (!me) {
     return (
-      <AppShell title="Le mie presenze" subtitle="Caricamento in corso…">
+      <AppShell title={t("presenze.title")} subtitle={t("common.loading")}>
         <PresenzeSkeleton />
       </AppShell>
     );
@@ -147,26 +147,27 @@ function PresenzePage() {
     tone: "primary" | "warn" | "ok" | "danger";
   }[] = (
     [
-      { tipo: "entrata", label: "Entrata", Icon: LogIn, tone: "primary" },
-      { tipo: "inizio-pausa", label: "Inizio pausa", Icon: Coffee, tone: "warn" },
-      { tipo: "fine-pausa", label: "Fine pausa", Icon: PlayCircle, tone: "ok" },
-      { tipo: "uscita", label: "Uscita", Icon: LogOut, tone: "danger" },
+      { tipo: "entrata", Icon: LogIn, tone: "primary" },
+      { tipo: "inizio-pausa", Icon: Coffee, tone: "warn" },
+      { tipo: "fine-pausa", Icon: PlayCircle, tone: "ok" },
+      { tipo: "uscita", Icon: LogOut, tone: "danger" },
     ] as const
   ).map((a) => ({
     ...a,
+    label: t(`evento.${a.tipo}`),
     enabled: isTransitionAllowed(a.tipo, last),
     reason: reasonNotAllowed(a.tipo, last),
   }));
 
   return (
-    <AppShell title="Le mie presenze" subtitle={`${me.nome} ${me.cognome} · ${me.ruolo}`}>
+    <AppShell title={t("presenze.title")} subtitle={`${me.nome} ${me.cognome} · ${me.ruolo}`}>
       <div className="grid gap-4 md:gap-5 lg:grid-cols-3">
         <div
           className="lg:col-span-2 rounded-2xl p-5 sm:p-6 text-primary-foreground shadow-[var(--shadow-elegant)]"
           style={{ background: "var(--gradient-hero)" }}
         >
           <div className="text-[13px] sm:text-sm text-white/80 capitalize">
-            {now.toLocaleDateString("it-IT", {
+            {now.toLocaleDateString(locale, {
               weekday: "long",
               day: "numeric",
               month: "long",
@@ -174,7 +175,7 @@ function PresenzePage() {
             })}
           </div>
           <div className="mt-1 text-[3.5rem] leading-none sm:text-6xl font-semibold tabular-nums tracking-tight">
-            {now.toLocaleTimeString("it-IT", {
+            {now.toLocaleTimeString(locale, {
               hour: "2-digit",
               minute: "2-digit",
               second: "2-digit",
@@ -186,11 +187,11 @@ function PresenzePage() {
                 className={`h-2.5 w-2.5 rounded-full ${DISPLAY_DOT[ds]} ring-2 ring-white/30`}
               />
               <span className="text-white/90">
-                Stato: <strong>{DISPLAY_LABEL[ds]}</strong>
+                {t("presenze.statusLabel")} <strong>{t(`dstato.${ds}`)}</strong>
               </span>
             </span>
             <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-white/90">
-              <Timer className="h-4 w-4" /> Ore oggi:{" "}
+              <Timer className="h-4 w-4" /> {t("presenze.hoursToday")}{" "}
               <strong className="tabular-nums">{formatDurata(ore.oreLavorateMinuti)}</strong>
             </span>
           </div>
@@ -198,21 +199,19 @@ function PresenzePage() {
 
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-muted-foreground text-[13px] sm:text-sm">
-            <Clock className="h-4 w-4" /> Ultima timbratura
+            <Clock className="h-4 w-4" /> {t("presenze.lastEntry")}
           </div>
           {me.ultimaTimbratura ? (
             <div className="mt-3">
               <div className="text-lg font-semibold text-foreground">
-                {labelTipo(me.ultimaTimbratura.tipo)}
+                {t(`evento.${me.ultimaTimbratura.tipo}`)}
               </div>
               <div className="text-[2.5rem] sm:text-4xl leading-none font-semibold tabular-nums mt-1 text-primary">
                 {formatOra(me.ultimaTimbratura.ora)}
               </div>
             </div>
           ) : (
-            <div className="mt-4 text-sm text-muted-foreground">
-              Nessuna timbratura registrata oggi.
-            </div>
+            <div className="mt-4 text-sm text-muted-foreground">{t("presenze.noneToday")}</div>
           )}
         </div>
       </div>
@@ -227,11 +226,9 @@ function PresenzePage() {
             <Lock className="h-4 w-4" />
           </span>
           <div className="min-w-0">
-            <div className="text-sm sm:text-[15px] font-semibold text-foreground">
-              Giornata lavorativa chiusa
-            </div>
+            <div className="text-sm sm:text-[15px] font-semibold text-foreground">__DCT__</div>
             <p className="text-[13px] text-muted-foreground mt-0.5 leading-snug">
-              {GIORNATA_CHIUSA_MESSAGE}
+              {t("presenze.dayClosedMsg")}
             </p>
           </div>
         </div>
@@ -240,23 +237,23 @@ function PresenzePage() {
       <div className="mt-5 md:mt-6 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <RiepilogoCard
           Icon={LogIn}
-          label="Entrata"
+          label={t("evento.entrata")}
           value={ore.entrataOra ? formatOra(ore.entrataOra) : "—"}
         />
         <RiepilogoCard
           Icon={Coffee}
-          label="Pausa totale"
+          label={t("presenze.totalBreak")}
           value={formatDurata(ore.pausaMinuti)}
-          hint={ore.inPausa ? "In corso" : undefined}
+          hint={ore.inPausa ? t("presenze.inProgress") : undefined}
         />
         <RiepilogoCard
           Icon={Hourglass}
-          label="Ore lavorate"
+          label={t("presenze.workedHours")}
           value={formatDurata(ore.oreLavorateMinuti)}
         />
         <RiepilogoCard
           Icon={TrendingUp}
-          label="Oltre orario"
+          label={t("presenze.overtime")}
           value={ore.oltreOrarioMinuti > 0 ? `+${formatDurata(ore.oltreOrarioMinuti)}` : "—"}
           highlight={ore.oltreOrarioMinuti > 0}
         />
@@ -268,8 +265,8 @@ function PresenzePage() {
             key={a.tipo}
             disabled={!a.enabled || busy || ore.chiusa}
             onClick={() => timbra(a.tipo)}
-            title={ore.chiusa ? GIORNATA_CHIUSA_MESSAGE : (a.reason ?? undefined)}
-            aria-label={`${a.label}${ore.chiusa ? ` — ${GIORNATA_CHIUSA_MESSAGE}` : a.reason ? ` — ${a.reason}` : ""}`}
+            title={ore.chiusa ? t("presenze.dayClosedMsg") : (a.reason ?? undefined)}
+            aria-label={`${a.label}${ore.chiusa ? ` — ${t("presenze.dayClosedMsg")}` : a.reason ? ` — ${a.reason}` : ""}`}
             className={`group relative rounded-2xl border p-4 sm:p-6 text-left transition-all min-h-[156px] sm:min-h-[176px] flex flex-col justify-between touch-manipulation
               disabled:cursor-not-allowed
               ${a.enabled && !ore.chiusa ? "border-border bg-card shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-elegant)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.98]" : "border-dashed border-border/70 bg-muted/50 opacity-70"}
@@ -298,10 +295,10 @@ function PresenzePage() {
                 className={`text-[11px] sm:text-xs mt-1 leading-snug ${a.enabled ? "text-muted-foreground" : "text-muted-foreground/90"}`}
               >
                 {ore.chiusa
-                  ? "Giornata chiusa"
+                  ? t("presenze.dayClosed")
                   : a.enabled
-                    ? "Tocca per registrare"
-                    : (a.reason ?? "Non disponibile ora")}
+                    ? t("presenze.tapToRecord")
+                    : (a.reason ?? t("presenze.notAvailable"))}
               </div>
             </div>
           </button>
@@ -311,10 +308,10 @@ function PresenzePage() {
       {/* Timeline timbrature di oggi */}
       <div className="mt-5 md:mt-6 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
         <div className="flex items-center gap-2 text-[13px] sm:text-sm text-muted-foreground mb-4">
-          <ListChecks className="h-4 w-4" /> Timbrature di oggi
+          <ListChecks className="h-4 w-4" /> {t("presenze.todayEntries")}
         </div>
         {eventiOggi.length === 0 ? (
-          <div className="text-sm text-muted-foreground">Nessuna timbratura registrata oggi.</div>
+          <div className="text-sm text-muted-foreground">{t("presenze.noneToday")}</div>
         ) : (
           <ol className="relative border-l border-border ml-2 space-y-4">
             {eventiOggi.map((e, i) => (
@@ -324,7 +321,7 @@ function PresenzePage() {
                 />
                 <div className="flex items-baseline justify-between gap-3">
                   <div className="text-[14px] sm:text-[15px] font-medium text-foreground">
-                    {labelTipo(e.tipo)}
+                    {t(`evento.${e.tipo}`)}
                   </div>
                   <div className="text-[15px] sm:text-base font-semibold tabular-nums text-primary">
                     {formatOra(e.ora)}
@@ -340,21 +337,21 @@ function PresenzePage() {
       <QuickAccess
         items={[
           {
-            label: "Presenze",
+            label: t("presenze.quickAttendance"),
             to: "/presenze",
             Icon: Clock,
             ready: true,
-            description: "Le mie timbrature",
+            description: t("presenze.quickMyEntries"),
           },
           {
-            label: "Richieste",
+            label: t("presenze.quickRequests"),
             to: "/richieste",
             Icon: FileText,
             ready: true,
-            description: "Ferie, permessi e altro",
+            description: t("presenze.quickRequestsDesc"),
           },
-          { label: "Storico", Icon: History, ready: false },
-          { label: "Profilo", Icon: User, ready: false },
+          { label: t("presenze.quickHistory"), Icon: History, ready: false },
+          { label: t("presenze.quickProfile"), Icon: User, ready: false },
         ]}
       />
     </AppShell>
