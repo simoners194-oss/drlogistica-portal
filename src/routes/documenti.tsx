@@ -5,6 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { FileText, Upload, Loader2, Building2, User, Download } from "lucide-react";
 import { esportaCsvFile } from "@/lib/csv";
+import { useLang } from "@/lib/i18n";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
   spGetDocumenti,
@@ -59,6 +60,7 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 function DocumentiPage() {
+  const { t, tVal } = useLang();
   const [session, setSession] = useState<SessionUser | null>(null);
   const [documenti, setDocumenti] = useState<SpDocumento[] | null>(null);
   const [dipendenti, setDipendenti] = useState<SpDipendente[]>([]);
@@ -99,7 +101,7 @@ function DocumentiPage() {
       .then((l) => setDocumenti(l as SpDocumento[]))
       .catch((err) => {
         setDocumenti([]);
-        toast.error("Errore documenti", {
+        toast.error(t("doc.errDocs"), {
           description: err instanceof Error ? err.message : String(err),
         });
       });
@@ -149,12 +151,12 @@ function DocumentiPage() {
 
   const caricaBustePaga = async () => {
     if (!bpPeriodo.trim()) {
-      toast.error("Indica il periodo (es. Giugno 2026)");
+      toast.error(t("doc.bpNeedPeriod"));
       return;
     }
     const abbinati = bpAnteprima.filter((a) => a.dip);
     if (abbinati.length === 0) {
-      toast.error("Nessun file abbinato a un dipendente");
+      toast.error(t("doc.bpNoneMatched"));
       return;
     }
     setBpBusy(true);
@@ -163,7 +165,7 @@ function DocumentiPage() {
       if (!a.dip) {
         esiti.push({
           nome: a.file.name,
-          esito: a.cf ? `CF ${a.cf} non trovato tra i dipendenti` : "Nessun CF nel nome file",
+          esito: a.cf ? `CF ${a.cf}: ${t("doc.bpCfNotFound")}` : t("doc.bpNoCf"),
           ok: false,
         });
         continue;
@@ -202,7 +204,7 @@ function DocumentiPage() {
     setBpBusy(false);
     const okN = esiti.filter((e) => e.ok).length;
     toast[okN > 0 ? "success" : "error"](
-      `Buste paga: ${okN} caricate${esiti.length - okN ? `, ${esiti.length - okN} non abbinate` : ""}`,
+      `${t("doc.bpDone")} ${okN} ${t("doc.bpDoneUploaded")}${esiti.length - okN ? `, ${esiti.length - okN} ${t("doc.bpDoneUnmatched")}` : ""}`,
     );
     load();
   };
@@ -234,19 +236,19 @@ function DocumentiPage() {
 
   const submit = async () => {
     if (!file) {
-      toast.error("Allega un file");
+      toast.error(t("doc.errAttach"));
       return;
     }
     if (!titolo.trim()) {
-      toast.error("Inserisci un titolo");
+      toast.error(t("doc.errTitle"));
       return;
     }
     if (ambito === "Personale" && !destinatarioId) {
-      toast.error("Seleziona il dipendente destinatario");
+      toast.error(t("doc.errRecipient"));
       return;
     }
     if (file.size > 8 * 1024 * 1024) {
-      toast.error("File troppo grande: il limite è 8 MB.");
+      toast.error(t("rich.fileTooBig"));
       return;
     }
     setSubmitting(true);
@@ -266,11 +268,11 @@ function DocumentiPage() {
           nomeFile: up.fileName,
         },
       });
-      toast.success("Documento caricato");
+      toast.success(t("doc.uploaded"));
       resetForm();
       load();
     } catch (err) {
-      toast.error("Errore nel caricamento", {
+      toast.error(t("doc.uploadErr"), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -279,16 +281,16 @@ function DocumentiPage() {
   };
 
   return (
-    <AppShell title="Documenti" subtitle="Documenti dei dipendenti">
+    <AppShell title={t("doc.title")} subtitle={t("doc.subtitle")}>
       {canPubblicare && (
         <div className="mb-6 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-            <Upload className="h-4 w-4 text-primary" /> Carica documento
+            <Upload className="h-4 w-4 text-primary" /> {t("doc.uploadTitle")}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Categoria
+                {t("doc.category")}
               </label>
               <select
                 className={`${inputCls} mt-1`}
@@ -297,47 +299,47 @@ function DocumentiPage() {
               >
                 {CATEGORIE.map((c) => (
                   <option key={c} value={c}>
-                    {c}
+                    {tVal("cat", c)}
                   </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Titolo
+                {t("doc.docTitle")}
               </label>
               <input
                 className={`${inputCls} mt-1`}
                 value={titolo}
                 onChange={(e) => setTitolo(e.target.value)}
-                placeholder="Es. Contratto 2026, Busta paga giugno…"
+                placeholder={t("doc.titlePh")}
               />
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Destinatario
+                {t("doc.recipient")}
               </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={ambito}
                 onChange={(e) => setAmbito(e.target.value as "Personale" | "Generale")}
               >
-                <option value="Personale">Un dipendente specifico</option>
-                <option value="Generale">Generale (tutti / una sede)</option>
+                <option value="Personale">{t("doc.recipientPersonal")}</option>
+                <option value="Generale">{t("doc.recipientGeneral")}</option>
               </select>
             </div>
             <div>
               {ambito === "Personale" ? (
                 <>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Dipendente
+                    {t("common.employee")}
                   </label>
                   <select
                     className={`${inputCls} mt-1`}
                     value={destinatarioId}
                     onChange={(e) => setDestinatarioId(e.target.value)}
                   >
-                    <option value="">— seleziona —</option>
+                    <option value="">{t("common.select")}</option>
                     {[...dipendenti]
                       .sort((a, b) =>
                         `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`),
@@ -352,14 +354,14 @@ function DocumentiPage() {
               ) : (
                 <>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Sede
+                    {t("common.site")}
                   </label>
                   <select
                     className={`${inputCls} mt-1`}
                     value={sedeDestinatario}
                     onChange={(e) => setSedeDestinatario(e.target.value)}
                   >
-                    <option value="Tutte">Tutte le sedi</option>
+                    <option value="Tutte">{t("common.allSites")}</option>
                     {sediOptions.map((s) => (
                       <option key={s} value={s}>
                         {s}
@@ -370,14 +372,16 @@ function DocumentiPage() {
               )}
             </div>
             <div className="sm:col-span-2">
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">File</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("doc.file")}
+              </label>
               <input
                 type="file"
                 accept="image/*,application/pdf"
                 className={`${inputCls} mt-1`}
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
-              <p className="mt-1 text-[11px] text-muted-foreground">PDF o immagine · max 8 MB</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">{t("doc.fileHint")}</p>
             </div>
           </div>
           <div className="mt-4 flex justify-end">
@@ -387,7 +391,7 @@ function DocumentiPage() {
               ) : (
                 <Upload className="h-4 w-4 mr-2" />
               )}
-              Carica
+              {t("doc.upload")}
             </Button>
           </div>
         </div>
@@ -396,28 +400,24 @@ function DocumentiPage() {
       {isOperatoreOAdmin && (
         <div className="mb-6 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-1">
-            <Upload className="h-4 w-4 text-primary" /> Carica buste paga (multiplo)
+            <Upload className="h-4 w-4 text-primary" /> {t("doc.bpTitle")}
           </div>
-          <p className="text-[12px] text-muted-foreground mb-4">
-            Seleziona tutti i PDF insieme: l'abbinamento al dipendente avviene dal{" "}
-            <strong>codice fiscale nel nome del file</strong> (colonna CF su Dipendenti). Ogni
-            dipendente riceve il documento personale e una notifica.
-          </p>
+          <p className="text-[12px] text-muted-foreground mb-4">{t("doc.bpDesc")}</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Periodo
+                {t("doc.bpPeriod")}
               </label>
               <input
                 className={`${inputCls} mt-1`}
                 value={bpPeriodo}
                 onChange={(e) => setBpPeriodo(e.target.value)}
-                placeholder="Es. Giugno 2026"
+                placeholder={t("doc.bpPeriodPh")}
               />
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                File PDF
+                {t("doc.bpFiles")}
               </label>
               <input
                 type="file"
@@ -435,8 +435,8 @@ function DocumentiPage() {
           {bpAnteprima.length > 0 && (
             <div className="mt-3 rounded-lg border border-border p-3 text-[12px]">
               <p className="text-muted-foreground mb-1">
-                Anteprima abbinamenti ({bpAnteprima.filter((a) => a.dip).length}/
-                {bpAnteprima.length} riconosciuti):
+                {t("doc.bpPreview")} ({bpAnteprima.filter((a) => a.dip).length}/{bpAnteprima.length}{" "}
+                {t("doc.bpRecognized")}):
               </p>
               <ul className="space-y-0.5 max-h-48 overflow-auto font-mono">
                 {bpAnteprima.map((a, i) => (
@@ -445,8 +445,8 @@ function DocumentiPage() {
                     {a.dip
                       ? a.dip.nomeCompleto || a.dip.cognome
                       : a.cf
-                        ? `CF ${a.cf} non trovato`
-                        : "nessun CF nel nome"}
+                        ? `CF ${a.cf}: ${t("doc.bpCfNotFound")}`
+                        : t("doc.bpNoCf")}
                   </li>
                 ))}
               </ul>
@@ -475,7 +475,7 @@ function DocumentiPage() {
               ) : (
                 <Upload className="h-4 w-4 mr-2" />
               )}
-              Carica {bpAnteprima.filter((a) => a.dip).length} buste paga
+              {t("doc.bpUploadN")} ({bpAnteprima.filter((a) => a.dip).length})
             </Button>
           </div>
         </div>
@@ -485,7 +485,7 @@ function DocumentiPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
             <FileText className="h-4 w-4 text-primary" />
-            {canPubblicare ? "Tutti i documenti" : "I miei documenti"}
+            {canPubblicare ? t("doc.listAll") : t("doc.listMine")}
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -493,10 +493,10 @@ function DocumentiPage() {
               value={catF}
               onChange={(e) => setCatF(e.target.value)}
             >
-              <option value="tutte">Tutte le categorie</option>
+              <option value="tutte">{t("doc.allCategories")}</option>
               {CATEGORIE.map((c) => (
                 <option key={c} value={c}>
-                  {c}
+                  {tVal("cat", c)}
                 </option>
               ))}
             </select>
@@ -539,9 +539,9 @@ function DocumentiPage() {
         </div>
 
         {documenti === null ? (
-          <div className="text-sm text-muted-foreground">Caricamento…</div>
+          <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
         ) : filtrati.length === 0 ? (
-          <div className="text-sm text-muted-foreground">Nessun documento disponibile.</div>
+          <div className="text-sm text-muted-foreground">{t("doc.none")}</div>
         ) : (
           <ul className="space-y-2">
             {filtrati.map((d) => (
@@ -554,7 +554,7 @@ function DocumentiPage() {
                     <span
                       className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${CAT_STYLE[d.categoria] ?? "bg-muted text-muted-foreground"}`}
                     >
-                      {d.categoria || "—"}
+                      {d.categoria ? tVal("cat", d.categoria) : "—"}
                     </span>
                     <span className="font-medium text-foreground truncate">{d.titolo || "—"}</span>
                   </div>
@@ -571,7 +571,11 @@ function DocumentiPage() {
                       </>
                     )}
                     <span>· {fmtData(d.dataDocumento || d.createdAt)}</span>
-                    {canPubblicare && d.caricatoDa && <span>· da {d.caricatoDa}</span>}
+                    {canPubblicare && d.caricatoDa && (
+                      <span>
+                        · {t("doc.by")} {d.caricatoDa}
+                      </span>
+                    )}
                   </div>
                 </div>
                 {d.file ? (
@@ -581,7 +585,7 @@ function DocumentiPage() {
                     rel="noreferrer"
                     className="shrink-0 text-primary underline text-sm"
                   >
-                    apri
+                    {t("common.open")}
                   </a>
                 ) : (
                   <span className="shrink-0 text-muted-foreground text-sm">—</span>
