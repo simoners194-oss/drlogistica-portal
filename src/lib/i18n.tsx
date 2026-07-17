@@ -430,6 +430,19 @@ const en = {
   "gt.anomErr": "Anomaly calculation error",
   "anomalia.turno-non-chiuso": "Unclosed shift (missing clock out)",
   "anomalia.pausa-non-chiusa": "Unclosed break (missing break end)",
+  // --- Novità ---
+  "news.title": "What's new",
+  "news.subtitle": "Release history of",
+  "news.latest": "Latest version",
+  "news.curatedBy": "by",
+  "news.publishedOn": "Published on",
+  "news.version": "Version",
+  "news.madeBy": "Built by",
+  // --- Tag release ---
+  "tag.feature": "New feature",
+  "tag.improvement": "Improvement",
+  "tag.fix": "Fix",
+  "tag.security": "Security",
 } as const;
 
 type DictKey = keyof typeof en;
@@ -833,6 +846,17 @@ const it: Record<DictKey, string> = {
   "gt.anomErr": "Errore nel calcolo anomalie",
   "anomalia.turno-non-chiuso": "Turno non chiuso (manca l'uscita)",
   "anomalia.pausa-non-chiusa": "Pausa non chiusa (manca la fine pausa)",
+  "news.title": "Novità",
+  "news.subtitle": "Registro delle versioni pubblicate di",
+  "news.latest": "Ultima versione",
+  "news.curatedBy": "a cura di",
+  "news.publishedOn": "Pubblicata il",
+  "news.version": "Versione",
+  "news.madeBy": "Realizzato da",
+  "tag.feature": "Nuova funzionalità",
+  "tag.improvement": "Miglioramento",
+  "tag.fix": "Correzione",
+  "tag.security": "Sicurezza",
 };
 
 const dictionaries: Record<Lang, Record<DictKey, string>> = { en, it };

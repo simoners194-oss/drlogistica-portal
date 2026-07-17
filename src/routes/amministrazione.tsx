@@ -26,6 +26,7 @@ import type { SpSelfTestResult, SpHealth, ImportDipendentiResult } from "@/lib/s
 import { spImportDipendenti, spProtectPins } from "@/lib/sharepoint.functions";
 import { toast } from "sonner";
 import { readSession } from "@/lib/session";
+import { useLang } from "@/lib/i18n";
 import {
   microsoftAuthConfig,
   isMicrosoftAuthConfigured,
@@ -50,6 +51,7 @@ export const Route = createFileRoute("/amministrazione")({
 });
 
 function AmministrazionePage() {
+  const { tModule } = useLang();
   const [status, setStatus] = useState<IntegrationStatus>(() => getIntegrationStatus());
   const [loading, setLoading] = useState(false);
   const [selfTest, setSelfTest] = useState<SpSelfTestResult | null>(null);
@@ -90,7 +92,10 @@ function AmministrazionePage() {
   const lastSyncAt = status.diagnostics?.lastSyncAt ?? null;
 
   return (
-    <AppShell title="Amministrazione" subtitle="Configurazione sedi, ruoli e integrazioni">
+    <AppShell
+      title={tModule("amministrazione", "Amministrazione")}
+      subtitle="Configurazione sedi, ruoli e integrazioni"
+    >
       <div className="space-y-6">
         <Card>
           <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">

@@ -4,7 +4,8 @@ import { AppShell } from "@/components/AppShell";
 import { Sparkles, ShieldCheck, Wrench, TrendingUp } from "lucide-react";
 import { readSession } from "@/lib/session";
 import { APP_INFO, formatReleaseDate } from "@/lib/version";
-import { RELEASES, TAG_LABEL, type ReleaseTag } from "@/lib/releases";
+import { RELEASES, type ReleaseTag } from "@/lib/releases";
+import { useLang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/novita")({
   head: () => ({
@@ -39,6 +40,7 @@ const TAG_CLASS: Record<ReleaseTag, string> = {
 };
 
 function NovitaPage() {
+  const { t, tVal } = useLang();
   const sorted = [...RELEASES].sort((a, b) => b.date.localeCompare(a.date));
   const latest = sorted[0];
 
@@ -52,12 +54,12 @@ function NovitaPage() {
   }, []);
 
   return (
-    <AppShell title="Novità" subtitle={`Registro delle versioni pubblicate di ${APP_INFO.name}`}>
+    <AppShell title={t("news.title")} subtitle={`${t("news.subtitle")} ${APP_INFO.name}`}>
       {latest && (
         <div className="mb-6 rounded-2xl border border-primary/30 bg-primary/5 p-4 sm:p-5 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-primary text-[11px] font-semibold uppercase tracking-wider">
             <Sparkles className="h-3.5 w-3.5" />
-            Ultima versione
+            {t("news.latest")}
           </div>
           <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="text-2xl font-semibold text-foreground tracking-tight tabular-nums">
@@ -67,10 +69,12 @@ function NovitaPage() {
               <span className="text-sm text-muted-foreground">· {latest.codename}</span>
             )}
             {latest.author && (
-              <span className="text-sm text-muted-foreground">· a cura di {latest.author}</span>
+              <span className="text-sm text-muted-foreground">
+                · {t("news.curatedBy")} {latest.author}
+              </span>
             )}
             <span className="text-xs text-muted-foreground ml-auto">
-              Pubblicata il {formatReleaseDate(latest.date)}
+              {t("news.publishedOn")} {formatReleaseDate(latest.date)}
             </span>
           </div>
         </div>
@@ -82,11 +86,13 @@ function NovitaPage() {
             <span className="absolute -left-[27px] sm:-left-[31px] top-1 h-3 w-3 rounded-full bg-primary ring-4 ring-background" />
             <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <h2 className="text-lg font-semibold text-foreground tracking-tight tabular-nums">
-                Versione {r.version}
+                {t("news.version")} {r.version}
               </h2>
               {r.codename && <span className="text-sm text-muted-foreground">· {r.codename}</span>}
               {r.author && (
-                <span className="text-sm text-muted-foreground">· a cura di {r.author}</span>
+                <span className="text-sm text-muted-foreground">
+                  · {t("news.curatedBy")} {r.author}
+                </span>
               )}
               <span className="text-xs text-muted-foreground ml-auto">
                 {formatReleaseDate(r.date)}
@@ -111,7 +117,7 @@ function NovitaPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-[14px] font-medium text-foreground">{e.title}</span>
                           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-secondary rounded-full px-1.5 py-0.5">
-                            {TAG_LABEL[tag]}
+                            {tVal("tag", tag)}
                           </span>
                         </div>
                         {e.description && (
@@ -133,7 +139,7 @@ function NovitaPage() {
         Build {APP_INFO.build} — {APP_INFO.copyright}
       </p>
       <p className="mt-1 text-center text-[11px] text-muted-foreground/70">
-        Realizzato da Simone Russo
+        {t("news.madeBy")} Simone Russo
       </p>
     </AppShell>
   );
