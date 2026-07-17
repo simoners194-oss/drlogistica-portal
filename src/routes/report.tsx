@@ -11,6 +11,7 @@ import {
 } from "@/lib/sharepoint.functions";
 import type { RendicontoRiga, SaldoFerieRiga } from "@/lib/sharepoint.server";
 import { type SedeId } from "@/lib/mock-data";
+import { useLang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/report")({
   head: () => ({ meta: [{ title: "Rendiconto — DR Portal" }] }),
@@ -109,6 +110,7 @@ function esportaCsv(righe: RendicontoRiga[], periodo: string): void {
 }
 
 function RendicontoPage() {
+  const { t } = useLang();
   const [session, setSession] = useState<SessionUser | null>(null);
   const [periodo, setPeriodo] = useState<string>(currentPeriodo());
   const [righe, setRighe] = useState<RendicontoRiga[] | null>(null);
@@ -170,7 +172,7 @@ function RendicontoPage() {
       .then((l) => setRighe(l as RendicontoRiga[]))
       .catch((err) => {
         setRighe([]);
-        toast.error("Errore rendiconto", {
+        toast.error(t("rep.errReport"), {
           description: err instanceof Error ? err.message : String(err),
         });
       })
@@ -186,7 +188,7 @@ function RendicontoPage() {
       .then((l) => setSaldo(l as SaldoFerieRiga[]))
       .catch((err) => {
         setSaldo([]);
-        toast.error("Errore saldo ferie", {
+        toast.error(t("rep.errBalance"), {
           description: err instanceof Error ? err.message : String(err),
         });
       })
@@ -224,16 +226,14 @@ function RendicontoPage() {
 
   if (session && !canView) {
     return (
-      <AppShell title="Rendiconto">
+      <AppShell title={t("rep.title")}>
         <div className="flex items-start gap-3 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <span className="h-9 w-9 shrink-0 rounded-lg bg-muted text-muted-foreground flex items-center justify-center">
             <Lock className="h-4 w-4" />
           </span>
           <div>
-            <div className="text-sm font-semibold text-foreground">Accesso riservato</div>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
-              Il rendiconto è riservato a operatori, supervisori e amministratori.
-            </p>
+            <div className="text-sm font-semibold text-foreground">{t("common.restricted")}</div>
+            <p className="text-[13px] text-muted-foreground mt-0.5">{t("rep.restrictedMsg")}</p>
           </div>
         </div>
       </AppShell>
@@ -241,35 +241,35 @@ function RendicontoPage() {
   }
 
   return (
-    <AppShell title="Rendiconto" subtitle="Ore mensili e saldo ferie">
+    <AppShell title={t("rep.title")} subtitle={t("rep.subtitle")}>
       <div className="mb-4 inline-flex rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
         <button
           type="button"
           onClick={() => setVista("rendiconto")}
           className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${vista === "rendiconto" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          <BarChart3 className="h-4 w-4" /> Rendiconto
+          <BarChart3 className="h-4 w-4" /> {t("rep.tabRendiconto")}
         </button>
         <button
           type="button"
           onClick={() => setVista("ferie")}
           className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${vista === "ferie" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          <CalendarDays className="h-4 w-4" /> Saldo ferie
+          <CalendarDays className="h-4 w-4" /> {t("rep.tabFerie")}
         </button>
       </div>
 
       {vista === "rendiconto" && (
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-            <BarChart3 className="h-4 w-4 text-primary" /> Rendiconto mensile
+            <BarChart3 className="h-4 w-4 text-primary" /> {t("rep.monthlyTitle")}
           </div>
 
           {/* Filtri */}
           <div className="grid gap-3 sm:grid-cols-4 mb-4">
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Periodo
+                {t("rep.period")}
               </label>
               <select
                 className={`${inputCls} mt-1`}
@@ -279,14 +279,14 @@ function RendicontoPage() {
                   setWeekNum(1);
                 }}
               >
-                <option value="mese">Mese</option>
-                <option value="fiscal">Settimana fiscale (anno)</option>
-                <option value="mensile">Settimana del mese</option>
+                <option value="mese">{t("rep.periodMonth")}</option>
+                <option value="fiscal">{t("rep.periodFiscal")}</option>
+                <option value="mensile">{t("rep.periodMonthWeek")}</option>
               </select>
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                {periodoModo === "fiscal" ? "Anno (dal mese)" : "Mese"}
+                {periodoModo === "fiscal" ? t("rep.yearFromMonth") : t("rep.month")}
               </label>
               <input
                 type="month"
@@ -298,7 +298,7 @@ function RendicontoPage() {
             {periodoModo !== "mese" && (
               <div>
                 <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                  {periodoModo === "fiscal" ? "Week fiscale (1-53)" : "Week del mese (1-6)"}
+                  {periodoModo === "fiscal" ? t("rep.fiscalWeekN") : t("rep.monthWeekN")}
                 </label>
                 <input
                   type="number"
@@ -310,20 +310,24 @@ function RendicontoPage() {
                 />
                 {rangeSettimana && (
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    dal {rangeSettimana.from.split("-").reverse().join("/")} al{" "}
+                    {t("common.from").toLowerCase()}{" "}
+                    {rangeSettimana.from.split("-").reverse().join("/")}{" "}
+                    {t("common.to").toLowerCase()}{" "}
                     {rangeSettimana.to.split("-").reverse().join("/")}
                   </p>
                 )}
               </div>
             )}
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Sede</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("common.site")}
+              </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={sedeF}
                 onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
               >
-                <option value="tutte">Tutte</option>
+                <option value="tutte">{t("common.allF")}</option>
                 {sediOptions.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -333,14 +337,14 @@ function RendicontoPage() {
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Dipendente
+                {t("common.employee")}
               </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={dipF}
                 onChange={(e) => setDipF(e.target.value)}
               >
-                <option value="">Tutti</option>
+                <option value="">{t("common.all")}</option>
                 {(righe ?? []).map((r) => (
                   <option key={r.dipendenteId} value={r.dipendenteId}>
                     {r.nomeCompleto}
@@ -357,30 +361,28 @@ function RendicontoPage() {
                 onClick={() => esportaCsv(filtrate, periodo)}
                 className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
               >
-                <Download className="h-4 w-4" /> Esporta CSV
+                <Download className="h-4 w-4" /> {t("common.exportCsv")}
               </button>
             </div>
           )}
 
           {loading || righe === null ? (
-            <div className="text-sm text-muted-foreground">Calcolo in corso…</div>
+            <div className="text-sm text-muted-foreground">{t("rep.calculating")}</div>
           ) : filtrate.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              Nessun dato per il periodo/filtri selezionati.
-            </div>
+            <div className="text-sm text-muted-foreground">{t("rep.noData")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                    <th className="py-2 pr-3">Dipendente</th>
-                    <th className="py-2 pr-3">Sede</th>
-                    <th className="py-2 pr-3 text-right">Ore lav.</th>
-                    <th className="py-2 pr-3 text-right">Str. calc.</th>
-                    <th className="py-2 pr-3 text-right">Str. autor.</th>
-                    <th className="py-2 pr-3 text-right">Permessi</th>
-                    <th className="py-2 pr-3 text-right">Ferie</th>
-                    <th className="py-2 pr-3 text-right">Malattie</th>
+                    <th className="py-2 pr-3">{t("common.employee")}</th>
+                    <th className="py-2 pr-3">{t("common.site")}</th>
+                    <th className="py-2 pr-3 text-right">{t("rep.colWorked")}</th>
+                    <th className="py-2 pr-3 text-right">{t("rep.colOtCalc")}</th>
+                    <th className="py-2 pr-3 text-right">{t("rep.colOtAuth")}</th>
+                    <th className="py-2 pr-3 text-right">{t("rep.colPermits")}</th>
+                    <th className="py-2 pr-3 text-right">{t("rep.colLeave")}</th>
+                    <th className="py-2 pr-3 text-right">{t("rep.colSick")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -391,7 +393,7 @@ function RendicontoPage() {
                           {r.nomeCompleto}
                           {r.giorniNonChiusi > 0 && (
                             <span
-                              title={`${r.giorniNonChiusi} giorno/i con turno non chiuso: correggere nelle Anomalie`}
+                              title={`${r.giorniNonChiusi} ${t("rep.openShiftWarn")}`}
                               className="inline-flex items-center text-status-absent"
                             >
                               <AlertTriangle className="h-3.5 w-3.5" />
@@ -420,12 +422,7 @@ function RendicontoPage() {
           )}
 
           <div className="mt-4 text-[12px] text-muted-foreground leading-relaxed">
-            <strong>Str. calc.</strong> = straordinario dalle timbrature (ore Lun–Sab oltre il monte
-            ore settimanale + tutta la domenica). <strong>Str. autor.</strong> = ore da richieste di
-            straordinario approvate, per confronto. Il previsto settimanale è ridotto da
-            ferie/malattia ({"OreSettimanali/5"} per giorno) e dai permessi. Le settimane a cavallo
-            di due mesi contano nel mese del loro lunedì. ⚠️ = giorni con turno non chiuso (ore non
-            conteggiate: correggere nelle Anomalie).
+            {t("rep.footnote")}
           </div>
         </div>
       )}
@@ -433,12 +430,15 @@ function RendicontoPage() {
       {vista === "ferie" && (
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-4">
-            <CalendarDays className="h-4 w-4 text-primary" /> Saldo ferie {periodo.slice(0, 4)}
+            <CalendarDays className="h-4 w-4 text-primary" /> {t("rep.ferieTitle")}{" "}
+            {periodo.slice(0, 4)}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 mb-4">
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Anno</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("rep.year")}
+              </label>
               <input
                 type="month"
                 className={`${inputCls} mt-1`}
@@ -447,13 +447,15 @@ function RendicontoPage() {
               />
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Sede</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("common.site")}
+              </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={sedeF}
                 onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
               >
-                <option value="tutte">Tutte</option>
+                <option value="tutte">{t("common.allF")}</option>
                 {sediOptions.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -463,14 +465,14 @@ function RendicontoPage() {
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Dipendente
+                {t("common.employee")}
               </label>
               <select
                 className={`${inputCls} mt-1`}
                 value={dipF}
                 onChange={(e) => setDipF(e.target.value)}
               >
-                <option value="">Tutti</option>
+                <option value="">{t("common.all")}</option>
                 {(saldo ?? []).map((r) => (
                   <option key={r.dipendenteId} value={r.dipendenteId}>
                     {r.nomeCompleto}
@@ -481,21 +483,19 @@ function RendicontoPage() {
           </div>
 
           {saldoLoading || saldo === null ? (
-            <div className="text-sm text-muted-foreground">Calcolo in corso…</div>
+            <div className="text-sm text-muted-foreground">{t("rep.calculating")}</div>
           ) : saldoFiltrato.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              Nessun dato per i filtri selezionati.
-            </div>
+            <div className="text-sm text-muted-foreground">{t("rep.noDataFilters")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                    <th className="py-2 pr-3">Dipendente</th>
-                    <th className="py-2 pr-3">Sede</th>
-                    <th className="py-2 pr-3 text-right">Spettanti</th>
-                    <th className="py-2 pr-3 text-right">Godute</th>
-                    <th className="py-2 pr-3 text-right">Residue</th>
+                    <th className="py-2 pr-3">{t("common.employee")}</th>
+                    <th className="py-2 pr-3">{t("common.site")}</th>
+                    <th className="py-2 pr-3 text-right">{t("rep.colEntitled")}</th>
+                    <th className="py-2 pr-3 text-right">{t("rep.colTaken")}</th>
+                    <th className="py-2 pr-3 text-right">{t("rep.colRemaining")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -514,10 +514,7 @@ function RendicontoPage() {
                   ))}
                 </tbody>
               </table>
-              <div className="mt-3 text-[12px] text-muted-foreground">
-                <strong>Spettanti</strong> dalla colonna GiorniFerieAnnui del dipendente (default 26
-                se non impostata). <strong>Godute</strong> = giorni di Ferie approvate nell'anno.
-              </div>
+              <div className="mt-3 text-[12px] text-muted-foreground">{t("rep.ferieFootnote")}</div>
             </div>
           )}
         </div>
