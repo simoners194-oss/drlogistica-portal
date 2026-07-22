@@ -19,6 +19,7 @@ import {
   FolderOpen,
   Megaphone,
   ShoppingCart,
+  Landmark,
   type LucideIcon,
 } from "lucide-react";
 import type { Ruolo } from "./session";
@@ -53,6 +54,10 @@ export type AppModule = {
   /** Se true, la voce è visibile solo alle risorse delle sedi storiche
    *  (Fiano Romano / San Giuliano), oltre ad autorizzatori e admin. */
   soloSediStoriche?: boolean;
+  /** Se true, la voce è riservata al direttore (codice DR005) oltre che
+   *  all'amministratore. Il codice arriva dalla sessione; l'accesso reale è
+   *  comunque ri-verificato server-side. */
+  soloDirettore?: boolean;
 };
 
 export const APP_NAME = "DR Portal";
@@ -144,6 +149,16 @@ export const MODULES: readonly AppModule[] = [
     description: "Rendiconto mensile ore per dipendente.",
     roles: ["responsabile", "amministratore_sistema"],
     orCapabilities: ["operatore", "autorizza"],
+  },
+  {
+    id: "finanza",
+    title: "Finanza",
+    url: "/finanza",
+    icon: Landmark,
+    ready: true,
+    description: "Estratto conto: incassi, movimenti e anomalie (direttore).",
+    roles: ["amministratore_sistema"],
+    soloDirettore: true,
   },
   {
     id: "amministrazione",

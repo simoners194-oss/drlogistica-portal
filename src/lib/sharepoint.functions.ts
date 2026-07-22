@@ -5,6 +5,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { normalizeRuolo } from "./session";
+import { isSupervisoreGlobale } from "./richieste-logic";
 import {
   setSessionCookie,
   readSessionUser,
@@ -54,6 +55,16 @@ import {
   fetchAcquisti,
   createAcquisto,
   decideAcquisto,
+  fetchMovimenti,
+  fetchMovimentiChiavi,
+  importMovimenti,
+  updateMovimento,
+  getCodiceDipendente,
+  type SpMovimento,
+  type MovimentiFilter,
+  type ImportMovimentoRow,
+  type ImportMovimentiResult,
+  type UpdateMovimentoInput,
   type SpVoce,
   type SpAcquisto,
   type CreateAcquistoInput,
@@ -214,6 +225,7 @@ export const spLogin = createServerFn({ method: "POST" })
         ruolo: normalizeRuolo(d.ruolo),
         autorizza: d.autorizza,
         operatore: d.operatore,
+        codice: d.codice,
       });
     }
     return res;
@@ -583,6 +595,85 @@ export const spDecideAcquisto = createServerFn({ method: "POST" })
     const me = await currentUser();
     // L'autorizzazione vera (DR005/admin) è verificata server-side su SP.
     return decideAcquisto({ ...data, approvatoreId: me.id });
+  });
+
+// ---------------------------------------------------------------------------
+// Finanza (movimenti bancari) — SOLO direttore DR005 o amministratore.
+// ---------------------------------------------------------------------------
+// Il cookie firmato identifica l'utente; il codice DR005 è ri-verificato sul
+// record SharePoint autorevole (come per l'approvazione Procurement).
+async function assertDirettore(me: ServerSessionUser): Promise<void> {
+  if (isAdmin(me)) return;
+  const codice = await getCodiceDipendente(me.id);
+  assertCap(isSupervisoreGlobale(codice));
+}
+
+export const spGetMovimenti = createServerFn({ method: "GET" })
+  .inputValidator((input?: MovimentiFilter): MovimentiFilter => {
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    return {
+      from: input?.from && re.test(input.from) ? input.from : undefined,
+      to: input?.to && re.test(input.to) ? input.to : undefined,
+      soloDaVerificare: Boolean(input?.soloDaVerificare),
+    };
+  })
+  .handler(async ({ data }): Promise<SpMovimento[]> => {
+    await assertDirettore(await currentUser());
+    return fetchMovimenti(data);
+  });
+
+export const spGetMovimentiChiavi = createServerFn({ method: "GET" }).handler(
+  async (): Promise<string[]> => {
+    await assertDirettore(await currentUser());
+    return fetchMovimentiChiavi();
+  },
+);
+
+export const spImportMovimenti = createServerFn({ method: "POST" })
+  .inputValidator((input: { rows: ImportMovimentoRow[] }) => {
+    if (!Array.isArray(input?.rows) || input.rows.length === 0)
+      throw new Error("Nessun movimento da importare");
+    if (input.rows.length > 150) throw new Error("Blocco troppo grande (max 150 movimenti)");
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    const rows = input.rows.map((r): ImportMovimentoRow => {
+      if (!re.test(r?.dataContabile ?? "") || !re.test(r?.dataValuta ?? ""))
+        throw new Error("Data movimento non valida");
+      const importo = Number(r.importo);
+      if (!Number.isFinite(importo)) throw new Error("Importo movimento non valido");
+      const occ = Math.floor(Number(r.occ));
+      if (!Number.isFinite(occ) || occ < 1) throw new Error("Occorrenza non valida");
+      return {
+        dataContabile: r.dataContabile,
+        dataValuta: r.dataValuta,
+        importo,
+        divisa: String(r.divisa ?? "EUR").slice(0, 8),
+        causale: String(r.causale ?? "").slice(0, 20),
+        descrizione: String(r.descrizione ?? "").slice(0, 1000),
+        occ,
+      };
+    });
+    return { rows };
+  })
+  .handler(async ({ data }): Promise<ImportMovimentiResult> => {
+    await assertDirettore(await currentUser());
+    return importMovimenti(data.rows);
+  });
+
+export const spUpdateMovimento = createServerFn({ method: "POST" })
+  .inputValidator((input: UpdateMovimentoInput): UpdateMovimentoInput => {
+    if (!input?.movimentoId) throw new Error("movimentoId mancante");
+    return {
+      movimentoId: String(input.movimentoId),
+      tipologia: input.tipologia !== undefined ? String(input.tipologia).slice(0, 60) : undefined,
+      cliente: input.cliente !== undefined ? String(input.cliente).slice(0, 120) : undefined,
+      nrFattura: input.nrFattura !== undefined ? String(input.nrFattura).slice(0, 160) : undefined,
+      note: input.note !== undefined ? String(input.note).slice(0, 500) : undefined,
+      daVerificare: input.daVerificare !== undefined ? Boolean(input.daVerificare) : undefined,
+    };
+  })
+  .handler(async ({ data }): Promise<SpMovimento> => {
+    await assertDirettore(await currentUser());
+    return updateMovimento(data);
   });
 
 // --- Web Push: chiave pubblica + registrazione dispositivo -----------------

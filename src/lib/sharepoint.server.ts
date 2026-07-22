@@ -39,6 +39,7 @@ import {
   type DecisioneRichiesta,
 } from "./richieste-logic";
 import { anomalieDelGiorno, type TipoAnomalia } from "./presenze-logic";
+import { chiaveMovimento, classificaMovimento, type MovimentoRaw } from "./finanza-logic";
 import { normalizeRuolo } from "./session";
 import {
   generateVapidKeys,
@@ -182,6 +183,24 @@ export const SP_DISPLAY = {
     Stato: "Stato",
     Mittente: "Mittente",
   },
+  // Movimenti bancari (sezione Finanza, solo direttore DR005). Lista OPZIONALE.
+  // Title = chiave di deduplicazione (calcolata dai campi grezzi, vedi
+  // finanza-logic.ts). I campi grezzi (DataContabile..Descrizione) sono
+  // IMMUTABILI dopo l'import; la sanatura tocca solo Tipologia/Cliente/
+  // NrFattura/Note/DaVerificare.
+  movimenti: {
+    DataContabile: "DataContabile",
+    DataValuta: "DataValuta",
+    Importo: "Importo",
+    Divisa: "Divisa",
+    Causale: "Causale",
+    Descrizione: "Descrizione",
+    Tipologia: "Tipologia",
+    Cliente: "Cliente",
+    NrFattura: "NrFattura",
+    Note: "Note",
+    DaVerificare: "DaVerificare",
+  },
   // Richieste di acquisto (modulo Procurement). Lista OPZIONALE.
   acquisti: {
     Richiedente: "Richiedente",
@@ -225,6 +244,7 @@ const LIST_NAMES = {
   voci: ["Voci", "Voce", "VociSpesa"],
   acquisti: ["RichiesteAcquisto", "RichiestaAcquisto", "Acquisti"],
   codaEmail: ["CodaEmail", "Coda Email", "EmailQueue"],
+  movimenti: ["MovimentiBancari", "MovimentoBancario", "Movimenti"],
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -320,6 +340,10 @@ export interface SpDiscovered {
   listCodaEmailName: string | null;
   codaEmailFields: Record<string, string>;
   codaEmailMissing: string[];
+  listMovimenti: string | null;
+  listMovimentiName: string | null;
+  movimentiFields: Record<string, string>;
+  movimentiMissing: string[];
   cachedAt: string;
   expiresAt: string;
 }
@@ -616,6 +640,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const voci = await softList(LIST_NAMES.voci, SP_DISPLAY.voci);
   const acq = await softList(LIST_NAMES.acquisti, SP_DISPLAY.acquisti);
   const coda = await softList(LIST_NAMES.codaEmail, SP_DISPLAY.codaEmail);
+  const mov = await softList(LIST_NAMES.movimenti, SP_DISPLAY.movimenti);
 
   const now = Date.now();
   discoveredCache = {
@@ -662,6 +687,10 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listCodaEmailName: coda.name,
     codaEmailFields: coda.fields,
     codaEmailMissing: coda.missing,
+    listMovimenti: mov.id,
+    listMovimentiName: mov.name,
+    movimentiFields: mov.fields,
+    movimentiMissing: mov.missing,
     cachedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CACHE_TTL_MS).toISOString(),
   };
@@ -770,6 +799,10 @@ export interface SpDipendente {
   // Codice fiscale (per l'abbinamento automatico delle buste paga). Colonna
   // OPZIONALE; vuoto se non impostato.
   cf: string;
+  // Codice dipendente (es. DR005). Serve al client per il gating dei moduli
+  // riservati al direttore; l'autorizzazione effettiva è comunque ri-verificata
+  // server-side sul record SharePoint.
+  codice: string;
 }
 
 // Parsing tollerante di un campo booleano SharePoint (Sì/No).
@@ -829,6 +862,7 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
         cf: String(f[F.CF ?? ""] ?? "")
           .trim()
           .toUpperCase(),
+        codice: normalizeCodice(F.Codice ? f[F.Codice] : ""),
       };
     })
     .filter((d) => d.attivo);
@@ -1253,6 +1287,7 @@ export async function loginByCodicePin(
     cf: String(f[F.CF ?? ""] ?? "")
       .trim()
       .toUpperCase(),
+    codice,
   };
   logSp("info", "login", `Login ok per ${codice} (id=${dipendente.id})`, {
     durataMs: Date.now() - started,
@@ -2388,6 +2423,21 @@ export function parseEmails(raw: string): string[] {
 // Automate usa il campo Mittente come "Da (Invia come)".
 export const EMAIL_MITTENTE_DEFAULT = "segreteria@drlogistica.it";
 
+// Codice dipendente (es. DR005) dal record SharePoint ("" se assente).
+// Verifica AUTOREVOLE per i moduli riservati al direttore: non ci si fida del
+// codice nella sessione client, si rilegge il record.
+export async function getCodiceDipendente(dipendenteId: string): Promise<string> {
+  try {
+    const cfg = await discoverSharePoint();
+    const DF = cfg.dipendentiFields;
+    if (!DF.Codice) return "";
+    const f = await fetchDipendenteFields(cfg, dipendenteId);
+    return normalizeCodice(f[DF.Codice]);
+  } catch {
+    return "";
+  }
+}
+
 // Email di un dipendente dal suo record SharePoint ("" se assente).
 export async function getEmailDipendente(dipendenteId: string): Promise<string> {
   try {
@@ -2968,6 +3018,243 @@ export async function decideAcquisto(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Finanza (direttore DR005) — movimenti bancari su lista MovimentiBancari
+// ---------------------------------------------------------------------------
+// L'import avviene a blocchi dal client (che ha già parsato l'xlsx): il server
+// ri-classifica ogni riga con finanza-logic (unica fonte di verità), ricalcola
+// la chiave dai campi grezzi e scarta i doppioni già presenti in lista. La
+// sanatura manuale (updateMovimento) non tocca MAI i campi grezzi, quindi un
+// ricaricamento successivo riconosce comunque il movimento originale.
+
+function requireMovimentiList(cfg: SpDiscovered): string {
+  if (!cfg.listMovimenti)
+    throw new Error(
+      'Lista "MovimentiBancari" non trovata su SharePoint. Crearla sul sito DRPORTAL.',
+    );
+  return cfg.listMovimenti;
+}
+
+export interface SpMovimento {
+  id: string;
+  chiave: string; // Title
+  dataContabile: string; // YYYY-MM-DD
+  dataValuta: string; // YYYY-MM-DD
+  importo: number;
+  divisa: string;
+  causale: string;
+  descrizione: string;
+  tipologia: string;
+  cliente: string;
+  nrFattura: string;
+  note: string;
+  daVerificare: boolean;
+}
+
+function mapMovimento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>): SpMovimento {
+  const F = cfg.movimentiFields;
+  const f = it.fields ?? {};
+  const iso = (v: unknown) => String(v ?? "").slice(0, 10);
+  return {
+    id: String(it.id),
+    chiave: String(f["Title"] ?? ""),
+    dataContabile: F.DataContabile ? iso(f[F.DataContabile]) : "",
+    dataValuta: F.DataValuta ? iso(f[F.DataValuta]) : "",
+    importo: F.Importo ? (numOrUndef(f[F.Importo]) ?? 0) : 0,
+    divisa: F.Divisa ? String(f[F.Divisa] ?? "EUR") : "EUR",
+    causale: F.Causale ? String(f[F.Causale] ?? "") : "",
+    descrizione: F.Descrizione ? String(f[F.Descrizione] ?? "") : "",
+    tipologia: F.Tipologia ? String(f[F.Tipologia] ?? "") : "",
+    cliente: F.Cliente ? String(f[F.Cliente] ?? "") : "",
+    nrFattura: F.NrFattura ? String(f[F.NrFattura] ?? "") : "",
+    note: F.Note ? String(f[F.Note] ?? "") : "",
+    daVerificare: parseSpBool(F.DaVerificare ? f[F.DaVerificare] : undefined, false),
+  };
+}
+
+// La lista supera facilmente i 999 item ($top massimo): si seguono le pagine
+// @odata.nextLink convertendo l'URL Graph assoluto nel path del gateway.
+async function fetchMovimentiPages(
+  firstPath: string,
+): Promise<GraphListItem<Record<string, unknown>>[]> {
+  const out: GraphListItem<Record<string, unknown>>[] = [];
+  let path: string | null = firstPath;
+  let guard = 0;
+  while (path && guard < 30) {
+    guard++;
+    const res: GraphListResponse<Record<string, unknown>> & { "@odata.nextLink"?: string } =
+      await withDiscoveryRetry(() =>
+        gatewayJson<GraphListResponse<Record<string, unknown>> & { "@odata.nextLink"?: string }>(
+          path as string,
+        ),
+      );
+    out.push(...(res.value ?? []));
+    const next = res["@odata.nextLink"];
+    if (next) {
+      const u = new URL(next);
+      path = u.pathname.replace(/^\/(?:v1\.0|beta)/, "") + u.search;
+    } else {
+      path = null;
+    }
+  }
+  return out;
+}
+
+export interface MovimentiFilter {
+  /** Data contabile minima (YYYY-MM-DD, inclusa). */
+  from?: string;
+  /** Data contabile massima (YYYY-MM-DD, inclusa). */
+  to?: string;
+  soloDaVerificare?: boolean;
+}
+
+export async function fetchMovimenti(filter: MovimentiFilter = {}): Promise<SpMovimento[]> {
+  const started = Date.now();
+  const cfg = await discoverSharePoint();
+  if (!cfg.listMovimenti) return [];
+  const items = await fetchMovimentiPages(
+    `/sites/${cfg.siteId}/lists/${cfg.listMovimenti}/items?expand=fields&$top=999`,
+  );
+  let out = items.map((it) => mapMovimento(cfg, it));
+  if (filter.from) out = out.filter((m) => m.dataContabile >= filter.from!);
+  if (filter.to) out = out.filter((m) => m.dataContabile <= filter.to!);
+  if (filter.soloDaVerificare) out = out.filter((m) => m.daVerificare);
+  out.sort((a, b) => b.dataContabile.localeCompare(a.dataContabile) || b.id.localeCompare(a.id));
+  logSp("info", "fetch.movimenti", `${out.length} movimenti`, { durataMs: Date.now() - started });
+  return out;
+}
+
+/** Chiavi (Title) di tutti i movimenti già in lista, per la deduplicazione. */
+export async function fetchMovimentiChiavi(): Promise<string[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listMovimenti) return [];
+  const items = await fetchMovimentiPages(
+    `/sites/${cfg.siteId}/lists/${cfg.listMovimenti}/items?expand=fields(select=Title)&$top=999`,
+  );
+  return items.map((it) => String(it.fields?.["Title"] ?? "")).filter(Boolean);
+}
+
+export type ImportMovimentoRow = MovimentoRaw & { occ: number };
+export interface ImportMovimentiResult {
+  ricevuti: number;
+  importati: number;
+  doppioni: number;
+  anomalie: number;
+  errori: string[];
+}
+
+const IMPORT_MOV_MAX_ROWS = 150; // per invocazione: il client spezza in blocchi
+
+export async function importMovimenti(rows: ImportMovimentoRow[]): Promise<ImportMovimentiResult> {
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const F = cfg.movimentiFields;
+  if (rows.length > IMPORT_MOV_MAX_ROWS)
+    throw new Error(`Troppi movimenti in un blocco (max ${IMPORT_MOV_MAX_ROWS}).`);
+
+  const esistenti = new Set(await fetchMovimentiChiavi());
+  const result: ImportMovimentiResult = {
+    ricevuti: rows.length,
+    importati: 0,
+    doppioni: 0,
+    anomalie: 0,
+    errori: [],
+  };
+
+  // Chiave e classificazione ricalcolate QUI dai campi grezzi: il client può
+  // aver già fatto lo stesso lavoro per l'anteprima, ma la verità è del server.
+  const daScrivere: { fields: Record<string, unknown>; chiave: string }[] = [];
+  for (const r of rows) {
+    const chiave = chiaveMovimento(r, r.occ);
+    if (esistenti.has(chiave)) {
+      result.doppioni++;
+      continue;
+    }
+    esistenti.add(chiave); // dedup anche dentro il blocco
+    const c = classificaMovimento(r);
+    if (c.daVerificare) result.anomalie++;
+    const fields: Record<string, unknown> = { Title: chiave };
+    if (F.DataContabile) fields[F.DataContabile] = `${r.dataContabile}T00:00:00Z`;
+    if (F.DataValuta) fields[F.DataValuta] = `${r.dataValuta}T00:00:00Z`;
+    if (F.Importo) fields[F.Importo] = r.importo;
+    if (F.Divisa) fields[F.Divisa] = r.divisa;
+    if (F.Causale) fields[F.Causale] = r.causale;
+    if (F.Descrizione) fields[F.Descrizione] = r.descrizione;
+    if (F.Tipologia) fields[F.Tipologia] = c.tipologia;
+    if (F.Cliente && c.cliente) fields[F.Cliente] = c.cliente;
+    if (F.NrFattura && c.nrFattura) fields[F.NrFattura] = c.nrFattura;
+    if (F.DaVerificare) fields[F.DaVerificare] = c.daVerificare;
+    daScrivere.push({ fields, chiave });
+  }
+
+  // Scritture in parallelo controllato (batch da 4) per contenere la durata.
+  const BATCH = 4;
+  for (let i = 0; i < daScrivere.length; i += BATCH) {
+    const batch = daScrivere.slice(i, i + BATCH);
+    const esiti = await Promise.allSettled(
+      batch.map((b) =>
+        gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
+          method: "POST",
+          body: JSON.stringify({ fields: b.fields }),
+        }),
+      ),
+    );
+    esiti.forEach((e, j) => {
+      if (e.status === "fulfilled") result.importati++;
+      else
+        result.errori.push(
+          `${batch[j].chiave.slice(0, 40)}…: ${
+            e.reason instanceof Error ? e.reason.message : String(e.reason)
+          }`,
+        );
+    });
+  }
+  logSp(
+    "info",
+    "import.movimenti",
+    `Import movimenti: ${result.importati} scritti, ${result.doppioni} doppioni, ${result.errori.length} errori`,
+  );
+  return result;
+}
+
+export interface UpdateMovimentoInput {
+  movimentoId: string;
+  tipologia?: string;
+  cliente?: string;
+  nrFattura?: string;
+  note?: string;
+  daVerificare?: boolean;
+}
+
+// Sanatura manuale: aggiorna SOLO i campi classificati (mai i grezzi né il
+// Title/chiave — la memoria dell'input originale resta intatta).
+export async function updateMovimento(input: UpdateMovimentoInput): Promise<SpMovimento> {
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const F = cfg.movimentiFields;
+  const fields: Record<string, unknown> = {};
+  if (F.Tipologia && input.tipologia !== undefined) fields[F.Tipologia] = input.tipologia;
+  if (F.Cliente && input.cliente !== undefined) fields[F.Cliente] = input.cliente;
+  if (F.NrFattura && input.nrFattura !== undefined) fields[F.NrFattura] = input.nrFattura;
+  if (F.Note && input.note !== undefined) fields[F.Note] = input.note;
+  if (F.DaVerificare && input.daVerificare !== undefined)
+    fields[F.DaVerificare] = input.daVerificare;
+  if (Object.keys(fields).length === 0) throw new Error("Nessun campo da aggiornare.");
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${input.movimentoId}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    }),
+  );
+  const updated = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${listId}/items/${input.movimentoId}?expand=fields`,
+    ),
+  );
+  logSp("info", "update.movimento", `Movimento #${input.movimentoId} sanato`);
+  return mapMovimento(cfg, updated);
+}
+
+// ---------------------------------------------------------------------------
 // Web Push — storage subscription + chiavi VAPID su lista PushSubscriptions
 // ---------------------------------------------------------------------------
 // La riga speciale Title="__vapid__" contiene le chiavi applicative (pubblica
@@ -3439,6 +3726,15 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
     if (disc.codaEmailMissing.length)
       throw new Error(`Colonne mancanti — [${disc.codaEmailMissing.join(", ")}]`);
     return disc.listCodaEmailName ?? undefined;
+  });
+
+  // Finanza (direttore): lista movimenti bancari — opzionale.
+  await step("list.movimenti", "Lista MovimentiBancari (Finanza)", async () => {
+    if (!disc?.listMovimenti)
+      throw new Error("Lista 'MovimentiBancari' non trovata — richiesta dalla sezione Finanza");
+    if (disc.movimentiMissing.length)
+      throw new Error(`Colonne mancanti — [${disc.movimentiMissing.join(", ")}]`);
+    return disc.listMovimentiName ?? undefined;
   });
 
   await step("push.ready", "Notifiche push (lista + chiavi VAPID)", async () => {

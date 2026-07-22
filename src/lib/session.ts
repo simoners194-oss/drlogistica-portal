@@ -65,6 +65,9 @@ export interface SessionUser {
   // Ore contrattuali settimanali (per l'avviso "monte ore giornaliero" in
   // Presenze). Opzionale: sessioni vecchie senza il campo → undefined.
   oreSettimanali?: number | null;
+  // Codice dipendente (es. DR005): gating UI dei moduli riservati al direttore.
+  // Sessioni vecchie senza il campo → null (serve re-login per vederli).
+  codice?: string | null;
 }
 
 const KEY = "dr:currentUser";
@@ -87,6 +90,7 @@ export function readSession(): SessionUser | null {
       autorizza: Boolean(parsed.autorizza),
       operatore: Boolean(parsed.operatore),
       oreSettimanali: typeof parsed.oreSettimanali === "number" ? parsed.oreSettimanali : null,
+      codice: typeof parsed.codice === "string" && parsed.codice ? parsed.codice : null,
     };
   } catch {
     return null;

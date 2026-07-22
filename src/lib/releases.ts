@@ -28,6 +28,20 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.7.0",
+    date: "2026-07-22",
+    codename: "Finanza",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        title: "Finanza — estratto conto per la direzione",
+        description:
+          "Nuova sezione riservata alla direzione: import dell'estratto conto bancario da Excel con classificazione automatica dei movimenti (tipologia, cliente, riferimenti fattura), overview degli incassi per cliente e mese, pagina anomalie per sanare a mano i casi dubbi. I ricaricamenti scartano automaticamente i movimenti già importati.",
+      },
+    ],
+  },
+  {
     version: "1.6.0",
     date: "2026-07-17",
     codename: "English / Italiano",

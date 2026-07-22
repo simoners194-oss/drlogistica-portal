@@ -16,7 +16,7 @@ import { Logo } from "./Logo";
 import { MODULES } from "@/lib/modules";
 import { canAccess, readSession, type Ruolo, type SessionSede } from "@/lib/session";
 import { sedeTimbra, anySedeTimbra } from "@/lib/mock-data";
-import { isSedeStorica } from "@/lib/richieste-logic";
+import { isSedeStorica, isSupervisoreGlobale } from "@/lib/richieste-logic";
 import { useLang } from "@/lib/i18n";
 
 export function AppSidebar() {
@@ -30,12 +30,14 @@ export function AppSidebar() {
   const [operatore, setOperatore] = useState(false);
   const [autorizza, setAutorizza] = useState(false);
   const [sede, setSede] = useState<SessionSede | null>(null);
+  const [codice, setCodice] = useState<string>("");
   useEffect(() => {
     const s = readSession();
     setRuolo(s?.ruolo ?? null);
     setOperatore(s?.operatore ?? false);
     setAutorizza(s?.autorizza ?? false);
     setSede(s?.sede ?? null);
+    setCodice(s?.codice ?? "");
   }, [pathname]);
 
   // Finché il ruolo non è noto, mostra solo le voci pubbliche a tutti i
@@ -62,6 +64,8 @@ export function AppSidebar() {
     )
       return false;
     const roleOk = ruolo ? canAccess(m, ruolo) : canAccess(m, "dipendente");
+    // Moduli riservati al direttore (DR005): visibili anche all'admin (ruolo).
+    if (m.soloDirettore) return roleOk || isSupervisoreGlobale(codice);
     // Capability alternative: visibile se ruolo ammesso OPPURE capability.
     if (m.orCapabilities && m.orCapabilities.length) {
       const capOk = m.orCapabilities.some(

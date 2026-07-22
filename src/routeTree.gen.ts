@@ -16,6 +16,7 @@ import { Route as ProcurementRouteImport } from './routes/procurement'
 import { Route as PresenzeRouteImport } from './routes/presenze'
 import { Route as NovitaRouteImport } from './routes/novita'
 import { Route as GestioneTimbratureRouteImport } from './routes/gestione-timbrature'
+import { Route as FinanzaRouteImport } from './routes/finanza'
 import { Route as DocumentiRouteImport } from './routes/documenti'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ComunicazioniRouteImport } from './routes/comunicazioni'
@@ -57,6 +58,11 @@ const GestioneTimbratureRoute = GestioneTimbratureRouteImport.update({
   path: '/gestione-timbrature',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FinanzaRoute = FinanzaRouteImport.update({
+  id: '/finanza',
+  path: '/finanza',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DocumentiRoute = DocumentiRouteImport.update({
   id: '/documenti',
   path: '/documenti',
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/comunicazioni': typeof ComunicazioniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
+  '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/comunicazioni': typeof ComunicazioniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
+  '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/comunicazioni': typeof ComunicazioniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
+  '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | '/comunicazioni'
     | '/dashboard'
     | '/documenti'
+    | '/finanza'
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
@@ -148,6 +158,7 @@ export interface FileRouteTypes {
     | '/comunicazioni'
     | '/dashboard'
     | '/documenti'
+    | '/finanza'
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
@@ -162,6 +173,7 @@ export interface FileRouteTypes {
     | '/comunicazioni'
     | '/dashboard'
     | '/documenti'
+    | '/finanza'
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
@@ -177,6 +189,7 @@ export interface RootRouteChildren {
   ComunicazioniRoute: typeof ComunicazioniRoute
   DashboardRoute: typeof DashboardRoute
   DocumentiRoute: typeof DocumentiRoute
+  FinanzaRoute: typeof FinanzaRoute
   GestioneTimbratureRoute: typeof GestioneTimbratureRoute
   NovitaRoute: typeof NovitaRoute
   PresenzeRoute: typeof PresenzeRoute
@@ -237,6 +250,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GestioneTimbratureRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/finanza': {
+      id: '/finanza'
+      path: '/finanza'
+      fullPath: '/finanza'
+      preLoaderRoute: typeof FinanzaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/documenti': {
       id: '/documenti'
       path: '/documenti'
@@ -281,6 +301,7 @@ const rootRouteChildren: RootRouteChildren = {
   ComunicazioniRoute: ComunicazioniRoute,
   DashboardRoute: DashboardRoute,
   DocumentiRoute: DocumentiRoute,
+  FinanzaRoute: FinanzaRoute,
   GestioneTimbratureRoute: GestioneTimbratureRoute,
   NovitaRoute: NovitaRoute,
   PresenzeRoute: PresenzeRoute,

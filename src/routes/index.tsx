@@ -60,6 +60,7 @@ function Index() {
         autorizza: Boolean(d.autorizza),
         operatore: Boolean(d.operatore),
         oreSettimanali: d.oreSettimanali,
+        codice: d.codice,
       });
       // S1: conferma che la sessione server firmata è attiva (cookie httpOnly).
       await spWhoAmI().catch(() => null);
