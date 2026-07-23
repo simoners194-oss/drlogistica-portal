@@ -39,7 +39,13 @@ import {
   type DecisioneRichiesta,
 } from "./richieste-logic";
 import { anomalieDelGiorno, type TipoAnomalia } from "./presenze-logic";
-import { chiaveMovimento, classificaMovimento, type MovimentoRaw } from "./finanza-logic";
+import {
+  chiaveMovimento,
+  classificaMovimento,
+  LEGACY_IMPORT_ID,
+  type MovimentoRaw,
+} from "./finanza-logic";
+export { LEGACY_IMPORT_ID };
 import { normalizeRuolo } from "./session";
 import {
   generateVapidKeys,
@@ -200,6 +206,8 @@ export const SP_DISPLAY = {
     NrFattura: "NrFattura",
     Note: "Note",
     DaVerificare: "DaVerificare",
+    // Lotto di import (per lo storico e l'annullamento di un import intero).
+    ImportId: "ImportId",
   },
   // Richieste di acquisto (modulo Procurement). Lista OPZIONALE.
   acquisti: {
@@ -3048,6 +3056,7 @@ export interface SpMovimento {
   nrFattura: string;
   note: string;
   daVerificare: boolean;
+  importId: string;
 }
 
 function mapMovimento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>): SpMovimento {
@@ -3068,6 +3077,7 @@ function mapMovimento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknow
     nrFattura: F.NrFattura ? String(f[F.NrFattura] ?? "") : "",
     note: F.Note ? String(f[F.Note] ?? "") : "",
     daVerificare: parseSpBool(F.DaVerificare ? f[F.DaVerificare] : undefined, false),
+    importId: F.ImportId ? String(f[F.ImportId] ?? "") : "",
   };
 }
 
@@ -3144,7 +3154,10 @@ export interface ImportMovimentiResult {
 
 const IMPORT_MOV_MAX_ROWS = 150; // per invocazione: il client spezza in blocchi
 
-export async function importMovimenti(rows: ImportMovimentoRow[]): Promise<ImportMovimentiResult> {
+export async function importMovimenti(
+  rows: ImportMovimentoRow[],
+  importId: string,
+): Promise<ImportMovimentiResult> {
   const cfg = await discoverSharePoint();
   const listId = requireMovimentiList(cfg);
   const F = cfg.movimentiFields;
@@ -3183,6 +3196,7 @@ export async function importMovimenti(rows: ImportMovimentoRow[]): Promise<Impor
     if (F.Cliente && c.cliente) fields[F.Cliente] = c.cliente;
     if (F.NrFattura && c.nrFattura) fields[F.NrFattura] = c.nrFattura;
     if (F.DaVerificare) fields[F.DaVerificare] = c.daVerificare;
+    if (F.ImportId && importId) fields[F.ImportId] = importId;
     daScrivere.push({ fields, chiave });
   }
 
@@ -3252,6 +3266,82 @@ export async function updateMovimento(input: UpdateMovimentoInput): Promise<SpMo
   );
   logSp("info", "update.movimento", `Movimento #${input.movimentoId} sanato`);
   return mapMovimento(cfg, updated);
+}
+
+// --- Storico import + annullamento ------------------------------------------
+// Lo storico è derivato dai movimenti stessi (raggruppati per ImportId): non
+// serve una lista dedicata. Le righe importate prima dell'introduzione della
+// colonna ImportId formano il gruppo "" (annullabile col valore speciale
+// LEGACY_IMPORT_ID, definito in finanza-logic per essere usabile dal client).
+
+export interface ImportStoricoRiga {
+  importId: string; // "" per il gruppo legacy
+  movimenti: number;
+  anomalie: number;
+  dal: string;
+  al: string;
+  totale: number;
+}
+
+export async function fetchImportStorico(): Promise<ImportStoricoRiga[]> {
+  const all = await fetchMovimenti();
+  const gruppi = new Map<string, ImportStoricoRiga>();
+  for (const m of all) {
+    const g = gruppi.get(m.importId) ?? {
+      importId: m.importId,
+      movimenti: 0,
+      anomalie: 0,
+      dal: m.dataContabile,
+      al: m.dataContabile,
+      totale: 0,
+    };
+    g.movimenti++;
+    if (m.daVerificare) g.anomalie++;
+    if (m.dataContabile && (!g.dal || m.dataContabile < g.dal)) g.dal = m.dataContabile;
+    if (m.dataContabile > g.al) g.al = m.dataContabile;
+    g.totale += m.importo;
+    gruppi.set(m.importId, g);
+  }
+  // Più recenti in alto (l'ImportId inizia con un timestamp ISO); legacy in coda.
+  return [...gruppi.values()].sort((a, b) => b.importId.localeCompare(a.importId));
+}
+
+// Cancella (a blocchi) tutti i movimenti di un import. Il client ripete la
+// chiamata finché `rimanenti` non arriva a 0 — così nessuna invocazione supera
+// i limiti di durata/subrequest del runtime.
+const ANNULLA_MAX_PER_CALL = 120;
+
+export async function annullaImport(
+  importId: string,
+): Promise<{ eliminati: number; rimanenti: number }> {
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const target = importId === LEGACY_IMPORT_ID ? "" : importId;
+  const all = await fetchMovimenti();
+  const ids = all.filter((m) => m.importId === target).map((m) => m.id);
+  const daEliminare = ids.slice(0, ANNULLA_MAX_PER_CALL);
+  let eliminati = 0;
+  const BATCH = 4;
+  for (let i = 0; i < daEliminare.length; i += BATCH) {
+    // DELETE risponde 204 senza corpo: gatewayFetch diretto (come deleteTimbratura).
+    const esiti = await Promise.allSettled(
+      daEliminare.slice(i, i + BATCH).map(async (id) => {
+        const res = await gatewayFetch(`/sites/${cfg.siteId}/lists/${listId}/items/${id}`, {
+          method: "DELETE",
+        });
+        if (!res.ok && res.status !== 204)
+          throw new SpHttpError(res.status, `DELETE movimento ${id} → ${res.status}`, "delete");
+      }),
+    );
+    eliminati += esiti.filter((e) => e.status === "fulfilled").length;
+  }
+  const rimanenti = ids.length - eliminati;
+  logSp(
+    "info",
+    "annulla.import",
+    `Annullamento import "${importId}": ${eliminati} eliminati, ${rimanenti} rimanenti`,
+  );
+  return { eliminati, rimanenti };
 }
 
 // ---------------------------------------------------------------------------

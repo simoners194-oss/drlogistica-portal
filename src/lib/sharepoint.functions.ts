@@ -59,12 +59,16 @@ import {
   fetchMovimentiChiavi,
   importMovimenti,
   updateMovimento,
+  fetchImportStorico,
+  annullaImport,
+  LEGACY_IMPORT_ID,
   getCodiceDipendente,
   type SpMovimento,
   type MovimentiFilter,
   type ImportMovimentoRow,
   type ImportMovimentiResult,
   type UpdateMovimentoInput,
+  type ImportStoricoRiga,
   type SpVoce,
   type SpAcquisto,
   type CreateAcquistoInput,
@@ -630,10 +634,11 @@ export const spGetMovimentiChiavi = createServerFn({ method: "GET" }).handler(
 );
 
 export const spImportMovimenti = createServerFn({ method: "POST" })
-  .inputValidator((input: { rows: ImportMovimentoRow[] }) => {
+  .inputValidator((input: { rows: ImportMovimentoRow[]; importId?: string }) => {
     if (!Array.isArray(input?.rows) || input.rows.length === 0)
       throw new Error("Nessun movimento da importare");
     if (input.rows.length > 150) throw new Error("Blocco troppo grande (max 150 movimenti)");
+    const importId = String(input.importId ?? "").slice(0, 60);
     const re = /^\d{4}-\d{2}-\d{2}$/;
     const rows = input.rows.map((r): ImportMovimentoRow => {
       if (!re.test(r?.dataContabile ?? "") || !re.test(r?.dataValuta ?? ""))
@@ -652,11 +657,33 @@ export const spImportMovimenti = createServerFn({ method: "POST" })
         occ,
       };
     });
-    return { rows };
+    return { rows, importId };
   })
   .handler(async ({ data }): Promise<ImportMovimentiResult> => {
     await assertDirettore(await currentUser());
-    return importMovimenti(data.rows);
+    return importMovimenti(data.rows, data.importId);
+  });
+
+export const spGetImportStorico = createServerFn({ method: "GET" }).handler(
+  async (): Promise<ImportStoricoRiga[]> => {
+    await assertDirettore(await currentUser());
+    return fetchImportStorico();
+  },
+);
+
+// Annulla un import: cancella un blocco di movimenti per chiamata; il client
+// ripete finché `rimanenti` è 0. LEGACY_IMPORT_ID annulla il gruppo senza id.
+export const spAnnullaImport = createServerFn({ method: "POST" })
+  .inputValidator((input: { importId: string }) => {
+    const importId = String(input?.importId ?? "").trim();
+    if (!importId) throw new Error("importId mancante");
+    if (importId !== LEGACY_IMPORT_ID && !importId.startsWith("IMP-"))
+      throw new Error("importId non valido");
+    return { importId };
+  })
+  .handler(async ({ data }): Promise<{ eliminati: number; rimanenti: number }> => {
+    await assertDirettore(await currentUser());
+    return annullaImport(data.importId);
   });
 
 export const spUpdateMovimento = createServerFn({ method: "POST" })

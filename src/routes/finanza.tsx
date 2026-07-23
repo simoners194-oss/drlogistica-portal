@@ -1,6 +1,7 @@
 // DR Portal — Finanza (sezione riservata al direttore DR005 + admin).
-// Estratto conto bancario: import da xlsx, archivio movimenti classificati,
-// overview incassi per cliente/mese, anomalie da sanare a mano.
+// Estratto conto bancario: import da xlsx (con scelta del foglio), archivio
+// movimenti classificati, overview incassi/spese per cliente, anomalie da
+// sanare a mano, storico degli import con annullamento.
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -15,6 +16,8 @@ import {
   Loader2,
   Download,
   CheckCircle2,
+  History,
+  Trash2,
 } from "lucide-react";
 import { esportaCsvFile } from "@/lib/csv";
 import { useLang } from "@/lib/i18n";
@@ -23,16 +26,20 @@ import { isSupervisoreGlobale } from "@/lib/richieste-logic";
 import {
   parseEstratto,
   parseMatrice,
+  LEGACY_IMPORT_ID,
   TIPOLOGIE_MOVIMENTO,
   type MovimentoParsed,
+  type ParseFileResult,
 } from "@/lib/finanza-logic";
 import {
   spGetMovimenti,
   spGetMovimentiChiavi,
   spImportMovimenti,
   spUpdateMovimento,
+  spGetImportStorico,
+  spAnnullaImport,
 } from "@/lib/sharepoint.functions";
-import type { SpMovimento } from "@/lib/sharepoint.server";
+import type { SpMovimento, ImportStoricoRiga } from "@/lib/sharepoint.server";
 
 export const Route = createFileRoute("/finanza")({
   head: () => ({ meta: [{ title: "Finanza — DR Portal" }] }),
@@ -83,11 +90,32 @@ function fmtData(iso?: string): string {
 function fmtImporto(n: number): string {
   return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// Numero per il CSV: virgola decimale (Excel italiano), niente separatore
+// migliaia (che Excel leggerebbe come testo).
+function csvNum(n: number): string {
+  return (Math.round(n * 100) / 100).toString().replace(".", ",");
+}
+// "IMP-2026-07-22T15:30:12" → "22/07/2026 15:30" (gruppo legacy → etichetta).
+function fmtImportId(id: string, legacyLabel: string): string {
+  if (!id) return legacyLabel;
+  const m = id.match(/^IMP-(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}` : id;
+}
 
 // Blocchi di upload verso il server (sotto il limite server di 150).
 const CHUNK = 100;
 
-type Tab = "movimenti" | "overview" | "anomalie" | "import";
+type Tab = "movimenti" | "overview" | "anomalie" | "import" | "storico";
+
+interface SheetInfo {
+  name: string;
+  res: ParseFileResult | null; // null = foglio non riconosciuto
+}
+interface SheetChoice {
+  fileName: string;
+  sheets: SheetInfo[];
+  selected: string;
+}
 
 interface PreviewImport {
   fileName: string;
@@ -104,21 +132,31 @@ function FinanzaPage() {
   const { t, lang } = useLang();
   const [session, setSession] = useState<SessionUser | null>(null);
   const [tab, setTab] = useState<Tab>("movimenti");
+  // 0 = tutti gli anni (l'overview passa da colonne-mese a colonne-anno).
   const [anno, setAnno] = useState(new Date().getFullYear());
 
   const [movimenti, setMovimenti] = useState<SpMovimento[] | null>(null);
   const [anomalie, setAnomalie] = useState<SpMovimento[] | null>(null);
+  const [storico, setStorico] = useState<ImportStoricoRiga[] | null>(null);
 
   // Filtri archivio movimenti
   const [tipF, setTipF] = useState("tutte");
   const [cercaF, setCercaF] = useState("");
   const [meseF, setMeseF] = useState(0); // 0 = tutti
 
+  // Overview: incassi o spese
+  const [ovMode, setOvMode] = useState<"incassi" | "spese">("incassi");
+
   // Import
+  const [sheetChoice, setSheetChoice] = useState<SheetChoice | null>(null);
   const [preview, setPreview] = useState<PreviewImport | null>(null);
   const [parsing, setParsing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState("");
+
+  // Storico: annullamento in corso
+  const [annullaBusy, setAnnullaBusy] = useState<string | null>(null);
+  const [annullaProgress, setAnnullaProgress] = useState(0);
 
   // Sanatura anomalie
   const [editId, setEditId] = useState<string | null>(null);
@@ -134,7 +172,8 @@ function FinanzaPage() {
 
   const loadMovimenti = (a: number) => {
     setMovimenti(null);
-    spGetMovimenti({ data: { from: `${a}-01-01`, to: `${a}-12-31` } })
+    const range = a > 0 ? { from: `${a}-01-01`, to: `${a}-12-31` } : {};
+    spGetMovimenti({ data: range })
       .then((l) => setMovimenti(l as SpMovimento[]))
       .catch((err) => {
         setMovimenti([]);
@@ -149,6 +188,16 @@ function FinanzaPage() {
       .then((l) => setAnomalie(l as SpMovimento[]))
       .catch(() => setAnomalie([]));
   };
+  const loadStorico = () => {
+    spGetImportStorico()
+      .then((l) => setStorico(l as ImportStoricoRiga[]))
+      .catch(() => setStorico([]));
+  };
+  const refreshAll = (a: number) => {
+    loadMovimenti(a);
+    loadAnomalie();
+    loadStorico();
+  };
 
   useEffect(() => {
     const s = readSession();
@@ -159,8 +208,7 @@ function FinanzaPage() {
     setSession(s);
     const dir = s.ruolo === "amministratore_sistema" || isSupervisoreGlobale(s.codice ?? "");
     if (!dir) return;
-    loadMovimenti(anno);
-    loadAnomalie();
+    refreshAll(anno);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -170,38 +218,19 @@ function FinanzaPage() {
   };
 
   // --- Import xlsx ----------------------------------------------------------
-  const onFile = async (file: File) => {
-    setPreview(null);
+  const costruisciPreview = async (fileName: string, res: ParseFileResult) => {
     setParsing(true);
     try {
-      const XLSX = await import("xlsx");
-      const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
-      let parsedRows: ReturnType<typeof parseMatrice> = null;
-      for (const name of wb.SheetNames) {
-        const matrix = XLSX.utils.sheet_to_json(wb.Sheets[name], {
-          header: 1,
-          raw: true,
-        }) as unknown[][];
-        const res = parseMatrice(matrix);
-        if (res && res.rows.length) {
-          parsedRows = res;
-          break;
-        }
-      }
-      if (!parsedRows) {
-        toast.error(t("fin.errFile"), { description: t("fin.errFileDesc") });
-        return;
-      }
-      const righe = parseEstratto(parsedRows.rows);
+      const righe = parseEstratto(res.rows);
       const chiavi = new Set((await spGetMovimentiChiavi()) as string[]);
       const nuove = righe.filter((r) => !chiavi.has(r.chiave));
       const date = righe.map((r) => r.dataContabile).sort();
       setPreview({
-        fileName: file.name,
+        fileName,
         righe,
         nuove,
         doppioni: righe.length - nuove.length,
-        scartate: parsedRows.scartate,
+        scartate: res.scartate,
         anomalie: nuove.filter((r) => r.daVerificare).length,
         dal: date[0] ?? "",
         al: date[date.length - 1] ?? "",
@@ -215,9 +244,58 @@ function FinanzaPage() {
     }
   };
 
+  const onFile = async (file: File) => {
+    setPreview(null);
+    setSheetChoice(null);
+    setParsing(true);
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
+      const sheets: SheetInfo[] = wb.SheetNames.map((name) => {
+        const matrix = XLSX.utils.sheet_to_json(wb.Sheets[name], {
+          header: 1,
+          raw: true,
+        }) as unknown[][];
+        const res = parseMatrice(matrix);
+        return { name, res: res && res.rows.length ? res : null };
+      });
+      const riconosciuti = sheets.filter((s) => s.res);
+      if (riconosciuti.length === 0) {
+        toast.error(t("fin.errFile"), { description: t("fin.errFileDesc") });
+        return;
+      }
+      // Un solo foglio nel file → si importa quello. Più fogli → si chiede
+      // SEMPRE quale usare (preselezionando il primo riconosciuto).
+      if (sheets.length === 1) {
+        await costruisciPreview(file.name, riconosciuti[0].res!);
+      } else {
+        setSheetChoice({ fileName: file.name, sheets, selected: riconosciuti[0].name });
+      }
+    } catch (err) {
+      toast.error(t("fin.errFile"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const confermaFoglio = async () => {
+    if (!sheetChoice) return;
+    const scelto = sheetChoice.sheets.find((s) => s.name === sheetChoice.selected);
+    if (!scelto?.res) {
+      toast.error(t("fin.errFile"), { description: t("fin.sheetNotRecognized") });
+      return;
+    }
+    await costruisciPreview(sheetChoice.fileName, scelto.res);
+    setSheetChoice(null);
+  };
+
   const eseguiImport = async () => {
     if (!preview || preview.nuove.length === 0) return;
     setImporting(true);
+    // Lotto di import: identifica queste righe nello storico (annullabile).
+    const importId = `IMP-${new Date().toISOString().slice(0, 19)}`;
     let importati = 0;
     let doppioni = 0;
     const errori: string[] = [];
@@ -233,7 +311,7 @@ function FinanzaPage() {
           occ: r.occ,
         }));
         setImportProgress(`${Math.min(i + CHUNK, preview.nuove.length)} / ${preview.nuove.length}`);
-        const res = await spImportMovimenti({ data: { rows } });
+        const res = await spImportMovimenti({ data: { rows, importId } });
         importati += res.importati;
         doppioni += res.doppioni;
         errori.push(...res.errori);
@@ -243,8 +321,7 @@ function FinanzaPage() {
       });
       if (errori.length) console.warn("Import movimenti — errori:", errori);
       setPreview(null);
-      loadMovimenti(anno);
-      loadAnomalie();
+      refreshAll(anno);
       setTab("movimenti");
     } catch (err) {
       toast.error(t("fin.errImport"), {
@@ -253,6 +330,43 @@ function FinanzaPage() {
     } finally {
       setImporting(false);
       setImportProgress("");
+    }
+  };
+
+  // --- Annullamento import --------------------------------------------------
+  const annullaImportGruppo = async (riga: ImportStoricoRiga) => {
+    const etichetta = fmtImportId(riga.importId, t("fin.legacyImport"));
+    if (
+      !window.confirm(
+        `${t("fin.annullaConfirm")}\n${etichetta} — ${riga.movimenti} ${t("fin.rows")}`,
+      )
+    )
+      return;
+    const importId = riga.importId || LEGACY_IMPORT_ID;
+    setAnnullaBusy(riga.importId);
+    setAnnullaProgress(0);
+    try {
+      let tot = 0;
+      for (;;) {
+        const r = (await spAnnullaImport({ data: { importId } })) as {
+          eliminati: number;
+          rimanenti: number;
+        };
+        tot += r.eliminati;
+        setAnnullaProgress(tot);
+        if (r.rimanenti <= 0) break;
+        if (r.eliminati === 0) throw new Error("Annullamento interrotto: nessun progresso.");
+      }
+      toast.success(t("fin.annullaDone"), { description: `${tot} ${t("fin.rows")}` });
+      refreshAll(anno);
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+      refreshAll(anno);
+    } finally {
+      setAnnullaBusy(null);
+      setAnnullaProgress(0);
     }
   };
 
@@ -314,33 +428,49 @@ function FinanzaPage() {
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [movimenti]);
 
-  // Overview incassi: pivot cliente × mese sui soli importi positivi di tipo
-  // Incasso (come il foglio "Overview incassi", ma raggruppato per cliente).
-  const overview = useMemo(() => {
-    const incassi = (movimenti ?? []).filter((m) => m.tipologia === "Incasso" && m.importo > 0);
-    const byCliente = new Map<string, { mesi: number[]; tot: number }>();
-    const totMesi = Array.from({ length: 12 }, () => 0);
-    let tot = 0;
-    for (const m of incassi) {
-      const mese = Number(m.dataContabile.slice(5, 7)) - 1;
-      if (mese < 0 || mese > 11) continue;
-      const key = m.cliente || `(${t("fin.unknownClient")})`;
-      const row = byCliente.get(key) ?? { mesi: Array.from({ length: 12 }, () => 0), tot: 0 };
-      row.mesi[mese] += m.importo;
-      row.tot += m.importo;
-      byCliente.set(key, row);
-      totMesi[mese] += m.importo;
-      tot += m.importo;
-    }
-    const righe = [...byCliente.entries()].sort((a, b) => b[1].tot - a[1].tot);
-    return { righe, totMesi, tot, count: incassi.length };
-  }, [movimenti, t]);
-
   const mesi = lang === "it" ? MESI_IT : MESI_EN;
+
+  // Overview: pivot per cliente. Con un anno selezionato le colonne sono i
+  // mesi; con "tutti gli anni" le colonne diventano gli anni. Incassi = soli
+  // accrediti di tipo Incasso; Spese = tutti gli addebiti (importo < 0,
+  // raggruppati per controparte o, in mancanza, per tipologia), in valore
+  // assoluto.
+  const overview = useMemo(() => {
+    const all = movimenti ?? [];
+    const anni = [...new Set(all.map((m) => m.dataContabile.slice(0, 4)))].filter(Boolean).sort();
+    const colonne = anno > 0 ? mesi : anni;
+    const colIdx = (m: SpMovimento): number =>
+      anno > 0
+        ? Number(m.dataContabile.slice(5, 7)) - 1
+        : anni.indexOf(m.dataContabile.slice(0, 4));
+    const selezione =
+      ovMode === "incassi"
+        ? all.filter((m) => m.tipologia === "Incasso" && m.importo > 0)
+        : all.filter((m) => m.importo < 0);
+    const byRiga = new Map<string, { valori: number[]; tot: number }>();
+    const totCol = colonne.map(() => 0);
+    let tot = 0;
+    for (const m of selezione) {
+      const i = colIdx(m);
+      if (i < 0 || i >= colonne.length) continue;
+      const valore = ovMode === "incassi" ? m.importo : -m.importo;
+      const key =
+        m.cliente ||
+        (ovMode === "spese" && m.tipologia ? m.tipologia : `(${t("fin.unknownClient")})`);
+      const row = byRiga.get(key) ?? { valori: colonne.map(() => 0), tot: 0 };
+      row.valori[i] += valore;
+      row.tot += valore;
+      byRiga.set(key, row);
+      totCol[i] += valore;
+      tot += valore;
+    }
+    const righe = [...byRiga.entries()].sort((a, b) => b[1].tot - a[1].tot);
+    return { righe, colonne, totCol, tot, count: selezione.length };
+  }, [movimenti, ovMode, anno, mesi, t]);
 
   const esportaMovimenti = () => {
     esportaCsvFile(
-      `movimenti-${anno}`,
+      `movimenti-${anno > 0 ? anno : "tutti"}`,
       [
         "Data contabile",
         "Data valuta",
@@ -357,7 +487,7 @@ function FinanzaPage() {
       filtrati.map((m) => [
         fmtData(m.dataContabile),
         fmtData(m.dataValuta),
-        m.importo,
+        csvNum(m.importo),
         m.divisa,
         m.causale,
         m.tipologia,
@@ -371,15 +501,19 @@ function FinanzaPage() {
   };
   const esportaOverview = () => {
     esportaCsvFile(
-      `overview-incassi-${anno}`,
-      ["Cliente", ...mesi, "Totale"],
+      `overview-${ovMode}-${anno > 0 ? anno : "tutti"}`,
+      [ovMode === "incassi" ? "Cliente" : "Controparte / Tipologia", ...overview.colonne, "Totale"],
       [
-        ...overview.righe.map(([cliente, r]) => [
-          cliente,
-          ...r.mesi.map((v) => (v ? v : "")),
-          r.tot,
+        ...overview.righe.map(([riga, r]) => [
+          riga,
+          ...r.valori.map((v) => (v ? csvNum(v) : "")),
+          csvNum(r.tot),
         ]),
-        [t("common.total"), ...overview.totMesi.map((v) => (v ? v : "")), overview.tot],
+        [
+          t("common.total"),
+          ...overview.totCol.map((v) => (v ? csvNum(v) : "")),
+          csvNum(overview.tot),
+        ],
       ],
     );
   };
@@ -421,7 +555,7 @@ function FinanzaPage() {
   return (
     <AppShell title={t("fin.title")} subtitle={t("fin.subtitle")}>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
+        <div className="inline-flex flex-wrap rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
           {tabBtn("movimenti", <Table2 className="h-4 w-4" />, t("fin.tabMovimenti"))}
           {tabBtn("overview", <TrendingUp className="h-4 w-4" />, t("fin.tabOverview"))}
           {tabBtn(
@@ -431,14 +565,16 @@ function FinanzaPage() {
             anomalie?.length ?? 0,
           )}
           {tabBtn("import", <Upload className="h-4 w-4" />, t("fin.tabImport"))}
+          {tabBtn("storico", <History className="h-4 w-4" />, t("fin.tabStorico"))}
         </div>
-        {tab !== "anomalie" && tab !== "import" && (
+        {(tab === "movimenti" || tab === "overview") && (
           <select
             value={anno}
             onChange={(e) => cambiaAnno(Number(e.target.value))}
             className={`${inputCls} w-auto`}
           >
-            {Array.from({ length: 4 }, (_, i) => new Date().getFullYear() - i).map((a) => (
+            <option value={0}>{t("fin.allYears")}</option>
+            {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map((a) => (
               <option key={a} value={a}>
                 {a}
               </option>
@@ -557,12 +693,31 @@ function FinanzaPage() {
       {/* ------------------------------- Overview -------------------------- */}
       {tab === "overview" && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
-              <div className="text-sm font-semibold text-foreground">{t("fin.overviewTitle")}</div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {overview.count} {t("fin.overviewCount")} · {t("common.total")}{" "}
-                <span className="font-semibold text-status-present">
+              <div className="inline-flex rounded-lg border border-border p-0.5 text-sm mb-2">
+                <button
+                  type="button"
+                  onClick={() => setOvMode("incassi")}
+                  className={`rounded-md px-3 py-1 font-medium ${ovMode === "incassi" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {t("fin.ovIncassi")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOvMode("spese")}
+                  className={`rounded-md px-3 py-1 font-medium ${ovMode === "spese" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {t("fin.ovSpese")}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {overview.count}{" "}
+                {ovMode === "incassi" ? t("fin.overviewCount") : t("fin.overviewCountSpese")} ·{" "}
+                {t("common.total")}{" "}
+                <span
+                  className={`font-semibold ${ovMode === "incassi" ? "text-status-present" : "text-foreground"}`}
+                >
                   {fmtImporto(overview.tot)} €
                 </span>
               </p>
@@ -587,22 +742,24 @@ function FinanzaPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                    <th className="py-2 pr-3">{t("fin.cliente")}</th>
-                    {mesi.map((m) => (
-                      <th key={m} className="py-2 px-2 text-right">
-                        {m}
+                    <th className="py-2 pr-3">
+                      {ovMode === "incassi" ? t("fin.cliente") : t("fin.controparte")}
+                    </th>
+                    {overview.colonne.map((c) => (
+                      <th key={c} className="py-2 px-2 text-right">
+                        {c}
                       </th>
                     ))}
                     <th className="py-2 pl-2 text-right">{t("common.total")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {overview.righe.map(([cliente, r]) => (
-                    <tr key={cliente} className="border-b border-border/50 hover:bg-muted/40">
-                      <td className="py-1.5 pr-3 max-w-56 truncate" title={cliente}>
-                        {cliente}
+                  {overview.righe.map(([riga, r]) => (
+                    <tr key={riga} className="border-b border-border/50 hover:bg-muted/40">
+                      <td className="py-1.5 pr-3 max-w-56 truncate" title={riga}>
+                        {riga}
                       </td>
-                      {r.mesi.map((v, i) => (
+                      {r.valori.map((v, i) => (
                         <td
                           key={i}
                           className="py-1.5 px-2 text-right whitespace-nowrap text-muted-foreground"
@@ -617,12 +774,14 @@ function FinanzaPage() {
                   ))}
                   <tr className="border-t border-border font-semibold">
                     <td className="py-2 pr-3">{t("common.total")}</td>
-                    {overview.totMesi.map((v, i) => (
+                    {overview.totCol.map((v, i) => (
                       <td key={i} className="py-2 px-2 text-right whitespace-nowrap">
                         {v ? fmtImporto(v) : ""}
                       </td>
                     ))}
-                    <td className="py-2 pl-2 text-right text-status-present whitespace-nowrap">
+                    <td
+                      className={`py-2 pl-2 text-right whitespace-nowrap ${ovMode === "incassi" ? "text-status-present" : ""}`}
+                    >
                       {fmtImporto(overview.tot)}
                     </td>
                   </tr>
@@ -769,6 +928,45 @@ function FinanzaPage() {
               <Loader2 className="h-4 w-4 animate-spin" /> {t("fin.parsing")}
             </p>
           )}
+          {sheetChoice && (
+            <div className="mt-4 rounded-xl border border-border p-4">
+              <div className="text-sm font-medium text-foreground">{sheetChoice.fileName}</div>
+              <p className="mt-1 text-[13px] text-muted-foreground">{t("fin.sheetChoose")}</p>
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <div className="min-w-64">
+                  <label className="text-xs text-muted-foreground">{t("fin.sheet")}</label>
+                  <select
+                    value={sheetChoice.selected}
+                    onChange={(e) => setSheetChoice({ ...sheetChoice, selected: e.target.value })}
+                    className={inputCls}
+                  >
+                    {sheetChoice.sheets.map((s) => (
+                      <option key={s.name} value={s.name}>
+                        {s.name}
+                        {s.res
+                          ? ` (${s.res.rows.length} ${t("fin.rows")})`
+                          : ` — ${t("fin.sheetNotRecognized")}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void confermaFoglio()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                >
+                  {t("fin.sheetUse")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSheetChoice(null)}
+                  className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  {t("common.cancel")}
+                </button>
+              </div>
+            </div>
+          )}
           {preview && (
             <div className="mt-4 rounded-xl border border-border p-4">
               <div className="text-sm font-medium text-foreground">{preview.fileName}</div>
@@ -824,6 +1022,82 @@ function FinanzaPage() {
             <Landmark className="h-4 w-4 shrink-0 mt-0.5" />
             <p>{t("fin.apiNote")}</p>
           </div>
+        </div>
+      )}
+
+      {/* ------------------------------- Storico import -------------------- */}
+      {tab === "storico" && (
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+          <div className="text-sm font-semibold text-foreground mb-1">{t("fin.storicoTitle")}</div>
+          <p className="text-xs text-muted-foreground mb-4">{t("fin.storicoDesc")}</p>
+          {storico == null ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin inline-block" />
+            </div>
+          ) : storico.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              {t("fin.storicoEmpty")}
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                    <th className="py-2 pr-3">{t("fin.colImport")}</th>
+                    <th className="py-2 pr-3">{t("fin.previewPeriod")}</th>
+                    <th className="py-2 pr-3 text-right">{t("fin.colMovimenti")}</th>
+                    <th className="py-2 pr-3 text-right">{t("fin.tabAnomalie")}</th>
+                    <th className="py-2 pr-3 text-right">{t("fin.colSaldo")}</th>
+                    <th className="py-2 pr-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {storico.map((r) => (
+                    <tr key={r.importId || "legacy"} className="border-b border-border/50">
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {fmtImportId(r.importId, t("fin.legacyImport"))}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap text-muted-foreground">
+                        {fmtData(r.dal)} → {fmtData(r.al)}
+                      </td>
+                      <td className="py-2 pr-3 text-right">{r.movimenti}</td>
+                      <td className="py-2 pr-3 text-right">
+                        {r.anomalie > 0 ? (
+                          <span className="text-status-absent font-medium">{r.anomalie}</span>
+                        ) : (
+                          "0"
+                        )}
+                      </td>
+                      <td
+                        className={`py-2 pr-3 text-right whitespace-nowrap font-medium ${r.totale > 0 ? "text-status-present" : ""}`}
+                      >
+                        {fmtImporto(r.totale)}
+                      </td>
+                      <td className="py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => void annullaImportGruppo(r)}
+                          disabled={annullaBusy != null}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-status-absent/40 px-3 py-1.5 text-xs font-medium text-status-absent hover:bg-status-absent/10 disabled:opacity-50"
+                        >
+                          {annullaBusy === r.importId ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              {annullaProgress} / {r.movimenti}
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 className="h-3.5 w-3.5" /> {t("fin.annulla")}
+                            </>
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </AppShell>

@@ -465,8 +465,13 @@ const en = {
   "fin.rows": "transactions",
   "fin.first500": "Showing the first 500 of",
   "fin.overviewTitle": "Collections by client and month",
-  "fin.overviewCount": "collections in the selected year",
-  "fin.unknownClient": "not identified",
+  "fin.overviewCount": "collections in the selected period",
+  "fin.overviewCountSpese": "payments in the selected period",
+  "fin.unknownClient": "Anomalies to verify",
+  "fin.ovIncassi": "Collections",
+  "fin.ovSpese": "Expenses",
+  "fin.controparte": "Counterparty / Type",
+  "fin.allYears": "All years",
   "fin.anomalieTitle": "Anomalies to review",
   "fin.anomalieDesc":
     "Transactions whose type or client could not be identified with certainty. Fix them manually: the correction is saved, while the original bank record stays untouched (re-importing the same file will not create duplicates).",
@@ -496,6 +501,23 @@ const en = {
     "No sheet with the expected columns (Data contabile, Data valuta, Importo, Divisa, Causale, Descrizione) was found.",
   "fin.apiNote":
     "Today the statement is loaded manually from the bank's Excel export. A direct bank API connection (PSD2/open banking) requires an agreement with an aggregator and can be evaluated later.",
+  "fin.sheet": "Sheet",
+  "fin.sheetChoose": "The file contains multiple sheets: choose which one to import.",
+  "fin.sheetUse": "Use this sheet",
+  "fin.sheetNotRecognized": "columns not recognized",
+  "fin.tabStorico": "Import history",
+  "fin.storicoTitle": "Import history",
+  "fin.storicoDesc":
+    "Each import is a batch: cancelling it removes ALL its transactions from the archive (including manually fixed ones). The same file can then be re-imported.",
+  "fin.storicoEmpty": "No imports yet.",
+  "fin.colImport": "Imported on",
+  "fin.colMovimenti": "Transactions",
+  "fin.colSaldo": "Net total",
+  "fin.legacyImport": "(initial import)",
+  "fin.annulla": "Cancel import",
+  "fin.annullaConfirm":
+    "Cancel this import? ALL its transactions will be removed from the archive, including the ones fixed manually. The operation cannot be undone (but the file can be re-imported).",
+  "fin.annullaDone": "Import cancelled",
 } as const;
 
 type DictKey = keyof typeof en;
@@ -932,8 +954,13 @@ const it: Record<DictKey, string> = {
   "fin.rows": "movimenti",
   "fin.first500": "Mostrati i primi 500 di",
   "fin.overviewTitle": "Incassi per cliente e mese",
-  "fin.overviewCount": "incassi nell'anno selezionato",
-  "fin.unknownClient": "non identificato",
+  "fin.overviewCount": "incassi nel periodo selezionato",
+  "fin.overviewCountSpese": "pagamenti nel periodo selezionato",
+  "fin.unknownClient": "Anomalie da verificare",
+  "fin.ovIncassi": "Incassi",
+  "fin.ovSpese": "Spese",
+  "fin.controparte": "Controparte / Tipologia",
+  "fin.allYears": "Tutti gli anni",
   "fin.anomalieTitle": "Anomalie da sanare",
   "fin.anomalieDesc":
     "Movimenti per cui tipologia o cliente non sono stati identificati con certezza. Correggili a mano: la sanatura viene salvata, mentre il dato bancario originale resta intatto (ricaricare lo stesso file non crea doppioni).",
@@ -963,6 +990,23 @@ const it: Record<DictKey, string> = {
     "Nessun foglio con le colonne attese (Data contabile, Data valuta, Importo, Divisa, Causale, Descrizione).",
   "fin.apiNote":
     "Oggi l'estratto conto si carica a mano dall'export Excel della banca. Il collegamento diretto via API bancaria (PSD2/open banking) richiede un accordo con un aggregatore e si può valutare in seguito.",
+  "fin.sheet": "Foglio",
+  "fin.sheetChoose": "Il file contiene più fogli: scegli quale importare.",
+  "fin.sheetUse": "Usa questo foglio",
+  "fin.sheetNotRecognized": "colonne non riconosciute",
+  "fin.tabStorico": "Storico import",
+  "fin.storicoTitle": "Storico degli import",
+  "fin.storicoDesc":
+    "Ogni import è un lotto: annullarlo rimuove dall'archivio TUTTI i suoi movimenti (comprese le sanature manuali). Il file potrà poi essere reimportato.",
+  "fin.storicoEmpty": "Nessun import ancora effettuato.",
+  "fin.colImport": "Importato il",
+  "fin.colMovimenti": "Movimenti",
+  "fin.colSaldo": "Saldo netto",
+  "fin.legacyImport": "(import iniziale)",
+  "fin.annulla": "Annulla import",
+  "fin.annullaConfirm":
+    "Annullare questo import? TUTTI i suoi movimenti saranno rimossi dall'archivio, comprese le sanature manuali. L'operazione non è reversibile (ma il file si può reimportare).",
+  "fin.annullaDone": "Import annullato",
 };
 
 const dictionaries: Record<Lang, Record<DictKey, string>> = { en, it };

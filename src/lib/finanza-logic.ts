@@ -40,11 +40,15 @@ export interface MovimentoParsed extends MovimentoRaw {
   daVerificare: boolean;
 }
 
+// Valore speciale per annullare il gruppo di movimenti importati prima
+// dell'introduzione della colonna ImportId (righe con ImportId vuoto).
+export const LEGACY_IMPORT_ID = "__senza__";
+
 // --- Tipologie (valori registrati su SharePoint, in italiano) ---------------
 export const TIPOLOGIE_MOVIMENTO = [
   "Incasso",
   "Bonifico uscita",
-  "Stipendi",
+  "Pagamento Salario",
   "Commissioni",
   "Pagamento carta",
   "PagoPA / Multe",
@@ -104,16 +108,42 @@ export function normalizeTesto(s: string): string {
 }
 
 /** Canonicalizza le forme societarie per non spezzare i raggruppamenti
- *  ("s.r.l.", "s r l", "srl." → "srl"; idem spa/snc/sas). */
+ *  ("s.r.l.", "s r l", "srl." → "srl"; idem spa/snc/sas). La banca spezza il
+ *  testo a colonna fissa, quindi si normalizzano anche i TRONCAMENTI della
+ *  forma societaria estesa ("societa' a responsabilita'", anche mozza → srl)
+ *  per non far comparire lo stesso cliente due volte nell'overview. */
 export function canonicalCliente(nome: string): string {
-  return normalizeTesto(nome)
-    .replace(/\bs[\s.]*r[\s.]*l[\s.]*\b/g, "srl ")
-    .replace(/\bs[\s.]*p[\s.]*a[\s.]*\b/g, "spa ")
-    .replace(/\bs[\s.]*n[\s.]*c[\s.]*\b/g, "snc ")
-    .replace(/\bs[\s.]*a[\s.]*s[\s.]*\b/g, "sas ")
-    .replace(/\s+/g, " ")
-    .replace(/[.,;:]+$/g, "")
-    .trim();
+  return (
+    normalizeTesto(nome)
+      .replace(/\s*-\s*/g, " ") // "siaed - spa" → "siaed spa"
+      .replace(/\bs[\s.]*r[\s.]*l[\s.]*s?\b/g, "srl ")
+      .replace(/\bs[\s.]*p[\s.]*a[\s.]*\b/g, "spa ")
+      .replace(/\bs[\s.]*n[\s.]*c[\s.]*\b/g, "snc ")
+      .replace(/\bs[\s.]*a[\s.]*s[\s.]*\b/g, "sas ")
+      // Forma estesa in coda, anche troncata dalla banca (a volte senza spazi:
+      // "societa'responsabilita…"): tutto ciò che segue collassa in "srl".
+      .replace(/\bsociet[aà]'?\s*a?\s*responsabilit[a']*.*$/g, "srl")
+      // "societa'" penzolante in coda (nome tagliato prima della forma).
+      .replace(/\bsociet[aà]'?\s*$/g, "")
+      .replace(/\s+/g, " ")
+      .replace(/[.,;:]+$/g, "")
+      .trim()
+  );
+}
+
+// --- Persona fisica vs azienda ----------------------------------------------
+// Un bonifico in uscita verso una persona fisica è (per prassi aziendale) un
+// pagamento di salario. Euristica: 2-4 parole solo alfabetiche, nessun
+// marcatore societario/istituzionale. I falsi positivi si sanano da Anomalie.
+const RE_MARCATORE_AZIENDA =
+  /(srl|spa|snc|sas|scarl|scpa|coop|consorzio|societ|gmbh|ltd|llc|sagl|\bkg\b|\bbv\b|banc[ao]|assicur|finanz|welfare|leasing|holding|group|servi[cz]|consulenz|sindacat|petroleum|energ|logistic|trasport|autotrasport|express|immobil|italia|italy|\.it\b|regolament|monetari|pagament|rimbors|stipend|cessione|fattur|nolegg)/;
+
+export function isPersonaFisica(nome: string): boolean {
+  const s = normalizeTesto(nome);
+  if (!s || RE_MARCATORE_AZIENDA.test(s)) return false;
+  const parole = s.split(" ").filter(Boolean);
+  if (parole.length < 2 || parole.length > 4) return false;
+  return parole.every((p) => /^[a-zàèéìòù']+$/.test(p));
 }
 
 // --- Chiave di deduplicazione ----------------------------------------------
@@ -242,15 +272,18 @@ export function classificaMovimento(raw: MovimentoRaw): {
 
   // Regole da descrizione che raffinano la causale (fonte: prassi aziendale).
   if (desc.includes("pagopa")) tipologia = "PagoPA / Multe";
-  if (desc.includes("benefici vari") || desc.includes("stipend")) tipologia = "Stipendi";
+  if (desc.includes("benefici vari") || desc.includes("stipend")) tipologia = "Pagamento Salario";
   if (tipologia === "Storno") daVerificare = true; // semantica ambigua: sempre da verificare
 
   let cliente = "";
   let incerto = false;
   if (desc.includes("bon.da ")) {
     ({ cliente, incerto } = estraiClienteIncasso(desc));
-  } else if (tipologia === "Bonifico uscita" || tipologia === "Stipendi") {
+  } else if (tipologia === "Bonifico uscita" || tipologia === "Pagamento Salario") {
     ({ cliente, incerto } = estraiClienteUscita(desc));
+    // Bonifico verso una persona fisica → pagamento di salario.
+    if (tipologia === "Bonifico uscita" && !incerto && isPersonaFisica(cliente))
+      tipologia = "Pagamento Salario";
   } else if (tipologia === "Addebito SDD") {
     ({ cliente, incerto } = estraiClienteSdd(desc));
   } else if (tipologia === "Pagamento carta" || tipologia === "PagoPA / Multe") {
