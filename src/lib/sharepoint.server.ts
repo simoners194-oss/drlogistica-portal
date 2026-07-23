@@ -3370,8 +3370,8 @@ export async function annullaImport(
 }
 
 // --- Regole apprese (lista RegoleFinanza) -----------------------------------
-// Il direttore insegna al sistema le correzioni permanenti ("Pietro Ruzza è
-// l'avvocato → Consulenze", "kuwait → Carburante"). Le regole si applicano a
+// Il direttore insegna al sistema le correzioni permanenti (es. un bonifico a
+// un professionista → Consulenze, "kuwait" → Carburante). Le regole si applicano a
 // ogni import futuro e, a richiesta, retroattivamente all'archivio.
 
 function requireRegoleList(cfg: SpDiscovered): string {

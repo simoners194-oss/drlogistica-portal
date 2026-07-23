@@ -523,7 +523,7 @@ const en = {
   "fin.regoleDesc":
     "A rule permanently corrects the automatic classification: when a transaction matches the pattern, the chosen type and/or counterparty name is applied. Rules apply to every future import and, if you tick the box, to the archive as well. Tip: use the wand icon next to any transaction to prefill this form.",
   "fin.regolaPattern": "When it matches",
-  "fin.regolaPatternPh": "e.g. pietro ruzza · kuwait · telecom italia",
+  "fin.regolaPatternPh": "e.g. mario rossi · kuwait · telecom italia",
   "fin.regolaCampo": "Match on",
   "fin.campoCliente": "Counterparty",
   "fin.campoDescrizione": "Description (contains)",
@@ -1041,7 +1041,7 @@ const it: Record<DictKey, string> = {
   "fin.regoleDesc":
     "Una regola corregge in modo permanente la classificazione automatica: quando un movimento combacia col pattern, vengono applicati la tipologia e/o il nome controparte scelti. Le regole valgono per ogni import futuro e, se spunti la casella, anche per l'archivio già caricato. Suggerimento: usa l'icona bacchetta accanto a un movimento per precompilare questo modulo.",
   "fin.regolaPattern": "Quando combacia",
-  "fin.regolaPatternPh": "es. pietro ruzza · kuwait · telecom italia",
+  "fin.regolaPatternPh": "es. mario rossi · kuwait · telecom italia",
   "fin.regolaCampo": "Cerca in",
   "fin.campoCliente": "Controparte",
   "fin.campoDescrizione": "Descrizione (contiene)",
