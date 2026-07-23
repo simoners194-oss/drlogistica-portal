@@ -437,6 +437,7 @@ const en = {
   "gt.dayTitle": "Employee's day — view and fix",
   "gt.dayDesc":
     "Pick an employee and a date to see the recorded entries. Delete a wrong entry (e.g. clock-out pressed instead of break) and add the correct ones: the employee's buttons re-enable automatically.",
+  "gt.code": "Employee code",
   "gt.dayLoad": "Load",
   "gt.dayLoadErr": "Could not load the day's entries",
   "gt.dayEmpty": "No entries recorded on this day.",
@@ -976,6 +977,7 @@ const it: Record<DictKey, string> = {
   "gt.dayTitle": "Giornata del dipendente — vedi e correggi",
   "gt.dayDesc":
     "Scegli dipendente e data per vedere le timbrature registrate. Elimina quella sbagliata (es. uscita premuta al posto della pausa) e inserisci quelle corrette: i pulsanti del dipendente si riabilitano da soli.",
+  "gt.code": "Codice dipendente",
   "gt.dayLoad": "Carica",
   "gt.dayLoadErr": "Impossibile caricare le timbrature del giorno",
   "gt.dayEmpty": "Nessuna timbratura registrata in questo giorno.",

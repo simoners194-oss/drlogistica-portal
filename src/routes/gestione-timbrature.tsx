@@ -62,7 +62,10 @@ function GestioneTimbraturePage() {
   const [topTab, setTopTab] = useState<"inserimento" | "giornata" | "anomalie">("inserimento");
   const [anomalie, setAnomalie] = useState<AnomaliaItem[] | null>(null);
 
-  // Turni del giorno (vista correzione): dipendente + data → timbrature.
+  // Turni del giorno (vista correzione): filtri sede/codice + dipendente +
+  // data → timbrature.
+  const [gSede, setGSede] = useState<SedeId | "tutte">("tutte");
+  const [gCodice, setGCodice] = useState("");
   const [gDipId, setGDipId] = useState("");
   const [gData, setGData] = useState(() => new Date().toISOString().slice(0, 10));
   const [gList, setGList] = useState<SpTimbratura[] | null>(null);
@@ -140,6 +143,39 @@ function GestioneTimbraturePage() {
     setPausaFine("");
     setNote("");
   }
+
+  // Dipendenti della vista "Turni del giorno", filtrati per sede e per
+  // codice/nome. Se il filtro riduce a UN solo dipendente, viene selezionato
+  // da solo (es. digitando "DR0018").
+  const gFilteredDip = useMemo(() => {
+    const q = gCodice.trim().toLowerCase();
+    const arr = (dipendenti ?? []).filter((d) => {
+      if (gSede !== "tutte" && d.sede !== gSede) return false;
+      if (!q) return true;
+      return (
+        d.codice.toLowerCase().includes(q) ||
+        `${d.cognome} ${d.nome}`.toLowerCase().includes(q) ||
+        `${d.nome} ${d.cognome}`.toLowerCase().includes(q)
+      );
+    });
+    return [...arr].sort((a, b) =>
+      `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`),
+    );
+  }, [dipendenti, gSede, gCodice]);
+
+  useEffect(() => {
+    if (gFilteredDip.length === 1) {
+      if (gDipId !== gFilteredDip[0].id) {
+        setGDipId(gFilteredDip[0].id);
+        setGList(null);
+      }
+    } else if (gDipId && !gFilteredDip.some((d) => d.id === gDipId)) {
+      // Il dipendente selezionato non rientra più nei filtri.
+      setGDipId("");
+      setGList(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gFilteredDip]);
 
   // Carica le timbrature del giorno per il dipendente selezionato.
   async function caricaGiornata(dipId = gDipId, giorno = gData) {
@@ -369,7 +405,35 @@ function GestioneTimbraturePage() {
           </div>
           <p className="text-[12px] text-muted-foreground mb-4">{t("gt.dayDesc")}</p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("common.site")}
+              </label>
+              <select
+                className={`${inputCls} mt-1`}
+                value={gSede}
+                onChange={(e) => setGSede(e.target.value as SedeId | "tutte")}
+              >
+                <option value="tutte">{t("common.allSites")}</option>
+                {sediOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("gt.code")}
+              </label>
+              <input
+                className={`${inputCls} mt-1`}
+                value={gCodice}
+                onChange={(e) => setGCodice(e.target.value)}
+                placeholder="DR0018"
+              />
+            </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
                 {t("common.employee")}
@@ -386,8 +450,9 @@ function GestioneTimbraturePage() {
                 <option value="">
                   {dipendenti === null ? t("common.loading") : t("common.select")}
                 </option>
-                {filteredDip.map((d) => (
+                {gFilteredDip.map((d) => (
                   <option key={d.id} value={d.id}>
+                    {d.codice ? `${d.codice} · ` : ""}
                     {d.cognome} {d.nome}
                   </option>
                 ))}
