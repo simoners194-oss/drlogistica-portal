@@ -8,6 +8,11 @@ export type EventoTimbratura = Timbratura["tipo"];
 
 export const EVENTI: EventoTimbratura[] = ["entrata", "inizio-pausa", "fine-pausa", "uscita"];
 
+// Finestra (minuti) entro cui il dipendente può annullare da solo l'ULTIMA
+// timbratura di oggi ("ho premuto il tasto sbagliato"). Oltre, serve
+// l'operatore (Gestione timbrature → Turni del giorno).
+export const UNDO_TIMBRATURA_MINUTI = 5;
+
 // Macchina a stati: dato l'ultimo evento (o null se nessuna timbratura oggi),
 // quali eventi sono ammessi.
 export function nextAllowedEvents(last: EventoTimbratura | null): EventoTimbratura[] {

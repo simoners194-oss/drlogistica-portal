@@ -83,6 +83,10 @@ import {
   type CreateComunicazioneInput,
   type SpPresaVisione,
   fetchTimbratureOggi,
+  annullaUltimaTimbratura,
+  fetchTimbratureGiorno,
+  deleteTimbratura,
+  deleteTimbraturaOperatore,
   getLastSyncAt,
   getSpLog,
   loginByCodicePin,
@@ -793,6 +797,42 @@ export const spMarkPresaVisione = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     const me = await currentUser();
     await markPresaVisione(data.comunicazioneId, me.id, `${me.nome} ${me.cognome}`.trim());
+    return { ok: true };
+  });
+
+// Annulla l'ultima timbratura di OGGI dell'utente in sessione. La finestra
+// dei 5 minuti è verificata dal server sul dato reale.
+export const spAnnullaUltimaTimbratura = createServerFn({ method: "POST" }).handler(
+  async (): Promise<SpTimbratura> => {
+    const me = await currentUser();
+    return annullaUltimaTimbratura(me.id);
+  },
+);
+
+// Timbrature di un dipendente in un giorno (vista correzione operatore).
+export const spGetTimbratureGiorno = createServerFn({ method: "GET" })
+  .inputValidator((input: { dipendenteId: string; data: string }) => {
+    if (!input?.dipendenteId) throw new Error("dipendenteId mancante");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input?.data ?? "")) throw new Error("data non valida");
+    return { dipendenteId: String(input.dipendenteId), data: input.data };
+  })
+  .handler(async ({ data }): Promise<SpTimbratura[]> => {
+    const me = await currentUser();
+    assertCap(me.operatore || isAdmin(me));
+    return fetchTimbratureGiorno(data.dipendenteId, data.data);
+  });
+
+// Eliminazione di una timbratura errata (operatore). Il flag Operatore è
+// ri-verificato server-side sul record SharePoint.
+export const spDeleteTimbratura = createServerFn({ method: "POST" })
+  .inputValidator((input: { timbraturaId: string }) => {
+    if (!input?.timbraturaId) throw new Error("timbraturaId mancante");
+    return { timbraturaId: String(input.timbraturaId) };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    const me = await currentUser();
+    if (isAdmin(me)) await deleteTimbratura(data.timbraturaId);
+    else await deleteTimbraturaOperatore(me.id, data.timbraturaId);
     return { ok: true };
   });
 

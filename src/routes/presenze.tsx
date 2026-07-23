@@ -26,8 +26,11 @@ import {
   isTransitionAllowed,
   lastEvento,
   reasonNotAllowed,
+  UNDO_TIMBRATURA_MINUTI,
   type EventoTimbratura,
 } from "@/lib/presenze-logic";
+import { spAnnullaUltimaTimbratura } from "@/lib/sharepoint.functions";
+import { Undo2 } from "lucide-react";
 
 export const Route = createFileRoute("/presenze")({
   head: () => ({ meta: [{ title: "Modulo Presenze — DR Portal" }] }),
@@ -90,6 +93,37 @@ function PresenzePage() {
       });
     }
   }, [me, now, oreSett]);
+
+  // Annulla l'ultima timbratura ("tasto sbagliato"): possibile solo entro i
+  // minuti di finestra; la verifica vera è comunque lato server.
+  const annullaUltima = async () => {
+    if (!me || busy) return;
+    const ultima = me.ultimaTimbratura;
+    if (!ultima) return;
+    if (
+      !window.confirm(
+        `${t("presenze.undoConfirm")} (${t(`evento.${ultima.tipo}`)} ${formatOra(ultima.ora)})`,
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await spAnnullaUltimaTimbratura();
+      // Refresh dello snapshot e del proprio record (come dopo una timbratura).
+      await dataService.getDipendenti();
+      const updated = await dataService.getDipendente(me.id);
+      if (updated) setMe(updated);
+      toast.success(t("presenze.undoDone"), {
+        description: `${t(`evento.${ultima.tipo}`)} · ${formatOra(ultima.ora)}`,
+      });
+    } catch (err) {
+      toast.error(t("presenze.undoErr"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const timbra = async (tipo: Timbratura["tipo"]) => {
     if (!me || busy) return;
@@ -209,6 +243,29 @@ function PresenzePage() {
               <div className="text-[2.5rem] sm:text-4xl leading-none font-semibold tabular-nums mt-1 text-primary">
                 {formatOra(me.ultimaTimbratura.ora)}
               </div>
+              {(() => {
+                // "Tasto sbagliato": annullabile finché la finestra non scade.
+                const scadenza =
+                  new Date(me.ultimaTimbratura.ora).getTime() + UNDO_TIMBRATURA_MINUTI * 60_000;
+                const restanteMs = scadenza - now.getTime();
+                if (restanteMs <= 0) return null;
+                const mm = Math.floor(restanteMs / 60_000);
+                const ss = Math.floor((restanteMs % 60_000) / 1000);
+                return (
+                  <button
+                    type="button"
+                    onClick={annullaUltima}
+                    disabled={busy}
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                  >
+                    <Undo2 className="h-4 w-4" />
+                    {t("presenze.undoLast")}
+                    <span className="tabular-nums text-muted-foreground">
+                      {mm}:{String(ss).padStart(2, "0")}
+                    </span>
+                  </button>
+                );
+              })()}
             </div>
           ) : (
             <div className="mt-4 text-sm text-muted-foreground">{t("presenze.noneToday")}</div>
@@ -226,7 +283,9 @@ function PresenzePage() {
             <Lock className="h-4 w-4" />
           </span>
           <div className="min-w-0">
-            <div className="text-sm sm:text-[15px] font-semibold text-foreground">__DCT__</div>
+            <div className="text-sm sm:text-[15px] font-semibold text-foreground">
+              {t("presenze.dayClosedTitle")}
+            </div>
             <p className="text-[13px] text-muted-foreground mt-0.5 leading-snug">
               {t("presenze.dayClosedMsg")}
             </p>

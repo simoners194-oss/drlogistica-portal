@@ -38,7 +38,7 @@ import {
   type TipoAcquisto,
   type DecisioneRichiesta,
 } from "./richieste-logic";
-import { anomalieDelGiorno, type TipoAnomalia } from "./presenze-logic";
+import { anomalieDelGiorno, UNDO_TIMBRATURA_MINUTI, type TipoAnomalia } from "./presenze-logic";
 import {
   chiaveMovimento,
   classificaMovimento,
@@ -1870,6 +1870,56 @@ export async function deleteTimbratura(id: string): Promise<void> {
     throw new SpHttpError(res.status, `DELETE timbratura ${id} → ${res.status}`, "delete");
   }
   logSp("info", "delete.timbratura", `Rimossa timbratura #${id}`);
+}
+
+// Annulla l'ULTIMA timbratura di oggi del dipendente, se registrata da meno di
+// UNDO_TIMBRATURA_MINUTI ("ho premuto il tasto sbagliato"). La finestra è
+// verificata QUI sul dato reale, non sull'orologio del client.
+export async function annullaUltimaTimbratura(dipendenteId: string): Promise<SpTimbratura> {
+  const oggi = await fetchTimbratureOggi();
+  const mie = oggi.filter((t) => t.dipendenteId === dipendenteId);
+  const ultima = mie[mie.length - 1];
+  if (!ultima) throw new Error("Nessuna timbratura da annullare oggi.");
+  const etaMs = Date.now() - new Date(ultima.dataOra).getTime();
+  if (etaMs > UNDO_TIMBRATURA_MINUTI * 60_000)
+    throw new Error(
+      `L'annullamento è possibile solo entro ${UNDO_TIMBRATURA_MINUTI} minuti dalla timbratura. Rivolgiti all'operatore per la correzione.`,
+    );
+  await deleteTimbratura(ultima.id);
+  logSp(
+    "info",
+    "undo.timbratura",
+    `Annullata ${ultima.evento} di ${dipendenteId} (${ultima.dataOra})`,
+  );
+  return ultima;
+}
+
+// Timbrature di UN dipendente in UN giorno (vista correzione operatore).
+export async function fetchTimbratureGiorno(
+  dipendenteId: string,
+  dataISO: string, // YYYY-MM-DD
+): Promise<SpTimbratura[]> {
+  const dayStart = new Date(`${dataISO}T00:00:00`).toISOString();
+  const dayEnd = new Date(`${dataISO}T23:59:59.999`).toISOString();
+  const tutte = await fetchTimbratureDaISO(dayStart);
+  return tutte.filter((t) => t.dipendenteId === dipendenteId && t.dataOra <= dayEnd);
+}
+
+// Eliminazione di una timbratura da parte dell'OPERATORE (correzione errori:
+// es. "uscita" premuta al posto di "inizio pausa"). Il flag Operatore è
+// ri-verificato sul record SharePoint, come per gli inserimenti manuali.
+export async function deleteTimbraturaOperatore(
+  operatoreId: string,
+  timbraturaId: string,
+): Promise<void> {
+  const cfg = await discoverSharePoint();
+  await assertOperatore(cfg, operatoreId);
+  await deleteTimbratura(timbraturaId);
+  logSp(
+    "info",
+    "delete.timbratura.operatore",
+    `Operatore ${operatoreId} ha rimosso la timbratura #${timbraturaId}`,
+  );
 }
 
 // Inserimento MANUALE di una timbratura (operatore DR000). A differenza di

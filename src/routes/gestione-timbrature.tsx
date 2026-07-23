@@ -3,17 +3,28 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, ClipboardList, Lock, PenLine, PlusCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarSearch,
+  ClipboardList,
+  Loader2,
+  Lock,
+  PenLine,
+  PlusCircle,
+  Trash2,
+} from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
   spGetDipendenti,
   spGetAnomalie,
   spCreateTimbraturaManuale,
   spCreateTurnoManuale,
+  spGetTimbratureGiorno,
+  spDeleteTimbratura,
 } from "@/lib/sharepoint.functions";
-import type { SpDipendente, AnomaliaItem } from "@/lib/sharepoint.server";
+import type { SpDipendente, AnomaliaItem, SpTimbratura } from "@/lib/sharepoint.server";
 import { EVENTI, type EventoTimbratura } from "@/lib/presenze-logic";
-import { type SedeId } from "@/lib/mock-data";
+import { formatOra, type SedeId } from "@/lib/mock-data";
 import { useLang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/gestione-timbrature")({
@@ -48,8 +59,15 @@ function GestioneTimbraturePage() {
   const [dipendenti, setDipendenti] = useState<SpDipendente[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [topTab, setTopTab] = useState<"inserimento" | "anomalie">("inserimento");
+  const [topTab, setTopTab] = useState<"inserimento" | "giornata" | "anomalie">("inserimento");
   const [anomalie, setAnomalie] = useState<AnomaliaItem[] | null>(null);
+
+  // Turni del giorno (vista correzione): dipendente + data → timbrature.
+  const [gDipId, setGDipId] = useState("");
+  const [gData, setGData] = useState(() => new Date().toISOString().slice(0, 10));
+  const [gList, setGList] = useState<SpTimbratura[] | null>(null);
+  const [gLoading, setGLoading] = useState(false);
+  const [gDeleting, setGDeleting] = useState<string | null>(null);
 
   const [sedeFilter, setSedeFilter] = useState<SedeId | "tutte">("tutte");
   const [dipendenteId, setDipendenteId] = useState("");
@@ -121,6 +139,65 @@ function GestioneTimbraturePage() {
     setPausaInizio("");
     setPausaFine("");
     setNote("");
+  }
+
+  // Carica le timbrature del giorno per il dipendente selezionato.
+  async function caricaGiornata(dipId = gDipId, giorno = gData) {
+    if (!dipId || !giorno) return toast.error(t("gt.selectEmployee"));
+    setGLoading(true);
+    try {
+      const list = (await spGetTimbratureGiorno({
+        data: { dipendenteId: dipId, data: giorno },
+      })) as SpTimbratura[];
+      setGList(list);
+    } catch (err) {
+      setGList([]);
+      toast.error(t("gt.dayLoadErr"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setGLoading(false);
+    }
+  }
+
+  // Elimina una timbratura errata: lo stato del dipendente si ricalcola dagli
+  // eventi rimasti, quindi i pulsanti corretti si riabilitano da soli.
+  async function eliminaTimbratura(tim: SpTimbratura) {
+    const dip = dipendenti?.find((d) => d.id === tim.dipendenteId);
+    const chi = dip ? `${dip.cognome} ${dip.nome} · ` : "";
+    if (
+      !window.confirm(
+        `${t("gt.deleteConfirm")}\n${chi}${tVal("evento", tim.evento)} ${formatOra(tim.dataOra)}`,
+      )
+    )
+      return;
+    setGDeleting(tim.id);
+    try {
+      await spDeleteTimbratura({ data: { timbraturaId: tim.id } });
+      setGList((prev) => (prev ?? []).filter((x) => x.id !== tim.id));
+      toast.success(t("gt.deleted"), {
+        description: `${tVal("evento", tim.evento)} · ${formatOra(tim.dataOra)}`,
+      });
+      loadAnomalie();
+    } catch (err) {
+      toast.error(t("gt.deleteErr"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setGDeleting(null);
+    }
+  }
+
+  // Dalla giornata al form di inserimento, precompilato (per aggiungere gli
+  // eventi mancanti dopo aver eliminato quello sbagliato).
+  function inserisciPerGiornata(evento_: EventoTimbratura) {
+    setTopTab("inserimento");
+    setMode("singola");
+    setSedeFilter("tutte");
+    setDipendenteId(gDipId);
+    setData(gData);
+    setEvento(evento_);
+    setOra("");
   }
 
   // Precompila il form dall'anomalia e porta l'operatore all'inserimento.
@@ -219,6 +296,13 @@ function GestioneTimbraturePage() {
         </button>
         <button
           type="button"
+          onClick={() => setTopTab("giornata")}
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${topTab === "giornata" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <CalendarSearch className="h-4 w-4" /> {t("gt.tabDay")}
+        </button>
+        <button
+          type="button"
           onClick={() => setTopTab("anomalie")}
           className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${topTab === "anomalie" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
@@ -275,6 +359,123 @@ function GestioneTimbraturePage() {
                 </li>
               ))}
             </ul>
+          )}
+        </div>
+      ) : topTab === "giornata" ? (
+        /* ---------------- Turni del giorno (correzione) ---------------- */
+        <div className="max-w-2xl rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-1">
+            <CalendarSearch className="h-4 w-4 text-primary" /> {t("gt.dayTitle")}
+          </div>
+          <p className="text-[12px] text-muted-foreground mb-4">{t("gt.dayDesc")}</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("common.employee")}
+              </label>
+              <select
+                className={`${inputCls} mt-1`}
+                value={gDipId}
+                onChange={(e) => {
+                  setGDipId(e.target.value);
+                  setGList(null);
+                }}
+                disabled={dipendenti === null}
+              >
+                <option value="">
+                  {dipendenti === null ? t("common.loading") : t("common.select")}
+                </option>
+                {filteredDip.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.cognome} {d.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("gt.date")}
+              </label>
+              <input
+                type="date"
+                className={`${inputCls} mt-1`}
+                value={gData}
+                onChange={(e) => {
+                  setGData(e.target.value);
+                  setGList(null);
+                }}
+              />
+            </div>
+            <Button
+              type="button"
+              onClick={() => void caricaGiornata()}
+              disabled={gLoading || !gDipId}
+            >
+              {gLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t("gt.dayLoad")}
+            </Button>
+          </div>
+
+          {gList != null && (
+            <div className="mt-5">
+              {gList.length === 0 ? (
+                <div className="text-sm text-muted-foreground">{t("gt.dayEmpty")}</div>
+              ) : (
+                <ul className="space-y-2">
+                  {gList.map((tim) => (
+                    <li
+                      key={tim.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium text-foreground">
+                          {tVal("evento", tim.evento)}{" "}
+                          <span className="tabular-nums text-primary font-semibold">
+                            {formatOra(tim.dataOra)}
+                          </span>
+                        </div>
+                        <div className="text-[12px] text-muted-foreground">
+                          {tim.origine || "Web"}
+                          {tim.note ? ` · ${tim.note}` : ""}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 text-status-absent hover:text-status-absent"
+                        disabled={gDeleting != null}
+                        onClick={() => void eliminaTimbratura(tim)}
+                      >
+                        {gDeleting === tim.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        {t("gt.delete")}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="text-[12px] text-muted-foreground">{t("gt.dayAddMissing")}</span>
+                {EVENTI.map((ev) => (
+                  <Button
+                    key={ev}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => inserisciPerGiornata(ev)}
+                  >
+                    <PlusCircle className="h-3.5 w-3.5" /> {tVal("evento", ev)}
+                  </Button>
+                ))}
+              </div>
+              <div className="mt-3 rounded-lg bg-primary/5 p-3 text-[12px] text-muted-foreground">
+                {t("gt.dayHint")}
+              </div>
+            </div>
           )}
         </div>
       ) : (
