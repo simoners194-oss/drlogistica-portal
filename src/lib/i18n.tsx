@@ -518,6 +518,35 @@ const en = {
   "fin.annullaConfirm":
     "Cancel this import? ALL its transactions will be removed from the archive, including the ones fixed manually. The operation cannot be undone (but the file can be re-imported).",
   "fin.annullaDone": "Import cancelled",
+  "fin.tabRegole": "Rules",
+  "fin.regoleTitle": "Teach the system a new rule",
+  "fin.regoleDesc":
+    "A rule permanently corrects the automatic classification: when a transaction matches the pattern, the chosen type and/or counterparty name is applied. Rules apply to every future import and, if you tick the box, to the archive as well. Tip: use the wand icon next to any transaction to prefill this form.",
+  "fin.regolaPattern": "When it matches",
+  "fin.regolaPatternPh": "e.g. pietro ruzza · kuwait · telecom italia",
+  "fin.regolaCampo": "Match on",
+  "fin.campoCliente": "Counterparty",
+  "fin.campoDescrizione": "Description (contains)",
+  "fin.regolaModo": "Match mode",
+  "fin.modoEsatto": "same name",
+  "fin.modoContiene": "contains",
+  "fin.regolaTipologia": "Set type to",
+  "fin.regolaTipNoChange": "— do not change —",
+  "fin.regolaClienteNuovo": "Rename counterparty to",
+  "fin.regolaClienteNuovoPh": "e.g. TIM / Telecom Italia (optional)",
+  "fin.regolaApplicaEsistenti": "Also apply to transactions already in the archive",
+  "fin.regolaCrea": "Save rule",
+  "fin.regolaCreata": "Rule saved — it will apply to every future import",
+  "fin.regolaApplicati": "existing transactions updated",
+  "fin.regolaApplying": "Applying…",
+  "fin.regoleElencoTitle": "Active rules",
+  "fin.regoleEmpty":
+    "No rules yet. Create the first one from the form above or with the wand icon on a transaction.",
+  "fin.regolaDelete": "Delete rule",
+  "fin.regolaDeleteConfirm":
+    "Delete this rule? Already-corrected transactions keep their values; the rule simply stops applying to future imports.",
+  "fin.regolaDeleted": "Rule deleted",
+  "fin.creaRegolaTip": "Create rule from this transaction",
 } as const;
 
 type DictKey = keyof typeof en;
@@ -1007,6 +1036,35 @@ const it: Record<DictKey, string> = {
   "fin.annullaConfirm":
     "Annullare questo import? TUTTI i suoi movimenti saranno rimossi dall'archivio, comprese le sanature manuali. L'operazione non è reversibile (ma il file si può reimportare).",
   "fin.annullaDone": "Import annullato",
+  "fin.tabRegole": "Regole",
+  "fin.regoleTitle": "Insegna una nuova regola al sistema",
+  "fin.regoleDesc":
+    "Una regola corregge in modo permanente la classificazione automatica: quando un movimento combacia col pattern, vengono applicati la tipologia e/o il nome controparte scelti. Le regole valgono per ogni import futuro e, se spunti la casella, anche per l'archivio già caricato. Suggerimento: usa l'icona bacchetta accanto a un movimento per precompilare questo modulo.",
+  "fin.regolaPattern": "Quando combacia",
+  "fin.regolaPatternPh": "es. pietro ruzza · kuwait · telecom italia",
+  "fin.regolaCampo": "Cerca in",
+  "fin.campoCliente": "Controparte",
+  "fin.campoDescrizione": "Descrizione (contiene)",
+  "fin.regolaModo": "Modalità",
+  "fin.modoEsatto": "stesso nome",
+  "fin.modoContiene": "contiene",
+  "fin.regolaTipologia": "Imposta tipologia",
+  "fin.regolaTipNoChange": "— non cambiare —",
+  "fin.regolaClienteNuovo": "Rinomina controparte in",
+  "fin.regolaClienteNuovoPh": "es. TIM / Telecom Italia (facoltativo)",
+  "fin.regolaApplicaEsistenti": "Applica anche ai movimenti già in archivio",
+  "fin.regolaCrea": "Salva regola",
+  "fin.regolaCreata": "Regola salvata — varrà per ogni import futuro",
+  "fin.regolaApplicati": "movimenti esistenti aggiornati",
+  "fin.regolaApplying": "Applicazione…",
+  "fin.regoleElencoTitle": "Regole attive",
+  "fin.regoleEmpty":
+    "Nessuna regola. Crea la prima dal modulo qui sopra o con l'icona bacchetta su un movimento.",
+  "fin.regolaDelete": "Elimina regola",
+  "fin.regolaDeleteConfirm":
+    "Eliminare questa regola? I movimenti già corretti mantengono i loro valori; la regola smette solo di applicarsi agli import futuri.",
+  "fin.regolaDeleted": "Regola eliminata",
+  "fin.creaRegolaTip": "Crea regola da questo movimento",
 };
 
 const dictionaries: Record<Lang, Record<DictKey, string>> = { en, it };

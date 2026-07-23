@@ -58,6 +58,8 @@ export const TIPOLOGIE_MOVIMENTO = [
   "Imposta di bollo",
   "Finanziamento",
   "Assicurazioni",
+  "Carburante",
+  "Consulenze",
   "Prelievo ATM",
   "Carte fidelity",
   "Storno",
@@ -145,6 +147,64 @@ export function clienteGroupKey(nome: string): string {
     .filter(Boolean)
     .sort()
     .join(" ");
+}
+
+// --- Regole apprese (lista SharePoint RegoleFinanza) ------------------------
+// Ogni correzione del direttore può diventare una regola permanente: al match
+// la regola forza tipologia e/o nome controparte. Applicate a ogni import
+// futuro (server e anteprima client) e, a richiesta, retroattivamente
+// all'archivio. Il match sul cliente usa la chiave canonica (stesse
+// normalizzazioni dell'overview), quindi tollera le varianti della banca.
+export interface RegolaFinanza {
+  id?: string;
+  /** Testo da riconoscere (cliente o parola nella descrizione). */
+  pattern: string;
+  /** Dove cercare il pattern. */
+  campo: "cliente" | "descrizione";
+  /** "esatto" = stesso cliente (chiave canonica); "contiene" = sottostringa. */
+  modo: "esatto" | "contiene";
+  /** Tipologia da assegnare al match (vuota = non cambiare). */
+  tipologia?: string;
+  /** Nome controparte da assegnare al match (per unificare es. TIM/Telecom). */
+  cliente?: string;
+}
+
+export function matchRegola(
+  mov: { cliente: string; descrizione: string },
+  r: RegolaFinanza,
+): boolean {
+  const pattern = (r.pattern ?? "").trim();
+  if (!pattern) return false;
+  if (r.campo === "descrizione") {
+    return normalizeTesto(mov.descrizione).includes(normalizeTesto(pattern));
+  }
+  const key = clienteGroupKey(mov.cliente);
+  if (!key) return false;
+  if (r.modo === "esatto") return key === clienteGroupKey(pattern);
+  return (
+    key.includes(normalizeTesto(pattern)) ||
+    canonicalCliente(mov.cliente).includes(normalizeTesto(pattern))
+  );
+}
+
+/** Applica la PRIMA regola che combacia (precedenza: cliente-esatto,
+ *  cliente-contiene, descrizione). Una regola che fissa la tipologia rende il
+ *  movimento "certo" (via il flag anomalia). */
+export function applicaRegole<
+  T extends { cliente: string; descrizione: string; tipologia: string; daVerificare: boolean },
+>(mov: T, regole: readonly RegolaFinanza[]): T {
+  if (!regole.length) return mov;
+  const priorita = (r: RegolaFinanza) =>
+    r.campo === "cliente" ? (r.modo === "esatto" ? 0 : 1) : 2;
+  const ordinate = [...regole].sort((a, b) => priorita(a) - priorita(b));
+  const r = ordinate.find((x) => matchRegola(mov, x));
+  if (!r) return mov;
+  return {
+    ...mov,
+    tipologia: r.tipologia?.trim() ? r.tipologia.trim() : mov.tipologia,
+    cliente: r.cliente?.trim() ? r.cliente.trim() : mov.cliente,
+    daVerificare: r.tipologia?.trim() ? false : mov.daVerificare,
+  };
 }
 
 // --- Persona fisica vs azienda ----------------------------------------------
@@ -333,14 +393,23 @@ export function classificaMovimento(raw: MovimentoRaw): {
   return { tipologia, cliente, nrFattura, daVerificare };
 }
 
-/** Pipeline completa su un file: occorrenze → chiavi → classificazione. */
-export function parseEstratto(rows: MovimentoRaw[]): MovimentoParsed[] {
-  return assegnaOccorrenze(rows).map(({ raw, occ }) => ({
-    ...raw,
-    occ,
-    chiave: chiaveMovimento(raw, occ),
-    ...classificaMovimento(raw),
-  }));
+/** Pipeline completa su un file: occorrenze → chiavi → classificazione →
+ *  regole apprese. */
+export function parseEstratto(
+  rows: MovimentoRaw[],
+  regole: readonly RegolaFinanza[] = [],
+): MovimentoParsed[] {
+  return assegnaOccorrenze(rows).map(({ raw, occ }) =>
+    applicaRegole(
+      {
+        ...raw,
+        occ,
+        chiave: chiaveMovimento(raw, occ),
+        ...classificaMovimento(raw),
+      },
+      regole,
+    ),
+  );
 }
 
 // --- Lettura del foglio Excel (lato client) ---------------------------------

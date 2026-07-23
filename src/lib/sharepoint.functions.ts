@@ -62,6 +62,11 @@ import {
   fetchImportStorico,
   annullaImport,
   LEGACY_IMPORT_ID,
+  fetchRegoleFinanza,
+  createRegolaFinanza,
+  deleteRegolaFinanza,
+  applicaRegolaAiMovimenti,
+  type RegolaFinanza,
   getCodiceDipendente,
   type SpMovimento,
   type MovimentiFilter,
@@ -701,6 +706,59 @@ export const spUpdateMovimento = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<SpMovimento> => {
     await assertDirettore(await currentUser());
     return updateMovimento(data);
+  });
+
+// --- Regole apprese Finanza -------------------------------------------------
+function validateRegola(input: Partial<RegolaFinanza>): RegolaFinanza {
+  const pattern = String(input?.pattern ?? "")
+    .trim()
+    .slice(0, 120);
+  if (!pattern) throw new Error("Pattern mancante");
+  const tipologia = input.tipologia ? String(input.tipologia).trim().slice(0, 60) : undefined;
+  const cliente = input.cliente ? String(input.cliente).trim().slice(0, 120) : undefined;
+  if (!tipologia && !cliente)
+    throw new Error("La regola deve impostare tipologia o nome controparte");
+  return {
+    pattern,
+    campo: input.campo === "descrizione" ? "descrizione" : "cliente",
+    modo: input.modo === "contiene" ? "contiene" : "esatto",
+    tipologia,
+    cliente,
+  };
+}
+
+export const spGetRegoleFinanza = createServerFn({ method: "GET" }).handler(
+  async (): Promise<RegolaFinanza[]> => {
+    await assertDirettore(await currentUser());
+    return fetchRegoleFinanza();
+  },
+);
+
+export const spCreateRegolaFinanza = createServerFn({ method: "POST" })
+  .inputValidator(validateRegola)
+  .handler(async ({ data }): Promise<RegolaFinanza> => {
+    await assertDirettore(await currentUser());
+    return createRegolaFinanza(data);
+  });
+
+export const spDeleteRegolaFinanza = createServerFn({ method: "POST" })
+  .inputValidator((input: { regolaId: string }) => {
+    if (!input?.regolaId) throw new Error("regolaId mancante");
+    return { regolaId: String(input.regolaId) };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await deleteRegolaFinanza(data.regolaId);
+    return { ok: true };
+  });
+
+// Applica una regola all'archivio esistente, un blocco per chiamata (il
+// client ripete finché rimanenti=0).
+export const spApplicaRegolaFinanza = createServerFn({ method: "POST" })
+  .inputValidator(validateRegola)
+  .handler(async ({ data }): Promise<{ aggiornati: number; rimanenti: number }> => {
+    await assertDirettore(await currentUser());
+    return applicaRegolaAiMovimenti(data);
   });
 
 // --- Web Push: chiave pubblica + registrazione dispositivo -----------------

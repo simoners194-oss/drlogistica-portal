@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   History,
   Trash2,
+  GraduationCap,
+  Wand2,
 } from "lucide-react";
 import { esportaCsvFile } from "@/lib/csv";
 import { useLang } from "@/lib/i18n";
@@ -31,6 +33,7 @@ import {
   TIPOLOGIE_MOVIMENTO,
   type MovimentoParsed,
   type ParseFileResult,
+  type RegolaFinanza,
 } from "@/lib/finanza-logic";
 import {
   spGetMovimenti,
@@ -39,6 +42,10 @@ import {
   spUpdateMovimento,
   spGetImportStorico,
   spAnnullaImport,
+  spGetRegoleFinanza,
+  spCreateRegolaFinanza,
+  spDeleteRegolaFinanza,
+  spApplicaRegolaFinanza,
 } from "@/lib/sharepoint.functions";
 import type { SpMovimento, ImportStoricoRiga } from "@/lib/sharepoint.server";
 
@@ -106,7 +113,7 @@ function fmtImportId(id: string, legacyLabel: string): string {
 // Blocchi di upload verso il server (sotto il limite server di 150).
 const CHUNK = 100;
 
-type Tab = "movimenti" | "overview" | "anomalie" | "import" | "storico";
+type Tab = "movimenti" | "overview" | "anomalie" | "import" | "storico" | "regole";
 
 interface SheetInfo {
   name: string;
@@ -160,6 +167,17 @@ function FinanzaPage() {
   const [annullaBusy, setAnnullaBusy] = useState<string | null>(null);
   const [annullaProgress, setAnnullaProgress] = useState(0);
 
+  // Regole apprese
+  const [regole, setRegole] = useState<RegolaFinanza[] | null>(null);
+  const [rPattern, setRPattern] = useState("");
+  const [rCampo, setRCampo] = useState<"cliente" | "descrizione">("cliente");
+  const [rModo, setRModo] = useState<"esatto" | "contiene">("esatto");
+  const [rTipologia, setRTipologia] = useState("");
+  const [rCliente, setRCliente] = useState("");
+  const [rApplica, setRApplica] = useState(true);
+  const [rBusy, setRBusy] = useState(false);
+  const [rProgress, setRProgress] = useState(0);
+
   // Sanatura anomalie
   const [editId, setEditId] = useState<string | null>(null);
   const [editTip, setEditTip] = useState("");
@@ -195,10 +213,16 @@ function FinanzaPage() {
       .then((l) => setStorico(l as ImportStoricoRiga[]))
       .catch(() => setStorico([]));
   };
+  const loadRegole = () => {
+    spGetRegoleFinanza()
+      .then((l) => setRegole(l as RegolaFinanza[]))
+      .catch(() => setRegole([]));
+  };
   const refreshAll = (a: number) => {
     loadMovimenti(a);
     loadAnomalie();
     loadStorico();
+    loadRegole();
   };
 
   useEffect(() => {
@@ -223,7 +247,9 @@ function FinanzaPage() {
   const costruisciPreview = async (fileName: string, res: ParseFileResult) => {
     setParsing(true);
     try {
-      const righe = parseEstratto(res.rows);
+      // Le regole apprese valgono anche per l'anteprima (stesse del server).
+      const regoleAttive = (await spGetRegoleFinanza().catch(() => [])) as RegolaFinanza[];
+      const righe = parseEstratto(res.rows, regoleAttive);
       const chiavi = new Set((await spGetMovimentiChiavi()) as string[]);
       const nuove = righe.filter((r) => !chiavi.has(r.chiave));
       const date = righe.map((r) => r.dataContabile).sort();
@@ -369,6 +395,79 @@ function FinanzaPage() {
     } finally {
       setAnnullaBusy(null);
       setAnnullaProgress(0);
+    }
+  };
+
+  // --- Regole apprese -------------------------------------------------------
+  // Prefill del form regola a partire da un movimento ("insegna al sistema").
+  const creaRegolaDa = (m: SpMovimento) => {
+    setRPattern(m.cliente || "");
+    setRCampo("cliente");
+    setRModo("esatto");
+    setRTipologia(m.tipologia || "");
+    setRCliente("");
+    setRApplica(true);
+    setTab("regole");
+  };
+
+  const submitRegola = async () => {
+    setRBusy(true);
+    setRProgress(0);
+    try {
+      const payload = {
+        pattern: rPattern.trim(),
+        campo: rCampo,
+        modo: rModo,
+        tipologia: rTipologia.trim() || undefined,
+        cliente: rCliente.trim() || undefined,
+      };
+      await spCreateRegolaFinanza({ data: payload });
+      let applicati = 0;
+      if (rApplica) {
+        // Applicazione retroattiva a blocchi finché il server non ha finito.
+        for (;;) {
+          const r = (await spApplicaRegolaFinanza({ data: payload })) as {
+            aggiornati: number;
+            rimanenti: number;
+          };
+          applicati += r.aggiornati;
+          setRProgress(applicati);
+          if (r.rimanenti <= 0) break;
+          if (r.aggiornati === 0) break; // safety: niente progresso
+        }
+      }
+      toast.success(t("fin.regolaCreata"), {
+        description: rApplica ? `${applicati} ${t("fin.regolaApplicati")}` : undefined,
+      });
+      setRPattern("");
+      setRTipologia("");
+      setRCliente("");
+      loadRegole();
+      if (rApplica) {
+        loadMovimenti(anno);
+        loadAnomalie();
+      }
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setRBusy(false);
+      setRProgress(0);
+    }
+  };
+
+  const eliminaRegola = async (r: RegolaFinanza) => {
+    if (!r.id) return;
+    if (!window.confirm(t("fin.regolaDeleteConfirm"))) return;
+    try {
+      await spDeleteRegolaFinanza({ data: { regolaId: r.id } });
+      setRegole((prev) => (prev ?? []).filter((x) => x.id !== r.id));
+      toast.success(t("fin.regolaDeleted"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
     }
   };
 
@@ -595,6 +694,7 @@ function FinanzaPage() {
           )}
           {tabBtn("import", <Upload className="h-4 w-4" />, t("fin.tabImport"))}
           {tabBtn("storico", <History className="h-4 w-4" />, t("fin.tabStorico"))}
+          {tabBtn("regole", <GraduationCap className="h-4 w-4" />, t("fin.tabRegole"))}
         </div>
         {(tab === "movimenti" || tab === "overview") && (
           <select
@@ -678,6 +778,7 @@ function FinanzaPage() {
                     <th className="py-2 pr-3">{t("fin.cliente")}</th>
                     <th className="py-2 pr-3">{t("fin.nrFattura")}</th>
                     <th className="py-2 pr-3">{t("fin.note")}</th>
+                    <th className="py-2" />
                   </tr>
                 </thead>
                 <tbody>
@@ -705,6 +806,16 @@ function FinanzaPage() {
                       <td className="py-1.5 pr-3">{m.cliente || "—"}</td>
                       <td className="py-1.5 pr-3 text-muted-foreground">{m.nrFattura || "—"}</td>
                       <td className="py-1.5 pr-3 text-muted-foreground">{m.note || "—"}</td>
+                      <td className="py-1.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => creaRegolaDa(m)}
+                          title={t("fin.creaRegolaTip")}
+                          className="rounded-md p-1 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                        >
+                          <Wand2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -937,13 +1048,22 @@ function FinanzaPage() {
                       </div>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => apriEdit(m)}
-                      className="mt-3 rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted"
-                    >
-                      {t("fin.fix")}
-                    </button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => apriEdit(m)}
+                        className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted"
+                      >
+                        {t("fin.fix")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => creaRegolaDa(m)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted"
+                      >
+                        <Wand2 className="h-3.5 w-3.5" /> {t("fin.creaRegolaTip")}
+                      </button>
+                    </div>
                   )}
                 </li>
               ))}
@@ -1143,6 +1263,154 @@ function FinanzaPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ------------------------------- Regole apprese -------------------- */}
+      {tab === "regole" && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+            <div className="text-sm font-semibold text-foreground mb-1">{t("fin.regoleTitle")}</div>
+            <p className="text-xs text-muted-foreground mb-4">{t("fin.regoleDesc")}</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="text-xs text-muted-foreground">{t("fin.regolaPattern")}</label>
+                <input
+                  value={rPattern}
+                  onChange={(e) => setRPattern(e.target.value)}
+                  placeholder={t("fin.regolaPatternPh")}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">{t("fin.regolaCampo")}</label>
+                <select
+                  value={rCampo}
+                  onChange={(e) => setRCampo(e.target.value as "cliente" | "descrizione")}
+                  className={inputCls}
+                >
+                  <option value="cliente">{t("fin.campoCliente")}</option>
+                  <option value="descrizione">{t("fin.campoDescrizione")}</option>
+                </select>
+              </div>
+              {rCampo === "cliente" && (
+                <div>
+                  <label className="text-xs text-muted-foreground">{t("fin.regolaModo")}</label>
+                  <select
+                    value={rModo}
+                    onChange={(e) => setRModo(e.target.value as "esatto" | "contiene")}
+                    className={inputCls}
+                  >
+                    <option value="esatto">{t("fin.modoEsatto")}</option>
+                    <option value="contiene">{t("fin.modoContiene")}</option>
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="text-xs text-muted-foreground">{t("fin.regolaTipologia")}</label>
+                <select
+                  value={rTipologia}
+                  onChange={(e) => setRTipologia(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">{t("fin.regolaTipNoChange")}</option>
+                  {TIPOLOGIE_MOVIMENTO.map((tp) => (
+                    <option key={tp} value={tp}>
+                      {tp}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">
+                  {t("fin.regolaClienteNuovo")}
+                </label>
+                <input
+                  value={rCliente}
+                  onChange={(e) => setRCliente(e.target.value)}
+                  placeholder={t("fin.regolaClienteNuovoPh")}
+                  className={inputCls}
+                />
+              </div>
+              <label className="flex items-end gap-2 pb-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={rApplica}
+                  onChange={(e) => setRApplica(e.target.checked)}
+                  className="h-4 w-4 accent-primary"
+                />
+                {t("fin.regolaApplicaEsistenti")}
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={() => void submitRegola()}
+              disabled={rBusy || !rPattern.trim() || (!rTipologia.trim() && !rCliente.trim())}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              {rBusy ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {rApplica ? `${t("fin.regolaApplying")} ${rProgress}` : t("common.loading")}
+                </>
+              ) : (
+                <>
+                  <GraduationCap className="h-4 w-4" /> {t("fin.regolaCrea")}
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+            <div className="text-sm font-semibold text-foreground mb-3">
+              {t("fin.regoleElencoTitle")}
+            </div>
+            {regole == null ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin inline-block" />
+              </div>
+            ) : regole.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                {t("fin.regoleEmpty")}
+              </p>
+            ) : (
+              <ul className="divide-y divide-border/60">
+                {regole.map((r) => (
+                  <li key={r.id} className="py-2.5 flex items-center gap-3 text-sm">
+                    <span className="flex-1 min-w-0">
+                      <span className="font-medium text-foreground">{r.pattern}</span>{" "}
+                      <span className="text-xs text-muted-foreground">
+                        (
+                        {r.campo === "descrizione"
+                          ? t("fin.campoDescrizione")
+                          : `${t("fin.campoCliente")} · ${r.modo === "contiene" ? t("fin.modoContiene") : t("fin.modoEsatto")}`}
+                        )
+                      </span>
+                      <span className="text-muted-foreground"> → </span>
+                      {r.tipologia && (
+                        <span className="text-xs rounded-full bg-primary/10 text-primary px-2 py-0.5 mr-1">
+                          {r.tipologia}
+                        </span>
+                      )}
+                      {r.cliente && (
+                        <span className="text-xs rounded-full bg-muted px-2 py-0.5">
+                          {r.cliente}
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void eliminaRegola(r)}
+                      title={t("fin.regolaDelete")}
+                      className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-status-absent hover:bg-status-absent/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
     </AppShell>

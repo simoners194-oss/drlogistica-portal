@@ -42,10 +42,14 @@ import { anomalieDelGiorno, type TipoAnomalia } from "./presenze-logic";
 import {
   chiaveMovimento,
   classificaMovimento,
+  applicaRegole,
+  matchRegola,
   LEGACY_IMPORT_ID,
   type MovimentoRaw,
+  type RegolaFinanza,
 } from "./finanza-logic";
 export { LEGACY_IMPORT_ID };
+export type { RegolaFinanza };
 import { normalizeRuolo } from "./session";
 import {
   generateVapidKeys,
@@ -209,6 +213,15 @@ export const SP_DISPLAY = {
     // Lotto di import (per lo storico e l'annullamento di un import intero).
     ImportId: "ImportId",
   },
+  // Regole apprese della sezione Finanza (correzioni permanenti del direttore:
+  // "questo cliente/pattern → questa tipologia e/o questo nome"). OPZIONALE.
+  regoleFinanza: {
+    Pattern: "Pattern",
+    CampoMatch: "CampoMatch",
+    ModoMatch: "ModoMatch",
+    Tipologia: "Tipologia",
+    ClienteNuovo: "ClienteNuovo",
+  },
   // Richieste di acquisto (modulo Procurement). Lista OPZIONALE.
   acquisti: {
     Richiedente: "Richiedente",
@@ -253,6 +266,7 @@ const LIST_NAMES = {
   acquisti: ["RichiesteAcquisto", "RichiestaAcquisto", "Acquisti"],
   codaEmail: ["CodaEmail", "Coda Email", "EmailQueue"],
   movimenti: ["MovimentiBancari", "MovimentoBancario", "Movimenti"],
+  regoleFinanza: ["RegoleFinanza", "RegolaFinanza", "RegoleBanca"],
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -352,6 +366,10 @@ export interface SpDiscovered {
   listMovimentiName: string | null;
   movimentiFields: Record<string, string>;
   movimentiMissing: string[];
+  listRegoleFinanza: string | null;
+  listRegoleFinanzaName: string | null;
+  regoleFinanzaFields: Record<string, string>;
+  regoleFinanzaMissing: string[];
   cachedAt: string;
   expiresAt: string;
 }
@@ -649,6 +667,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const acq = await softList(LIST_NAMES.acquisti, SP_DISPLAY.acquisti);
   const coda = await softList(LIST_NAMES.codaEmail, SP_DISPLAY.codaEmail);
   const mov = await softList(LIST_NAMES.movimenti, SP_DISPLAY.movimenti);
+  const reg = await softList(LIST_NAMES.regoleFinanza, SP_DISPLAY.regoleFinanza);
 
   const now = Date.now();
   discoveredCache = {
@@ -699,6 +718,10 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listMovimentiName: mov.name,
     movimentiFields: mov.fields,
     movimentiMissing: mov.missing,
+    listRegoleFinanza: reg.id,
+    listRegoleFinanzaName: reg.name,
+    regoleFinanzaFields: reg.fields,
+    regoleFinanzaMissing: reg.missing,
     cachedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CACHE_TTL_MS).toISOString(),
   };
@@ -3175,6 +3198,8 @@ export async function importMovimenti(
 
   // Chiave e classificazione ricalcolate QUI dai campi grezzi: il client può
   // aver già fatto lo stesso lavoro per l'anteprima, ma la verità è del server.
+  // Le regole apprese si applicano DOPO la classificazione automatica.
+  const regole = await fetchRegoleFinanza().catch(() => [] as RegolaFinanza[]);
   const daScrivere: { fields: Record<string, unknown>; chiave: string }[] = [];
   for (const r of rows) {
     const chiave = chiaveMovimento(r, r.occ);
@@ -3183,7 +3208,7 @@ export async function importMovimenti(
       continue;
     }
     esistenti.add(chiave); // dedup anche dentro il blocco
-    const c = classificaMovimento(r);
+    const c = applicaRegole({ ...classificaMovimento(r), descrizione: r.descrizione }, regole);
     if (c.daVerificare) result.anomalie++;
     const fields: Record<string, unknown> = { Title: chiave };
     if (F.DataContabile) fields[F.DataContabile] = `${r.dataContabile}T00:00:00Z`;
@@ -3342,6 +3367,123 @@ export async function annullaImport(
     `Annullamento import "${importId}": ${eliminati} eliminati, ${rimanenti} rimanenti`,
   );
   return { eliminati, rimanenti };
+}
+
+// --- Regole apprese (lista RegoleFinanza) -----------------------------------
+// Il direttore insegna al sistema le correzioni permanenti ("Pietro Ruzza è
+// l'avvocato → Consulenze", "kuwait → Carburante"). Le regole si applicano a
+// ogni import futuro e, a richiesta, retroattivamente all'archivio.
+
+function requireRegoleList(cfg: SpDiscovered): string {
+  if (!cfg.listRegoleFinanza)
+    throw new Error('Lista "RegoleFinanza" non trovata su SharePoint. Crearla sul sito DRPORTAL.');
+  return cfg.listRegoleFinanza;
+}
+
+function mapRegola(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>): RegolaFinanza {
+  const F = cfg.regoleFinanzaFields;
+  const f = it.fields ?? {};
+  const campo = String(F.CampoMatch ? (f[F.CampoMatch] ?? "") : "").toLowerCase();
+  const modo = String(F.ModoMatch ? (f[F.ModoMatch] ?? "") : "").toLowerCase();
+  return {
+    id: String(it.id),
+    pattern: F.Pattern ? String(f[F.Pattern] ?? "") : "",
+    campo: campo === "descrizione" ? "descrizione" : "cliente",
+    modo: modo === "contiene" ? "contiene" : "esatto",
+    tipologia: F.Tipologia ? String(f[F.Tipologia] ?? "").trim() || undefined : undefined,
+    cliente: F.ClienteNuovo ? String(f[F.ClienteNuovo] ?? "").trim() || undefined : undefined,
+  };
+}
+
+export async function fetchRegoleFinanza(): Promise<RegolaFinanza[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listRegoleFinanza) return [];
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listRegoleFinanza}/items?expand=fields&$top=999`,
+    ),
+  );
+  return res.value.map((it) => mapRegola(cfg, it)).filter((r) => r.pattern.trim());
+}
+
+export async function createRegolaFinanza(input: RegolaFinanza): Promise<RegolaFinanza> {
+  const cfg = await discoverSharePoint();
+  const listId = requireRegoleList(cfg);
+  const F = cfg.regoleFinanzaFields;
+  if (!input.pattern.trim()) throw new Error("Il pattern della regola è obbligatorio.");
+  if (!input.tipologia?.trim() && !input.cliente?.trim())
+    throw new Error("La regola deve cambiare almeno la tipologia o il nome della controparte.");
+  const fields: Record<string, unknown> = { Title: input.pattern.trim().slice(0, 120) };
+  if (F.Pattern) fields[F.Pattern] = input.pattern.trim();
+  if (F.CampoMatch) fields[F.CampoMatch] = input.campo;
+  if (F.ModoMatch) fields[F.ModoMatch] = input.modo;
+  if (F.Tipologia && input.tipologia?.trim()) fields[F.Tipologia] = input.tipologia.trim();
+  if (F.ClienteNuovo && input.cliente?.trim()) fields[F.ClienteNuovo] = input.cliente.trim();
+  const created = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${listId}/items`,
+      { method: "POST", body: JSON.stringify({ fields }) },
+    ),
+  );
+  logSp("info", "create.regola", `Regola finanza "${input.pattern}" (#${created.id})`);
+  return { ...input, id: String(created.id) };
+}
+
+export async function deleteRegolaFinanza(id: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requireRegoleList(cfg);
+  const res = await gatewayFetch(`/sites/${cfg.siteId}/lists/${listId}/items/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok && res.status !== 204)
+    throw new SpHttpError(res.status, `DELETE regola ${id} → ${res.status}`, "delete");
+  logSp("info", "delete.regola", `Rimossa regola finanza #${id}`);
+}
+
+// Applica una regola ai movimenti GIÀ in archivio, a blocchi (il client ripete
+// finché rimanenti=0). Aggiorna solo i campi classificati; i grezzi e la
+// chiave restano intatti (la dedup non cambia).
+const APPLICA_MAX_PER_CALL = 100;
+
+export async function applicaRegolaAiMovimenti(
+  regola: RegolaFinanza,
+): Promise<{ aggiornati: number; rimanenti: number }> {
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const F = cfg.movimentiFields;
+  const all = await fetchMovimenti();
+  const target = all.filter((m) => {
+    if (!matchRegola(m, regola)) return false;
+    const cambiaTip = Boolean(regola.tipologia?.trim()) && m.tipologia !== regola.tipologia?.trim();
+    const cambiaCli = Boolean(regola.cliente?.trim()) && m.cliente !== regola.cliente?.trim();
+    const togliFlag = Boolean(regola.tipologia?.trim()) && m.daVerificare;
+    return cambiaTip || cambiaCli || togliFlag;
+  });
+  const batch = target.slice(0, APPLICA_MAX_PER_CALL);
+  let aggiornati = 0;
+  const BATCH = 4;
+  for (let i = 0; i < batch.length; i += BATCH) {
+    const esiti = await Promise.allSettled(
+      batch.slice(i, i + BATCH).map((m) => {
+        const fields: Record<string, unknown> = {};
+        if (F.Tipologia && regola.tipologia?.trim()) fields[F.Tipologia] = regola.tipologia.trim();
+        if (F.Cliente && regola.cliente?.trim()) fields[F.Cliente] = regola.cliente.trim();
+        if (F.DaVerificare && regola.tipologia?.trim()) fields[F.DaVerificare] = false;
+        return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${m.id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify(fields),
+        });
+      }),
+    );
+    aggiornati += esiti.filter((e) => e.status === "fulfilled").length;
+  }
+  const rimanenti = target.length - aggiornati;
+  logSp(
+    "info",
+    "applica.regola",
+    `Regola "${regola.pattern}": ${aggiornati} movimenti aggiornati, ${rimanenti} rimanenti`,
+  );
+  return { aggiornati, rimanenti };
 }
 
 // ---------------------------------------------------------------------------
@@ -3825,6 +3967,13 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
     if (disc.movimentiMissing.length)
       throw new Error(`Colonne mancanti — [${disc.movimentiMissing.join(", ")}]`);
     return disc.listMovimentiName ?? undefined;
+  });
+  await step("list.regolefinanza", "Lista RegoleFinanza (Finanza)", async () => {
+    if (!disc?.listRegoleFinanza)
+      throw new Error("Lista 'RegoleFinanza' non trovata — richiesta dalle regole apprese");
+    if (disc.regoleFinanzaMissing.length)
+      throw new Error(`Colonne mancanti — [${disc.regoleFinanzaMissing.join(", ")}]`);
+    return disc.listRegoleFinanzaName ?? undefined;
   });
 
   await step("push.ready", "Notifiche push (lista + chiavi VAPID)", async () => {
