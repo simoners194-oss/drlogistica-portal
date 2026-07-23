@@ -26,6 +26,7 @@ import { isSupervisoreGlobale } from "@/lib/richieste-logic";
 import {
   parseEstratto,
   parseMatrice,
+  clienteGroupKey,
   LEGACY_IMPORT_ID,
   TIPOLOGIE_MOVIMENTO,
   type MovimentoParsed,
@@ -144,8 +145,9 @@ function FinanzaPage() {
   const [cercaF, setCercaF] = useState("");
   const [meseF, setMeseF] = useState(0); // 0 = tutti
 
-  // Overview: incassi o spese
+  // Overview: incassi o spese (+ filtro tipologia, utile solo per le spese)
   const [ovMode, setOvMode] = useState<"incassi" | "spese">("incassi");
+  const [ovTipF, setOvTipF] = useState("tutte");
 
   // Import
   const [sheetChoice, setSheetChoice] = useState<SheetChoice | null>(null);
@@ -443,30 +445,57 @@ function FinanzaPage() {
       anno > 0
         ? Number(m.dataContabile.slice(5, 7)) - 1
         : anni.indexOf(m.dataContabile.slice(0, 4));
-    const selezione =
+    let selezione =
       ovMode === "incassi"
         ? all.filter((m) => m.tipologia === "Incasso" && m.importo > 0)
         : all.filter((m) => m.importo < 0);
-    const byRiga = new Map<string, { valori: number[]; tot: number }>();
+    if (ovMode === "spese" && ovTipF !== "tutte")
+      selezione = selezione.filter((m) => m.tipologia === ovTipF);
+    // Raggruppamento per chiave canonica (accorpa varianti dello stesso nome,
+    // anche nei dati importati con regole più vecchie); come etichetta si
+    // mostra la variante più frequente del gruppo.
+    const byRiga = new Map<
+      string,
+      { valori: number[]; tot: number; labels: Map<string, number> }
+    >();
     const totCol = colonne.map(() => 0);
     let tot = 0;
     for (const m of selezione) {
       const i = colIdx(m);
       if (i < 0 || i >= colonne.length) continue;
       const valore = ovMode === "incassi" ? m.importo : -m.importo;
-      const key =
+      const label =
         m.cliente ||
         (ovMode === "spese" && m.tipologia ? m.tipologia : `(${t("fin.unknownClient")})`);
-      const row = byRiga.get(key) ?? { valori: colonne.map(() => 0), tot: 0 };
+      const key = m.cliente ? clienteGroupKey(m.cliente) || label : label;
+      const row = byRiga.get(key) ?? {
+        valori: colonne.map(() => 0),
+        tot: 0,
+        labels: new Map<string, number>(),
+      };
       row.valori[i] += valore;
       row.tot += valore;
+      row.labels.set(label, (row.labels.get(label) ?? 0) + 1);
       byRiga.set(key, row);
       totCol[i] += valore;
       tot += valore;
     }
-    const righe = [...byRiga.entries()].sort((a, b) => b[1].tot - a[1].tot);
-    return { righe, colonne, totCol, tot, count: selezione.length };
-  }, [movimenti, ovMode, anno, mesi, t]);
+    const righe = [...byRiga.values()]
+      .map((r) => {
+        const label = [...r.labels.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+        return [label, { valori: r.valori, tot: r.tot }] as const;
+      })
+      .sort((a, b) => b[1].tot - a[1].tot);
+    const tipologieSpese = [
+      ...new Set(
+        all
+          .filter((m) => m.importo < 0)
+          .map((m) => m.tipologia)
+          .filter(Boolean),
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+    return { righe, colonne, totCol, tot, count: selezione.length, tipologieSpese };
+  }, [movimenti, ovMode, ovTipF, anno, mesi, t]);
 
   const esportaMovimenti = () => {
     esportaCsvFile(
@@ -695,21 +724,37 @@ function FinanzaPage() {
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
-              <div className="inline-flex rounded-lg border border-border p-0.5 text-sm mb-2">
-                <button
-                  type="button"
-                  onClick={() => setOvMode("incassi")}
-                  className={`rounded-md px-3 py-1 font-medium ${ovMode === "incassi" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                >
-                  {t("fin.ovIncassi")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOvMode("spese")}
-                  className={`rounded-md px-3 py-1 font-medium ${ovMode === "spese" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                >
-                  {t("fin.ovSpese")}
-                </button>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <div className="inline-flex rounded-lg border border-border p-0.5 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setOvMode("incassi")}
+                    className={`rounded-md px-3 py-1 font-medium ${ovMode === "incassi" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {t("fin.ovIncassi")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOvMode("spese")}
+                    className={`rounded-md px-3 py-1 font-medium ${ovMode === "spese" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {t("fin.ovSpese")}
+                  </button>
+                </div>
+                {ovMode === "spese" && (
+                  <select
+                    value={ovTipF}
+                    onChange={(e) => setOvTipF(e.target.value)}
+                    className={`${inputCls} w-auto`}
+                  >
+                    <option value="tutte">{t("common.allF")}</option>
+                    {overview.tipologieSpese.map((tp) => (
+                      <option key={tp} value={tp}>
+                        {tp}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 {overview.count}{" "}

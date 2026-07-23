@@ -131,6 +131,22 @@ export function canonicalCliente(nome: string): string {
   );
 }
 
+/** Chiave di RAGGRUPPAMENTO per l'overview (non salvata): oltre alla forma
+ *  canonica, ignora la forma societaria, uniforma italy/italia e ordina le
+ *  parole, così si accorpano "panizza roberto"/"roberto panizza" e
+ *  "kuwait petroleum italy"/"kuwait petroleum italia spa". Il nome mostrato
+ *  resta quello registrato (variante più frequente del gruppo). */
+export function clienteGroupKey(nome: string): string {
+  return canonicalCliente(nome)
+    .replace(/\bitaly\b/g, "italia")
+    .replace(/\b(?:srls?|spa|snc|sas|sa|scarl|scpa)\b/g, " ")
+    .replace(/[^a-z0-9àèéìòù]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
+
 // --- Persona fisica vs azienda ----------------------------------------------
 // Un bonifico in uscita verso una persona fisica è (per prassi aziendale) un
 // pagamento di salario. Euristica: 2-4 parole solo alfabetiche, nessun
@@ -236,7 +252,11 @@ function estraiClienteCarta(descLower: string): { cliente: string; incerto: bool
   rest = rest.replace(/\s*-?\s*da contab.*$/i, "");
   // Suffisso paese in coda (ita/lux/...) — informazione inutile per il gruppo.
   rest = rest.replace(/\s+(?:ita|lux|irl|nld|deu|fra|esp|gbr|usa)\s*$/i, "");
-  const cliente = canonicalCliente(clean(rest));
+  let cliente = canonicalCliente(clean(rest));
+  // Se c'è la forma societaria, il nome finisce lì: il resto è indirizzo/città
+  // ("grossi srl via civesio 28 san giuliano" → "grossi srl").
+  const conSuffisso = cliente.match(/^(.*?\b(?:srl|spa|snc|sas)\b)/);
+  if (conSuffisso) cliente = conSuffisso[1];
   return { cliente, incerto: cliente.length < 3 };
 }
 
@@ -272,7 +292,14 @@ export function classificaMovimento(raw: MovimentoRaw): {
 
   // Regole da descrizione che raffinano la causale (fonte: prassi aziendale).
   if (desc.includes("pagopa")) tipologia = "PagoPA / Multe";
-  if (desc.includes("benefici vari") || desc.includes("stipend")) tipologia = "Pagamento Salario";
+  // "beneficiari vari distinta" = bonifico multiplo (paga in blocco l'elenco
+  // di una distinta): è la modalità tipica del giro stipendi mensile.
+  if (
+    desc.includes("benefici vari") ||
+    desc.includes("beneficiari vari") ||
+    desc.includes("stipend")
+  )
+    tipologia = "Pagamento Salario";
   if (tipologia === "Storno") daVerificare = true; // semantica ambigua: sempre da verificare
 
   let cliente = "";
