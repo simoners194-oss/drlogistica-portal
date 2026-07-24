@@ -45,6 +45,16 @@ export interface FatturaRaw {
  *  → emessa; cessionario = noi → ricevuta). */
 export const PIVA_AZIENDA = "16935881009";
 
+/** Chiave univoca NORMALIZZATA dal nome file SdI: la stessa fattura appare
+ *  come "IT…_x.xml.p7m" nell'export xlsx e "IT…_x.xml" nello ZIP XML — le
+ *  estensioni vanno rimosse o le due sorgenti si duplicherebbero a vicenda. */
+export function normalizzaNomeFile(nome: string): string {
+  return nome
+    .trim()
+    .replace(/\.p7m$/i, "")
+    .replace(/\.xml$/i, "");
+}
+
 export interface TerminePagamento {
   cliente: string;
   giorni: number;
@@ -451,9 +461,10 @@ export interface ParseXmlFattureResult {
  *  chiave dei body successivi è suffissata con #2, #3… */
 export function parseFatturaPA(
   xmlText: string,
-  nomeFile: string,
+  nomeFileGrezzo: string,
   pivaAzienda: string = PIVA_AZIENDA,
 ): ParseXmlFattureResult {
+  const nomeFile = normalizzaNomeFile(nomeFileGrezzo);
   const scartati: string[] = [];
   const root = parseXmlSemplice(xmlText);
   if (!root || root.tag !== "FatturaElettronica") {
@@ -588,7 +599,7 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
   const rows: FatturaRaw[] = [];
   let scartate = 0;
   for (const r of matrix.slice(headerIdx + 1)) {
-    const nomeFile = String(cell(r, idx.nomeFile) ?? "").trim();
+    const nomeFile = normalizzaNomeFile(String(cell(r, idx.nomeFile) ?? ""));
     const totale = cellToImporto(cell(r, idx.totale));
     const dataDocumento = cellToIsoDate(cell(r, idx.dataDocumento));
     if (!nomeFile || totale == null || !dataDocumento) {
