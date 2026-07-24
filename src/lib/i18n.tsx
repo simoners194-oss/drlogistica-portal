@@ -586,6 +586,7 @@ const en = {
   "ft.parziale": "Partially paid",
   "ft.nonIncassata": "Unpaid",
   "ft.nc": "Credit note",
+  "ft.reinvio": "Re-sent duplicate",
   "ft.empty":
     "No invoices for the selected filters. Upload the Aruba panel export (Import button) to get started.",
   "ft.arTitle": "Aruba e-invoicing connection (API, read-only)",
@@ -1206,6 +1207,7 @@ const it: Record<DictKey, string> = {
   "ft.parziale": "Parziale",
   "ft.nonIncassata": "Non incassata",
   "ft.nc": "Nota di credito",
+  "ft.reinvio": "Reinvio (duplicato)",
   "ft.empty":
     "Nessuna fattura per i filtri selezionati. Carica l'export del pannello Aruba (pulsante Importa) per iniziare.",
   "ft.arTitle": "Collegamento Aruba Fatturazione Elettronica (API, sola lettura)",

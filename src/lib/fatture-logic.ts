@@ -85,6 +85,35 @@ export function isEsclusaDalCredito(f: Pick<FatturaRaw, "statoSdI">): boolean {
   return /scartat|rifiutat/i.test(f.statoSdI);
 }
 
+/** Individua i REINVII: quando la stessa fattura è stata scartata dallo SdI e
+ *  rispedita, in archivio esistono più file con identici numero, data, totale
+ *  e controparte. L'XML FatturaPA non porta lo stato SdI, quindi i tentativi
+ *  scartati non sono riconoscibili dal singolo file: qui se ne tiene UNO solo
+ *  (quello con stato SdI valido se noto, altrimenti il primo per nome file) e
+ *  gli altri vengono esclusi dal credito. Ritorna i nomeFile da escludere. */
+export function individuaReinvii(fatture: readonly FatturaRaw[]): Set<string> {
+  const gruppi = new Map<string, FatturaRaw[]>();
+  for (const f of fatture) {
+    if (isNotaCredito(f.tipoDocumento) || f.totale <= 0) continue;
+    const k = `${f.direzione}|${normalizeTesto(f.numero)}|${f.dataDocumento}|${f.totale.toFixed(2)}|${f.piva}`;
+    const g = gruppi.get(k) ?? [];
+    g.push(f);
+    gruppi.set(k, g);
+  }
+  const esclusi = new Set<string>();
+  for (const g of gruppi.values()) {
+    if (g.length < 2) continue;
+    const ordinati = [...g].sort((a, b) => a.nomeFile.localeCompare(b.nomeFile));
+    const nonScartati = ordinati.filter((f) => !isEsclusaDalCredito(f));
+    const vincitore =
+      nonScartati.find((f) => /consegnat|accettat|inviat|presa/i.test(f.statoSdI)) ??
+      nonScartati[0] ??
+      ordinati[0];
+    for (const f of ordinati) if (f.nomeFile !== vincitore.nomeFile) esclusi.add(f.nomeFile);
+  }
+  return esclusi;
+}
+
 // --- Termini di pagamento ----------------------------------------------------
 
 /** Giorni di pagamento per un cliente (match per chiave canonica; la riga

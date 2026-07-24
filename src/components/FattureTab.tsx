@@ -21,6 +21,7 @@ import { esportaCsvFile } from "@/lib/csv";
 import { useLang } from "@/lib/i18n";
 import {
   computeStatoFattura,
+  individuaReinvii,
   parseFattureMatrice,
   parseFatturaPA,
   proponiAbbinamenti,
@@ -150,14 +151,25 @@ export function FattureTab() {
     return m;
   }, [abbinamenti]);
 
+  // Reinvii (stessa fattura scartata dallo SdI e rispedita): se ne conta una
+  // sola, le altre sono escluse dal credito.
+  const reinvii = useMemo(() => individuaReinvii(fatture ?? []), [fatture]);
+
   // Fatture con stato calcolato.
   const conStato = useMemo(
     () =>
-      (fatture ?? []).map((f) => ({
-        f,
-        s: computeStatoFattura(f, incassatoPerFattura.get(f.nomeFile) ?? 0, termini, oggiISO),
-      })),
-    [fatture, incassatoPerFattura, termini, oggiISO],
+      (fatture ?? []).map((f) => {
+        const s = computeStatoFattura(
+          f,
+          incassatoPerFattura.get(f.nomeFile) ?? 0,
+          termini,
+          oggiISO,
+        );
+        return reinvii.has(f.nomeFile)
+          ? { f, s: { ...s, stato: "NC" as const, residuo: 0, inRitardo: false, giorniRitardo: 0 } }
+          : { f, s };
+      }),
+    [fatture, incassatoPerFattura, termini, oggiISO, reinvii],
   );
 
   const filtrate = useMemo(() => {
@@ -231,7 +243,7 @@ export function FattureTab() {
     setReconciling(true);
     try {
       const proposte = proponiAbbinamenti(
-        fatture,
+        fatture.filter((f) => !reinvii.has(f.nomeFile)),
         movimenti.map((m) => ({
           chiave: m.chiave,
           dataContabile: m.dataContabile,
@@ -504,11 +516,13 @@ export function FattureTab() {
     if (x.s.stato === "NC")
       return (
         <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-          {isNotaCredito(x.f.tipoDocumento)
-            ? t("ft.nc")
-            : isEsclusaDalCredito(x.f)
-              ? x.f.statoSdI
-              : "—"}
+          {reinvii.has(x.f.nomeFile)
+            ? t("ft.reinvio")
+            : isNotaCredito(x.f.tipoDocumento)
+              ? t("ft.nc")
+              : isEsclusaDalCredito(x.f)
+                ? x.f.statoSdI
+                : "—"}
         </span>
       );
     if (x.s.stato === "Pagata")
