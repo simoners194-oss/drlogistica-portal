@@ -81,7 +81,7 @@ async function authRequest(body: URLSearchParams): Promise<TokenSet> {
     if (res.status === 429)
       throw new ArubaError(
         429,
-        "Aruba limita gli accessi ripetuti (HTTP 429): attendere 5 minuti e riprovare UNA volta. Il token ora viene riutilizzato, quindi a regime succede di rado.",
+        "Aruba sta limitando gli accessi da questo server (HTTP 429), anche con tentativi distanziati. Riprovare più tardi; se persiste, il limite riguarda l'IP condiviso del server e serve un canale con IP dedicato.",
       );
     throw new ArubaError(
       res.status,
@@ -145,18 +145,33 @@ async function arubaSignin(force = false): Promise<string> {
       }
     }
   }
-  // 4) signin pieno con le credenziali
+  // 4) signin pieno con le credenziali. Il limite di Aruba è un leaky bucket
+  // sull'IP: su 429 si riprova fino a 3 volte distanziate di 20s — un
+  // tentativo isolato può passare quando il bucket si svuota, e da lì in poi
+  // token persistito + refresh riducono i signin al minimo.
   const cred = await getArubaCredenziali();
   if (!cred) throw new ArubaError(0, "Credenziali Aruba non configurate.");
-  const ts = await authRequest(
-    new URLSearchParams({
-      grant_type: "password",
-      username: cred.username,
-      password: cred.password,
-    }),
-  );
-  await salvaToken(ts);
-  return ts.access;
+  const body = new URLSearchParams({
+    grant_type: "password",
+    username: cred.username,
+    password: cred.password,
+  });
+  let ultimo429: ArubaError | null = null;
+  for (let tentativo = 1; tentativo <= 3; tentativo++) {
+    if (tentativo > 1) await new Promise((r) => setTimeout(r, 20_000));
+    try {
+      const ts = await authRequest(body);
+      await salvaToken(ts);
+      return ts.access;
+    } catch (err) {
+      if (err instanceof ArubaError && err.status === 429) {
+        ultimo429 = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw ultimo429 ?? new ArubaError(429, "Autenticazione Aruba non riuscita.");
 }
 
 async function arubaGet(path: string, params: Record<string, string>): Promise<unknown> {
