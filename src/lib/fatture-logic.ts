@@ -18,22 +18,32 @@ import {
 
 // --- Modello -----------------------------------------------------------------
 
+export type DirezioneFattura = "Emessa" | "Ricevuta";
+
 export interface FatturaRaw {
-  nomeFile: string; // chiave univoca (Title su SharePoint)
+  nomeFile: string; // chiave univoca (Title su SharePoint) = nome file SdI
   numero: string; // es. "FPR 201/26" — NON univoco
   idSdi: string;
   dataInvio: string; // YYYY-MM-DD
   dataDocumento: string; // YYYY-MM-DD
   tipoDocumento: string; // "Fattura - TD01" | "Nota di credito - TD04" | ...
-  cliente: string;
+  cliente: string; // controparte: cliente (emesse) o fornitore (ricevute)
   piva: string;
   metodoPagamento: string;
   imponibile: number;
   iva: number;
   totale: number;
   netto: number;
-  statoSdI: string; // Consegnata / Scartata / ...
+  statoSdI: string; // Consegnata / Scartata / ... ("" per le ricevute)
+  direzione: DirezioneFattura;
+  /** Scadenza DICHIARATA in fattura (DatiPagamento) — quando c'è vince sui
+   *  termini di pagamento. YYYY-MM-DD. */
+  scadenza?: string;
 }
+
+/** P.IVA dell'azienda: decide la direzione di un XML FatturaPA (cedente = noi
+ *  → emessa; cessionario = noi → ricevuta). */
+export const PIVA_AZIENDA = "16935881009";
 
 export interface TerminePagamento {
   cliente: string;
@@ -105,8 +115,11 @@ export function computeStatoFattura(
   termini: readonly TerminePagamento[],
   oggiISO: string,
 ): FatturaStato {
-  const giorni = giorniPerCliente(f.cliente, termini);
-  const scadenza = scadenzaFattura(f.dataDocumento, giorni);
+  // La scadenza dichiarata in fattura (XML DatiPagamento) vince sui termini.
+  const scadenza =
+    f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza)
+      ? f.scadenza
+      : scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini));
   // Le note di credito non si "incassano" e le scartate/rifiutate dallo SdI
   // non sono crediti: entrambe fuori dal computo di residui e ritardi.
   if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) {
@@ -168,13 +181,29 @@ export interface PropostaAbbinamento extends AbbinamentoIncasso {
   motivo: "numero" | "importo";
 }
 
-/** Propone gli abbinamenti automatici. Considera SOLO incassi (importo>0,
- *  tipologia Incasso) e fatture TD01 aperte; rispetta gli abbinamenti già
- *  registrati (residui per fattura E per movimento) ed è deterministica. */
+// Uscite che NON sono pagamenti a fornitori: escluse dalla riconciliazione
+// delle fatture ricevute.
+const TIPOLOGIE_NON_FORNITORE = new Set([
+  "Commissioni",
+  "Imposte / F24",
+  "Imposta di bollo",
+  "Prelievo ATM",
+  "PagoPA / Multe",
+  "Pagamento Salario",
+  "Storno",
+  "Incasso",
+]);
+
+/** Propone gli abbinamenti automatici, per direzione: EMESSE ↔ incassi
+ *  (importo>0, tipologia Incasso), RICEVUTE ↔ uscite verso fornitori
+ *  (importo<0 con controparte, tipologie non-fornitore escluse). Considera
+ *  solo fatture aperte, rispetta gli abbinamenti già registrati (residui per
+ *  fattura E per movimento) ed è deterministica. */
 export function proponiAbbinamenti(
   fatture: readonly FatturaRaw[],
   movimenti: readonly MovimentoPerRiconciliazione[],
   esistenti: readonly AbbinamentoIncasso[],
+  direzione: DirezioneFattura = "Emessa",
 ): PropostaAbbinamento[] {
   const round = (n: number) => Math.round(n * 100) / 100;
   const incassatoPerFattura = new Map<string, number>();
@@ -193,7 +222,13 @@ export function proponiAbbinamenti(
   }
 
   const aperte = fatture
-    .filter((f) => !isNotaCredito(f.tipoDocumento) && !isEsclusaDalCredito(f) && f.totale > 0)
+    .filter(
+      (f) =>
+        f.direzione === direzione &&
+        !isNotaCredito(f.tipoDocumento) &&
+        !isEsclusaDalCredito(f) &&
+        f.totale > 0,
+    )
     .map((f) => ({
       f,
       key: clienteGroupKey(f.cliente),
@@ -203,12 +238,18 @@ export function proponiAbbinamenti(
     // Più vecchie prima: un bonifico cumulativo salda in ordine cronologico.
     .sort((a, b) => a.f.dataDocumento.localeCompare(b.f.dataDocumento));
 
+  // Gli importi dei movimenti si trattano in VALORE ASSOLUTO (le uscite sono
+  // negative): l'allocazione registrata è sempre positiva.
   const incassi = movimenti
-    .filter((m) => m.importo > 0 && m.tipologia === "Incasso" && m.cliente)
+    .filter((m) =>
+      direzione === "Emessa"
+        ? m.importo > 0 && m.tipologia === "Incasso" && m.cliente
+        : m.importo < 0 && m.cliente && !TIPOLOGIE_NON_FORNITORE.has(m.tipologia),
+    )
     .map((m) => ({
       m,
       key: clienteGroupKey(m.cliente),
-      residuo: round(m.importo - (allocatoPerMovimento.get(m.chiave) ?? 0)),
+      residuo: round(Math.abs(m.importo) - (allocatoPerMovimento.get(m.chiave) ?? 0)),
     }))
     .filter((x) => x.residuo > 0.01)
     .sort((a, b) => a.m.dataContabile.localeCompare(b.m.dataContabile));
@@ -267,6 +308,235 @@ export function proponiAbbinamenti(
 // L'export del pannello ("Check fatture inviate") ha intestazioni note; il
 // direttore vi aggiunge colonne proprie, quindi si mappa PER NOME colonna,
 // non per posizione. Righe senza Nome file o Totale → scartate.
+
+// --- Parsing XML FatturaPA (tracciato SdI, versione FPR12/FPA12) ------------
+// Mini-parser XML senza dipendenze (funziona in browser, Workers e Node):
+// ignora attributi e namespace (i prefissi vengono rimossi), gestisce CDATA,
+// commenti e prolog. Sufficiente e robusto per il tracciato FatturaPA.
+
+interface XmlNodo {
+  tag: string;
+  figli: XmlNodo[];
+  testo: string;
+}
+
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+export function parseXmlSemplice(xml: string): XmlNodo | null {
+  const radice: XmlNodo = { tag: "__root__", figli: [], testo: "" };
+  const stack: XmlNodo[] = [radice];
+  let i = 0;
+  const n = xml.length;
+  while (i < n) {
+    const lt = xml.indexOf("<", i);
+    if (lt < 0) break;
+    const testo = xml.slice(i, lt);
+    if (testo.trim()) stack[stack.length - 1].testo += decodeXmlEntities(testo.trim());
+    if (xml.startsWith("<!--", lt)) {
+      const end = xml.indexOf("-->", lt);
+      if (end < 0) break;
+      i = end + 3;
+      continue;
+    }
+    if (xml.startsWith("<![CDATA[", lt)) {
+      const end = xml.indexOf("]]>", lt);
+      if (end < 0) break;
+      stack[stack.length - 1].testo += xml.slice(lt + 9, end);
+      i = end + 3;
+      continue;
+    }
+    if (xml.startsWith("<?", lt)) {
+      const end = xml.indexOf("?>", lt);
+      if (end < 0) break;
+      i = end + 2;
+      continue;
+    }
+    if (xml.startsWith("<!", lt)) {
+      const end = xml.indexOf(">", lt);
+      if (end < 0) break;
+      i = end + 1;
+      continue;
+    }
+    const gt = xml.indexOf(">", lt);
+    if (gt < 0) break;
+    const dentro = xml.slice(lt + 1, gt).trim();
+    if (dentro.startsWith("/")) {
+      if (stack.length > 1) stack.pop();
+      i = gt + 1;
+      continue;
+    }
+    const autoChiuso = dentro.endsWith("/");
+    const nomeGrezzo = dentro.replace(/\/$/, "").split(/[\s]/)[0];
+    const tag = nomeGrezzo.includes(":") ? nomeGrezzo.split(":").pop()! : nomeGrezzo;
+    const nodo: XmlNodo = { tag, figli: [], testo: "" };
+    stack[stack.length - 1].figli.push(nodo);
+    if (!autoChiuso) stack.push(nodo);
+    i = gt + 1;
+  }
+  return radice.figli[0] ?? null;
+}
+
+function figliDi(nodo: XmlNodo, percorso: string): XmlNodo[] {
+  let correnti = [nodo];
+  for (const parte of percorso.split("/")) {
+    const prossimi: XmlNodo[] = [];
+    for (const c of correnti) prossimi.push(...c.figli.filter((f) => f.tag === parte));
+    correnti = prossimi;
+  }
+  return correnti;
+}
+function testoDi(nodo: XmlNodo, percorso: string): string {
+  return figliDi(nodo, percorso)[0]?.testo.trim() ?? "";
+}
+function numeroDi(nodo: XmlNodo, percorso: string): number {
+  const n = Number(testoDi(nodo, percorso).replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+const TIPO_DOC_LABEL: Record<string, string> = {
+  TD01: "Fattura",
+  TD02: "Acconto/anticipo su fattura",
+  TD03: "Acconto/anticipo su parcella",
+  TD04: "Nota di credito",
+  TD05: "Nota di debito",
+  TD06: "Parcella",
+  TD16: "Integrazione reverse charge",
+  TD17: "Autofattura estero",
+  TD18: "Integrazione acquisto UE",
+  TD19: "Autofattura art.17",
+  TD20: "Autofattura regolarizzazione",
+  TD24: "Fattura differita",
+  TD25: "Fattura differita (triangolare)",
+  TD26: "Cessione beni ammortizzabili",
+  TD27: "Autoconsumo/cessioni gratuite",
+};
+
+const MODALITA_PAG_LABEL: Record<string, string> = {
+  MP01: "Contanti",
+  MP02: "Assegno",
+  MP05: "Bonifico",
+  MP08: "Carta",
+  MP12: "RiBa",
+  MP15: "Giroconto",
+  MP16: "Domiciliazione bancaria",
+  MP17: "Domiciliazione postale",
+  MP19: "SDD",
+  MP20: "SDD CORE",
+  MP21: "SDD B2B",
+  MP23: "PagoPA",
+};
+
+function normalizzaPiva(v: string): string {
+  return v.replace(/\D/g, "").replace(/^0+/, "");
+}
+
+export interface ParseXmlFattureResult {
+  rows: FatturaRaw[];
+  /** File XML non riconosciuti come FatturaPA o senza direzione certa. */
+  scartati: string[];
+}
+
+/** Interpreta UN file XML FatturaPA. La direzione deriva dalla P.IVA
+ *  aziendale: cedente = noi → emessa; cessionario = noi → ricevuta. Un file
+ *  può contenere più FatturaElettronicaBody (rari: lotti): in tal caso la
+ *  chiave dei body successivi è suffissata con #2, #3… */
+export function parseFatturaPA(
+  xmlText: string,
+  nomeFile: string,
+  pivaAzienda: string = PIVA_AZIENDA,
+): ParseXmlFattureResult {
+  const scartati: string[] = [];
+  const root = parseXmlSemplice(xmlText);
+  if (!root || root.tag !== "FatturaElettronica") {
+    return { rows: [], scartati: [nomeFile] };
+  }
+  const header = figliDi(root, "FatturaElettronicaHeader")[0];
+  if (!header) return { rows: [], scartati: [nomeFile] };
+
+  const anagrafica = (lato: "CedentePrestatore" | "CessionarioCommittente") => {
+    const den = testoDi(header, `${lato}/DatiAnagrafici/Anagrafica/Denominazione`);
+    const nome = testoDi(header, `${lato}/DatiAnagrafici/Anagrafica/Nome`);
+    const cognome = testoDi(header, `${lato}/DatiAnagrafici/Anagrafica/Cognome`);
+    return {
+      nome: den || `${nome} ${cognome}`.trim(),
+      piva:
+        testoDi(header, `${lato}/DatiAnagrafici/IdFiscaleIVA/IdCodice`) ||
+        testoDi(header, `${lato}/DatiAnagrafici/CodiceFiscale`),
+    };
+  };
+  const cedente = anagrafica("CedentePrestatore");
+  const cessionario = anagrafica("CessionarioCommittente");
+  const noi = normalizzaPiva(pivaAzienda);
+  let direzione: DirezioneFattura;
+  let controparte: { nome: string; piva: string };
+  if (normalizzaPiva(cedente.piva) === noi) {
+    direzione = "Emessa";
+    controparte = cessionario;
+  } else if (normalizzaPiva(cessionario.piva) === noi) {
+    direzione = "Ricevuta";
+    controparte = cedente;
+  } else {
+    return { rows: [], scartati: [nomeFile] };
+  }
+
+  const rows: FatturaRaw[] = [];
+  const bodies = figliDi(root, "FatturaElettronicaBody");
+  bodies.forEach((body, idx) => {
+    const doc = figliDi(body, "DatiGenerali/DatiGeneraliDocumento")[0];
+    if (!doc) {
+      scartati.push(`${nomeFile}#${idx + 1}`);
+      return;
+    }
+    const td = testoDi(doc, "TipoDocumento").toUpperCase();
+    const dataDocumento = testoDi(doc, "Data").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dataDocumento)) {
+      scartati.push(`${nomeFile}#${idx + 1}`);
+      return;
+    }
+    const riepiloghi = figliDi(body, "DatiBeniServizi/DatiRiepilogo");
+    const imponibile = riepiloghi.reduce((s, r) => s + numeroDi(r, "ImponibileImporto"), 0);
+    const iva = riepiloghi.reduce((s, r) => s + numeroDi(r, "Imposta"), 0);
+    const totDich = numeroDi(doc, "ImportoTotaleDocumento");
+    const totale = totDich || Math.round((imponibile + iva) * 100) / 100;
+    const pagamenti = figliDi(body, "DatiPagamento/DettaglioPagamento");
+    // Netto a pagare: somma degli ImportoPagamento (tiene conto di ritenute e
+    // simili); se assente, il totale documento.
+    const nettoPag = pagamenti.reduce((s, p) => s + numeroDi(p, "ImportoPagamento"), 0);
+    const scadenze = pagamenti
+      .map((p) => testoDi(p, "DataScadenzaPagamento").slice(0, 10))
+      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+      .sort();
+    const mp = pagamenti.map((p) => testoDi(p, "ModalitaPagamento")).find(Boolean) ?? "";
+    rows.push({
+      nomeFile: idx === 0 ? nomeFile : `${nomeFile}#${idx + 1}`,
+      numero: testoDi(doc, "Numero"),
+      idSdi: "",
+      dataInvio: dataDocumento,
+      dataDocumento,
+      tipoDocumento: td ? `${TIPO_DOC_LABEL[td] ?? "Documento"} - ${td}` : "",
+      cliente: canonicalCliente(controparte.nome).toUpperCase(),
+      piva: controparte.piva,
+      metodoPagamento: mp ? `${mp} - ${MODALITA_PAG_LABEL[mp] ?? mp}` : "",
+      imponibile: Math.round(imponibile * 100) / 100,
+      iva: Math.round(iva * 100) / 100,
+      totale,
+      netto: nettoPag ? Math.round(nettoPag * 100) / 100 : totale,
+      statoSdI: "",
+      direzione,
+      scadenza: scadenze.length ? scadenze[scadenze.length - 1] : undefined,
+    });
+  });
+  return { rows, scartati };
+}
 
 const H = {
   numero: "numero",
@@ -340,6 +610,7 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
       totale,
       netto: cellToImporto(cell(r, idx.netto)) ?? totale,
       statoSdI: String(cell(r, idx.statoSdI) ?? "").trim(),
+      direzione: "Emessa", // l'export "Check fatture inviate" è delle emesse
     });
   }
   return { rows, scartate };

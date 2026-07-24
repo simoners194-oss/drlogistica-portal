@@ -22,11 +22,13 @@ import { useLang } from "@/lib/i18n";
 import {
   computeStatoFattura,
   parseFattureMatrice,
+  parseFatturaPA,
   proponiAbbinamenti,
   isNotaCredito,
   isEsclusaDalCredito,
   TERMINI_DEFAULT_GIORNI,
   type AbbinamentoIncasso,
+  type DirezioneFattura,
   type FatturaRaw,
   type TerminePagamento,
 } from "@/lib/fatture-logic";
@@ -67,7 +69,11 @@ type StatoFiltro = "tutte" | "ritardo" | "nonIncassata" | "parziale" | "pagata";
 
 export function FattureTab() {
   const { t } = useLang();
-  const [fatture, setFatture] = useState<SpFattura[] | null>(null);
+  // Direzione corrente della vista: Emesse (crediti) o Ricevute (debiti).
+  const [dir, setDir] = useState<DirezioneFattura>("Emessa");
+  const [fattureEm, setFattureEm] = useState<SpFattura[] | null>(null);
+  const [fattureRic, setFattureRic] = useState<SpFattura[] | null>(null);
+  const fatture = dir === "Emessa" ? fattureEm : fattureRic;
   const [termini, setTermini] = useState<TerminePagamento[]>([]);
   const [abbinamenti, setAbbinamenti] = useState<AbbinamentoIncasso[] | null>(null);
   const [movimenti, setMovimenti] = useState<SpMovimento[] | null>(null);
@@ -86,14 +92,15 @@ export function FattureTab() {
   // Riconciliazione automatica
   const [reconciling, setReconciling] = useState(false);
 
-  // Import dell'export del pannello Aruba (le API richiedono il piano
-  // Premium: finché non c'è, la sorgente dati è l'export xlsx).
+  // Import fatture: ZIP/XML FatturaPA (emesse E ricevute, direzione automatica
+  // dalla P.IVA) oppure xlsx dell'export "Check fatture inviate" (emesse).
   const [showImport, setShowImport] = useState(false);
   const [impParsing, setImpParsing] = useState(false);
   const [impBusy, setImpBusy] = useState(false);
   const [previewImp, setPreviewImp] = useState<{
-    fileName: string;
-    rows: FatturaRaw[];
+    descrizione: string;
+    emesse: FatturaRaw[];
+    ricevute: FatturaRaw[];
     scartate: number;
   } | null>(null);
 
@@ -107,14 +114,17 @@ export function FattureTab() {
   const [probe, setProbe] = useState<ArubaProbeResult | null>(null);
 
   const load = () => {
-    spGetFatture()
-      .then((l) => setFatture(l as SpFattura[]))
+    spGetFatture({ data: { direzione: "Emessa" } })
+      .then((l) => setFattureEm(l as SpFattura[]))
       .catch((err) => {
-        setFatture([]);
+        setFattureEm([]);
         toast.error(t("ft.errLoad"), {
           description: err instanceof Error ? err.message : String(err),
         });
       });
+    spGetFatture({ data: { direzione: "Ricevuta" } })
+      .then((l) => setFattureRic(l as SpFattura[]))
+      .catch(() => setFattureRic([]));
     spGetTerminiPagamento()
       .then((l) => setTermini(l as TerminePagamento[]))
       .catch(() => setTermini([]));
@@ -197,20 +207,23 @@ export function FattureTab() {
     return [...m.values()].sort((a, b) => b.residuo - a.residuo);
   }, [conStato, annoF]);
 
-  // Incassi con residuo da allocare (per l'abbinamento manuale).
+  // Movimenti con residuo da allocare per l'abbinamento manuale: incassi per
+  // le emesse, uscite (in valore assoluto) per le ricevute.
   const incassiDisponibili = useMemo(() => {
     const allocato = new Map<string, number>();
     for (const a of abbinamenti ?? [])
       allocato.set(a.movimentoChiave, (allocato.get(a.movimentoChiave) ?? 0) + a.importo);
     return (movimenti ?? [])
-      .filter((m) => m.importo > 0 && m.tipologia === "Incasso")
+      .filter((m) =>
+        dir === "Emessa" ? m.importo > 0 && m.tipologia === "Incasso" : m.importo < 0,
+      )
       .map((m) => ({
         m,
-        residuo: Math.round((m.importo - (allocato.get(m.chiave) ?? 0)) * 100) / 100,
+        residuo: Math.round((Math.abs(m.importo) - (allocato.get(m.chiave) ?? 0)) * 100) / 100,
       }))
       .filter((x) => x.residuo > 0.01)
       .sort((a, b) => b.m.dataContabile.localeCompare(a.m.dataContabile));
-  }, [movimenti, abbinamenti]);
+  }, [movimenti, abbinamenti, dir]);
 
   // --- Riconciliazione automatica ------------------------------------------
   const riconcilia = async () => {
@@ -229,6 +242,7 @@ export function FattureTab() {
           nrFattura: m.nrFattura,
         })),
         abbinamenti,
+        dir,
       );
       if (proposte.length === 0) {
         toast(t("ft.reconcileNone"));
@@ -301,25 +315,62 @@ export function FattureTab() {
     }
   };
 
-  // --- Import export Aruba (xlsx) -------------------------------------------
-  const onFile = async (file: File) => {
+  // --- Import fatture (ZIP/XML FatturaPA + xlsx emesse) ---------------------
+  const onFiles = async (files: File[]) => {
     setPreviewImp(null);
     setImpParsing(true);
     try {
-      const XLSX = await import("xlsx");
-      const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
-      for (const name of wb.SheetNames) {
-        const matrix = XLSX.utils.sheet_to_json(wb.Sheets[name], {
-          header: 1,
-          raw: true,
-        }) as unknown[][];
-        const res = parseFattureMatrice(matrix);
-        if (res && res.rows.length) {
-          setPreviewImp({ fileName: file.name, rows: res.rows, scartate: res.scartate });
-          return;
+      const rows: FatturaRaw[] = [];
+      let scartate = 0;
+      const decoder = new TextDecoder("utf-8");
+      const daXml = (testo: string, nome: string) => {
+        const res = parseFatturaPA(testo, nome);
+        rows.push(...res.rows);
+        scartate += res.scartati.length;
+      };
+      for (const file of files) {
+        const nome = file.name;
+        if (/\.zip$/i.test(nome)) {
+          const { unzipSync } = await import("fflate");
+          const entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
+          for (const [entry, bytes] of Object.entries(entries)) {
+            if (!/\.xml$/i.test(entry)) continue;
+            daXml(decoder.decode(bytes), entry.split("/").pop() ?? entry);
+          }
+        } else if (/\.xml$/i.test(nome)) {
+          daXml(await file.text(), nome);
+        } else if (/\.xlsx?$/i.test(nome)) {
+          const XLSX = await import("xlsx");
+          const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
+          let trovato = false;
+          for (const sheet of wb.SheetNames) {
+            const matrix = XLSX.utils.sheet_to_json(wb.Sheets[sheet], {
+              header: 1,
+              raw: true,
+            }) as unknown[][];
+            const res = parseFattureMatrice(matrix);
+            if (res && res.rows.length) {
+              rows.push(...res.rows);
+              scartate += res.scartate;
+              trovato = true;
+              break;
+            }
+          }
+          if (!trovato) scartate++;
+        } else {
+          scartate++;
         }
       }
-      toast.error(t("ft.errFile"), { description: t("ft.errFileDesc") });
+      if (rows.length === 0) {
+        toast.error(t("ft.errFile"), { description: t("ft.errFileDesc") });
+        return;
+      }
+      setPreviewImp({
+        descrizione: files.length === 1 ? files[0].name : `${files.length} file`,
+        emesse: rows.filter((r) => r.direzione === "Emessa"),
+        ricevute: rows.filter((r) => r.direzione === "Ricevuta"),
+        scartate,
+      });
     } catch (err) {
       toast.error(t("ft.errFile"), {
         description: err instanceof Error ? err.message : String(err),
@@ -337,15 +388,19 @@ export function FattureTab() {
       let aggiornate = 0;
       let doppioni = 0;
       const errori: string[] = [];
-      for (let i = 0; i < previewImp.rows.length; i += CHUNK) {
-        const res = (await spImportFatture({
-          data: { rows: previewImp.rows.slice(i, i + CHUNK) },
-        })) as { importate: number; aggiornate: number; doppioni: number; errori: string[] };
-        nuove += res.importate;
-        aggiornate += res.aggiornate;
-        doppioni += res.doppioni;
-        errori.push(...res.errori);
-      }
+      const importaGruppo = async (gruppo: FatturaRaw[], direzione: DirezioneFattura) => {
+        for (let i = 0; i < gruppo.length; i += CHUNK) {
+          const res = (await spImportFatture({
+            data: { rows: gruppo.slice(i, i + CHUNK), direzione },
+          })) as { importate: number; aggiornate: number; doppioni: number; errori: string[] };
+          nuove += res.importate;
+          aggiornate += res.aggiornate;
+          doppioni += res.doppioni;
+          errori.push(...res.errori);
+        }
+      };
+      if (previewImp.emesse.length) await importaGruppo(previewImp.emesse, "Emessa");
+      if (previewImp.ricevute.length) await importaGruppo(previewImp.ricevute, "Ricevuta");
       toast.success(t("ft.importDone"), {
         description: `${nuove} ${t("ft.importNew")} · ${aggiornate} ${t("ft.importUpd")} · ${doppioni} ${t("ft.importDup")}${errori.length ? ` · ${errori.length} ${t("common.error").toLowerCase()}` : ""}`,
       });
@@ -403,7 +458,7 @@ export function FattureTab() {
 
   const esporta = () => {
     esportaCsvFile(
-      `fatture-${annoF > 0 ? annoF : "tutte"}`,
+      `fatture-${dir === "Ricevuta" ? "ricevute" : "emesse"}-${annoF > 0 ? annoF : "tutte"}`,
       [
         "Numero",
         "Data documento",
@@ -456,7 +511,11 @@ export function FattureTab() {
       <span
         className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${x.s.inRitardo ? "bg-status-absent/15 text-status-absent" : "bg-status-break/15 text-status-break"}`}
       >
-        {x.s.stato === "Parziale" ? t("ft.parziale") : t("ft.nonIncassata")}
+        {x.s.stato === "Parziale"
+          ? t("ft.parziale")
+          : x.f.direzione === "Ricevuta"
+            ? t("ft.nonPagata")
+            : t("ft.nonIncassata")}
         {x.s.inRitardo ? ` · +${x.s.giorniRitardo}gg` : ""}
       </span>
     );
@@ -464,13 +523,39 @@ export function FattureTab() {
 
   const loading = fatture == null || abbinamenti == null || movimenti == null;
 
+  const ricevute = dir === "Ricevuta";
+
   return (
     <div className="space-y-4">
+      {/* Direzione: emesse (crediti) / ricevute (debiti) */}
+      <div className="inline-flex rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
+        <button
+          type="button"
+          onClick={() => {
+            setDir("Emessa");
+            setOpenFile(null);
+          }}
+          className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${!ricevute ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          {t("ft.dirEmesse")}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setDir("Ricevuta");
+            setOpenFile(null);
+          }}
+          className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${ricevute ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          {t("ft.dirRicevute")}
+        </button>
+      </div>
+
       {/* Riepilogo */}
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
           <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-            {t("ft.kpiAperto")}
+            {ricevute ? t("ft.kpiDaPagare") : t("ft.kpiAperto")}
           </div>
           <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
             {fmtImporto(riepilogo.residuo)} €
@@ -489,7 +574,7 @@ export function FattureTab() {
         </div>
         <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
           <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-            {t("ft.kpiIncassato")}
+            {ricevute ? t("ft.kpiPagato") : t("ft.kpiIncassato")}
           </div>
           <div className="mt-1 text-2xl font-semibold tabular-nums text-status-present">
             {fmtImporto(riepilogo.incassato)} €
@@ -524,7 +609,9 @@ export function FattureTab() {
             >
               <option value="tutte">{t("common.allF")}</option>
               <option value="ritardo">{t("ft.fRitardo")}</option>
-              <option value="nonIncassata">{t("ft.nonIncassata")}</option>
+              <option value="nonIncassata">
+                {ricevute ? t("ft.nonPagata") : t("ft.nonIncassata")}
+              </option>
               <option value="parziale">{t("ft.parziale")}</option>
               <option value="pagata">{t("ft.pagata")}</option>
             </select>
@@ -592,11 +679,12 @@ export function FattureTab() {
             <p className="text-xs text-muted-foreground mb-3">{t("ft.importDesc")}</p>
             <input
               type="file"
-              accept=".xlsx,.xls"
+              accept=".zip,.xml,.xlsx,.xls"
+              multiple
               disabled={impParsing || impBusy}
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onFile(f);
+                const files = Array.from(e.target.files ?? []);
+                if (files.length) void onFiles(files);
                 e.target.value = "";
               }}
               className="block text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
@@ -608,9 +696,11 @@ export function FattureTab() {
             )}
             {previewImp && (
               <div className="mt-3 text-[13px] text-muted-foreground">
-                <b className="text-foreground">{previewImp.fileName}</b> — {previewImp.rows.length}{" "}
-                {t("ft.importRows")}
-                {previewImp.scartate > 0 && ` (${previewImp.scartate} ${t("fin.previewSkipped")})`}
+                <b className="text-foreground">{previewImp.descrizione}</b> —{" "}
+                {previewImp.emesse.length + previewImp.ricevute.length} {t("ft.importRows")} (
+                {previewImp.emesse.length} {t("ft.dirEmesse").toLowerCase()},{" "}
+                {previewImp.ricevute.length} {t("ft.dirRicevute").toLowerCase()})
+                {previewImp.scartate > 0 && ` · ${previewImp.scartate} ${t("fin.previewSkipped")}`}
                 <div className="mt-2 flex gap-2">
                   <button
                     type="button"
@@ -751,9 +841,11 @@ export function FattureTab() {
                 <tr className="text-left text-xs text-muted-foreground border-b border-border">
                   <th className="py-2 pr-3">{t("ft.numero")}</th>
                   <th className="py-2 pr-3">{t("common.date")}</th>
-                  <th className="py-2 pr-3">{t("fin.cliente")}</th>
+                  <th className="py-2 pr-3">{ricevute ? t("ft.fornitore") : t("fin.cliente")}</th>
                   <th className="py-2 pr-3 text-right">{t("common.total")}</th>
-                  <th className="py-2 pr-3 text-right">{t("ft.incassato")}</th>
+                  <th className="py-2 pr-3 text-right">
+                    {ricevute ? t("ft.pagato") : t("ft.incassato")}
+                  </th>
                   <th className="py-2 pr-3 text-right">{t("ft.residuo")}</th>
                   <th className="py-2 pr-3">{t("ft.scadenza")}</th>
                   <th className="py-2 pr-3">{t("common.status")}</th>
@@ -851,7 +943,7 @@ export function FattureTab() {
                             >
                               <div className="min-w-72 flex-1">
                                 <label className="text-xs text-muted-foreground">
-                                  {t("ft.abbMovimento")}
+                                  {ricevute ? t("ft.abbPagamento") : t("ft.abbMovimento")}
                                 </label>
                                 <select
                                   value={abbMov}
@@ -924,7 +1016,8 @@ export function FattureTab() {
       {perCliente.length > 0 && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
-            <AlertTriangle className="h-4 w-4 text-status-absent" /> {t("ft.perClienteTitle")}
+            <AlertTriangle className="h-4 w-4 text-status-absent" />{" "}
+            {ricevute ? t("ft.perFornitoreTitle") : t("ft.perClienteTitle")}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

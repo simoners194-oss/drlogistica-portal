@@ -77,6 +77,7 @@ import {
   type SpFattura,
   type ImportFattureResult,
   type FatturaRaw,
+  type DirezioneFattura,
   type TerminePagamento,
   type AbbinamentoIncasso,
   getArubaStato,
@@ -782,18 +783,21 @@ export const spApplicaRegolaFinanza = createServerFn({ method: "POST" })
 
 // --- Finanza → Fatture emesse, termini, abbinamenti (solo direttore) --------
 
-export const spGetFatture = createServerFn({ method: "GET" }).handler(
-  async (): Promise<SpFattura[]> => {
+export const spGetFatture = createServerFn({ method: "GET" })
+  .inputValidator((input?: { direzione?: string }) => ({
+    direzione: (input?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+  }))
+  .handler(async ({ data }): Promise<SpFattura[]> => {
     await assertDirettore(await currentUser());
-    return fetchFatture();
-  },
-);
+    return fetchFatture(data.direzione);
+  });
 
 export const spImportFatture = createServerFn({ method: "POST" })
-  .inputValidator((input: { rows: FatturaRaw[] }) => {
+  .inputValidator((input: { rows: FatturaRaw[]; direzione?: string }) => {
     if (!Array.isArray(input?.rows) || input.rows.length === 0)
       throw new Error("Nessuna fattura da importare");
     if (input.rows.length > 150) throw new Error("Blocco troppo grande (max 150 fatture)");
+    const direzione = (input.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura;
     const re = /^\d{4}-\d{2}-\d{2}$/;
     const rows = input.rows.map((r): FatturaRaw => {
       if (!r?.nomeFile?.trim()) throw new Error("Nome file mancante");
@@ -814,13 +818,15 @@ export const spImportFatture = createServerFn({ method: "POST" })
         totale: num(r.totale),
         netto: num(r.netto),
         statoSdI: String(r.statoSdI ?? "").slice(0, 40),
+        direzione,
+        scadenza: re.test(r.scadenza ?? "") ? r.scadenza : undefined,
       };
     });
-    return { rows };
+    return { rows, direzione };
   })
   .handler(async ({ data }): Promise<ImportFattureResult> => {
     await assertDirettore(await currentUser());
-    return importFatture(data.rows);
+    return importFatture(data.rows, data.direzione);
   });
 
 export const spGetTerminiPagamento = createServerFn({ method: "GET" }).handler(

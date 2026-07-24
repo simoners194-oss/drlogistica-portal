@@ -48,9 +48,14 @@ import {
   type MovimentoRaw,
   type RegolaFinanza,
 } from "./finanza-logic";
-import type { FatturaRaw, TerminePagamento, AbbinamentoIncasso } from "./fatture-logic";
+import type {
+  FatturaRaw,
+  TerminePagamento,
+  AbbinamentoIncasso,
+  DirezioneFattura,
+} from "./fatture-logic";
 export { LEGACY_IMPORT_ID };
-export type { RegolaFinanza, FatturaRaw, TerminePagamento, AbbinamentoIncasso };
+export type { RegolaFinanza, FatturaRaw, TerminePagamento, AbbinamentoIncasso, DirezioneFattura };
 import { normalizeRuolo } from "./session";
 import {
   generateVapidKeys,
@@ -223,9 +228,10 @@ export const SP_DISPLAY = {
     Tipologia: "Tipologia",
     ClienteNuovo: "ClienteNuovo",
   },
-  // Fatture emesse (sezione Finanza → Fatture). Title = NOME FILE SdI (chiave
-  // univoca, mai il numero). v1 alimentata dall'export Aruba; predisposta per
-  // il sync via API Aruba v2 (stessa chiave). OPZIONALE.
+  // Fatture (sezione Finanza → Fatture). Title = NOME FILE SdI (chiave
+  // univoca, mai il numero). Stesso schema per le DUE liste: FattureEmesse e
+  // FattureRicevute (Cliente = controparte: cliente o fornitore). Alimentate
+  // dall'import XML FatturaPA (ZIP/xml) o dall'export xlsx (emesse). OPZIONALI.
   fatture: {
     Numero: "Numero",
     IdSdi: "IdSdi",
@@ -240,6 +246,9 @@ export const SP_DISPLAY = {
     TotaleDocumento: "TotaleDocumento",
     NettoAPagare: "NettoAPagare",
     StatoSdI: "StatoSdI",
+    // Scadenza dichiarata in fattura (XML DatiPagamento): quando c'è vince
+    // sui termini di pagamento per cliente.
+    ScadenzaPagamento: "ScadenzaPagamento",
   },
   // Termini di pagamento per cliente (giorni). Gestita dal direttore. OPZIONALE.
   terminiPagamento: {
@@ -313,6 +322,7 @@ const LIST_NAMES = {
   movimenti: ["MovimentiBancari", "MovimentoBancario", "Movimenti"],
   regoleFinanza: ["RegoleFinanza", "RegolaFinanza", "RegoleBanca"],
   fatture: ["FattureEmesse", "FatturaEmessa", "Fatture"],
+  fattureRicevute: ["FattureRicevute", "FatturaRicevuta"],
   terminiPagamento: ["TerminiPagamento", "TerminiDiPagamento", "TerminePagamento"],
   abbinamenti: ["AbbinamentiIncassi", "AbbinamentoIncasso", "Abbinamenti"],
   arubaConfig: ["ArubaConfig", "ConfigurazioneAruba"],
@@ -423,6 +433,10 @@ export interface SpDiscovered {
   listFattureName: string | null;
   fattureFields: Record<string, string>;
   fattureMissing: string[];
+  listFattureRicevute: string | null;
+  listFattureRicevuteName: string | null;
+  fattureRicevuteFields: Record<string, string>;
+  fattureRicevuteMissing: string[];
   listTermini: string | null;
   listTerminiName: string | null;
   terminiFields: Record<string, string>;
@@ -734,6 +748,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const mov = await softList(LIST_NAMES.movimenti, SP_DISPLAY.movimenti);
   const reg = await softList(LIST_NAMES.regoleFinanza, SP_DISPLAY.regoleFinanza);
   const fat = await softList(LIST_NAMES.fatture, SP_DISPLAY.fatture);
+  const fatR = await softList(LIST_NAMES.fattureRicevute, SP_DISPLAY.fatture);
   const trm = await softList(LIST_NAMES.terminiPagamento, SP_DISPLAY.terminiPagamento);
   const abb = await softList(LIST_NAMES.abbinamenti, SP_DISPLAY.abbinamenti);
   const aru = await softList(LIST_NAMES.arubaConfig, SP_DISPLAY.arubaConfig);
@@ -795,6 +810,10 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listFattureName: fat.name,
     fattureFields: fat.fields,
     fattureMissing: fat.missing,
+    listFattureRicevute: fatR.id,
+    listFattureRicevuteName: fatR.name,
+    fattureRicevuteFields: fatR.fields,
+    fattureRicevuteMissing: fatR.missing,
     listTermini: trm.id,
     listTerminiName: trm.name,
     terminiFields: trm.fields,
@@ -3628,20 +3647,36 @@ export async function applicaRegolaAiMovimenti(
 // dedup per NOME FILE SdI = Title). Predisposta per il sync via API Aruba v2:
 // stessa chiave, stesso modello. Il reimport aggiorna lo Stato SdI se cambiato.
 
-function requireFattureList(cfg: SpDiscovered): string {
-  if (!cfg.listFatture)
-    throw new Error('Lista "FattureEmesse" non trovata su SharePoint. Crearla sul sito DRPORTAL.');
-  return cfg.listFatture;
+// Le due liste (emesse/ricevute) condividono lo stesso schema colonne.
+function fattureListPer(
+  cfg: SpDiscovered,
+  direzione: DirezioneFattura,
+): { listId: string | null; fields: Record<string, string> } {
+  return direzione === "Emessa"
+    ? { listId: cfg.listFatture, fields: cfg.fattureFields }
+    : { listId: cfg.listFattureRicevute, fields: cfg.fattureRicevuteFields };
+}
+function requireFattureList(cfg: SpDiscovered, direzione: DirezioneFattura): string {
+  const { listId } = fattureListPer(cfg, direzione);
+  if (!listId)
+    throw new Error(
+      `Lista "${direzione === "Emessa" ? "FattureEmesse" : "FattureRicevute"}" non trovata su SharePoint. Crearla sul sito DRPORTAL.`,
+    );
+  return listId;
 }
 
 export interface SpFattura extends FatturaRaw {
   id: string;
 }
 
-function mapFattura(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>): SpFattura {
-  const F = cfg.fattureFields;
+function mapFattura(
+  F: Record<string, string>,
+  it: GraphListItem<Record<string, unknown>>,
+  direzione: DirezioneFattura,
+): SpFattura {
   const f = it.fields ?? {};
   const iso = (v: unknown) => String(v ?? "").slice(0, 10);
+  const scad = F.ScadenzaPagamento ? iso(f[F.ScadenzaPagamento]) : "";
   return {
     id: String(it.id),
     nomeFile: String(f["Title"] ?? ""),
@@ -3658,19 +3693,24 @@ function mapFattura(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>
     totale: F.TotaleDocumento ? (numOrUndef(f[F.TotaleDocumento]) ?? 0) : 0,
     netto: F.NettoAPagare ? (numOrUndef(f[F.NettoAPagare]) ?? 0) : 0,
     statoSdI: F.StatoSdI ? String(f[F.StatoSdI] ?? "") : "",
+    direzione,
+    scadenza: /^\d{4}-\d{2}-\d{2}$/.test(scad) ? scad : undefined,
   };
 }
 
-export async function fetchFatture(): Promise<SpFattura[]> {
+export async function fetchFatture(direzione: DirezioneFattura = "Emessa"): Promise<SpFattura[]> {
   const started = Date.now();
   const cfg = await discoverSharePoint();
-  if (!cfg.listFatture) return [];
+  const { listId, fields } = fattureListPer(cfg, direzione);
+  if (!listId) return [];
   const items = await fetchMovimentiPages(
-    `/sites/${cfg.siteId}/lists/${cfg.listFatture}/items?expand=fields&$top=999`,
+    `/sites/${cfg.siteId}/lists/${listId}/items?expand=fields&$top=999`,
   );
-  const out = items.map((it) => mapFattura(cfg, it));
+  const out = items.map((it) => mapFattura(fields, it, direzione));
   out.sort((a, b) => b.dataDocumento.localeCompare(a.dataDocumento));
-  logSp("info", "fetch.fatture", `${out.length} fatture`, { durataMs: Date.now() - started });
+  logSp("info", "fetch.fatture", `${out.length} fatture ${direzione.toLowerCase()}`, {
+    durataMs: Date.now() - started,
+  });
   return out;
 }
 
@@ -3684,14 +3724,19 @@ export interface ImportFattureResult {
 
 const IMPORT_FAT_MAX_ROWS = 150;
 
-export async function importFatture(rows: FatturaRaw[]): Promise<ImportFattureResult> {
+// Import per DIREZIONE: le righe vanno tutte nella lista della direzione
+// indicata; la dedup è per nome file SdI, il reimport aggiorna lo Stato SdI.
+export async function importFatture(
+  rows: FatturaRaw[],
+  direzione: DirezioneFattura,
+): Promise<ImportFattureResult> {
   const cfg = await discoverSharePoint();
-  const listId = requireFattureList(cfg);
-  const F = cfg.fattureFields;
+  const listId = requireFattureList(cfg, direzione);
+  const F = fattureListPer(cfg, direzione).fields;
   if (rows.length > IMPORT_FAT_MAX_ROWS)
     throw new Error(`Troppe fatture in un blocco (max ${IMPORT_FAT_MAX_ROWS}).`);
 
-  const esistenti = new Map((await fetchFatture()).map((f) => [f.nomeFile, f]));
+  const esistenti = new Map((await fetchFatture(direzione)).map((f) => [f.nomeFile, f]));
   const result: ImportFattureResult = {
     ricevute: rows.length,
     importate: 0,
@@ -3734,6 +3779,7 @@ export async function importFatture(rows: FatturaRaw[]): Promise<ImportFattureRe
     if (F.TotaleDocumento) fields[F.TotaleDocumento] = r.totale;
     if (F.NettoAPagare) fields[F.NettoAPagare] = r.netto;
     if (F.StatoSdI) fields[F.StatoSdI] = r.statoSdI;
+    if (F.ScadenzaPagamento && r.scadenza) fields[F.ScadenzaPagamento] = `${r.scadenza}T00:00:00Z`;
     ops.push(async () => {
       await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
         method: "POST",
@@ -3757,7 +3803,7 @@ export async function importFatture(rows: FatturaRaw[]): Promise<ImportFattureRe
   logSp(
     "info",
     "import.fatture",
-    `Import fatture: ${result.importate} nuove, ${result.aggiornate} aggiornate, ${result.doppioni} doppioni`,
+    `Import fatture ${direzione.toLowerCase()}: ${result.importate} nuove, ${result.aggiornate} aggiornate, ${result.doppioni} doppioni`,
   );
   return result;
 }
@@ -4557,20 +4603,22 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
       ? `credenziali configurate (${stato.username})`
       : "lista pronta — credenziali da inserire dalla pagina Finanza → Fatture";
   });
-  await step("list.fatture", "Liste Fatture (FattureEmesse/Termini/Abbinamenti)", async () => {
+  await step("list.fatture", "Liste Fatture (Emesse/Ricevute/Termini/Abbinamenti)", async () => {
     if (!disc) throw new Error("Discovery non completata");
     const mancano: string[] = [];
     if (!disc.listFatture) mancano.push("FattureEmesse");
+    if (!disc.listFattureRicevute) mancano.push("FattureRicevute");
     if (!disc.listTermini) mancano.push("TerminiPagamento");
     if (!disc.listAbbinamenti) mancano.push("AbbinamentiIncassi");
     if (mancano.length) throw new Error(`Liste mancanti: ${mancano.join(", ")}`);
     const colonne = [
       ...disc.fattureMissing.map((c) => `FattureEmesse.${c}`),
+      ...disc.fattureRicevuteMissing.map((c) => `FattureRicevute.${c}`),
       ...disc.terminiMissing.map((c) => `TerminiPagamento.${c}`),
       ...disc.abbinamentiMissing.map((c) => `AbbinamentiIncassi.${c}`),
     ];
     if (colonne.length) throw new Error(`Colonne mancanti — [${colonne.join(", ")}]`);
-    return `${disc.listFattureName} · ${disc.listTerminiName} · ${disc.listAbbinamentiName}`;
+    return `${disc.listFattureName} · ${disc.listFattureRicevuteName} · ${disc.listTerminiName} · ${disc.listAbbinamentiName}`;
   });
 
   await step("push.ready", "Notifiche push (lista + chiavi VAPID)", async () => {
