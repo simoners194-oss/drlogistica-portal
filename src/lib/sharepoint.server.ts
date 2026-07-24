@@ -3745,8 +3745,16 @@ export async function importFatture(
     errori: [],
   };
   const ops: (() => Promise<"nuova" | "aggiornata">)[] = [];
+  // Dedup anche DENTRO il blocco: la stessa fattura può arrivare due volte in
+  // un unico caricamento (es. ZIP XML + export xlsx selezionati insieme).
+  const vistiNelBlocco = new Set<string>();
   for (const r of rows) {
     if (!r.nomeFile.trim()) continue;
+    if (vistiNelBlocco.has(r.nomeFile)) {
+      result.doppioni++;
+      continue;
+    }
+    vistiNelBlocco.add(r.nomeFile);
     const prev = esistenti.get(r.nomeFile);
     if (prev) {
       // Già in archivio: si aggiorna SOLO lo Stato SdI se cambiato (i dati

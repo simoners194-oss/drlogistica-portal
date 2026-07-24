@@ -365,10 +365,20 @@ export function FattureTab() {
         toast.error(t("ft.errFile"), { description: t("ft.errFileDesc") });
         return;
       }
+      // Dedup nel caricamento stesso (es. ZIP + xlsx insieme): prima vince.
+      const visti = new Set<string>();
+      const univoche = rows.filter((r) => {
+        if (visti.has(r.nomeFile)) {
+          scartate++;
+          return false;
+        }
+        visti.add(r.nomeFile);
+        return true;
+      });
       setPreviewImp({
         descrizione: files.length === 1 ? files[0].name : `${files.length} file`,
-        emesse: rows.filter((r) => r.direzione === "Emessa"),
-        ricevute: rows.filter((r) => r.direzione === "Ricevuta"),
+        emesse: univoche.filter((r) => r.direzione === "Emessa"),
+        ricevute: univoche.filter((r) => r.direzione === "Ricevuta"),
         scartate,
       });
     } catch (err) {
