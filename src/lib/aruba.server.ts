@@ -13,14 +13,26 @@
 // Le credenziali vivono su SharePoint cifrate (vedi sharepoint.server.ts);
 // qui non si logga MAI né password né token.
 
-import { getArubaCredenziali } from "./sharepoint.server";
+import {
+  getArubaCredenziali,
+  getArubaTokenCacheRaw,
+  saveArubaTokenCacheRaw,
+} from "./sharepoint.server";
 
 const ARUBA_AUTH_BASE = "https://auth.fatturazioneelettronica.aruba.it";
 const ARUBA_WS_BASE = "https://ws.fatturazioneelettronica.aruba.it";
 const TIMEOUT_MS = 20_000;
 
-// Token in-memory (il Worker è effimero: alla peggio si rifà il signin).
-let tokenCache: { accessToken: string; scadeA: number } | null = null;
+// Aruba LIMITA i signin ripetuti (HTTP 429): il token va RIUTILIZZATO.
+// Strategia a tre livelli: memoria del Worker → cache persistita (cifrata,
+// lista ArubaConfig, sopravvive ai riavvii) → refresh_token → signin pieno.
+interface TokenSet {
+  access: string;
+  refresh: string;
+  accessScadeA: number; // epoch ms
+  refreshScadeA: number; // epoch ms
+}
+let tokenMem: TokenSet | null = null;
 
 async function fetchConTimeout(url: string, init: RequestInit): Promise<Response> {
   const ctl = new AbortController();
@@ -41,15 +53,7 @@ export class ArubaError extends Error {
   }
 }
 
-async function arubaSignin(force = false): Promise<string> {
-  if (!force && tokenCache && tokenCache.scadeA > Date.now()) return tokenCache.accessToken;
-  const cred = await getArubaCredenziali();
-  if (!cred) throw new ArubaError(0, "Credenziali Aruba non configurate.");
-  const body = new URLSearchParams({
-    grant_type: "password",
-    username: cred.username,
-    password: cred.password,
-  });
+async function authRequest(body: URLSearchParams): Promise<TokenSet> {
   let res: Response;
   try {
     res = await fetchConTimeout(`${ARUBA_AUTH_BASE}/auth/signin`, {
@@ -67,6 +71,11 @@ async function arubaSignin(force = false): Promise<string> {
   }
   if (!res.ok) {
     // Mai riportare il corpo integrale: può contenere echi dei parametri.
+    if (res.status === 429)
+      throw new ArubaError(
+        429,
+        "Aruba limita gli accessi ripetuti (HTTP 429): attendere 5 minuti e riprovare UNA volta. Il token ora viene riutilizzato, quindi a regime succede di rado.",
+      );
     throw new ArubaError(
       res.status,
       res.status === 401 || res.status === 400
@@ -74,12 +83,73 @@ async function arubaSignin(force = false): Promise<string> {
         : `Autenticazione Aruba fallita (HTTP ${res.status}).`,
     );
   }
-  const data = (await res.json()) as { access_token?: string; expires_in?: number };
+  const data = (await res.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  };
   if (!data.access_token) throw new ArubaError(500, "Risposta di autenticazione Aruba non valida.");
-  // Margine di 60s sulla scadenza dichiarata (default 30 minuti).
-  const ttlMs = (Number(data.expires_in) > 0 ? Number(data.expires_in) : 1800) * 1000;
-  tokenCache = { accessToken: data.access_token, scadeA: Date.now() + ttlMs - 60_000 };
-  return tokenCache.accessToken;
+  // Margini prudenti: access 30' (dichiarato), refresh 60' da documentazione.
+  const accessTtl = (Number(data.expires_in) > 0 ? Number(data.expires_in) : 1800) * 1000;
+  return {
+    access: data.access_token,
+    refresh: data.refresh_token ?? "",
+    accessScadeA: Date.now() + accessTtl - 60_000,
+    refreshScadeA: Date.now() + 60 * 60_000 - 60_000,
+  };
+}
+
+async function salvaToken(ts: TokenSet): Promise<void> {
+  tokenMem = ts;
+  await saveArubaTokenCacheRaw(JSON.stringify(ts)); // best-effort, cifrata
+}
+
+async function arubaSignin(force = false): Promise<string> {
+  const now = Date.now();
+  if (!force) {
+    // 1) memoria del Worker
+    if (tokenMem && tokenMem.accessScadeA > now) return tokenMem.access;
+    // 2) cache persistita (sopravvive ai riavvii del Worker)
+    if (!tokenMem) {
+      try {
+        const raw = await getArubaTokenCacheRaw();
+        if (raw) {
+          const ts = JSON.parse(raw) as TokenSet;
+          if (ts?.access && ts.accessScadeA > now) {
+            tokenMem = ts;
+            return ts.access;
+          }
+          if (ts?.refresh && ts.refreshScadeA > now) tokenMem = ts; // per il refresh sotto
+        }
+      } catch {
+        /* cache illeggibile: si prosegue col signin */
+      }
+    }
+    // 3) refresh del token (più leggero e non soggetto al limite dei signin)
+    if (tokenMem?.refresh && tokenMem.refreshScadeA > now) {
+      try {
+        const ts = await authRequest(
+          new URLSearchParams({ grant_type: "refresh_token", refresh_token: tokenMem.refresh }),
+        );
+        await salvaToken(ts);
+        return ts.access;
+      } catch {
+        /* refresh fallito: si ricade sul signin pieno */
+      }
+    }
+  }
+  // 4) signin pieno con le credenziali
+  const cred = await getArubaCredenziali();
+  if (!cred) throw new ArubaError(0, "Credenziali Aruba non configurate.");
+  const ts = await authRequest(
+    new URLSearchParams({
+      grant_type: "password",
+      username: cred.username,
+      password: cred.password,
+    }),
+  );
+  await salvaToken(ts);
+  return ts.access;
 }
 
 async function arubaGet(path: string, params: Record<string, string>): Promise<unknown> {
@@ -138,7 +208,9 @@ function truncVal(v: unknown): string {
 }
 
 export async function arubaProvaConnessione(): Promise<ArubaProbeResult> {
-  await arubaSignin(true); // verifica esplicita delle credenziali
+  // RIUSA il token quando c'è (Aruba limita i signin ripetuti — 429): la
+  // verifica delle credenziali avviene comunque al primo accesso reale.
+  await arubaSignin();
   const now = new Date();
   const start = new Date(now.getTime() - 2 * 86400000);
   const iso = (d: Date) => d.toISOString().slice(0, 19);

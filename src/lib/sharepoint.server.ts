@@ -263,6 +263,9 @@ export const SP_DISPLAY = {
     Username: "Username",
     PasswordCifrata: "PasswordCifrata",
     UltimaSync: "UltimaSync",
+    // Cache del token (cifrata): il Worker è effimero e Aruba limita i signin
+    // ripetuti (429) — persistere il token riduce le autenticazioni a ~2/ora.
+    TokenCache: "TokenCache",
   },
   // Richieste di acquisto (modulo Procurement). Lista OPZIONALE.
   acquisti: {
@@ -3997,6 +4000,39 @@ export async function saveArubaCredenziali(username: string, password: string): 
     );
   }
   logSp("info", "aruba.config", "Credenziali Aruba aggiornate (password cifrata)");
+}
+
+// Cache token Aruba persistita (cifrata) sulla riga di config: sopravvive ai
+// riavvii del Worker. Colonna OPZIONALE: se assente si degrada alla sola
+// cache in memoria. Il contenuto è un JSON cifrato, mai loggato.
+export async function getArubaTokenCacheRaw(): Promise<string | null> {
+  const cfg = await discoverSharePoint();
+  const F = cfg.arubaConfigFields;
+  if (!cfg.listArubaConfig || !F.TokenCache) return null;
+  const row = await fetchArubaRow(cfg);
+  const cifrato = String(row?.fields?.[F.TokenCache] ?? "");
+  if (!cifrato.startsWith(ARUBA_CIPHER_PREFIX)) return null;
+  try {
+    return await decifraSegreto(cifrato);
+  } catch {
+    return null; // segreto ruotato: si rifà il signin
+  }
+}
+
+export async function saveArubaTokenCacheRaw(json: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const F = cfg.arubaConfigFields;
+  if (!cfg.listArubaConfig || !F.TokenCache) return; // colonna assente: no-op
+  const row = await fetchArubaRow(cfg);
+  if (!row) return;
+  try {
+    await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listArubaConfig}/items/${row.id}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify({ [F.TokenCache]: await cifraSegreto(json) }),
+    });
+  } catch {
+    /* best-effort: la cache è un'ottimizzazione, non un requisito */
+  }
 }
 
 /** Credenziali in chiaro — SOLO per il client API server-side. Mai loggarle. */
