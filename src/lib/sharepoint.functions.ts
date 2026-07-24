@@ -6,6 +6,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { normalizeRuolo } from "./session";
 import { isSupervisoreGlobale } from "./richieste-logic";
+import { arubaProvaConnessione, type ArubaProbeResult } from "./aruba.server";
 import {
   setSessionCookie,
   readSessionUser,
@@ -78,6 +79,9 @@ import {
   type FatturaRaw,
   type TerminePagamento,
   type AbbinamentoIncasso,
+  getArubaStato,
+  saveArubaCredenziali,
+  type ArubaStato,
   getCodiceDipendente,
   type SpMovimento,
   type MovimentiFilter,
@@ -866,6 +870,38 @@ export const spDeleteAbbinamento = createServerFn({ method: "POST" })
     await deleteAbbinamento(data.abbinamentoId);
     return { ok: true };
   });
+
+// --- Collegamento Aruba Fatturazione Elettronica (solo direttore) -----------
+// Sola lettura in produzione: signin + ricerca. L'INVIO fatture non esiste.
+// Il probe restituisce la forma reale della risposta per finalizzare il sync.
+
+export const spGetArubaStato = createServerFn({ method: "GET" }).handler(
+  async (): Promise<ArubaStato> => {
+    await assertDirettore(await currentUser());
+    return getArubaStato();
+  },
+);
+
+export const spSetArubaCredenziali = createServerFn({ method: "POST" })
+  .inputValidator((input: { username: string; password: string }) => {
+    const username = String(input?.username ?? "").trim();
+    const password = String(input?.password ?? "");
+    if (!username || username.length > 120) throw new Error("Username non valido");
+    if (!password || password.length > 200) throw new Error("Password non valida");
+    return { username, password };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await saveArubaCredenziali(data.username, data.password);
+    return { ok: true };
+  });
+
+export const spArubaProvaConnessione = createServerFn({ method: "POST" }).handler(
+  async (): Promise<ArubaProbeResult> => {
+    await assertDirettore(await currentUser());
+    return arubaProvaConnessione();
+  },
+);
 
 // --- Web Push: chiave pubblica + registrazione dispositivo -----------------
 export const spGetVapidPublicKey = createServerFn({ method: "GET" }).handler(

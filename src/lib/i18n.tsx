@@ -586,7 +586,25 @@ const en = {
   "ft.parziale": "Partially paid",
   "ft.nonIncassata": "Unpaid",
   "ft.nc": "Credit note",
-  "ft.empty": "No invoices for the selected filters. Import the Aruba export to get started.",
+  "ft.empty":
+    "No invoices for the selected filters. Configure the Aruba connection (Aruba button) to get started.",
+  "ft.arTitle": "Aruba e-invoicing connection (API, read-only)",
+  "ft.arNoLista": "Create the 'ArubaConfig' list on SharePoint first, then run Rediscover.",
+  "ft.arConfigurato": "Credentials configured — password stored encrypted",
+  "ft.arDaConfigurare": "Enter the Aruba e-invoicing service credentials (API user).",
+  "ft.arUser": "Aruba username",
+  "ft.arPass": "Aruba password",
+  "ft.arSalva": "Save credentials",
+  "ft.arProva": "Test connection",
+  "ft.arCredMancanti": "Enter username and password",
+  "ft.arCredSalvate": "Credentials saved (password encrypted). Now test the connection.",
+  "ft.arProvaOk": "Aruba connection OK",
+  "ft.arProvaKo": "Aruba connection failed",
+  "ft.arCampi": "Fields returned by Aruba (first invoice of the test window):",
+  "ft.arVuoto":
+    "No invoices in the last 2 days — authentication is OK; the field list will appear when the window contains an invoice.",
+  "ft.arNota":
+    "Read-only production access: authentication and searches only, nothing is ever sent to SdI. The password is encrypted with a server-side key; it is never shown or logged.",
   "ft.terminiGg": "payment terms",
   "ft.reconcile": "Reconcile with bank",
   "ft.reconcileTip":
@@ -1179,7 +1197,26 @@ const it: Record<DictKey, string> = {
   "ft.parziale": "Parziale",
   "ft.nonIncassata": "Non incassata",
   "ft.nc": "Nota di credito",
-  "ft.empty": "Nessuna fattura per i filtri selezionati. Importa l'export Aruba per iniziare.",
+  "ft.empty":
+    "Nessuna fattura per i filtri selezionati. Configura il collegamento Aruba (pulsante Aruba) per iniziare.",
+  "ft.arTitle": "Collegamento Aruba Fatturazione Elettronica (API, sola lettura)",
+  "ft.arNoLista": "Crea prima la lista 'ArubaConfig' su SharePoint, poi esegui Riscopri.",
+  "ft.arConfigurato": "Credenziali configurate — password salvata cifrata",
+  "ft.arDaConfigurare":
+    "Inserisci le credenziali del servizio Aruba Fatturazione Elettronica (utente API).",
+  "ft.arUser": "Username Aruba",
+  "ft.arPass": "Password Aruba",
+  "ft.arSalva": "Salva credenziali",
+  "ft.arProva": "Prova connessione",
+  "ft.arCredMancanti": "Inserisci username e password",
+  "ft.arCredSalvate": "Credenziali salvate (password cifrata). Ora prova la connessione.",
+  "ft.arProvaOk": "Connessione Aruba OK",
+  "ft.arProvaKo": "Connessione Aruba fallita",
+  "ft.arCampi": "Campi restituiti da Aruba (prima fattura della finestra di prova):",
+  "ft.arVuoto":
+    "Nessuna fattura negli ultimi 2 giorni — l'autenticazione è OK; l'elenco campi apparirà quando la finestra conterrà una fattura.",
+  "ft.arNota":
+    "Accesso in produzione in SOLA LETTURA: solo autenticazione e ricerche, nulla viene mai inviato allo SdI. La password è cifrata con chiave lato server; non viene mai mostrata né registrata nei log.",
   "ft.terminiGg": "termini di pagamento",
   "ft.reconcile": "Riconcilia con banca",
   "ft.reconcileTip":

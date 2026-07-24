@@ -8,37 +8,38 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
-  FileSpreadsheet,
+  KeyRound,
   Link2,
   Loader2,
+  Plug,
   Trash2,
-  Upload,
   Wand2,
 } from "lucide-react";
 import { esportaCsvFile } from "@/lib/csv";
 import { useLang } from "@/lib/i18n";
 import {
   computeStatoFattura,
-  parseFattureMatrice,
   proponiAbbinamenti,
   isNotaCredito,
   isEsclusaDalCredito,
   TERMINI_DEFAULT_GIORNI,
   type AbbinamentoIncasso,
-  type FatturaRaw,
   type TerminePagamento,
 } from "@/lib/fatture-logic";
 import { clienteGroupKey } from "@/lib/finanza-logic";
 import {
   spGetFatture,
-  spImportFatture,
   spGetTerminiPagamento,
   spGetAbbinamenti,
   spCreateAbbinamenti,
   spDeleteAbbinamento,
   spGetMovimenti,
+  spGetArubaStato,
+  spSetArubaCredenziali,
+  spArubaProvaConnessione,
 } from "@/lib/sharepoint.functions";
-import type { SpFattura, SpMovimento } from "@/lib/sharepoint.server";
+import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
+import type { ArubaProbeResult } from "@/lib/aruba.server";
 
 const inputCls =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
@@ -80,15 +81,14 @@ export function FattureTab() {
   // Riconciliazione automatica
   const [reconciling, setReconciling] = useState(false);
 
-  // Import export-Aruba
-  const [importing, setImporting] = useState(false);
-  const [parsing, setParsing] = useState(false);
-  const [previewImp, setPreviewImp] = useState<{
-    fileName: string;
-    rows: FatturaRaw[];
-    scartate: number;
-  } | null>(null);
-  const [showImport, setShowImport] = useState(false);
+  // Collegamento Aruba (API, sola lettura)
+  const [aruba, setAruba] = useState<ArubaStato | null>(null);
+  const [showAruba, setShowAruba] = useState(false);
+  const [arubaUser, setArubaUser] = useState("");
+  const [arubaPass, setArubaPass] = useState("");
+  const [arubaSaving, setArubaSaving] = useState(false);
+  const [arubaTesting, setArubaTesting] = useState(false);
+  const [probe, setProbe] = useState<ArubaProbeResult | null>(null);
 
   const load = () => {
     spGetFatture()
@@ -108,6 +108,9 @@ export function FattureTab() {
     spGetMovimenti({ data: {} })
       .then((l) => setMovimenti(l as SpMovimento[]))
       .catch(() => setMovimenti([]));
+    spGetArubaStato()
+      .then((s) => setAruba(s as ArubaStato))
+      .catch(() => setAruba(null));
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -282,63 +285,43 @@ export function FattureTab() {
     }
   };
 
-  // --- Import export Aruba --------------------------------------------------
-  const onFile = async (file: File) => {
-    setPreviewImp(null);
-    setParsing(true);
+  // --- Collegamento Aruba ---------------------------------------------------
+  const salvaCredenziali = async () => {
+    if (!arubaUser.trim() || !arubaPass) return toast.error(t("ft.arCredMancanti"));
+    setArubaSaving(true);
     try {
-      const XLSX = await import("xlsx");
-      const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
-      for (const name of wb.SheetNames) {
-        const matrix = XLSX.utils.sheet_to_json(wb.Sheets[name], {
-          header: 1,
-          raw: true,
-        }) as unknown[][];
-        const res = parseFattureMatrice(matrix);
-        if (res && res.rows.length) {
-          setPreviewImp({ fileName: file.name, rows: res.rows, scartate: res.scartate });
-          return;
-        }
-      }
-      toast.error(t("ft.errFile"), { description: t("ft.errFileDesc") });
+      await spSetArubaCredenziali({ data: { username: arubaUser.trim(), password: arubaPass } });
+      toast.success(t("ft.arCredSalvate"));
+      setArubaPass("");
+      spGetArubaStato()
+        .then((s) => setAruba(s as ArubaStato))
+        .catch(() => {});
     } catch (err) {
-      toast.error(t("ft.errFile"), {
+      toast.error(t("common.error"), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
-      setParsing(false);
+      setArubaSaving(false);
     }
   };
 
-  const eseguiImport = async () => {
-    if (!previewImp) return;
-    setImporting(true);
+  const provaConnessione = async () => {
+    setArubaTesting(true);
+    setProbe(null);
     try {
-      let nuove = 0;
-      let aggiornate = 0;
-      let doppioni = 0;
-      const errori: string[] = [];
-      for (let i = 0; i < previewImp.rows.length; i += CHUNK) {
-        const res = (await spImportFatture({
-          data: { rows: previewImp.rows.slice(i, i + CHUNK) },
-        })) as { importate: number; aggiornate: number; doppioni: number; errori: string[] };
-        nuove += res.importate;
-        aggiornate += res.aggiornate;
-        doppioni += res.doppioni;
-        errori.push(...res.errori);
-      }
-      toast.success(t("ft.importDone"), {
-        description: `${nuove} ${t("ft.importNew")} · ${aggiornate} ${t("ft.importUpd")} · ${doppioni} ${t("ft.importDup")}${errori.length ? ` · ${errori.length} ${t("common.error").toLowerCase()}` : ""}`,
-      });
-      setPreviewImp(null);
-      setShowImport(false);
-      load();
+      const res = (await spArubaProvaConnessione()) as ArubaProbeResult;
+      setProbe(res);
+      toast.success(t("ft.arProvaOk"));
     } catch (err) {
-      toast.error(t("ft.errImport"), {
+      setProbe({
+        ok: false,
+        messaggio: err instanceof Error ? err.message : String(err),
+      });
+      toast.error(t("ft.arProvaKo"), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
-      setImporting(false);
+      setArubaTesting(false);
     }
   };
 
@@ -495,10 +478,11 @@ export function FattureTab() {
           </button>
           <button
             type="button"
-            onClick={() => setShowImport((v) => !v)}
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+            onClick={() => setShowAruba((v) => !v)}
+            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted ${aruba?.configurato ? "border-status-present/40 text-status-present" : "border-border text-foreground"}`}
           >
-            <Upload className="h-4 w-4" /> {t("ft.import")}
+            <Plug className="h-4 w-4" /> Aruba
+            {aruba?.configurato && <CheckCircle2 className="h-3.5 w-3.5" />}
           </button>
           <button
             type="button"
@@ -510,58 +494,102 @@ export function FattureTab() {
           </button>
         </div>
 
-        {/* Import (a scomparsa) */}
-        {showImport && (
+        {/* Collegamento Aruba (a scomparsa) */}
+        {showAruba && (
           <div className="mb-4 rounded-xl border border-border p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground mb-1">
-              <FileSpreadsheet className="h-4 w-4 text-primary" /> {t("ft.importTitle")}
+              <Plug className="h-4 w-4 text-primary" /> {t("ft.arTitle")}
             </div>
-            <p className="text-xs text-muted-foreground mb-3">{t("ft.importDesc")}</p>
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              disabled={parsing || importing}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onFile(f);
-                e.target.value = "";
-              }}
-              className="block text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
-            />
-            {parsing && (
-              <p className="mt-2 text-sm text-muted-foreground inline-flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> {t("fin.parsing")}
-              </p>
-            )}
-            {previewImp && (
-              <div className="mt-3 text-[13px] text-muted-foreground">
-                <b className="text-foreground">{previewImp.fileName}</b> — {previewImp.rows.length}{" "}
-                {t("ft.importRows")}
-                {previewImp.scartate > 0 && ` (${previewImp.scartate} ${t("fin.previewSkipped")})`}
-                <div className="mt-2 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void eseguiImport()}
-                    disabled={importing}
-                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                  >
-                    {importing ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Upload className="h-4 w-4" />
-                    )}
-                    {t("fin.importBtn")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewImp(null)}
-                    className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted"
-                  >
-                    {t("common.cancel")}
-                  </button>
+            <p className="text-xs text-muted-foreground mb-3">
+              {aruba == null
+                ? t("common.loading")
+                : !aruba.listaPresente
+                  ? t("ft.arNoLista")
+                  : aruba.configurato
+                    ? `${t("ft.arConfigurato")} (${aruba.username})`
+                    : t("ft.arDaConfigurare")}
+            </p>
+            {aruba?.listaPresente && (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-52">
+                  <label className="text-xs text-muted-foreground">{t("ft.arUser")}</label>
+                  <input
+                    value={arubaUser}
+                    onChange={(e) => setArubaUser(e.target.value)}
+                    autoComplete="off"
+                    className={inputCls}
+                  />
                 </div>
+                <div className="min-w-52">
+                  <label className="text-xs text-muted-foreground">{t("ft.arPass")}</label>
+                  <input
+                    type="password"
+                    value={arubaPass}
+                    onChange={(e) => setArubaPass(e.target.value)}
+                    autoComplete="new-password"
+                    className={inputCls}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void salvaCredenziali()}
+                  disabled={arubaSaving || !arubaUser.trim() || !arubaPass}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+                >
+                  {arubaSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <KeyRound className="h-4 w-4" />
+                  )}
+                  {t("ft.arSalva")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void provaConnessione()}
+                  disabled={arubaTesting || !aruba.configurato}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  {arubaTesting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plug className="h-4 w-4" />
+                  )}
+                  {t("ft.arProva")}
+                </button>
               </div>
             )}
+            {probe && (
+              <div
+                className={`mt-3 rounded-lg p-3 text-[13px] ${probe.ok ? "bg-status-present/10 text-foreground" : "bg-status-absent/10 text-status-absent"}`}
+              >
+                <div className="font-medium">{probe.messaggio}</div>
+                {probe.ok && probe.campiEsempio && (
+                  <div className="mt-2 text-muted-foreground">
+                    <div className="text-xs font-medium text-foreground mb-1">
+                      {t("ft.arCampi")}
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="text-xs">
+                        <tbody>
+                          {Object.entries(probe.campiEsempio).map(([k, v]) => (
+                            <tr key={k}>
+                              <td className="pr-3 py-0.5 font-mono text-foreground whitespace-nowrap">
+                                {k}
+                              </td>
+                              <td className="py-0.5 break-all">{v}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+                {probe.ok && probe.elementi === 0 && (
+                  <p className="mt-1 text-muted-foreground">{t("ft.arVuoto")}</p>
+                )}
+              </div>
+            )}
+            <p className="mt-3 text-[11px] text-muted-foreground">{t("ft.arNota")}</p>
           </div>
         )}
 

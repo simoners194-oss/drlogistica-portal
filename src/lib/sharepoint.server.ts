@@ -256,6 +256,14 @@ export const SP_DISPLAY = {
     Importo: "Importo",
     Origine: "Origine",
   },
+  // Collegamento Aruba Fatturazione Elettronica (una sola riga di config).
+  // La password è CIFRATA AES-GCM con chiave derivata dal segreto server:
+  // chi legge la lista vede solo testo cifrato. OPZIONALE.
+  arubaConfig: {
+    Username: "Username",
+    PasswordCifrata: "PasswordCifrata",
+    UltimaSync: "UltimaSync",
+  },
   // Richieste di acquisto (modulo Procurement). Lista OPZIONALE.
   acquisti: {
     Richiedente: "Richiedente",
@@ -304,6 +312,7 @@ const LIST_NAMES = {
   fatture: ["FattureEmesse", "FatturaEmessa", "Fatture"],
   terminiPagamento: ["TerminiPagamento", "TerminiDiPagamento", "TerminePagamento"],
   abbinamenti: ["AbbinamentiIncassi", "AbbinamentoIncasso", "Abbinamenti"],
+  arubaConfig: ["ArubaConfig", "ConfigurazioneAruba"],
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -419,6 +428,10 @@ export interface SpDiscovered {
   listAbbinamentiName: string | null;
   abbinamentiFields: Record<string, string>;
   abbinamentiMissing: string[];
+  listArubaConfig: string | null;
+  listArubaConfigName: string | null;
+  arubaConfigFields: Record<string, string>;
+  arubaConfigMissing: string[];
   cachedAt: string;
   expiresAt: string;
 }
@@ -720,6 +733,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const fat = await softList(LIST_NAMES.fatture, SP_DISPLAY.fatture);
   const trm = await softList(LIST_NAMES.terminiPagamento, SP_DISPLAY.terminiPagamento);
   const abb = await softList(LIST_NAMES.abbinamenti, SP_DISPLAY.abbinamenti);
+  const aru = await softList(LIST_NAMES.arubaConfig, SP_DISPLAY.arubaConfig);
 
   const now = Date.now();
   discoveredCache = {
@@ -786,6 +800,10 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listAbbinamentiName: abb.name,
     abbinamentiFields: abb.fields,
     abbinamentiMissing: abb.missing,
+    listArubaConfig: aru.id,
+    listArubaConfigName: aru.name,
+    arubaConfigFields: aru.fields,
+    arubaConfigMissing: aru.missing,
     cachedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CACHE_TTL_MS).toISOString(),
   };
@@ -3859,6 +3877,152 @@ export async function deleteAbbinamento(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Collegamento Aruba — credenziali su lista ArubaConfig, password CIFRATA
+// ---------------------------------------------------------------------------
+// La password serve in chiaro per il signin, quindi non si può hashare come i
+// PIN: si cifra AES-GCM con chiave derivata (SHA-256) dal segreto solo-server
+// (stesso pepper dei PIN). Chi legge la lista vede "aes1$<iv>$<ct>" in base64.
+// NB: se il segreto server viene ruotato, le credenziali vanno reinserite.
+
+const ARUBA_CIPHER_PREFIX = "aes1$";
+
+async function arubaKey(): Promise<CryptoKey> {
+  const pepper = pinPepper();
+  if (!pepper) throw new Error("Segreto server assente: impossibile cifrare le credenziali.");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`aruba:${pepper}`));
+  return crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+}
+function b64encode(b: Uint8Array): string {
+  let s = "";
+  for (const x of b) s += String.fromCharCode(x);
+  return btoa(s);
+}
+function b64decode(s: string): Uint8Array {
+  const raw = atob(s);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+async function cifraSegreto(testo: string): Promise<string> {
+  const key = await arubaKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    new TextEncoder().encode(testo),
+  );
+  return `${ARUBA_CIPHER_PREFIX}${b64encode(iv)}$${b64encode(new Uint8Array(ct))}`;
+}
+
+async function decifraSegreto(cifrato: string): Promise<string> {
+  if (!cifrato.startsWith(ARUBA_CIPHER_PREFIX)) throw new Error("Formato credenziale non valido.");
+  const [ivB64, ctB64] = cifrato.slice(ARUBA_CIPHER_PREFIX.length).split("$");
+  const key = await arubaKey();
+  const pt = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: b64decode(ivB64) as unknown as BufferSource },
+    key,
+    b64decode(ctB64) as unknown as BufferSource,
+  );
+  return new TextDecoder().decode(pt);
+}
+
+function requireArubaList(cfg: SpDiscovered): string {
+  if (!cfg.listArubaConfig)
+    throw new Error('Lista "ArubaConfig" non trovata su SharePoint. Crearla sul sito DRPORTAL.');
+  return cfg.listArubaConfig;
+}
+
+async function fetchArubaRow(
+  cfg: SpDiscovered,
+): Promise<GraphListItem<Record<string, unknown>> | null> {
+  if (!cfg.listArubaConfig) return null;
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listArubaConfig}/items?expand=fields&$top=10`,
+    ),
+  );
+  return res.value[0] ?? null;
+}
+
+export interface ArubaStato {
+  listaPresente: boolean;
+  configurato: boolean;
+  /** Username mascherato (mai integrale verso il client). */
+  username: string;
+  ultimaSync: string | null;
+}
+
+export async function getArubaStato(): Promise<ArubaStato> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listArubaConfig)
+    return { listaPresente: false, configurato: false, username: "", ultimaSync: null };
+  const F = cfg.arubaConfigFields;
+  const row = await fetchArubaRow(cfg);
+  const f = row?.fields ?? {};
+  const username = F.Username ? String(f[F.Username] ?? "") : "";
+  const pw = F.PasswordCifrata ? String(f[F.PasswordCifrata] ?? "") : "";
+  const mascherato = username
+    ? `${username.slice(0, 3)}${"•".repeat(Math.max(0, username.length - 3))}`
+    : "";
+  return {
+    listaPresente: true,
+    configurato: Boolean(username && pw.startsWith(ARUBA_CIPHER_PREFIX)),
+    username: mascherato,
+    ultimaSync: F.UltimaSync ? ((f[F.UltimaSync] as string | undefined) ?? null) : null,
+  };
+}
+
+export async function saveArubaCredenziali(username: string, password: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requireArubaList(cfg);
+  const F = cfg.arubaConfigFields;
+  const fields: Record<string, unknown> = { Title: "__aruba__" };
+  if (F.Username) fields[F.Username] = username.trim();
+  if (F.PasswordCifrata) fields[F.PasswordCifrata] = await cifraSegreto(password);
+  const row = await fetchArubaRow(cfg);
+  if (row) {
+    await withDiscoveryRetry(() =>
+      gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${row.id}/fields`, {
+        method: "PATCH",
+        body: JSON.stringify(fields),
+      }),
+    );
+  } else {
+    await withDiscoveryRetry(() =>
+      gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
+        method: "POST",
+        body: JSON.stringify({ fields }),
+      }),
+    );
+  }
+  logSp("info", "aruba.config", "Credenziali Aruba aggiornate (password cifrata)");
+}
+
+/** Credenziali in chiaro — SOLO per il client API server-side. Mai loggarle. */
+export async function getArubaCredenziali(): Promise<{
+  username: string;
+  password: string;
+} | null> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listArubaConfig) return null;
+  const F = cfg.arubaConfigFields;
+  const row = await fetchArubaRow(cfg);
+  if (!row) return null;
+  const f = row.fields ?? {};
+  const username = F.Username ? String(f[F.Username] ?? "").trim() : "";
+  const cifrata = F.PasswordCifrata ? String(f[F.PasswordCifrata] ?? "") : "";
+  if (!username || !cifrata.startsWith(ARUBA_CIPHER_PREFIX)) return null;
+  try {
+    return { username, password: await decifraSegreto(cifrata) };
+  } catch {
+    throw new Error(
+      "Impossibile decifrare le credenziali Aruba (segreto server cambiato?). Reinserirle.",
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Web Push — storage subscription + chiavi VAPID su lista PushSubscriptions
 // ---------------------------------------------------------------------------
 // La riga speciale Title="__vapid__" contiene le chiavi applicative (pubblica
@@ -4346,6 +4510,16 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
     if (disc.regoleFinanzaMissing.length)
       throw new Error(`Colonne mancanti — [${disc.regoleFinanzaMissing.join(", ")}]`);
     return disc.listRegoleFinanzaName ?? undefined;
+  });
+  await step("aruba.config", "Collegamento Aruba (lista ArubaConfig)", async () => {
+    if (!disc?.listArubaConfig)
+      throw new Error("Lista 'ArubaConfig' non trovata — richiesta dal collegamento Aruba");
+    if (disc.arubaConfigMissing.length)
+      throw new Error(`Colonne mancanti — [${disc.arubaConfigMissing.join(", ")}]`);
+    const stato = await getArubaStato();
+    return stato.configurato
+      ? `credenziali configurate (${stato.username})`
+      : "lista pronta — credenziali da inserire dalla pagina Finanza → Fatture";
   });
   await step("list.fatture", "Liste Fatture (FattureEmesse/Termini/Abbinamenti)", async () => {
     if (!disc) throw new Error("Discovery non completata");
