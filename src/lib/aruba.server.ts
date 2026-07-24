@@ -22,6 +22,9 @@ import {
 const ARUBA_AUTH_BASE = "https://auth.fatturazioneelettronica.aruba.it";
 const ARUBA_WS_BASE = "https://ws.fatturazioneelettronica.aruba.it";
 const TIMEOUT_MS = 20_000;
+// Le fetch dei Worker partono senza User-Agent e i WAF trattano il traffico
+// anonimo in modo aggressivo (rate limit/429): ci si identifica sempre.
+const UA = "DRPortal/1.7 (portal.drlogistica.it; integrazione fatturazione)";
 
 // Aruba LIMITA i signin ripetuti (HTTP 429): il token va RIUTILIZZATO.
 // Strategia a tre livelli: memoria del Worker → cache persistita (cifrata,
@@ -58,7 +61,11 @@ async function authRequest(body: URLSearchParams): Promise<TokenSet> {
   try {
     res = await fetchConTimeout(`${ARUBA_AUTH_BASE}/auth/signin`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+        "User-Agent": UA,
+      },
       body: body.toString(),
     });
   } catch (err) {
@@ -159,7 +166,13 @@ async function arubaGet(path: string, params: Record<string, string>): Promise<u
   for (let attempt = 1; attempt <= 2; attempt++) {
     let res: Response;
     try {
-      res = await fetchConTimeout(url, { headers: { Authorization: `Bearer ${token}` } });
+      res = await fetchConTimeout(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "User-Agent": UA,
+        },
+      });
     } catch (err) {
       throw new ArubaError(
         0,
