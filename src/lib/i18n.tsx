@@ -1290,6 +1290,16 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       /* ignore */
     }
   }, []);
+  // Dichiara SEMPRE la lingua reale del documento: senza, Chrome può
+  // rilevare "inglese" (default SSR) e auto-tradurre in italiano testi già
+  // italiani, con risultati grotteschi ("Ore lavorate" → "Minerale lavorato").
+  useEffect(() => {
+    try {
+      document.documentElement.lang = lang;
+    } catch {
+      /* SSR: no-op */
+    }
+  }, [lang]);
   const setLang = (l: Lang) => {
     setLangState(l);
     try {
