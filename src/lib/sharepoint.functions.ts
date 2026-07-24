@@ -67,6 +67,17 @@ import {
   deleteRegolaFinanza,
   applicaRegolaAiMovimenti,
   type RegolaFinanza,
+  fetchFatture,
+  importFatture,
+  fetchTerminiPagamento,
+  fetchAbbinamenti,
+  createAbbinamenti,
+  deleteAbbinamento,
+  type SpFattura,
+  type ImportFattureResult,
+  type FatturaRaw,
+  type TerminePagamento,
+  type AbbinamentoIncasso,
   getCodiceDipendente,
   type SpMovimento,
   type MovimentiFilter,
@@ -763,6 +774,97 @@ export const spApplicaRegolaFinanza = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ aggiornati: number; rimanenti: number }> => {
     await assertDirettore(await currentUser());
     return applicaRegolaAiMovimenti(data);
+  });
+
+// --- Finanza → Fatture emesse, termini, abbinamenti (solo direttore) --------
+
+export const spGetFatture = createServerFn({ method: "GET" }).handler(
+  async (): Promise<SpFattura[]> => {
+    await assertDirettore(await currentUser());
+    return fetchFatture();
+  },
+);
+
+export const spImportFatture = createServerFn({ method: "POST" })
+  .inputValidator((input: { rows: FatturaRaw[] }) => {
+    if (!Array.isArray(input?.rows) || input.rows.length === 0)
+      throw new Error("Nessuna fattura da importare");
+    if (input.rows.length > 150) throw new Error("Blocco troppo grande (max 150 fatture)");
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    const rows = input.rows.map((r): FatturaRaw => {
+      if (!r?.nomeFile?.trim()) throw new Error("Nome file mancante");
+      if (!re.test(r?.dataDocumento ?? "")) throw new Error("Data documento non valida");
+      const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+      return {
+        nomeFile: String(r.nomeFile).trim().slice(0, 100),
+        numero: String(r.numero ?? "").slice(0, 40),
+        idSdi: String(r.idSdi ?? "").slice(0, 30),
+        dataInvio: re.test(r.dataInvio ?? "") ? r.dataInvio : r.dataDocumento,
+        dataDocumento: r.dataDocumento,
+        tipoDocumento: String(r.tipoDocumento ?? "").slice(0, 60),
+        cliente: String(r.cliente ?? "").slice(0, 120),
+        piva: String(r.piva ?? "").slice(0, 20),
+        metodoPagamento: String(r.metodoPagamento ?? "").slice(0, 60),
+        imponibile: num(r.imponibile),
+        iva: num(r.iva),
+        totale: num(r.totale),
+        netto: num(r.netto),
+        statoSdI: String(r.statoSdI ?? "").slice(0, 40),
+      };
+    });
+    return { rows };
+  })
+  .handler(async ({ data }): Promise<ImportFattureResult> => {
+    await assertDirettore(await currentUser());
+    return importFatture(data.rows);
+  });
+
+export const spGetTerminiPagamento = createServerFn({ method: "GET" }).handler(
+  async (): Promise<TerminePagamento[]> => {
+    await assertDirettore(await currentUser());
+    return fetchTerminiPagamento();
+  },
+);
+
+export const spGetAbbinamenti = createServerFn({ method: "GET" }).handler(
+  async (): Promise<AbbinamentoIncasso[]> => {
+    await assertDirettore(await currentUser());
+    return fetchAbbinamenti();
+  },
+);
+
+export const spCreateAbbinamenti = createServerFn({ method: "POST" })
+  .inputValidator((input: { rows: AbbinamentoIncasso[] }) => {
+    if (!Array.isArray(input?.rows) || input.rows.length === 0)
+      throw new Error("Nessun abbinamento da salvare");
+    if (input.rows.length > 150) throw new Error("Blocco troppo grande (max 150 abbinamenti)");
+    const rows = input.rows.map((r): AbbinamentoIncasso => {
+      if (!r?.fatturaFile || !r?.movimentoChiave) throw new Error("Abbinamento incompleto");
+      const importo = Number(r.importo);
+      if (!Number.isFinite(importo) || importo <= 0) throw new Error("Importo non valido");
+      return {
+        fatturaFile: String(r.fatturaFile).slice(0, 100),
+        movimentoChiave: String(r.movimentoChiave).slice(0, 200),
+        importo: Math.round(importo * 100) / 100,
+        origine: r.origine === "Manuale" ? "Manuale" : "Auto",
+      };
+    });
+    return { rows };
+  })
+  .handler(async ({ data }): Promise<{ creati: number; scartati: number; errori: string[] }> => {
+    await assertDirettore(await currentUser());
+    return createAbbinamenti(data.rows);
+  });
+
+export const spDeleteAbbinamento = createServerFn({ method: "POST" })
+  .inputValidator((input: { abbinamentoId: string }) => {
+    if (!input?.abbinamentoId) throw new Error("abbinamentoId mancante");
+    return { abbinamentoId: String(input.abbinamentoId) };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await deleteAbbinamento(data.abbinamentoId);
+    return { ok: true };
   });
 
 // --- Web Push: chiave pubblica + registrazione dispositivo -----------------

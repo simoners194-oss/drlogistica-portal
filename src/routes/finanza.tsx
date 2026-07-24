@@ -20,7 +20,9 @@ import {
   Trash2,
   GraduationCap,
   Wand2,
+  Receipt,
 } from "lucide-react";
+import { FattureTab } from "@/components/FattureTab";
 import { esportaCsvFile } from "@/lib/csv";
 import { useLang } from "@/lib/i18n";
 import { readSession, type SessionUser } from "@/lib/session";
@@ -113,7 +115,7 @@ function fmtImportId(id: string, legacyLabel: string): string {
 // Blocchi di upload verso il server (sotto il limite server di 150).
 const CHUNK = 100;
 
-type Tab = "movimenti" | "overview" | "anomalie" | "import" | "storico" | "regole";
+type Tab = "movimenti" | "overview" | "fatture" | "anomalie" | "import" | "storico" | "regole";
 
 interface SheetInfo {
   name: string;
@@ -686,6 +688,7 @@ function FinanzaPage() {
         <div className="inline-flex flex-wrap rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
           {tabBtn("movimenti", <Table2 className="h-4 w-4" />, t("fin.tabMovimenti"))}
           {tabBtn("overview", <TrendingUp className="h-4 w-4" />, t("fin.tabOverview"))}
+          {tabBtn("fatture", <Receipt className="h-4 w-4" />, t("fin.tabFatture"))}
           {tabBtn(
             "anomalie",
             <AlertTriangle className="h-4 w-4" />,
@@ -947,6 +950,9 @@ function FinanzaPage() {
           )}
         </div>
       )}
+
+      {/* ------------------------------- Fatture --------------------------- */}
+      {tab === "fatture" && <FattureTab />}
 
       {/* ------------------------------- Anomalie -------------------------- */}
       {tab === "anomalie" && (

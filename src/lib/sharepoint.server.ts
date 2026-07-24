@@ -48,8 +48,9 @@ import {
   type MovimentoRaw,
   type RegolaFinanza,
 } from "./finanza-logic";
+import type { FatturaRaw, TerminePagamento, AbbinamentoIncasso } from "./fatture-logic";
 export { LEGACY_IMPORT_ID };
-export type { RegolaFinanza };
+export type { RegolaFinanza, FatturaRaw, TerminePagamento, AbbinamentoIncasso };
 import { normalizeRuolo } from "./session";
 import {
   generateVapidKeys,
@@ -222,6 +223,39 @@ export const SP_DISPLAY = {
     Tipologia: "Tipologia",
     ClienteNuovo: "ClienteNuovo",
   },
+  // Fatture emesse (sezione Finanza → Fatture). Title = NOME FILE SdI (chiave
+  // univoca, mai il numero). v1 alimentata dall'export Aruba; predisposta per
+  // il sync via API Aruba v2 (stessa chiave). OPZIONALE.
+  fatture: {
+    Numero: "Numero",
+    IdSdi: "IdSdi",
+    DataInvio: "DataInvio",
+    DataDocumento: "DataDocumento",
+    TipoDocumento: "TipoDocumento",
+    Cliente: "Cliente",
+    PIVA: "PIVA",
+    MetodoPagamento: "MetodoPagamento",
+    Imponibile: "Imponibile",
+    Iva: "Iva",
+    TotaleDocumento: "TotaleDocumento",
+    NettoAPagare: "NettoAPagare",
+    StatoSdI: "StatoSdI",
+  },
+  // Termini di pagamento per cliente (giorni). Gestita dal direttore. OPZIONALE.
+  terminiPagamento: {
+    Cliente: "Cliente",
+    Giorni: "Giorni",
+    Descrizione: "Descrizione",
+  },
+  // Abbinamenti fattura ↔ movimento bancario (n:n con importo allocato).
+  // Chiavi NATURALI (nome file + chiave movimento): sopravvivono a
+  // annulla/reimport di entrambe le sorgenti. OPZIONALE.
+  abbinamenti: {
+    FatturaFile: "FatturaFile",
+    MovimentoChiave: "MovimentoChiave",
+    Importo: "Importo",
+    Origine: "Origine",
+  },
   // Richieste di acquisto (modulo Procurement). Lista OPZIONALE.
   acquisti: {
     Richiedente: "Richiedente",
@@ -267,6 +301,9 @@ const LIST_NAMES = {
   codaEmail: ["CodaEmail", "Coda Email", "EmailQueue"],
   movimenti: ["MovimentiBancari", "MovimentoBancario", "Movimenti"],
   regoleFinanza: ["RegoleFinanza", "RegolaFinanza", "RegoleBanca"],
+  fatture: ["FattureEmesse", "FatturaEmessa", "Fatture"],
+  terminiPagamento: ["TerminiPagamento", "TerminiDiPagamento", "TerminePagamento"],
+  abbinamenti: ["AbbinamentiIncassi", "AbbinamentoIncasso", "Abbinamenti"],
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -370,6 +407,18 @@ export interface SpDiscovered {
   listRegoleFinanzaName: string | null;
   regoleFinanzaFields: Record<string, string>;
   regoleFinanzaMissing: string[];
+  listFatture: string | null;
+  listFattureName: string | null;
+  fattureFields: Record<string, string>;
+  fattureMissing: string[];
+  listTermini: string | null;
+  listTerminiName: string | null;
+  terminiFields: Record<string, string>;
+  terminiMissing: string[];
+  listAbbinamenti: string | null;
+  listAbbinamentiName: string | null;
+  abbinamentiFields: Record<string, string>;
+  abbinamentiMissing: string[];
   cachedAt: string;
   expiresAt: string;
 }
@@ -668,6 +717,9 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const coda = await softList(LIST_NAMES.codaEmail, SP_DISPLAY.codaEmail);
   const mov = await softList(LIST_NAMES.movimenti, SP_DISPLAY.movimenti);
   const reg = await softList(LIST_NAMES.regoleFinanza, SP_DISPLAY.regoleFinanza);
+  const fat = await softList(LIST_NAMES.fatture, SP_DISPLAY.fatture);
+  const trm = await softList(LIST_NAMES.terminiPagamento, SP_DISPLAY.terminiPagamento);
+  const abb = await softList(LIST_NAMES.abbinamenti, SP_DISPLAY.abbinamenti);
 
   const now = Date.now();
   discoveredCache = {
@@ -722,6 +774,18 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listRegoleFinanzaName: reg.name,
     regoleFinanzaFields: reg.fields,
     regoleFinanzaMissing: reg.missing,
+    listFatture: fat.id,
+    listFattureName: fat.name,
+    fattureFields: fat.fields,
+    fattureMissing: fat.missing,
+    listTermini: trm.id,
+    listTerminiName: trm.name,
+    terminiFields: trm.fields,
+    terminiMissing: trm.missing,
+    listAbbinamenti: abb.id,
+    listAbbinamentiName: abb.name,
+    abbinamentiFields: abb.fields,
+    abbinamentiMissing: abb.missing,
     cachedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CACHE_TTL_MS).toISOString(),
   };
@@ -3537,6 +3601,264 @@ export async function applicaRegolaAiMovimenti(
 }
 
 // ---------------------------------------------------------------------------
+// Finanza → Fatture emesse + termini di pagamento + abbinamenti incassi
+// ---------------------------------------------------------------------------
+// v1: la lista è alimentata dall'export xlsx del pannello Aruba (import con
+// dedup per NOME FILE SdI = Title). Predisposta per il sync via API Aruba v2:
+// stessa chiave, stesso modello. Il reimport aggiorna lo Stato SdI se cambiato.
+
+function requireFattureList(cfg: SpDiscovered): string {
+  if (!cfg.listFatture)
+    throw new Error('Lista "FattureEmesse" non trovata su SharePoint. Crearla sul sito DRPORTAL.');
+  return cfg.listFatture;
+}
+
+export interface SpFattura extends FatturaRaw {
+  id: string;
+}
+
+function mapFattura(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>): SpFattura {
+  const F = cfg.fattureFields;
+  const f = it.fields ?? {};
+  const iso = (v: unknown) => String(v ?? "").slice(0, 10);
+  return {
+    id: String(it.id),
+    nomeFile: String(f["Title"] ?? ""),
+    numero: F.Numero ? String(f[F.Numero] ?? "") : "",
+    idSdi: F.IdSdi ? String(f[F.IdSdi] ?? "") : "",
+    dataInvio: F.DataInvio ? iso(f[F.DataInvio]) : "",
+    dataDocumento: F.DataDocumento ? iso(f[F.DataDocumento]) : "",
+    tipoDocumento: F.TipoDocumento ? String(f[F.TipoDocumento] ?? "") : "",
+    cliente: F.Cliente ? String(f[F.Cliente] ?? "") : "",
+    piva: F.PIVA ? String(f[F.PIVA] ?? "") : "",
+    metodoPagamento: F.MetodoPagamento ? String(f[F.MetodoPagamento] ?? "") : "",
+    imponibile: F.Imponibile ? (numOrUndef(f[F.Imponibile]) ?? 0) : 0,
+    iva: F.Iva ? (numOrUndef(f[F.Iva]) ?? 0) : 0,
+    totale: F.TotaleDocumento ? (numOrUndef(f[F.TotaleDocumento]) ?? 0) : 0,
+    netto: F.NettoAPagare ? (numOrUndef(f[F.NettoAPagare]) ?? 0) : 0,
+    statoSdI: F.StatoSdI ? String(f[F.StatoSdI] ?? "") : "",
+  };
+}
+
+export async function fetchFatture(): Promise<SpFattura[]> {
+  const started = Date.now();
+  const cfg = await discoverSharePoint();
+  if (!cfg.listFatture) return [];
+  const items = await fetchMovimentiPages(
+    `/sites/${cfg.siteId}/lists/${cfg.listFatture}/items?expand=fields&$top=999`,
+  );
+  const out = items.map((it) => mapFattura(cfg, it));
+  out.sort((a, b) => b.dataDocumento.localeCompare(a.dataDocumento));
+  logSp("info", "fetch.fatture", `${out.length} fatture`, { durataMs: Date.now() - started });
+  return out;
+}
+
+export interface ImportFattureResult {
+  ricevute: number;
+  importate: number;
+  aggiornate: number; // Stato SdI cambiato su fatture già presenti
+  doppioni: number;
+  errori: string[];
+}
+
+const IMPORT_FAT_MAX_ROWS = 150;
+
+export async function importFatture(rows: FatturaRaw[]): Promise<ImportFattureResult> {
+  const cfg = await discoverSharePoint();
+  const listId = requireFattureList(cfg);
+  const F = cfg.fattureFields;
+  if (rows.length > IMPORT_FAT_MAX_ROWS)
+    throw new Error(`Troppe fatture in un blocco (max ${IMPORT_FAT_MAX_ROWS}).`);
+
+  const esistenti = new Map((await fetchFatture()).map((f) => [f.nomeFile, f]));
+  const result: ImportFattureResult = {
+    ricevute: rows.length,
+    importate: 0,
+    aggiornate: 0,
+    doppioni: 0,
+    errori: [],
+  };
+  const ops: (() => Promise<"nuova" | "aggiornata">)[] = [];
+  for (const r of rows) {
+    if (!r.nomeFile.trim()) continue;
+    const prev = esistenti.get(r.nomeFile);
+    if (prev) {
+      // Già in archivio: si aggiorna SOLO lo Stato SdI se cambiato (i dati
+      // contabili della fattura sono immutabili per definizione).
+      if (F.StatoSdI && r.statoSdI && r.statoSdI !== prev.statoSdI) {
+        ops.push(async () => {
+          await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${prev.id}/fields`, {
+            method: "PATCH",
+            body: JSON.stringify({ [F.StatoSdI]: r.statoSdI }),
+          });
+          return "aggiornata";
+        });
+      } else {
+        result.doppioni++;
+      }
+      continue;
+    }
+    const fields: Record<string, unknown> = { Title: r.nomeFile.trim() };
+    if (F.Numero) fields[F.Numero] = r.numero;
+    if (F.IdSdi) fields[F.IdSdi] = r.idSdi;
+    if (F.DataInvio && r.dataInvio) fields[F.DataInvio] = `${r.dataInvio}T00:00:00Z`;
+    if (F.DataDocumento && r.dataDocumento)
+      fields[F.DataDocumento] = `${r.dataDocumento}T00:00:00Z`;
+    if (F.TipoDocumento) fields[F.TipoDocumento] = r.tipoDocumento;
+    if (F.Cliente) fields[F.Cliente] = r.cliente;
+    if (F.PIVA) fields[F.PIVA] = r.piva;
+    if (F.MetodoPagamento) fields[F.MetodoPagamento] = r.metodoPagamento;
+    if (F.Imponibile) fields[F.Imponibile] = r.imponibile;
+    if (F.Iva) fields[F.Iva] = r.iva;
+    if (F.TotaleDocumento) fields[F.TotaleDocumento] = r.totale;
+    if (F.NettoAPagare) fields[F.NettoAPagare] = r.netto;
+    if (F.StatoSdI) fields[F.StatoSdI] = r.statoSdI;
+    ops.push(async () => {
+      await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
+        method: "POST",
+        body: JSON.stringify({ fields }),
+      });
+      return "nuova";
+    });
+  }
+  const BATCH = 4;
+  for (let i = 0; i < ops.length; i += BATCH) {
+    const esiti = await Promise.allSettled(ops.slice(i, i + BATCH).map((op) => op()));
+    for (const e of esiti) {
+      if (e.status === "fulfilled") {
+        if (e.value === "nuova") result.importate++;
+        else result.aggiornate++;
+      } else {
+        result.errori.push(e.reason instanceof Error ? e.reason.message : String(e.reason));
+      }
+    }
+  }
+  logSp(
+    "info",
+    "import.fatture",
+    `Import fatture: ${result.importate} nuove, ${result.aggiornate} aggiornate, ${result.doppioni} doppioni`,
+  );
+  return result;
+}
+
+export async function fetchTerminiPagamento(): Promise<TerminePagamento[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listTermini) return [];
+  const F = cfg.terminiFields;
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listTermini}/items?expand=fields&$top=999`,
+    ),
+  );
+  return res.value
+    .map((it) => {
+      const f = it.fields ?? {};
+      return {
+        cliente: F.Cliente ? String(f[F.Cliente] ?? "").trim() : "",
+        giorni: F.Giorni ? (numOrUndef(f[F.Giorni]) ?? 0) : 0,
+        descrizione: F.Descrizione ? String(f[F.Descrizione] ?? "").trim() || undefined : undefined,
+      };
+    })
+    .filter((t) => t.cliente && t.giorni > 0);
+}
+
+function requireAbbinamentiList(cfg: SpDiscovered): string {
+  if (!cfg.listAbbinamenti)
+    throw new Error(
+      'Lista "AbbinamentiIncassi" non trovata su SharePoint. Crearla sul sito DRPORTAL.',
+    );
+  return cfg.listAbbinamenti;
+}
+
+function mapAbbinamento(
+  cfg: SpDiscovered,
+  it: GraphListItem<Record<string, unknown>>,
+): AbbinamentoIncasso {
+  const F = cfg.abbinamentiFields;
+  const f = it.fields ?? {};
+  return {
+    id: String(it.id),
+    fatturaFile: F.FatturaFile ? String(f[F.FatturaFile] ?? "") : "",
+    movimentoChiave: F.MovimentoChiave ? String(f[F.MovimentoChiave] ?? "") : "",
+    importo: F.Importo ? (numOrUndef(f[F.Importo]) ?? 0) : 0,
+    origine: (F.Origine ? String(f[F.Origine] ?? "") : "") === "Manuale" ? "Manuale" : "Auto",
+  };
+}
+
+export async function fetchAbbinamenti(): Promise<AbbinamentoIncasso[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listAbbinamenti) return [];
+  const items = await fetchMovimentiPages(
+    `/sites/${cfg.siteId}/lists/${cfg.listAbbinamenti}/items?expand=fields&$top=999`,
+  );
+  return items.map((it) => mapAbbinamento(cfg, it)).filter((a) => a.fatturaFile && a.importo > 0);
+}
+
+const ABB_MAX_PER_CALL = 150;
+
+// Registra un blocco di abbinamenti (auto o manuali). Idempotente: la coppia
+// fattura|movimento già presente viene scartata.
+export async function createAbbinamenti(
+  rows: AbbinamentoIncasso[],
+): Promise<{ creati: number; scartati: number; errori: string[] }> {
+  const cfg = await discoverSharePoint();
+  const listId = requireAbbinamentiList(cfg);
+  const F = cfg.abbinamentiFields;
+  if (rows.length > ABB_MAX_PER_CALL)
+    throw new Error(`Troppi abbinamenti in un blocco (max ${ABB_MAX_PER_CALL}).`);
+  const esistenti = new Set(
+    (await fetchAbbinamenti()).map((a) => `${a.fatturaFile}|${a.movimentoChiave}`),
+  );
+  const result = { creati: 0, scartati: 0, errori: [] as string[] };
+  const daScrivere = rows.filter((r) => {
+    const k = `${r.fatturaFile}|${r.movimentoChiave}`;
+    if (esistenti.has(k) || !r.fatturaFile || !r.movimentoChiave || !(r.importo > 0)) {
+      result.scartati++;
+      return false;
+    }
+    esistenti.add(k);
+    return true;
+  });
+  const BATCH = 4;
+  for (let i = 0; i < daScrivere.length; i += BATCH) {
+    const esiti = await Promise.allSettled(
+      daScrivere.slice(i, i + BATCH).map((r) => {
+        const fields: Record<string, unknown> = { Title: "ABB" };
+        if (F.FatturaFile) fields[F.FatturaFile] = r.fatturaFile;
+        if (F.MovimentoChiave) fields[F.MovimentoChiave] = r.movimentoChiave;
+        if (F.Importo) fields[F.Importo] = r.importo;
+        if (F.Origine) fields[F.Origine] = r.origine;
+        return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
+          method: "POST",
+          body: JSON.stringify({ fields }),
+        });
+      }),
+    );
+    esiti.forEach((e) => {
+      if (e.status === "fulfilled") result.creati++;
+      else result.errori.push(e.reason instanceof Error ? e.reason.message : String(e.reason));
+    });
+  }
+  logSp(
+    "info",
+    "create.abbinamenti",
+    `Abbinamenti: ${result.creati} creati, ${result.scartati} scartati`,
+  );
+  return result;
+}
+
+export async function deleteAbbinamento(id: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requireAbbinamentiList(cfg);
+  const res = await gatewayFetch(`/sites/${cfg.siteId}/lists/${listId}/items/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok && res.status !== 204)
+    throw new SpHttpError(res.status, `DELETE abbinamento ${id} → ${res.status}`, "delete");
+  logSp("info", "delete.abbinamento", `Rimosso abbinamento #${id}`);
+}
+
+// ---------------------------------------------------------------------------
 // Web Push — storage subscription + chiavi VAPID su lista PushSubscriptions
 // ---------------------------------------------------------------------------
 // La riga speciale Title="__vapid__" contiene le chiavi applicative (pubblica
@@ -4024,6 +4346,21 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
     if (disc.regoleFinanzaMissing.length)
       throw new Error(`Colonne mancanti — [${disc.regoleFinanzaMissing.join(", ")}]`);
     return disc.listRegoleFinanzaName ?? undefined;
+  });
+  await step("list.fatture", "Liste Fatture (FattureEmesse/Termini/Abbinamenti)", async () => {
+    if (!disc) throw new Error("Discovery non completata");
+    const mancano: string[] = [];
+    if (!disc.listFatture) mancano.push("FattureEmesse");
+    if (!disc.listTermini) mancano.push("TerminiPagamento");
+    if (!disc.listAbbinamenti) mancano.push("AbbinamentiIncassi");
+    if (mancano.length) throw new Error(`Liste mancanti: ${mancano.join(", ")}`);
+    const colonne = [
+      ...disc.fattureMissing.map((c) => `FattureEmesse.${c}`),
+      ...disc.terminiMissing.map((c) => `TerminiPagamento.${c}`),
+      ...disc.abbinamentiMissing.map((c) => `AbbinamentiIncassi.${c}`),
+    ];
+    if (colonne.length) throw new Error(`Colonne mancanti — [${colonne.join(", ")}]`);
+    return `${disc.listFattureName} · ${disc.listTerminiName} · ${disc.listAbbinamentiName}`;
   });
 
   await step("push.ready", "Notifiche push (lista + chiavi VAPID)", async () => {
