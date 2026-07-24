@@ -587,7 +587,7 @@ const en = {
   "ft.nonIncassata": "Unpaid",
   "ft.nc": "Credit note",
   "ft.empty":
-    "No invoices for the selected filters. Configure the Aruba connection (Aruba button) to get started.",
+    "No invoices for the selected filters. Upload the Aruba panel export (Import button) to get started.",
   "ft.arTitle": "Aruba e-invoicing connection (API, read-only)",
   "ft.arNoLista": "Create the 'ArubaConfig' list on SharePoint first, then run Rediscover.",
   "ft.arConfigurato": "Credentials configured — password stored encrypted",
@@ -604,7 +604,7 @@ const en = {
   "ft.arVuoto":
     "No invoices in the last 2 days — authentication is OK; the field list will appear when the window contains an invoice.",
   "ft.arNota":
-    "Read-only production access: authentication and searches only, nothing is ever sent to SdI. The password is encrypted with a server-side key; it is never shown or logged.",
+    "NOTE: Aruba APIs require the Premium plan (~€1,300/year) — with the base plan authentication returns HTTP 429. This connection stays parked: if the plan is ever upgraded, enter the credentials and it works. Read-only access, nothing is ever sent to SdI; the password is stored encrypted.",
   "ft.terminiGg": "payment terms",
   "ft.reconcile": "Reconcile with bank",
   "ft.reconcileTip":
@@ -1198,7 +1198,7 @@ const it: Record<DictKey, string> = {
   "ft.nonIncassata": "Non incassata",
   "ft.nc": "Nota di credito",
   "ft.empty":
-    "Nessuna fattura per i filtri selezionati. Configura il collegamento Aruba (pulsante Aruba) per iniziare.",
+    "Nessuna fattura per i filtri selezionati. Carica l'export del pannello Aruba (pulsante Importa) per iniziare.",
   "ft.arTitle": "Collegamento Aruba Fatturazione Elettronica (API, sola lettura)",
   "ft.arNoLista": "Crea prima la lista 'ArubaConfig' su SharePoint, poi esegui Riscopri.",
   "ft.arConfigurato": "Credenziali configurate — password salvata cifrata",
@@ -1216,7 +1216,7 @@ const it: Record<DictKey, string> = {
   "ft.arVuoto":
     "Nessuna fattura negli ultimi 2 giorni — l'autenticazione è OK; l'elenco campi apparirà quando la finestra conterrà una fattura.",
   "ft.arNota":
-    "Accesso in produzione in SOLA LETTURA: solo autenticazione e ricerche, nulla viene mai inviato allo SdI. La password è cifrata con chiave lato server; non viene mai mostrata né registrata nei log.",
+    "NOTA: le API Aruba richiedono il piano Premium (~1.300 €/anno) — col piano base l'autenticazione risponde HTTP 429. Questo collegamento resta parcheggiato: se un giorno si passa a Premium, basta inserire le credenziali. Accesso in sola lettura, nulla viene mai inviato allo SdI; la password è salvata cifrata.",
   "ft.terminiGg": "termini di pagamento",
   "ft.reconcile": "Riconcilia con banca",
   "ft.reconcileTip":

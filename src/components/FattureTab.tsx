@@ -8,27 +8,32 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
+  FileSpreadsheet,
   KeyRound,
   Link2,
   Loader2,
   Plug,
   Trash2,
+  Upload,
   Wand2,
 } from "lucide-react";
 import { esportaCsvFile } from "@/lib/csv";
 import { useLang } from "@/lib/i18n";
 import {
   computeStatoFattura,
+  parseFattureMatrice,
   proponiAbbinamenti,
   isNotaCredito,
   isEsclusaDalCredito,
   TERMINI_DEFAULT_GIORNI,
   type AbbinamentoIncasso,
+  type FatturaRaw,
   type TerminePagamento,
 } from "@/lib/fatture-logic";
 import { clienteGroupKey } from "@/lib/finanza-logic";
 import {
   spGetFatture,
+  spImportFatture,
   spGetTerminiPagamento,
   spGetAbbinamenti,
   spCreateAbbinamenti,
@@ -80,6 +85,17 @@ export function FattureTab() {
 
   // Riconciliazione automatica
   const [reconciling, setReconciling] = useState(false);
+
+  // Import dell'export del pannello Aruba (le API richiedono il piano
+  // Premium: finché non c'è, la sorgente dati è l'export xlsx).
+  const [showImport, setShowImport] = useState(false);
+  const [impParsing, setImpParsing] = useState(false);
+  const [impBusy, setImpBusy] = useState(false);
+  const [previewImp, setPreviewImp] = useState<{
+    fileName: string;
+    rows: FatturaRaw[];
+    scartate: number;
+  } | null>(null);
 
   // Collegamento Aruba (API, sola lettura)
   const [aruba, setAruba] = useState<ArubaStato | null>(null);
@@ -285,6 +301,66 @@ export function FattureTab() {
     }
   };
 
+  // --- Import export Aruba (xlsx) -------------------------------------------
+  const onFile = async (file: File) => {
+    setPreviewImp(null);
+    setImpParsing(true);
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
+      for (const name of wb.SheetNames) {
+        const matrix = XLSX.utils.sheet_to_json(wb.Sheets[name], {
+          header: 1,
+          raw: true,
+        }) as unknown[][];
+        const res = parseFattureMatrice(matrix);
+        if (res && res.rows.length) {
+          setPreviewImp({ fileName: file.name, rows: res.rows, scartate: res.scartate });
+          return;
+        }
+      }
+      toast.error(t("ft.errFile"), { description: t("ft.errFileDesc") });
+    } catch (err) {
+      toast.error(t("ft.errFile"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setImpParsing(false);
+    }
+  };
+
+  const eseguiImport = async () => {
+    if (!previewImp) return;
+    setImpBusy(true);
+    try {
+      let nuove = 0;
+      let aggiornate = 0;
+      let doppioni = 0;
+      const errori: string[] = [];
+      for (let i = 0; i < previewImp.rows.length; i += CHUNK) {
+        const res = (await spImportFatture({
+          data: { rows: previewImp.rows.slice(i, i + CHUNK) },
+        })) as { importate: number; aggiornate: number; doppioni: number; errori: string[] };
+        nuove += res.importate;
+        aggiornate += res.aggiornate;
+        doppioni += res.doppioni;
+        errori.push(...res.errori);
+      }
+      toast.success(t("ft.importDone"), {
+        description: `${nuove} ${t("ft.importNew")} · ${aggiornate} ${t("ft.importUpd")} · ${doppioni} ${t("ft.importDup")}${errori.length ? ` · ${errori.length} ${t("common.error").toLowerCase()}` : ""}`,
+      });
+      setPreviewImp(null);
+      setShowImport(false);
+      load();
+    } catch (err) {
+      toast.error(t("ft.errImport"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setImpBusy(false);
+    }
+  };
+
   // --- Collegamento Aruba ---------------------------------------------------
   const salvaCredenziali = async () => {
     if (!arubaUser.trim() || !arubaPass) return toast.error(t("ft.arCredMancanti"));
@@ -478,7 +554,20 @@ export function FattureTab() {
           </button>
           <button
             type="button"
-            onClick={() => setShowAruba((v) => !v)}
+            onClick={() => {
+              setShowImport((v) => !v);
+              setShowAruba(false);
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+          >
+            <Upload className="h-4 w-4" /> {t("ft.import")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowAruba((v) => !v);
+              setShowImport(false);
+            }}
             className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted ${aruba?.configurato ? "border-status-present/40 text-status-present" : "border-border text-foreground"}`}
           >
             <Plug className="h-4 w-4" /> Aruba
@@ -493,6 +582,61 @@ export function FattureTab() {
             <Download className="h-4 w-4" /> {t("common.exportCsv")}
           </button>
         </div>
+
+        {/* Import export Aruba (a scomparsa) */}
+        {showImport && (
+          <div className="mb-4 rounded-xl border border-border p-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground mb-1">
+              <FileSpreadsheet className="h-4 w-4 text-primary" /> {t("ft.importTitle")}
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">{t("ft.importDesc")}</p>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              disabled={impParsing || impBusy}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void onFile(f);
+                e.target.value = "";
+              }}
+              className="block text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
+            />
+            {impParsing && (
+              <p className="mt-2 text-sm text-muted-foreground inline-flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> {t("fin.parsing")}
+              </p>
+            )}
+            {previewImp && (
+              <div className="mt-3 text-[13px] text-muted-foreground">
+                <b className="text-foreground">{previewImp.fileName}</b> — {previewImp.rows.length}{" "}
+                {t("ft.importRows")}
+                {previewImp.scartate > 0 && ` (${previewImp.scartate} ${t("fin.previewSkipped")})`}
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void eseguiImport()}
+                    disabled={impBusy}
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  >
+                    {impBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    {t("fin.importBtn")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImp(null)}
+                    className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted"
+                  >
+                    {t("common.cancel")}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Collegamento Aruba (a scomparsa) */}
         {showAruba && (
