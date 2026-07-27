@@ -80,17 +80,18 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="h-20 border-b border-sidebar-border overflow-hidden p-0">
+      <SidebarHeader className="h-24 border-b border-sidebar-border overflow-hidden p-0">
         {collapsed ? (
           <div className="h-full w-full flex items-center justify-center">
             <img src="/favicon.png" alt="DR" className="h-10 w-10" />
           </div>
         ) : (
-          // Il logo copre TUTTO il riquadro dell'header (padding minimo).
+          // Il logo copre TUTTO il riquadro: header alto abbastanza da far
+          // vincere il vincolo di larghezza (logo ~3:1 → tutta la sidebar).
           <img
             src={logoAsset.url}
             alt="DR Logistica"
-            className="h-full w-full object-contain p-1.5"
+            className="h-full w-full object-contain px-2 py-1.5"
           />
         )}
       </SidebarHeader>
