@@ -12,7 +12,10 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import logoAsset from "@/assets/dr-logistica.png.asset.json";
+// Versione RITAGLIATA del logo: il PNG originale è 1920×1920 con il marchio
+// che occupa solo il 21% (enormi margini trasparenti) — con object-contain
+// renderizzava minuscolo. Questo file è il solo contenuto reale (1802×492).
+import logoTrim from "@/assets/dr-logistica-logo.png";
 import { MODULES } from "@/lib/modules";
 import { canAccess, readSession, type Ruolo, type SessionSede } from "@/lib/session";
 import { sedeTimbra, anySedeTimbra } from "@/lib/mock-data";
@@ -87,9 +90,9 @@ export function AppSidebar() {
           </div>
         ) : (
           // Il logo copre TUTTO il riquadro: header alto abbastanza da far
-          // vincere il vincolo di larghezza (logo ~3:1 → tutta la sidebar).
+          // vincere il vincolo di larghezza (logo ~3.7:1 → tutta la sidebar).
           <img
-            src={logoAsset.url}
+            src={logoTrim}
             alt="DR Logistica"
             className="h-full w-full object-contain px-2 py-1.5"
           />
