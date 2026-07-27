@@ -66,7 +66,9 @@ export interface AbbinamentoIncasso {
   fatturaFile: string; // nomeFile della fattura
   movimentoChiave: string; // chiave del movimento bancario (Title)
   importo: number;
-  origine: "Auto" | "Manuale";
+  // "Auto" = numero citato/importo esatto; "FIFO" = imputazione a scalare
+  // (pulsante dedicato); "Manuale" = scelto dall'utente.
+  origine: "Auto" | "Manuale" | "FIFO";
 }
 
 /** Giorni di pagamento di default quando il cliente non è nei termini. */
@@ -339,6 +341,86 @@ export function proponiAbbinamenti(
         !coppie.has(`${fat.f.nomeFile}|${inc.m.chiave}`),
     );
     if (candidate.length === 1) alloca(candidate[0], inc, "importo");
+  }
+  return proposte;
+}
+
+/** Riconciliazione A SCALARE (FIFO): i clienti pagano per acconti tondi,
+ *  saldi mensili e compensazioni — importi che non coincidono mai con le
+ *  singole fatture. Qui ogni movimento residuo viene imputato alle fatture
+ *  APERTE più vecchie dello stesso cliente (parziali inclusi), come
+ *  l'imputazione al debito più antico dell'art. 1193 c.c. Va lanciata
+ *  ESPLICITAMENTE (pulsante dedicato): l'attribuzione per-fattura è
+ *  contabile, non documentale, e gli abbinamenti "FIFO" restano
+ *  riconoscibili ed eliminabili. Stesse regole di selezione movimenti di
+ *  proponiAbbinamenti; il movimento non copre fatture posteriori alla sua
+ *  data. */
+export function proponiAbbinamentiFIFO(
+  fatture: readonly FatturaRaw[],
+  movimenti: readonly MovimentoPerRiconciliazione[],
+  esistenti: readonly AbbinamentoIncasso[],
+  direzione: DirezioneFattura = "Emessa",
+): PropostaAbbinamento[] {
+  const round = (n: number) => Math.round(n * 100) / 100;
+  const incassatoPerFattura = new Map<string, number>();
+  const allocatoPerMovimento = new Map<string, number>();
+  for (const a of esistenti) {
+    incassatoPerFattura.set(
+      a.fatturaFile,
+      (incassatoPerFattura.get(a.fatturaFile) ?? 0) + a.importo,
+    );
+    allocatoPerMovimento.set(
+      a.movimentoChiave,
+      (allocatoPerMovimento.get(a.movimentoChiave) ?? 0) + a.importo,
+    );
+  }
+  const apertePerCliente = new Map<string, { f: FatturaRaw; residuo: number }[]>();
+  for (const f of fatture) {
+    if (f.direzione !== direzione) continue;
+    if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) continue;
+    const residuo = round(f.totale - (incassatoPerFattura.get(f.nomeFile) ?? 0));
+    if (residuo <= TOLLERANZA_SALDO) continue;
+    const key = clienteGroupKey(f.cliente);
+    const l = apertePerCliente.get(key) ?? [];
+    l.push({ f, residuo });
+    apertePerCliente.set(key, l);
+  }
+  for (const l of apertePerCliente.values())
+    l.sort((a, b) => a.f.dataDocumento.localeCompare(b.f.dataDocumento));
+
+  const incassi = movimenti
+    .filter((m) =>
+      direzione === "Emessa"
+        ? m.importo > 0 && m.tipologia === "Incasso" && m.cliente
+        : m.importo < 0 && m.cliente && !TIPOLOGIE_NON_FORNITORE.has(m.tipologia),
+    )
+    .map((m) => ({
+      m,
+      key: clienteGroupKey(m.cliente),
+      residuo: round(Math.abs(m.importo) - (allocatoPerMovimento.get(m.chiave) ?? 0)),
+    }))
+    .filter((x) => x.residuo > 0.01)
+    .sort((a, b) => a.m.dataContabile.localeCompare(b.m.dataContabile));
+
+  const proposte: PropostaAbbinamento[] = [];
+  for (const inc of incassi) {
+    const aperte = apertePerCliente.get(inc.key);
+    if (!aperte) continue;
+    for (const fat of aperte) {
+      if (inc.residuo <= 0.01) break;
+      if (fat.residuo <= 0.01) continue;
+      if (inc.m.dataContabile < fat.f.dataDocumento) continue;
+      const importo = round(Math.min(fat.residuo, inc.residuo));
+      proposte.push({
+        fatturaFile: fat.f.nomeFile,
+        movimentoChiave: inc.m.chiave,
+        importo,
+        origine: "FIFO",
+        motivo: "importo",
+      });
+      fat.residuo = round(fat.residuo - importo);
+      inc.residuo = round(inc.residuo - importo);
+    }
   }
   return proposte;
 }

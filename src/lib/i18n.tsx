@@ -614,6 +614,12 @@ const en = {
   "ft.reconcileNone": "No new matches found — the rest needs manual matching.",
   "ft.reconcileDone": "Reconciliation completed",
   "ft.reconcileCount": "matches recorded",
+  "ft.fifo": "Reconcile FIFO",
+  "ft.fifoTip":
+    "Allocates remaining bank movements to the client's OLDEST open invoices (partial payments included). Use it for round advances, monthly balances and offsets that never match a single invoice.",
+  "ft.fifoConfirm":
+    "FIFO allocation: each remaining bank movement will pay the client's oldest open invoices, partials included. The per-invoice attribution is accounting-based, not documentary — early-year collections may actually belong to invoices from last year (not in the archive): review the first months. FIFO matches stay recognizable and can be removed. Proceed?",
+  "ft.fifoNone": "Nothing to allocate: no residual movements match any open invoice.",
   "ft.abbNone": "No collection matched to this invoice yet.",
   "ft.abbMovimento": "Bank collection",
   "ft.abbina": "Match",
@@ -1237,6 +1243,12 @@ const it: Record<DictKey, string> = {
   "ft.reconcileNone": "Nessun nuovo abbinamento trovato — il resto va abbinato a mano.",
   "ft.reconcileDone": "Riconciliazione completata",
   "ft.reconcileCount": "abbinamenti registrati",
+  "ft.fifo": "Riconcilia a scalare",
+  "ft.fifoTip":
+    "Imputa i movimenti bancari residui alle fatture aperte PIÙ VECCHIE del cliente (parziali inclusi). Serve per acconti tondi, saldi mensili e compensazioni che non coincidono mai con una singola fattura.",
+  "ft.fifoConfirm":
+    "Imputazione a scalare (FIFO): ogni movimento residuo salderà le fatture aperte più vecchie del cliente, parziali inclusi. L'attribuzione per fattura è contabile, non documentale — gli incassi di inizio anno potrebbero riferirsi a fatture dell'anno scorso (non in archivio): verifica i primi mesi. Gli abbinamenti FIFO restano riconoscibili e si possono rimuovere. Procedere?",
+  "ft.fifoNone": "Niente da imputare: nessun movimento residuo compatibile con le fatture aperte.",
   "ft.abbNone": "Nessun incasso ancora abbinato a questa fattura.",
   "ft.abbMovimento": "Incasso bancario",
   "ft.abbina": "Abbina",

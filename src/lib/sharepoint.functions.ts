@@ -868,7 +868,7 @@ export const spCreateAbbinamenti = createServerFn({ method: "POST" })
         fatturaFile: String(r.fatturaFile).slice(0, 100),
         movimentoChiave: String(r.movimentoChiave).slice(0, 200),
         importo: Math.round(importo * 100) / 100,
-        origine: r.origine === "Manuale" ? "Manuale" : "Auto",
+        origine: r.origine === "Manuale" ? "Manuale" : r.origine === "FIFO" ? "FIFO" : "Auto",
       };
     });
     return { rows };

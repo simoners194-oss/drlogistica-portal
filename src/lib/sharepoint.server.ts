@@ -3922,7 +3922,10 @@ function mapAbbinamento(
     fatturaFile: F.FatturaFile ? String(f[F.FatturaFile] ?? "") : "",
     movimentoChiave: F.MovimentoChiave ? String(f[F.MovimentoChiave] ?? "") : "",
     importo: F.Importo ? (numOrUndef(f[F.Importo]) ?? 0) : 0,
-    origine: (F.Origine ? String(f[F.Origine] ?? "") : "") === "Manuale" ? "Manuale" : "Auto",
+    origine: ((): AbbinamentoIncasso["origine"] => {
+      const o = F.Origine ? String(f[F.Origine] ?? "") : "";
+      return o === "Manuale" ? "Manuale" : o === "FIFO" ? "FIFO" : "Auto";
+    })(),
   };
 }
 

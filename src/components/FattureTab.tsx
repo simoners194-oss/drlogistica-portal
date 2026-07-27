@@ -25,6 +25,7 @@ import {
   parseFattureMatrice,
   parseFatturaPA,
   proponiAbbinamenti,
+  proponiAbbinamentiFIFO,
   isNotaCredito,
   isEsclusaDalCredito,
   TERMINI_DEFAULT_GIORNI,
@@ -90,8 +91,9 @@ export function FattureTab() {
   const [abbImporto, setAbbImporto] = useState("");
   const [abbBusy, setAbbBusy] = useState(false);
 
-  // Riconciliazione automatica
+  // Riconciliazione automatica + a scalare (FIFO)
   const [reconciling, setReconciling] = useState(false);
+  const [fifoBusy, setFifoBusy] = useState(false);
 
   // Import fatture: ZIP/XML FatturaPA (emesse E ricevute, direzione automatica
   // dalla P.IVA) oppure xlsx dell'export "Check fatture inviate" (emesse).
@@ -324,6 +326,58 @@ export function FattureTab() {
       toast.error(t("common.error"), {
         description: err instanceof Error ? err.message : String(err),
       });
+    }
+  };
+
+  // Riconciliazione A SCALARE (FIFO): imputa gli incassi residui alle fatture
+  // aperte più vecchie del cliente (acconti/saldi mensili/compensazioni non
+  // coincidono mai con le singole fatture). Azione esplicita e confermata.
+  const riconciliaFIFO = async () => {
+    if (!fatture || !movimenti || !abbinamenti) return;
+    setFifoBusy(true);
+    try {
+      const proposte = proponiAbbinamentiFIFO(
+        fatture.filter((f) => !reinvii.has(f.nomeFile)),
+        movimenti.map((m) => ({
+          chiave: m.chiave,
+          dataContabile: m.dataContabile,
+          importo: m.importo,
+          tipologia: m.tipologia,
+          cliente: m.cliente,
+          descrizione: m.descrizione,
+          nrFattura: m.nrFattura,
+        })),
+        abbinamenti,
+        dir,
+      );
+      if (proposte.length === 0) {
+        toast(t("ft.fifoNone"));
+        return;
+      }
+      const totale = proposte.reduce((s, p) => s + p.importo, 0);
+      if (
+        !window.confirm(
+          `${t("ft.fifoConfirm")}\n${proposte.length} ${t("ft.reconcileCount")} · ${fmtImporto(totale)} €`,
+        )
+      )
+        return;
+      let creati = 0;
+      for (let i = 0; i < proposte.length; i += CHUNK) {
+        const res = (await spCreateAbbinamenti({
+          data: { rows: proposte.slice(i, i + CHUNK).map(({ motivo: _m, ...r }) => r) },
+        })) as { creati: number };
+        creati += res.creati;
+      }
+      toast.success(t("ft.reconcileDone"), { description: `${creati} ${t("ft.reconcileCount")}` });
+      spGetAbbinamenti()
+        .then((l) => setAbbinamenti(l as AbbinamentoIncasso[]))
+        .catch(() => {});
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setFifoBusy(false);
     }
   };
 
@@ -662,6 +716,20 @@ export function FattureTab() {
               <Wand2 className="h-4 w-4" />
             )}
             {t("ft.reconcile")}
+          </button>
+          <button
+            type="button"
+            onClick={() => void riconciliaFIFO()}
+            disabled={loading || fifoBusy}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+            title={t("ft.fifoTip")}
+          >
+            {fifoBusy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Link2 className="h-4 w-4" />
+            )}
+            {t("ft.fifo")}
           </button>
           <button
             type="button"
