@@ -39,6 +39,7 @@ import {
   type DecisioneRichiesta,
 } from "./richieste-logic";
 import { anomalieDelGiorno, UNDO_TIMBRATURA_MINUTI, type TipoAnomalia } from "./presenze-logic";
+import { sedeTimbra } from "./mock-data";
 import {
   chiaveMovimento,
   classificaMovimento,
@@ -2007,6 +2008,69 @@ export async function fetchTimbratureGiorno(
   const dayEnd = new Date(`${dataISO}T23:59:59.999`).toISOString();
   const tutte = await fetchTimbratureDaISO(dayStart);
   return tutte.filter((t) => t.dipendenteId === dipendenteId && t.dataOra <= dayEnd);
+}
+
+// Resoconto di UN giorno per sede: TUTTI i dipendenti (delle sedi che
+// timbrano) con i loro eventi — inclusi quelli SENZA timbrature, che le
+// anomalie automatiche non possono vedere (un giorno vuoto è indistinguibile
+// da ferie/riposo senza contesto: qui decide l'operatore guardando).
+export interface ResocontoGiornoRiga {
+  dipendenteId: string;
+  nomeCompleto: string;
+  codice: string;
+  sede: string;
+  eventi: SpTimbratura[];
+  anomalie: TipoAnomalia[];
+  senzaTimbrature: boolean;
+}
+
+export async function resocontoGiorno(
+  sede: string, // nome sede oppure "tutte"
+  dataISO: string, // YYYY-MM-DD
+): Promise<ResocontoGiornoRiga[]> {
+  const started = Date.now();
+  const dayStart = new Date(`${dataISO}T00:00:00`).toISOString();
+  const dayEnd = new Date(`${dataISO}T23:59:59.999`).toISOString();
+  const [tims, dips] = await Promise.all([fetchTimbratureDaISO(dayStart), fetchDipendenti()]);
+  const delGiorno = tims.filter((t) => t.dataOra <= dayEnd);
+  const perDip = new Map<string, SpTimbratura[]>();
+  for (const t of delGiorno) {
+    const l = perDip.get(t.dipendenteId) ?? [];
+    l.push(t);
+    perDip.set(t.dipendenteId, l);
+  }
+  const sedeNorm = sede.trim().toLowerCase();
+  const oggi = new Date().toISOString().slice(0, 10);
+  const giornoConcluso = dataISO < oggi;
+  const out: ResocontoGiornoRiga[] = [];
+  for (const d of dips) {
+    if (!d.visibile || !sedeTimbra(d.sede)) continue;
+    if (sedeNorm !== "tutte" && d.sede.trim().toLowerCase() !== sedeNorm) continue;
+    const eventi = (perDip.get(d.id) ?? []).sort((a, b) => a.dataOra.localeCompare(b.dataOra));
+    const ore = d.oreSettimanali;
+    const rilevaPausa = !(ore != null && ore <= 16);
+    out.push({
+      dipendenteId: d.id,
+      nomeCompleto: d.nomeCompleto || `${d.nome} ${d.cognome}`,
+      codice: d.codice,
+      sede: d.sede,
+      eventi,
+      // Le anomalie meccaniche hanno senso solo a giornata conclusa.
+      anomalie:
+        giornoConcluso && eventi.length
+          ? anomalieDelGiorno(
+              eventi.map((e) => e.evento),
+              { rilevaPausa },
+            )
+          : [],
+      senzaTimbrature: eventi.length === 0,
+    });
+  }
+  out.sort((a, b) => a.sede.localeCompare(b.sede) || a.nomeCompleto.localeCompare(b.nomeCompleto));
+  logSp("info", "resoconto.giorno", `${out.length} dipendenti (${sede}, ${dataISO})`, {
+    durataMs: Date.now() - started,
+  });
+  return out;
 }
 
 // Eliminazione di una timbratura da parte dell'OPERATORE (correzione errori:

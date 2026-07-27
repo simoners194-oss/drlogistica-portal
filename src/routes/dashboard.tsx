@@ -231,9 +231,27 @@ function DashboardPage() {
 
             <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2">
               {sediStats.map((s) => (
+                // Card cliccabile: filtra la dashboard sulla sede e salta
+                // direttamente al suo riepilogo (niente scroll manuale).
                 <div
                   key={s.id}
-                  className="rounded-xl border border-border bg-secondary/40 p-4 min-h-[84px] flex items-center justify-between gap-3 transition-all hover:bg-secondary/70 hover:shadow-sm"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    setSedeFilter(s.nome);
+                    setTimeout(
+                      () =>
+                        document
+                          .getElementById("dettaglio-sedi")
+                          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                      50,
+                    );
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ")
+                      (e.currentTarget as HTMLElement).click();
+                  }}
+                  className="rounded-xl border border-border bg-secondary/40 p-4 min-h-[84px] flex items-center justify-between gap-3 transition-all hover:bg-secondary/70 hover:shadow-sm cursor-pointer"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="h-12 w-12 shrink-0 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
@@ -290,7 +308,10 @@ function DashboardPage() {
           </div>
 
           {/* Elenco dipendenti — clic su una riga apre il dettaglio giornaliero */}
-          <div className={`mt-6 grid gap-4 ${visibleSedi.length > 1 ? "lg:grid-cols-2" : ""}`}>
+          <div
+            id="dettaglio-sedi"
+            className={`mt-6 grid gap-4 scroll-mt-4 ${visibleSedi.length > 1 ? "lg:grid-cols-2" : ""}`}
+          >
             {visibleSedi.map((s) => (
               <SedePanel
                 key={s.id}

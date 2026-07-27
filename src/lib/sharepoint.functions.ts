@@ -101,6 +101,7 @@ import {
   fetchTimbratureOggi,
   annullaUltimaTimbratura,
   fetchTimbratureGiorno,
+  resocontoGiorno,
   deleteTimbratura,
   deleteTimbraturaOperatore,
   getLastSyncAt,
@@ -952,6 +953,19 @@ export const spAnnullaUltimaTimbratura = createServerFn({ method: "POST" }).hand
     return annullaUltimaTimbratura(me.id);
   },
 );
+
+// Resoconto di un giorno per sede: tutti i dipendenti con i loro eventi,
+// inclusi quelli senza timbrature (vista correzione operatore).
+export const spGetResocontoGiorno = createServerFn({ method: "GET" })
+  .inputValidator((input: { sede?: string; data: string }) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input?.data ?? "")) throw new Error("data non valida");
+    return { sede: String(input.sede ?? "tutte"), data: input.data };
+  })
+  .handler(async ({ data }): Promise<import("./sharepoint.server").ResocontoGiornoRiga[]> => {
+    const me = await currentUser();
+    assertCap(me.operatore || isAdmin(me));
+    return resocontoGiorno(data.sede, data.data);
+  });
 
 // Timbrature di un dipendente in un giorno (vista correzione operatore).
 export const spGetTimbratureGiorno = createServerFn({ method: "GET" })
