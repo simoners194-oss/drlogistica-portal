@@ -205,12 +205,23 @@ export interface SpSnapshot {
 
 export const spGetSnapshot = createServerFn({ method: "GET" }).handler(
   async (): Promise<SpSnapshot> => {
-    await currentUser(); // richiede una sessione valida
+    const me = await currentUser();
     // Garantisce discovery prima delle chiamate in parallelo (evita doppia
     // esecuzione della discovery quando la cache è fredda).
     await discoverSharePoint();
     const [dipendenti, timbrature] = await Promise.all([fetchDipendenti(), fetchTimbratureOggi()]);
     markSync();
+    // Scope per ruolo: il dipendente vede SOLO il proprio record e le proprie
+    // timbrature. Responsabile/operatore/autorizzatore/amministratore vedono
+    // lo snapshot completo, coerente con le viste HR/operative.
+    const puoVedereTutti =
+      me.operatore || me.autorizza || me.ruolo === "responsabile" || isAdmin(me);
+    if (!puoVedereTutti) {
+      return {
+        dipendenti: dipendenti.filter((d) => d.id === me.id),
+        timbrature: timbrature.filter((t) => t.dipendenteId === me.id),
+      };
+    }
     return { dipendenti, timbrature };
   },
 );
