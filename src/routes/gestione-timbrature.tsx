@@ -112,7 +112,7 @@ function GestioneTimbraturePage() {
       return;
     }
     setSession(s);
-    if (!s.operatore) return;
+    if (!s.operatore && s.ruolo !== "amministratore_sistema") return;
     spGetDipendenti()
       .then((list) => setDipendenti(list as SpDipendente[]))
       .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)));
@@ -320,7 +320,7 @@ function GestioneTimbraturePage() {
     }
   }
 
-  if (session && !session.operatore) {
+  if (session && !session.operatore && session.ruolo !== "amministratore_sistema") {
     return (
       <AppShell title={t("gt.title")}>
         <div className="flex items-start gap-3 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">

@@ -12,7 +12,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Logo } from "./Logo";
+import logoAsset from "@/assets/dr-logistica.png.asset.json";
 import { MODULES } from "@/lib/modules";
 import { canAccess, readSession, type Ruolo, type SessionSede } from "@/lib/session";
 import { sedeTimbra, anySedeTimbra } from "@/lib/mock-data";
@@ -50,9 +50,11 @@ export function AppSidebar() {
     sede == null ? true : sede === "tutte" ? anySedeTimbra() : sedeTimbra(sede);
 
   const visibleModules = MODULES.filter((m) => {
-    // Requisiti di capability obbligatori (AND col ruolo).
-    if (m.requiresOperatore && !operatore) return false;
-    if (m.requiresAutorizza && !autorizza) return false;
+    // Requisiti di capability obbligatori (AND col ruolo). L'amministratore
+    // di sistema è esente: vede anche i moduli riservati all'operatore.
+    const admin = ruolo === "amministratore_sistema";
+    if (m.requiresOperatore && !operatore && !admin) return false;
+    if (m.requiresAutorizza && !autorizza && !admin) return false;
     // Moduli riservati alle sedi storiche (es. Procurement): visibili anche
     // ad autorizzatori (DR005 approva) e a chi ha sede "tutte" (admin).
     if (
@@ -78,8 +80,19 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="h-20 border-b border-sidebar-border flex items-center justify-center px-3 py-2">
-        {collapsed ? <img src="/favicon.png" alt="DR" className="h-10 w-10" /> : <Logo size={64} />}
+      <SidebarHeader className="h-20 border-b border-sidebar-border overflow-hidden p-0">
+        {collapsed ? (
+          <div className="h-full w-full flex items-center justify-center">
+            <img src="/favicon.png" alt="DR" className="h-10 w-10" />
+          </div>
+        ) : (
+          // Il logo copre TUTTO il riquadro dell'header (padding minimo).
+          <img
+            src={logoAsset.url}
+            alt="DR Logistica"
+            className="h-full w-full object-contain p-1.5"
+          />
+        )}
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

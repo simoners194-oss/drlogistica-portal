@@ -2118,7 +2118,9 @@ async function assertOperatore(cfg: SpDiscovered, operatoreId: string): Promise<
   const DF = cfg.dipendentiFields;
   const opFields = await fetchDipendenteFields(cfg, operatoreId);
   const operatore = DF.Operatore ? Boolean(opFields[DF.Operatore]) : false;
-  if (!operatore) {
+  // L'amministratore di sistema è abilitato anche senza flag Operatore.
+  const ruolo = DF.Ruolo ? normalizeRuolo(String(opFields[DF.Ruolo] ?? "")) : "dipendente";
+  if (!operatore && ruolo !== "amministratore_sistema") {
     logSp("warn", "create.manuale", `Tentativo non autorizzato da id=${operatoreId}`);
     throw new Error("Non sei autorizzato a inserire timbrature manuali.");
   }
