@@ -13,6 +13,7 @@ import { Route as SupervisioneRouteImport } from './routes/supervisione'
 import { Route as RichiesteRouteImport } from './routes/richieste'
 import { Route as ReportRouteImport } from './routes/report'
 import { Route as ProcurementRouteImport } from './routes/procurement'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PresenzeRouteImport } from './routes/presenze'
 import { Route as NovitaRouteImport } from './routes/novita'
 import { Route as GestioneTimbratureRouteImport } from './routes/gestione-timbrature'
@@ -41,6 +42,11 @@ const ReportRoute = ReportRouteImport.update({
 const ProcurementRoute = ProcurementRouteImport.update({
   id: '/procurement',
   path: '/procurement',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PresenzeRoute = PresenzeRouteImport.update({
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
+  '/privacy': typeof PrivacyRoute
   '/procurement': typeof ProcurementRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
@@ -114,6 +121,7 @@ export interface FileRoutesByTo {
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
+  '/privacy': typeof PrivacyRoute
   '/procurement': typeof ProcurementRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
@@ -130,6 +138,7 @@ export interface FileRoutesById {
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
+  '/privacy': typeof PrivacyRoute
   '/procurement': typeof ProcurementRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
@@ -147,6 +156,7 @@ export interface FileRouteTypes {
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
+    | '/privacy'
     | '/procurement'
     | '/report'
     | '/richieste'
@@ -162,6 +172,7 @@ export interface FileRouteTypes {
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
+    | '/privacy'
     | '/procurement'
     | '/report'
     | '/richieste'
@@ -177,6 +188,7 @@ export interface FileRouteTypes {
     | '/gestione-timbrature'
     | '/novita'
     | '/presenze'
+    | '/privacy'
     | '/procurement'
     | '/report'
     | '/richieste'
@@ -193,6 +205,7 @@ export interface RootRouteChildren {
   GestioneTimbratureRoute: typeof GestioneTimbratureRoute
   NovitaRoute: typeof NovitaRoute
   PresenzeRoute: typeof PresenzeRoute
+  PrivacyRoute: typeof PrivacyRoute
   ProcurementRoute: typeof ProcurementRoute
   ReportRoute: typeof ReportRoute
   RichiesteRoute: typeof RichiesteRoute
@@ -227,6 +240,13 @@ declare module '@tanstack/react-router' {
       path: '/procurement'
       fullPath: '/procurement'
       preLoaderRoute: typeof ProcurementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/presenze': {
@@ -305,6 +325,7 @@ const rootRouteChildren: RootRouteChildren = {
   GestioneTimbratureRoute: GestioneTimbratureRoute,
   NovitaRoute: NovitaRoute,
   PresenzeRoute: PresenzeRoute,
+  PrivacyRoute: PrivacyRoute,
   ProcurementRoute: ProcurementRoute,
   ReportRoute: ReportRoute,
   RichiesteRoute: RichiesteRoute,
