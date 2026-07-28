@@ -36,7 +36,7 @@ function Index() {
 
   // Ritorno dall'autorizzazione bancaria (Enable Banking): la banca rimanda
   // qui con ?code=…. Il codice si mette da parte e si completa dal pannello
-  // Banca della sezione Finanza (subito, se il direttore è già loggato).
+  // Banca in Amministrazione (subito, se l'utente è già loggato).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
@@ -47,7 +47,7 @@ function Index() {
       /* sessionStorage non disponibile */
     }
     window.history.replaceState(null, "", "/");
-    if (readSession()) navigate({ to: "/finanza" });
+    if (readSession()) navigate({ to: "/amministrazione" });
   }, [navigate]);
 
   const handleLogin = async (e?: React.FormEvent) => {

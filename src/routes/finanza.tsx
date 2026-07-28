@@ -52,13 +52,7 @@ import {
   spDeleteRegolaFinanza,
   spApplicaRegolaFinanza,
   spEbStato,
-  spEbSalvaApp,
-  spEbProva,
   spEbSaldo,
-  spEbAvviaCollegamento,
-  spEbCompletaCollegamento,
-  spEbScegliConto,
-  spEbTaglia,
   spEbSincronizza,
 } from "@/lib/sharepoint.functions";
 import type {
@@ -191,25 +185,14 @@ function FinanzaPage() {
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState("");
 
-  // Collegamento banca (PSD2): pannello a scomparsa dentro la tab Movimenti.
-  const [showBanca, setShowBanca] = useState(false);
+  // Collegamento banca (PSD2): la CONFIGURAZIONE vive in Amministrazione
+  // (BancaPsd2Panel). Qui restano il saldo e il tasto Aggiorna, che con il
+  // collegamento attivo scarica anche i nuovi movimenti dalla banca.
   const [ebStato, setEbStato] = useState<EbStato | null>(null);
-  const [ebAppId, setEbAppId] = useState("");
-  const [ebPem, setEbPem] = useState("");
-  const [ebConti, setEbConti] = useState<{ uid: string; iban: string; nome: string }[] | null>(
-    null,
-  );
-  const [ebBusy, setEbBusy] = useState<"salva" | "collega" | "completa" | "taglio" | "sync" | null>(
-    null,
-  );
+  const [ebSyncBusy, setEbSyncBusy] = useState(false);
   const [ebProgress, setEbProgress] = useState("");
-  // Riapre il form app anche a configurazione avvenuta (correzione dati).
-  const [ebEditApp, setEbEditApp] = useState(false);
   // Saldo attuale dalla banca (null = collegamento non attivo o non caricato).
   const [ebSaldoInfo, setEbSaldoInfo] = useState<EbSaldoInfo | null>(null);
-  // Motivo per cui il saldo non è disponibile: mostrato SOLO nel pannello
-  // Banca (la tab resta pulita per chi non usa il collegamento).
-  const [ebSaldoErr, setEbSaldoErr] = useState<string | null>(null);
 
   // Storico: annullamento in corso
   const [annullaBusy, setAnnullaBusy] = useState<string | null>(null);
@@ -267,17 +250,12 @@ function FinanzaPage() {
       .catch(() => setRegole([]));
   };
   // Saldo attuale dalla banca. Silenzioso: senza collegamento attivo
-  // semplicemente non si mostra (né la colonna Saldo).
+  // semplicemente non si mostra (né la colonna Saldo); la diagnosi vive nel
+  // pannello Banca in Amministrazione.
   const loadEbSaldo = () => {
     spEbSaldo()
-      .then((s) => {
-        setEbSaldoInfo(s as EbSaldoInfo | null);
-        setEbSaldoErr(s == null ? "Nessun saldo restituito dalla banca." : null);
-      })
-      .catch((err) => {
-        setEbSaldoInfo(null);
-        setEbSaldoErr(err instanceof Error ? err.message : String(err));
-      });
+      .then((s) => setEbSaldoInfo(s as EbSaldoInfo | null))
+      .catch(() => setEbSaldoInfo(null));
   };
   const refreshAll = (a: number) => {
     loadMovimenti(a);
@@ -299,6 +277,7 @@ function FinanzaPage() {
     const dir = s.ruolo === "amministratore_sistema" || isSupervisoreGlobale(s.codice ?? "");
     if (!dir) return;
     refreshAll(anno);
+    loadEbStato(); // serve al tasto Aggiorna per sapere se il sync è attivo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -307,140 +286,24 @@ function FinanzaPage() {
     loadMovimenti(a);
   };
 
-  // --- Collegamento banca (PSD2) -------------------------------------------
+  // --- Collegamento banca (PSD2): solo uso quotidiano -----------------------
   const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
   const loadEbStato = () => {
     spEbStato()
       .then((s) => setEbStato(s as EbStato))
-      .catch((err) => toast.error(t("fin.ebErr"), { description: errMsg(err) }));
+      .catch(() => setEbStato(null));
   };
   // Saldo dopo la riga, ancorato al saldo attuale della banca: esatto ovunque
   // l'archivio sia continuo tra la riga e oggi.
   const saldoDopo = (m: SpMovimento): number =>
     Math.round((ebSaldoInfo!.saldo - (ebSaldoInfo!.progressivoFinale - m.progressivo)) * 100) / 100;
-  const toggleBanca = () => {
-    if (!showBanca && ebStato == null) loadEbStato();
-    setShowBanca((v) => !v);
-  };
 
-  // Completa il collegamento con il codice arrivato dalla redirect della banca
-  // (messo da parte dalla pagina di login in sessionStorage).
-  const ebCompleta = async (code: string) => {
-    setEbBusy("completa");
-    try {
-      const res = await spEbCompletaCollegamento({ data: { code } });
-      setEbConti(res.conti);
-      loadEbStato();
-      toast.success(t("fin.ebScegliConto"));
-    } catch (err) {
-      toast.error(t("fin.ebErr"), { description: errMsg(err) });
-    } finally {
-      setEbBusy(null);
-      try {
-        window.sessionStorage.removeItem("dr:eb:code");
-      } catch {
-        /* sessionStorage non disponibile */
-      }
-    }
-  };
-
-  useEffect(() => {
-    if (!isDirettore) return;
-    let code: string | null = null;
-    try {
-      code = window.sessionStorage.getItem("dr:eb:code");
-    } catch {
-      /* sessionStorage non disponibile */
-    }
-    if (!code) return;
-    setShowBanca(true);
-    loadEbStato();
-    void ebCompleta(code);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDirettore]);
-
-  const ebSalvaApp = async () => {
-    setEbBusy("salva");
-    try {
-      await spEbSalvaApp({ data: { appId: ebAppId.trim(), privateKeyPem: ebPem.trim() } });
-      toast.success(t("fin.ebSalvata"));
-      setEbPem("");
-      setEbEditApp(false);
-      loadEbStato();
-    } catch (err) {
-      toast.error(t("fin.ebErr"), { description: errMsg(err) });
-    } finally {
-      setEbBusy(null);
-    }
-  };
-
-  // Prova SENZA passare dalla banca: interroga l'anagrafica dell'app registrata
-  // (isola subito app id sbagliato o chiave privata non corrispondente).
-  const ebProva = async () => {
-    setEbBusy("salva");
-    try {
-      const r = await spEbProva();
-      toast.success(t("fin.ebProvaOk"), {
-        description: `${r.nome} · ${r.ambiente} · ${r.redirect.join(", ")}`,
-      });
-    } catch (err) {
-      toast.error(t("fin.ebErr"), { description: errMsg(err) });
-    } finally {
-      setEbBusy(null);
-    }
-  };
-
-  const ebCollega = async () => {
-    setEbBusy("collega");
-    try {
-      const r = await spEbAvviaCollegamento();
-      window.location.href = r.url; // la banca rimanda poi su portal…/?code=…
-    } catch (err) {
-      toast.error(t("fin.ebErr"), { description: errMsg(err) });
-      setEbBusy(null);
-    }
-  };
-
-  const ebUsaConto = async (uid: string, iban: string) => {
-    setEbBusy("completa");
-    try {
-      await spEbScegliConto({ data: { uid, iban } });
-      setEbConti(null);
-      loadEbStato();
-    } catch (err) {
-      toast.error(t("fin.ebErr"), { description: errMsg(err) });
-    } finally {
-      setEbBusy(null);
-    }
-  };
-
-  // Passaggio Excel → API: elimina l'ultimo giorno importato (a blocchi) e
-  // fissa la data di taglio; da lì scrive solo la banca.
-  const ebAttiva = async () => {
-    if (!window.confirm(t("fin.ebAttivaConfirm"))) return;
-    setEbBusy("taglio");
-    try {
-      let eliminati = 0;
-      let guard = 0;
-      for (;;) {
-        const r = await spEbTaglia();
-        eliminati += r.eliminati;
-        setEbProgress(String(eliminati));
-        if (r.rimanenti <= 0 || ++guard > 60) break;
-      }
-      loadEbStato();
-      refreshAll(anno);
-    } catch (err) {
-      toast.error(t("fin.ebErr"), { description: errMsg(err) });
-    } finally {
-      setEbBusy(null);
-      setEbProgress("");
-    }
-  };
+  // Collegamento pronto all'uso: Aggiorna scarica anche dalla banca.
+  const ebAttivo = Boolean(ebStato?.configurato && ebStato?.contoIban && ebStato?.dataTaglio);
 
   const ebSync = async () => {
-    setEbBusy("sync");
+    setEbSyncBusy(true);
     const importId = `SYNC-${new Date().toISOString().slice(0, 19)}`;
     let scritti = 0;
     let doppioni = 0;
@@ -466,9 +329,16 @@ function FinanzaPage() {
     } catch (err) {
       toast.error(t("fin.ebErr"), { description: errMsg(err) });
     } finally {
-      setEbBusy(null);
+      setEbSyncBusy(false);
       setEbProgress("");
     }
+  };
+
+  // Tasto Aggiorna: con il collegamento banca attivo prima scarica i nuovi
+  // movimenti (il sync ricarica poi tutto), altrimenti ricarica soltanto.
+  const aggiorna = () => {
+    if (ebAttivo && !ebSyncBusy) void ebSync();
+    else refreshAll(anno);
   };
 
   // --- Import xlsx ----------------------------------------------------------
@@ -991,12 +861,15 @@ function FinanzaPage() {
             </div>
             <button
               type="button"
-              onClick={() => refreshAll(anno)}
-              disabled={movimenti == null}
+              onClick={aggiorna}
+              disabled={movimenti == null || ebSyncBusy}
               className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
             >
-              <RefreshCw className={`h-4 w-4 ${movimenti == null ? "animate-spin" : ""}`} />{" "}
+              <RefreshCw
+                className={`h-4 w-4 ${movimenti == null || ebSyncBusy ? "animate-spin" : ""}`}
+              />{" "}
               {t("fin.aggiorna")}
+              {ebSyncBusy && ebProgress && ` (${ebProgress})`}
             </button>
             <button
               type="button"
@@ -1004,13 +877,6 @@ function FinanzaPage() {
               className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
             >
               <Upload className="h-4 w-4" /> {t("fin.tabImport")}
-            </button>
-            <button
-              type="button"
-              onClick={toggleBanca}
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
-            >
-              <Landmark className="h-4 w-4" /> {t("fin.ebBtn")}
             </button>
             <button
               type="button"
@@ -1156,205 +1022,6 @@ function FinanzaPage() {
                 <Landmark className="h-4 w-4 shrink-0 mt-0.5" />
                 <p>{t("fin.apiNote")}</p>
               </div>
-            </div>
-          )}
-
-          {/* Collegamento banca PSD2 (a scomparsa) */}
-          {showBanca && (
-            <div className="mb-4 rounded-xl border border-border p-4">
-              <div className="text-sm font-semibold text-foreground mb-1">{t("fin.ebTitle")}</div>
-              <p className="text-xs text-muted-foreground mb-4">{t("fin.ebDesc")}</p>
-
-              {ebStato == null ? (
-                <p className="text-sm text-muted-foreground inline-flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> …
-                </p>
-              ) : !ebStato.listaPresente ? (
-                <p className="text-sm text-status-absent">{t("fin.ebListMissing")}</p>
-              ) : (
-                <div className="space-y-4">
-                  {ebStato.colonneMancanti.length > 0 && (
-                    <p className="text-xs text-status-absent">
-                      {t("fin.ebColsMissing")} {ebStato.colonneMancanti.join(", ")}
-                    </p>
-                  )}
-
-                  {!ebStato.configurato || ebEditApp ? (
-                    <div className="space-y-3 max-w-xl">
-                      <p className="text-sm text-muted-foreground">{t("fin.ebNonConfig")}</p>
-                      <div>
-                        <label className="text-xs text-muted-foreground">{t("fin.ebAppId")}</label>
-                        <input
-                          value={ebAppId}
-                          onChange={(e) => setEbAppId(e.target.value)}
-                          placeholder="00000000-0000-0000-0000-000000000000"
-                          className={inputCls}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground">{t("fin.ebPem")}</label>
-                        <textarea
-                          value={ebPem}
-                          onChange={(e) => setEbPem(e.target.value)}
-                          placeholder="-----BEGIN PRIVATE KEY-----"
-                          rows={4}
-                          className={`${inputCls} font-mono text-xs`}
-                        />
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => void ebSalvaApp()}
-                          disabled={ebBusy != null || !ebAppId.trim() || !ebPem.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                        >
-                          {ebBusy === "salva" && <Loader2 className="h-4 w-4 animate-spin" />}
-                          {t("fin.ebSalvaApp")}
-                        </button>
-                        {ebEditApp && (
-                          <button
-                            type="button"
-                            onClick={() => setEbEditApp(false)}
-                            className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
-                          >
-                            {t("common.cancel")}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2 text-[13px]">
-                        <div className="sm:col-span-2">
-                          <span className="text-muted-foreground">{t("fin.ebAppId")}: </span>
-                          <b className="font-mono text-xs">{ebStato.appId || "—"}</b>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">{t("fin.ebConto")}: </span>
-                          <b>{ebStato.contoIban || "—"}</b>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">{t("fin.ebConsenso")}: </span>
-                          <b>{fmtData(ebStato.consensoScade ?? undefined)}</b>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">{t("fin.ebTaglio")}: </span>
-                          <b>{fmtData(ebStato.dataTaglio ?? undefined)}</b>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">{t("fin.ebUltimaSync")}: </span>
-                          <b>
-                            {ebStato.ultimaSync
-                              ? `${fmtData(ebStato.ultimaSync)} ${ebStato.ultimaSync.slice(11, 16)}`
-                              : t("fin.ebMai")}
-                          </b>
-                        </div>
-                      </div>
-
-                      {ebConti && (
-                        <div className="rounded-xl border border-border p-3">
-                          <div className="text-sm font-medium text-foreground mb-2">
-                            {t("fin.ebScegliConto")}
-                          </div>
-                          <div className="space-y-2">
-                            {ebConti.map((c) => (
-                              <div key={c.uid} className="flex flex-wrap items-center gap-3">
-                                <span className="text-[13px] font-mono">{c.iban || c.uid}</span>
-                                {c.nome && (
-                                  <span className="text-xs text-muted-foreground">{c.nome}</span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => void ebUsaConto(c.uid, c.iban)}
-                                  disabled={ebBusy != null}
-                                  className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted disabled:opacity-50"
-                                >
-                                  {t("fin.ebUsaConto")}
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => void ebProva()}
-                          disabled={ebBusy != null}
-                          className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
-                        >
-                          {ebBusy === "salva" && <Loader2 className="h-4 w-4 animate-spin" />}
-                          {t("fin.ebProvaBtn")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEbAppId(ebStato.appId);
-                            setEbEditApp(true);
-                          }}
-                          disabled={ebBusy != null}
-                          className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
-                        >
-                          {t("fin.ebModifica")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void ebCollega()}
-                          disabled={ebBusy != null}
-                          className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
-                        >
-                          {ebBusy === "collega" ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Landmark className="h-4 w-4" />
-                          )}
-                          {ebStato.consensoScade ? t("fin.ebRinnova") : t("fin.ebCollega")}
-                        </button>
-                        {!ebStato.dataTaglio && ebStato.contoIban && (
-                          <button
-                            type="button"
-                            onClick={() => void ebAttiva()}
-                            disabled={ebBusy != null}
-                            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                          >
-                            {ebBusy === "taglio" && <Loader2 className="h-4 w-4 animate-spin" />}
-                            {t("fin.ebAttiva")}
-                            {ebBusy === "taglio" && ebProgress && ` (−${ebProgress})`}
-                          </button>
-                        )}
-                        {ebStato.dataTaglio && ebStato.contoIban && (
-                          <button
-                            type="button"
-                            onClick={() => void ebSync()}
-                            disabled={ebBusy != null}
-                            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                          >
-                            {ebBusy === "sync" ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="h-4 w-4" />
-                            )}
-                            {t("fin.ebSync")}
-                            {ebBusy === "sync" && ebProgress && ` (${ebProgress})`}
-                          </button>
-                        )}
-                        {ebBusy === "completa" && (
-                          <span className="text-xs text-muted-foreground inline-flex items-center gap-2">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("fin.ebCompleto")}
-                          </span>
-                        )}
-                      </div>
-                      {ebSaldoErr && (
-                        <p className="text-xs text-status-absent">
-                          {t("fin.ebSaldoAttuale")}: {ebSaldoErr}
-                        </p>
-                      )}
-                      <p className="text-[11px] text-muted-foreground">{t("fin.ebCollegaDesc")}</p>
-                    </>
-                  )}
-                </div>
-              )}
             </div>
           )}
 

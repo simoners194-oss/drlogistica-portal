@@ -24,6 +24,7 @@ import {
 } from "@/lib/data-service";
 import type { SpSelfTestResult, SpHealth, ImportDipendentiResult } from "@/lib/sharepoint.server";
 import { spImportDipendenti, spProtectPins } from "@/lib/sharepoint.functions";
+import { BancaPsd2Panel } from "@/components/BancaPsd2Panel";
 import { toast } from "sonner";
 import { readSession } from "@/lib/session";
 import { useLang } from "@/lib/i18n";
@@ -226,6 +227,8 @@ function AmministrazionePage() {
         />
 
         <ImportDipendentiCard onDone={() => refresh(true)} />
+
+        <BancaPsd2Panel />
 
         <ProtezionePinCard />
       </div>
