@@ -23,6 +23,7 @@ import {
   Receipt,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 import { FattureTab } from "@/components/FattureTab";
 import { esportaCsvFile } from "@/lib/csv";
@@ -979,6 +980,15 @@ function FinanzaPage() {
                 className={inputCls}
               />
             </div>
+            <button
+              type="button"
+              onClick={() => refreshAll(anno)}
+              disabled={movimenti == null}
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${movimenti == null ? "animate-spin" : ""}`} />{" "}
+              {t("fin.aggiorna")}
+            </button>
             <button
               type="button"
               onClick={() => setShowImportEC((v) => !v)}

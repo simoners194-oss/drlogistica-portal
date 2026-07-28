@@ -493,6 +493,7 @@ const en = {
   "fin.saldo": "Balance",
   "fin.page": "Page",
   "fin.pageOf": "of",
+  "fin.aggiorna": "Refresh",
   "fin.ebCollega": "Connect bank",
   "fin.ebRinnova": "Renew consent",
   "fin.ebCollegaDesc":
@@ -1162,6 +1163,7 @@ const it: Record<DictKey, string> = {
   "fin.saldo": "Saldo",
   "fin.page": "Pagina",
   "fin.pageOf": "di",
+  "fin.aggiorna": "Aggiorna",
   "fin.ebCollega": "Collega banca",
   "fin.ebRinnova": "Rinnova consenso",
   "fin.ebCollegaDesc":
