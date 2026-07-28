@@ -43,7 +43,8 @@ export function AppShell({
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-20 border-b border-border bg-card/85 backdrop-blur-md sticky top-0 z-10 flex items-center gap-3 px-4 md:px-6">
+          {/* h-24 come l'header della sidebar: la riga di bordo è continua. */}
+          <header className="h-24 border-b border-border bg-card/85 backdrop-blur-md sticky top-0 z-10 flex items-center gap-3 px-4 md:px-6">
             <SidebarTrigger className="text-muted-foreground" />
             <div className="hidden md:block h-6 w-px bg-border" />
             <div className="md:hidden flex-1">
