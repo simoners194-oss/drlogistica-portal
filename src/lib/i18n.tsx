@@ -492,6 +492,11 @@ const en = {
   "fin.ebSaldoAttuale": "Current balance",
   "fin.ebSaldoCacheVuota":
     "No balance stored yet: it will be fetched with the next synchronization (the bank caps daily PSD2 accesses, so the balance is read only while syncing).",
+  "fin.ebSaldoManuale": "Set balance manually",
+  "fin.ebSaldoManualeNota": "Replaced by the bank's official balance at the next successful sync.",
+  "fin.ebImposta": "Set",
+  "fin.ebSaldoImpostato": "Balance saved.",
+  "fin.ebSaldoNonValido": "Amount not recognized: use e.g. 191493,13.",
   "fin.saldo": "Balance",
   "fin.page": "Page",
   "fin.pageOf": "of",
@@ -1164,6 +1169,12 @@ const it: Record<DictKey, string> = {
   "fin.ebSaldoAttuale": "Saldo attuale",
   "fin.ebSaldoCacheVuota":
     "Saldo non ancora memorizzato: arriverà con la prossima sincronizzazione (la banca limita gli accessi PSD2 giornalieri, quindi il saldo si legge solo durante il sync).",
+  "fin.ebSaldoManuale": "Imposta saldo manualmente",
+  "fin.ebSaldoManualeNota":
+    "Verrà sostituito dal saldo ufficiale della banca alla prossima sincronizzazione riuscita.",
+  "fin.ebImposta": "Imposta",
+  "fin.ebSaldoImpostato": "Saldo impostato.",
+  "fin.ebSaldoNonValido": "Importo non riconosciuto: usare ad es. 191493,13.",
   "fin.saldo": "Saldo",
   "fin.page": "Pagina",
   "fin.pageOf": "di",

@@ -4427,6 +4427,26 @@ async function salvaSaldoCache(cfg: SpDiscovered, s: EbSaldoCache): Promise<void
   }
 }
 
+/** Semina/corregge a mano l'ultimo saldo noto (es. quando il limite PSD2
+ *  impedisce di leggerlo oggi). Verrà SOVRASCRITTO dal saldo ufficiale della
+ *  banca alla prossima sincronizzazione riuscita. */
+export async function ebImpostaSaldoManuale(saldo: number): Promise<void> {
+  const cfg = await discoverSharePoint();
+  requireEbList(cfg);
+  if (!cfg.enableBankingFields.SaldoCache)
+    throw new Error(
+      'Colonna "SaldoCache" assente sulla lista EnableBankingConfig: aggiungerla (testo a più righe) e fare Riscopri.',
+    );
+  await salvaSaldoCache(cfg, {
+    saldo: Math.round(saldo * 100) / 100,
+    divisa: "EUR",
+    tipo: "Manuale",
+    riferimento: new Date().toISOString().slice(0, 10),
+    aggiornatoAl: new Date().toISOString(),
+  });
+  logSp("info", "eb.saldo", "Saldo impostato manualmente (in attesa del prossimo sync)");
+}
+
 // La banca limita gli accessi PSD2 giornalieri per conto: di norma si serve
 // l'ultimo saldo in cache (nessuna chiamata alla banca); `forzaBanca` si usa
 // solo dentro la sincronizzazione, con il contesto PSU dell'utente.

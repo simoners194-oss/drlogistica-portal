@@ -87,6 +87,7 @@ import {
   saveEbApp,
   ebProvaApplicazione,
   ebSaldoAttuale,
+  ebImpostaSaldoManuale,
   type EbSaldoInfo,
   ebAvviaCollegamento,
   ebCompletaCollegamento,
@@ -976,6 +977,18 @@ export const spEbSaldo = createServerFn({ method: "GET" }).handler(
     return ebSaldoAttuale();
   },
 );
+
+export const spEbImpostaSaldo = createServerFn({ method: "POST" })
+  .inputValidator((input: { saldo: number }) => {
+    const saldo = Number(input?.saldo);
+    if (!Number.isFinite(saldo) || Math.abs(saldo) > 1e12) throw new Error("Saldo non valido.");
+    return { saldo };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await ebImpostaSaldoManuale(data.saldo);
+    return { ok: true };
+  });
 
 export const spEbAvviaCollegamento = createServerFn({ method: "POST" }).handler(
   async (): Promise<{ url: string }> => {

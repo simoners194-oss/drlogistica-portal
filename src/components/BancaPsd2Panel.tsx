@@ -13,6 +13,7 @@ import {
   spEbSalvaApp,
   spEbProva,
   spEbSaldo,
+  spEbImpostaSaldo,
   spEbAvviaCollegamento,
   spEbCompletaCollegamento,
   spEbScegliConto,
@@ -46,6 +47,8 @@ export function BancaPsd2Panel() {
   const [editApp, setEditApp] = useState(false);
   const [saldo, setSaldo] = useState<EbSaldoInfo | null>(null);
   const [saldoErr, setSaldoErr] = useState<string | null>(null);
+  // Semina manuale del saldo (virgola decimale italiana ammessa).
+  const [saldoManuale, setSaldoManuale] = useState("");
 
   const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -177,6 +180,35 @@ export function BancaPsd2Panel() {
     } finally {
       setBusy(null);
       setProgress("");
+    }
+  };
+
+  // "191.493,13" / "191493,13" / "191493.13" → 191493.13
+  const parseImporto = (v: string): number => {
+    const s = v.trim().replace(/\s/g, "");
+    const norm =
+      s.includes(",") && s.lastIndexOf(",") > s.lastIndexOf(".")
+        ? s.replace(/\./g, "").replace(",", ".")
+        : s.replace(/,/g, "");
+    return Number(norm);
+  };
+
+  const impostaSaldo = async () => {
+    const n = parseImporto(saldoManuale);
+    if (!Number.isFinite(n)) {
+      toast.error(t("fin.ebErr"), { description: t("fin.ebSaldoNonValido") });
+      return;
+    }
+    setBusy("salva");
+    try {
+      await spEbImpostaSaldo({ data: { saldo: n } });
+      toast.success(t("fin.ebSaldoImpostato"));
+      setSaldoManuale("");
+      loadSaldo();
+    } catch (err) {
+      toast.error(t("fin.ebErr"), { description: errMsg(err) });
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -426,6 +458,31 @@ export function BancaPsd2Panel() {
                     {t("fin.ebSaldoAttuale")}: {saldoErr}
                   </p>
                 )}
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="w-44">
+                    <label className="text-xs text-muted-foreground">
+                      {t("fin.ebSaldoManuale")}
+                    </label>
+                    <input
+                      value={saldoManuale}
+                      onChange={(e) => setSaldoManuale(e.target.value)}
+                      placeholder="0,00"
+                      inputMode="decimal"
+                      className={inputCls}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void impostaSaldo()}
+                    disabled={busy != null || !saldoManuale.trim()}
+                    className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+                  >
+                    {t("fin.ebImposta")}
+                  </button>
+                  <span className="text-[11px] text-muted-foreground pb-2">
+                    {t("fin.ebSaldoManualeNota")}
+                  </span>
+                </div>
                 <p className="text-[11px] text-muted-foreground">{t("fin.ebCollegaDesc")}</p>
               </>
             )}
