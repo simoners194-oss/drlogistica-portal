@@ -578,8 +578,6 @@ const en = {
   "fin.errFile": "File not recognized",
   "fin.errFileDesc":
     "No sheet with the expected columns (Data contabile, Data valuta, Importo, Divisa, Causale, Descrizione) was found.",
-  "fin.apiNote":
-    "Today the statement is loaded manually from the bank's Excel export. A direct bank API connection (PSD2/open banking) requires an agreement with an aggregator and can be evaluated later.",
   "fin.sheet": "Sheet",
   "fin.sheetChoose": "The file contains multiple sheets: choose which one to import.",
   "fin.sheetUse": "Use this sheet",
@@ -1265,8 +1263,6 @@ const it: Record<DictKey, string> = {
   "fin.errFile": "File non riconosciuto",
   "fin.errFileDesc":
     "Nessun foglio con le colonne attese (Data contabile, Data valuta, Importo, Divisa, Causale, Descrizione).",
-  "fin.apiNote":
-    "Oggi l'estratto conto si carica a mano dall'export Excel della banca. Il collegamento diretto via API bancaria (PSD2/open banking) richiede un accordo con un aggregatore e si può valutare in seguito.",
   "fin.sheet": "Foglio",
   "fin.sheetChoose": "Il file contiene più fogli: scegli quale importare.",
   "fin.sheetUse": "Usa questo foglio",

@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import {
-  Landmark,
   Lock,
   Upload,
   Table2,
@@ -1023,10 +1022,6 @@ function FinanzaPage() {
                   </div>
                 </div>
               )}
-              <div className="mt-4 flex items-start gap-2 text-xs text-muted-foreground">
-                <Landmark className="h-4 w-4 shrink-0 mt-0.5" />
-                <p>{t("fin.apiNote")}</p>
-              </div>
             </div>
           )}
 
