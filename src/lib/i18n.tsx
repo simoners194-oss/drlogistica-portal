@@ -489,6 +489,8 @@ const en = {
   "fin.ebProvaBtn": "Test connection",
   "fin.ebProvaOk": "Application recognized",
   "fin.ebModifica": "Edit app",
+  "fin.ebSaldoAttuale": "Current balance",
+  "fin.saldo": "Balance",
   "fin.ebCollega": "Connect bank",
   "fin.ebRinnova": "Renew consent",
   "fin.ebCollegaDesc":
@@ -1154,6 +1156,8 @@ const it: Record<DictKey, string> = {
   "fin.ebProvaBtn": "Prova collegamento",
   "fin.ebProvaOk": "Applicazione riconosciuta",
   "fin.ebModifica": "Modifica app",
+  "fin.ebSaldoAttuale": "Saldo attuale",
+  "fin.saldo": "Saldo",
   "fin.ebCollega": "Collega banca",
   "fin.ebRinnova": "Rinnova consenso",
   "fin.ebCollegaDesc":

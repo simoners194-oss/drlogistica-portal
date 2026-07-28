@@ -86,6 +86,8 @@ import {
   getEbStato,
   saveEbApp,
   ebProvaApplicazione,
+  ebSaldoAttuale,
+  type EbSaldoInfo,
   ebAvviaCollegamento,
   ebCompletaCollegamento,
   ebScegliConto,
@@ -965,6 +967,13 @@ export const spEbProva = createServerFn({ method: "POST" }).handler(
   async (): Promise<{ nome: string; ambiente: string; redirect: string[] }> => {
     await assertDirettore(await currentUser());
     return ebProvaApplicazione();
+  },
+);
+
+export const spEbSaldo = createServerFn({ method: "GET" }).handler(
+  async (): Promise<EbSaldoInfo | null> => {
+    await assertDirettore(await currentUser());
+    return ebSaldoAttuale();
   },
 );
 

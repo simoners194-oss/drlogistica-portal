@@ -51,6 +51,7 @@ import {
   spEbStato,
   spEbSalvaApp,
   spEbProva,
+  spEbSaldo,
   spEbAvviaCollegamento,
   spEbCompletaCollegamento,
   spEbScegliConto,
@@ -62,6 +63,7 @@ import type {
   ImportStoricoRiga,
   EbStato,
   EbSyncResult,
+  EbSaldoInfo,
 } from "@/lib/sharepoint.server";
 
 export const Route = createFileRoute("/finanza")({
@@ -197,6 +199,8 @@ function FinanzaPage() {
   const [ebProgress, setEbProgress] = useState("");
   // Riapre il form app anche a configurazione avvenuta (correzione dati).
   const [ebEditApp, setEbEditApp] = useState(false);
+  // Saldo attuale dalla banca (null = collegamento non attivo o non caricato).
+  const [ebSaldoInfo, setEbSaldoInfo] = useState<EbSaldoInfo | null>(null);
 
   // Storico: annullamento in corso
   const [annullaBusy, setAnnullaBusy] = useState<string | null>(null);
@@ -253,11 +257,21 @@ function FinanzaPage() {
       .then((l) => setRegole(l as RegolaFinanza[]))
       .catch(() => setRegole([]));
   };
+  // Saldo attuale dalla banca. Silenzioso: senza collegamento attivo
+  // semplicemente non si mostra (né la colonna Saldo).
+  const loadEbSaldo = () => {
+    spEbSaldo()
+      .then((s) => setEbSaldoInfo(s as EbSaldoInfo | null))
+      .catch(() => setEbSaldoInfo(null));
+  };
   const refreshAll = (a: number) => {
     loadMovimenti(a);
     loadAnomalie();
     loadStorico();
     loadRegole();
+    // Il saldo è ancorato al progressivo dell'archivio: si ricarica insieme
+    // ai movimenti per restare coerente dopo import/annullamenti/sync.
+    loadEbSaldo();
   };
 
   useEffect(() => {
@@ -286,6 +300,10 @@ function FinanzaPage() {
       .then((s) => setEbStato(s as EbStato))
       .catch((err) => toast.error(t("fin.ebErr"), { description: errMsg(err) }));
   };
+  // Saldo dopo la riga, ancorato al saldo attuale della banca: esatto ovunque
+  // l'archivio sia continuo tra la riga e oggi.
+  const saldoDopo = (m: SpMovimento): number =>
+    Math.round((ebSaldoInfo!.saldo - (ebSaldoInfo!.progressivoFinale - m.progressivo)) * 100) / 100;
   const toggleBanca = () => {
     if (!showBanca && ebStato == null) loadEbStato();
     setShowBanca((v) => !v);
@@ -968,6 +986,19 @@ function FinanzaPage() {
             >
               <Download className="h-4 w-4" /> {t("common.exportCsv")}
             </button>
+            {ebSaldoInfo && (
+              <div className="ml-auto rounded-xl border border-border bg-secondary/40 px-4 py-2 text-right">
+                <div className="text-[11px] text-muted-foreground">
+                  {t("fin.ebSaldoAttuale")}
+                  {ebSaldoInfo.riferimento && ` · ${fmtData(ebSaldoInfo.riferimento)}`}
+                </div>
+                <div
+                  className={`text-lg font-semibold tabular-nums ${ebSaldoInfo.saldo >= 0 ? "text-status-present" : "text-status-absent"}`}
+                >
+                  {fmtImporto(ebSaldoInfo.saldo)} {ebSaldoInfo.divisa}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Import estratto conto (a scomparsa) */}
@@ -1302,6 +1333,7 @@ function FinanzaPage() {
                     <th className="py-2 pr-3">{t("fin.dataContabile")}</th>
                     <th className="py-2 pr-3">{t("fin.dataValuta")}</th>
                     <th className="py-2 pr-3 text-right">{t("common.amount")}</th>
+                    {ebSaldoInfo && <th className="py-2 pr-3 text-right">{t("fin.saldo")}</th>}
                     <th className="py-2 pr-3">{t("common.type")}</th>
                     <th className="py-2 pr-3">{t("fin.cliente")}</th>
                     <th className="py-2 pr-3">{t("fin.nrFattura")}</th>
@@ -1325,6 +1357,11 @@ function FinanzaPage() {
                       >
                         {fmtImporto(m.importo)}
                       </td>
+                      {ebSaldoInfo && (
+                        <td className="py-1.5 pr-3 text-right whitespace-nowrap text-muted-foreground tabular-nums">
+                          {fmtImporto(saldoDopo(m))}
+                        </td>
+                      )}
                       <td className="py-1.5 pr-3">
                         {m.tipologia}
                         {m.daVerificare && (

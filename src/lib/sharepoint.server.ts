@@ -61,6 +61,7 @@ import {
   ebCreaSessione,
   ebImportaChiave,
   ebMappaMovimento,
+  ebSaldo,
   ebTransazioni,
   type EbConto,
 } from "./enablebanking.server";
@@ -3330,6 +3331,10 @@ export interface SpMovimento {
   note: string;
   daVerificare: boolean;
   importId: string;
+  /** Somma progressiva degli importi in ordine cronologico sull'INTERO
+   *  archivio (calcolata a ogni fetch, mai salvata): con il saldo attuale
+   *  della banca permette il saldo per riga come sull'estratto conto. */
+  progressivo: number;
 }
 
 function mapMovimento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>): SpMovimento {
@@ -3351,6 +3356,7 @@ function mapMovimento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknow
     note: F.Note ? String(f[F.Note] ?? "") : "",
     daVerificare: parseSpBool(F.DaVerificare ? f[F.DaVerificare] : undefined, false),
     importId: F.ImportId ? String(f[F.ImportId] ?? "") : "",
+    progressivo: 0, // valorizzato in fetchMovimenti sull'intero archivio
   };
 }
 
@@ -3398,6 +3404,16 @@ export async function fetchMovimenti(filter: MovimentiFilter = {}): Promise<SpMo
     `/sites/${cfg.siteId}/lists/${cfg.listMovimenti}/items?expand=fields&$top=999`,
   );
   let out = items.map((it) => mapMovimento(cfg, it));
+  // Progressivo cronologico sull'INTERO archivio, PRIMA dei filtri (così il
+  // saldo per riga resta corretto anche guardando un solo anno).
+  const cronologico = [...out].sort(
+    (a, b) => a.dataContabile.localeCompare(b.dataContabile) || a.id.localeCompare(b.id),
+  );
+  let cumulato = 0;
+  for (const m of cronologico) {
+    cumulato = Math.round((cumulato + m.importo) * 100) / 100;
+    m.progressivo = cumulato;
+  }
   if (filter.from) out = out.filter((m) => m.dataContabile >= filter.from!);
   if (filter.to) out = out.filter((m) => m.dataContabile <= filter.to!);
   if (filter.soloDaVerificare) out = out.filter((m) => m.daVerificare);
@@ -4348,6 +4364,30 @@ export async function ebProvaApplicazione(): Promise<{
   const res = await ebApplicazione(cred);
   logSp("info", "eb.prova", `Prova app Enable Banking OK: ${res.nome} (${res.ambiente})`);
   return res;
+}
+
+export interface EbSaldoInfo {
+  saldo: number;
+  divisa: string;
+  tipo: string;
+  riferimento: string;
+  /** Progressivo del movimento più recente in archivio: è l'àncora che
+   *  permette al client di calcolare il saldo dopo OGNI riga
+   *  (saldoRiga = saldo − (progressivoFinale − progressivoRiga)). */
+  progressivoFinale: number;
+}
+
+export async function ebSaldoAttuale(): Promise<EbSaldoInfo | null> {
+  const cred = await getEbCredenziali();
+  const cfg = await discoverSharePoint();
+  const row = await fetchEbRow(cfg);
+  const k = cfg.enableBankingFields.ContoUid;
+  const uid = k ? String(row?.fields?.[k] ?? "").trim() : "";
+  if (!uid) throw new Error("Nessun conto selezionato: completare il collegamento banca.");
+  const s = await ebSaldo(cred, uid);
+  if (!s) return null;
+  const all = await fetchMovimenti(); // ordinati dal più recente
+  return { ...s, progressivoFinale: all[0]?.progressivo ?? 0 };
 }
 
 export async function ebAvviaCollegamento(): Promise<{ url: string }> {

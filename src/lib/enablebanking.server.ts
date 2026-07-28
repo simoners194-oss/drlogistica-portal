@@ -201,6 +201,42 @@ export async function ebTransazioni(
   return { transazioni: res.transactions ?? [], continuation: res.continuation_key ?? null };
 }
 
+interface EbBalanceRow {
+  name?: string;
+  balance_amount?: { currency?: string; amount?: string };
+  balance_type?: string;
+  reference_date?: string;
+  last_change_date_time?: string;
+}
+
+/** Saldo del conto dalla banca. Si preferisce il saldo CONTABILE (booked),
+ *  coerente col sync che importa solo transazioni BOOK. */
+export async function ebSaldo(
+  cred: EbCredenziali,
+  contoUid: string,
+): Promise<{ saldo: number; divisa: string; tipo: string; riferimento: string } | null> {
+  const res = await ebCall<{ balances?: EbBalanceRow[] }>(
+    cred,
+    "GET",
+    `/accounts/${encodeURIComponent(contoUid)}/balances`,
+  );
+  const saldi = res.balances ?? [];
+  if (!saldi.length) return null;
+  const PREFERITI = ["ITBD", "CLBD", "CLAV", "ITAV"]; // interim/closing booked prima
+  const scelto =
+    PREFERITI.map((t) => saldi.find((b) => (b.balance_type ?? "").toUpperCase() === t)).find(
+      Boolean,
+    ) ?? saldi[0];
+  const importo = Number(scelto.balance_amount?.amount ?? "");
+  if (!Number.isFinite(importo)) return null;
+  return {
+    saldo: Math.round(importo * 100) / 100,
+    divisa: scelto.balance_amount?.currency ?? "EUR",
+    tipo: scelto.balance_type ?? scelto.name ?? "",
+    riferimento: (scelto.reference_date ?? scelto.last_change_date_time ?? "").slice(0, 10),
+  };
+}
+
 /** Prefisso della chiave dei movimenti arrivati dall'API (Title in lista). */
 export const EB_CHIAVE_PREFIX = "EB|";
 
