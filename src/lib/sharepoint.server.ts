@@ -55,6 +55,14 @@ import type {
   AbbinamentoIncasso,
   DirezioneFattura,
 } from "./fatture-logic";
+import {
+  ebAvviaAuth,
+  ebCreaSessione,
+  ebImportaChiave,
+  ebMappaMovimento,
+  ebTransazioni,
+  type EbConto,
+} from "./enablebanking.server";
 export { LEGACY_IMPORT_ID };
 export type { RegolaFinanza, FatturaRaw, TerminePagamento, AbbinamentoIncasso, DirezioneFattura };
 import { normalizeRuolo } from "./session";
@@ -277,6 +285,17 @@ export const SP_DISPLAY = {
     // ripetuti (429) — persistere il token riduce le autenticazioni a ~2/ora.
     TokenCache: "TokenCache",
   },
+  // Collegamento banca Enable Banking (PSD2, sola lettura; una riga di config).
+  // La chiave privata dell'app è CIFRATA come la password Aruba. OPZIONALE.
+  enableBanking: {
+    AppId: "AppId",
+    ChiaveCifrata: "ChiaveCifrata",
+    ContoUid: "ContoUid",
+    ContoIban: "ContoIban",
+    ConsensoScade: "ConsensoScade",
+    DataTaglio: "DataTaglio",
+    UltimaSync: "UltimaSync",
+  },
   // Richieste di acquisto (modulo Procurement). Lista OPZIONALE.
   acquisti: {
     Richiedente: "Richiedente",
@@ -327,6 +346,7 @@ const LIST_NAMES = {
   terminiPagamento: ["TerminiPagamento", "TerminiDiPagamento", "TerminePagamento"],
   abbinamenti: ["AbbinamentiIncassi", "AbbinamentoIncasso", "Abbinamenti"],
   arubaConfig: ["ArubaConfig", "ConfigurazioneAruba"],
+  enableBanking: ["EnableBankingConfig", "BancaConfig", "EnableBanking"],
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -450,6 +470,10 @@ export interface SpDiscovered {
   listArubaConfigName: string | null;
   arubaConfigFields: Record<string, string>;
   arubaConfigMissing: string[];
+  listEnableBanking: string | null;
+  listEnableBankingName: string | null;
+  enableBankingFields: Record<string, string>;
+  enableBankingMissing: string[];
   cachedAt: string;
   expiresAt: string;
 }
@@ -753,6 +777,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const trm = await softList(LIST_NAMES.terminiPagamento, SP_DISPLAY.terminiPagamento);
   const abb = await softList(LIST_NAMES.abbinamenti, SP_DISPLAY.abbinamenti);
   const aru = await softList(LIST_NAMES.arubaConfig, SP_DISPLAY.arubaConfig);
+  const eb = await softList(LIST_NAMES.enableBanking, SP_DISPLAY.enableBanking);
 
   const now = Date.now();
   discoveredCache = {
@@ -827,6 +852,10 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listArubaConfigName: aru.name,
     arubaConfigFields: aru.fields,
     arubaConfigMissing: aru.missing,
+    listEnableBanking: eb.id,
+    listEnableBankingName: eb.name,
+    enableBankingFields: eb.fields,
+    enableBankingMissing: eb.missing,
     cachedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CACHE_TTL_MS).toISOString(),
   };
@@ -4182,6 +4211,338 @@ export async function getArubaCredenziali(): Promise<{
 }
 
 // ---------------------------------------------------------------------------
+// Collegamento banca (Enable Banking / PSD2) — lista EnableBankingConfig
+// ---------------------------------------------------------------------------
+// SOLA LETTURA del conto aziendale. Una riga di config: app id in chiaro,
+// chiave privata CIFRATA (stesso AES-GCM delle credenziali Aruba), conto
+// scelto, scadenza consenso, data di taglio e ultima sincronizzazione.
+// I movimenti sincronizzati finiscono nella STESSA lista MovimentiBancari
+// dell'import xlsx, con Title = "EB|<entry_reference>" (chiave della banca).
+
+function requireEbList(cfg: SpDiscovered): string {
+  if (!cfg.listEnableBanking)
+    throw new Error(
+      'Lista "EnableBankingConfig" non trovata su SharePoint. Crearla sul sito DRPORTAL.',
+    );
+  return cfg.listEnableBanking;
+}
+
+async function fetchEbRow(
+  cfg: SpDiscovered,
+): Promise<GraphListItem<Record<string, unknown>> | null> {
+  if (!cfg.listEnableBanking) return null;
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listEnableBanking}/items?expand=fields&$top=10`,
+    ),
+  );
+  return res.value[0] ?? null;
+}
+
+/** Scrive i campi indicati sulla riga di config (creandola se assente). */
+async function patchEbConfig(patch: Record<string, unknown>): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requireEbList(cfg);
+  const row = await fetchEbRow(cfg);
+  if (row) {
+    await withDiscoveryRetry(() =>
+      gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${row.id}/fields`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    );
+  } else {
+    await withDiscoveryRetry(() =>
+      gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
+        method: "POST",
+        body: JSON.stringify({ fields: { Title: "__banca__", ...patch } }),
+      }),
+    );
+  }
+}
+
+export interface EbStato {
+  listaPresente: boolean;
+  colonneMancanti: string[];
+  /** App id + chiave privata salvate. */
+  configurato: boolean;
+  appId: string;
+  contoIban: string;
+  consensoScade: string | null;
+  dataTaglio: string | null;
+  ultimaSync: string | null;
+}
+
+export async function getEbStato(): Promise<EbStato> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listEnableBanking)
+    return {
+      listaPresente: false,
+      colonneMancanti: [],
+      configurato: false,
+      appId: "",
+      contoIban: "",
+      consensoScade: null,
+      dataTaglio: null,
+      ultimaSync: null,
+    };
+  const F = cfg.enableBankingFields;
+  const row = await fetchEbRow(cfg);
+  const f = row?.fields ?? {};
+  const s = (k: string | undefined) => (k ? String(f[k] ?? "").trim() : "");
+  return {
+    listaPresente: true,
+    colonneMancanti: cfg.enableBankingMissing,
+    configurato: Boolean(s(F.AppId) && s(F.ChiaveCifrata).startsWith(ARUBA_CIPHER_PREFIX)),
+    appId: s(F.AppId),
+    contoIban: s(F.ContoIban),
+    consensoScade: s(F.ConsensoScade) || null,
+    dataTaglio: s(F.DataTaglio) || null,
+    ultimaSync: s(F.UltimaSync) || null,
+  };
+}
+
+export async function saveEbApp(appId: string, privateKeyPem: string): Promise<void> {
+  // La chiave viene importata PRIMA di salvarla: se il PEM è sbagliato
+  // l'errore esce subito, non alla prima sincronizzazione.
+  await ebImportaChiave(privateKeyPem);
+  const cfg = await discoverSharePoint();
+  requireEbList(cfg);
+  const F = cfg.enableBankingFields;
+  const patch: Record<string, unknown> = {};
+  if (F.AppId) patch[F.AppId] = appId.trim();
+  if (F.ChiaveCifrata) patch[F.ChiaveCifrata] = await cifraSegreto(privateKeyPem);
+  if (!Object.keys(patch).length)
+    throw new Error("Colonne AppId/ChiaveCifrata assenti sulla lista EnableBankingConfig.");
+  await patchEbConfig(patch);
+  logSp("info", "eb.config", "Applicazione Enable Banking salvata (chiave cifrata)");
+}
+
+/** Credenziali in chiaro — SOLO per le chiamate server-side. Mai loggarle. */
+async function getEbCredenziali(): Promise<{ appId: string; privateKeyPem: string }> {
+  const cfg = await discoverSharePoint();
+  requireEbList(cfg);
+  const F = cfg.enableBankingFields;
+  const row = await fetchEbRow(cfg);
+  const f = row?.fields ?? {};
+  const appId = F.AppId ? String(f[F.AppId] ?? "").trim() : "";
+  const cifrata = F.ChiaveCifrata ? String(f[F.ChiaveCifrata] ?? "") : "";
+  if (!appId || !cifrata.startsWith(ARUBA_CIPHER_PREFIX))
+    throw new Error("Collegamento banca non configurato: salvare app id e chiave privata.");
+  try {
+    return { appId, privateKeyPem: await decifraSegreto(cifrata) };
+  } catch {
+    throw new Error(
+      "Impossibile decifrare la chiave della banca (segreto server cambiato?). Reinserirla.",
+    );
+  }
+}
+
+export async function ebAvviaCollegamento(): Promise<{ url: string }> {
+  const cred = await getEbCredenziali();
+  const res = await ebAvviaAuth(cred);
+  logSp("info", "eb.auth", "Avviata autorizzazione banca (redirect alla SCA)");
+  return res;
+}
+
+export async function ebCompletaCollegamento(
+  code: string,
+): Promise<{ conti: EbConto[]; consensoScade: string }> {
+  const cred = await getEbCredenziali();
+  const res = await ebCreaSessione(cred, code);
+  const cfg = await discoverSharePoint();
+  const F = cfg.enableBankingFields;
+  if (F.ConsensoScade) await patchEbConfig({ [F.ConsensoScade]: res.consensoScade });
+  logSp("info", "eb.auth", `Sessione banca creata: ${res.conti.length} conti autorizzati`);
+  return res;
+}
+
+export async function ebScegliConto(uid: string, iban: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  requireEbList(cfg);
+  const F = cfg.enableBankingFields;
+  const patch: Record<string, unknown> = {};
+  if (F.ContoUid) patch[F.ContoUid] = uid;
+  if (F.ContoIban) patch[F.ContoIban] = iban;
+  await patchEbConfig(patch);
+  logSp("info", "eb.config", `Conto banca selezionato (IBAN …${iban.slice(-4)})`);
+}
+
+// Attivazione del sync: il passaggio Excel → API elimina i movimenti
+// dell'ULTIMO GIORNO importato (potenzialmente parziale) e fissa la data di
+// taglio a quel giorno: da lì in avanti scrive solo l'API, con la sua chiave.
+// Un blocco per chiamata; il client ripete finché rimanenti > 0.
+export async function ebTagliaUltimoGiorno(): Promise<{
+  dataTaglio: string;
+  eliminati: number;
+  rimanenti: number;
+}> {
+  const cfg = await discoverSharePoint();
+  const F = cfg.enableBankingFields;
+  const stato = await getEbStato();
+  let dataTaglio = stato.dataTaglio;
+  const movimenti = await fetchMovimenti();
+  if (!dataTaglio) {
+    // Prima chiamata: la data si fissa ORA, così i giri successivi non
+    // "mordono" il giorno precedente quando l'ultimo è stato svuotato.
+    dataTaglio = movimenti.reduce((max, m) => (m.dataContabile > max ? m.dataContabile : max), "");
+    if (!dataTaglio) {
+      // Archivio vuoto: si parte dal massimo che la banca concede (~90 giorni).
+      dataTaglio = new Date(Date.now() - 89 * 86400000).toISOString().slice(0, 10);
+    }
+    if (F.DataTaglio) await patchEbConfig({ [F.DataTaglio]: dataTaglio });
+  }
+  const daEliminare = movimenti
+    .filter((m) => m.dataContabile >= dataTaglio && !m.chiave.startsWith("EB|"))
+    .map((m) => m.id);
+  const blocco = daEliminare.slice(0, ANNULLA_MAX_PER_CALL);
+  const listId = requireMovimentiList(cfg);
+  let eliminati = 0;
+  const BATCH = 4;
+  for (let i = 0; i < blocco.length; i += BATCH) {
+    const esiti = await Promise.allSettled(
+      blocco.slice(i, i + BATCH).map(async (id) => {
+        const res = await gatewayFetch(`/sites/${cfg.siteId}/lists/${listId}/items/${id}`, {
+          method: "DELETE",
+        });
+        if (!res.ok && res.status !== 204)
+          throw new SpHttpError(res.status, `DELETE movimento ${id} → ${res.status}`, "delete");
+      }),
+    );
+    eliminati += esiti.filter((e) => e.status === "fulfilled").length;
+  }
+  const rimanenti = daEliminare.length - eliminati;
+  logSp(
+    "info",
+    "eb.taglio",
+    `Taglio Excel→API al ${dataTaglio}: ${eliminati} eliminati, ${rimanenti} rimanenti`,
+  );
+  return { dataTaglio, eliminati, rimanenti };
+}
+
+export interface EbSyncResult {
+  scritti: number;
+  doppioni: number;
+  pendenti: number;
+  dal: string;
+  /** Chiave di continuazione: il client richiama finché non è null. */
+  continuation: string | null;
+  errori: string[];
+}
+
+// Una PAGINA di transazioni per chiamata (≈100): il client ripete passando
+// `continuation` finché non torna null — stesso schema dell'import a blocchi.
+export async function ebSincronizza(
+  importId: string,
+  continuation?: string,
+): Promise<EbSyncResult> {
+  const cred = await getEbCredenziali();
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const F = cfg.movimentiFields;
+  const stato = await getEbStato();
+  if (!stato.dataTaglio)
+    throw new Error("Attivare prima il passaggio all'API (data di taglio assente).");
+  const contoUid = await (async () => {
+    const row = await fetchEbRow(cfg);
+    const k = cfg.enableBankingFields.ContoUid;
+    const uid = k ? String(row?.fields?.[k] ?? "").trim() : "";
+    if (!uid) throw new Error("Nessun conto selezionato: completare il collegamento banca.");
+    return uid;
+  })();
+
+  // Finestra: dalla data di taglio la prima volta; poi ultima sync − 7 giorni
+  // (riprende le contabilizzazioni tardive; i doppioni li ferma la chiave).
+  // NB: entro lo stesso giro (continuation) il calcolo resta identico perché
+  // UltimaSync si aggiorna solo a fine giro.
+  let dal = stato.dataTaglio;
+  if (stato.ultimaSync) {
+    const ripresa = new Date(new Date(stato.ultimaSync).getTime() - 7 * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    if (ripresa > dal) dal = ripresa;
+  }
+
+  const pagina = await ebTransazioni(cred, contoUid, dal, continuation);
+  const esistenti = new Set(await fetchMovimentiChiavi());
+  const regole = await fetchRegoleFinanza().catch(() => [] as RegolaFinanza[]);
+  const result: EbSyncResult = {
+    scritti: 0,
+    doppioni: 0,
+    pendenti: 0,
+    dal,
+    continuation: pagina.continuation,
+    errori: [],
+  };
+
+  const daScrivere: { fields: Record<string, unknown>; chiave: string }[] = [];
+  for (const t of pagina.transazioni) {
+    const m = ebMappaMovimento(t);
+    if (!m) {
+      result.pendenti++;
+      continue;
+    }
+    if (m.raw.dataContabile < stato.dataTaglio) continue; // mai sotto il taglio
+    if (esistenti.has(m.chiave)) {
+      result.doppioni++;
+      continue;
+    }
+    esistenti.add(m.chiave);
+    const c = applicaRegole(
+      { ...classificaMovimento(m.raw), descrizione: m.raw.descrizione },
+      regole,
+    );
+    const fields: Record<string, unknown> = { Title: m.chiave };
+    if (F.DataContabile) fields[F.DataContabile] = `${m.raw.dataContabile}T00:00:00Z`;
+    if (F.DataValuta) fields[F.DataValuta] = `${m.raw.dataValuta}T00:00:00Z`;
+    if (F.Importo) fields[F.Importo] = m.raw.importo;
+    if (F.Divisa) fields[F.Divisa] = m.raw.divisa;
+    if (F.Causale) fields[F.Causale] = m.raw.causale;
+    if (F.Descrizione) fields[F.Descrizione] = m.raw.descrizione;
+    if (F.Tipologia) fields[F.Tipologia] = c.tipologia;
+    if (F.Cliente && c.cliente) fields[F.Cliente] = c.cliente;
+    if (F.NrFattura && c.nrFattura) fields[F.NrFattura] = c.nrFattura;
+    if (F.DaVerificare) fields[F.DaVerificare] = c.daVerificare;
+    if (F.ImportId && importId) fields[F.ImportId] = importId;
+    daScrivere.push({ fields, chiave: m.chiave });
+  }
+
+  const BATCH = 4;
+  for (let i = 0; i < daScrivere.length; i += BATCH) {
+    const batch = daScrivere.slice(i, i + BATCH);
+    const esiti = await Promise.allSettled(
+      batch.map((b) =>
+        gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
+          method: "POST",
+          body: JSON.stringify({ fields: b.fields }),
+        }),
+      ),
+    );
+    esiti.forEach((e, j) => {
+      if (e.status === "fulfilled") result.scritti++;
+      else
+        result.errori.push(
+          `${batch[j].chiave.slice(0, 40)}…: ${
+            e.reason instanceof Error ? e.reason.message : String(e.reason)
+          }`,
+        );
+    });
+  }
+
+  // Fine giro senza errori: si salva l'orologio dell'ultima sincronizzazione.
+  if (!pagina.continuation && !result.errori.length) {
+    const k = cfg.enableBankingFields.UltimaSync;
+    if (k) await patchEbConfig({ [k]: new Date().toISOString() });
+  }
+  logSp(
+    "info",
+    "eb.sync",
+    `Sync banca (dal ${dal}): ${result.scritti} scritti, ${result.doppioni} doppioni, ${result.pendenti} pendenti${pagina.continuation ? ", altre pagine" : ""}`,
+  );
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Web Push — storage subscription + chiavi VAPID su lista PushSubscriptions
 // ---------------------------------------------------------------------------
 // La riga speciale Title="__vapid__" contiene le chiavi applicative (pubblica
@@ -4696,6 +5057,19 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
     ];
     if (colonne.length) throw new Error(`Colonne mancanti — [${colonne.join(", ")}]`);
     return `${disc.listFattureName} · ${disc.listFattureRicevuteName} · ${disc.listTerminiName} · ${disc.listAbbinamentiName}`;
+  });
+  await step("banca.config", "Collegamento banca PSD2 (lista EnableBankingConfig)", async () => {
+    if (!disc?.listEnableBanking)
+      throw new Error(
+        "Lista 'EnableBankingConfig' non trovata — richiesta dal sync bancario automatico",
+      );
+    if (disc.enableBankingMissing.length)
+      throw new Error(`Colonne mancanti — [${disc.enableBankingMissing.join(", ")}]`);
+    const stato = await getEbStato();
+    if (!stato.configurato) return "lista pronta — configurare da Finanza → Movimenti → Banca";
+    return stato.contoIban
+      ? `conto …${stato.contoIban.slice(-4)} · consenso fino al ${(stato.consensoScade ?? "").slice(0, 10) || "?"}`
+      : "app configurata — collegare il conto da Finanza → Movimenti → Banca";
   });
 
   await step("push.ready", "Notifiche push (lista + chiavi VAPID)", async () => {

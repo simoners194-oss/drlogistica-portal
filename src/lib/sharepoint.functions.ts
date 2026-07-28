@@ -83,6 +83,15 @@ import {
   getArubaStato,
   saveArubaCredenziali,
   type ArubaStato,
+  getEbStato,
+  saveEbApp,
+  ebAvviaCollegamento,
+  ebCompletaCollegamento,
+  ebScegliConto,
+  ebTagliaUltimoGiorno,
+  ebSincronizza,
+  type EbStato,
+  type EbSyncResult,
   getCodiceDipendente,
   type SpMovimento,
   type MovimentiFilter,
@@ -714,7 +723,11 @@ export const spAnnullaImport = createServerFn({ method: "POST" })
   .inputValidator((input: { importId: string }) => {
     const importId = String(input?.importId ?? "").trim();
     if (!importId) throw new Error("importId mancante");
-    if (importId !== LEGACY_IMPORT_ID && !importId.startsWith("IMP-"))
+    if (
+      importId !== LEGACY_IMPORT_ID &&
+      !importId.startsWith("IMP-") &&
+      !importId.startsWith("SYNC-")
+    )
       throw new Error("importId non valido");
     return { importId };
   })
@@ -920,6 +933,84 @@ export const spArubaProvaConnessione = createServerFn({ method: "POST" }).handle
     return arubaProvaConnessione();
   },
 );
+
+// --- Collegamento banca Enable Banking / PSD2 (solo direttore) ---------------
+// SOLA LETTURA del conto aziendale: autorizzazione con SCA della banca,
+// sincronizzazione dei movimenti nella lista MovimentiBancari.
+
+export const spEbStato = createServerFn({ method: "GET" }).handler(async (): Promise<EbStato> => {
+  await assertDirettore(await currentUser());
+  return getEbStato();
+});
+
+export const spEbSalvaApp = createServerFn({ method: "POST" })
+  .inputValidator((input: { appId: string; privateKeyPem: string }) => {
+    const appId = String(input?.appId ?? "").trim();
+    const privateKeyPem = String(input?.privateKeyPem ?? "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(appId)) throw new Error("App id non valido (atteso un UUID).");
+    if (!privateKeyPem || privateKeyPem.length > 10000)
+      throw new Error("Chiave privata mancante o troppo lunga.");
+    return { appId, privateKeyPem };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await saveEbApp(data.appId, data.privateKeyPem);
+    return { ok: true };
+  });
+
+export const spEbAvviaCollegamento = createServerFn({ method: "POST" }).handler(
+  async (): Promise<{ url: string }> => {
+    await assertDirettore(await currentUser());
+    return ebAvviaCollegamento();
+  },
+);
+
+export const spEbCompletaCollegamento = createServerFn({ method: "POST" })
+  .inputValidator((input: { code: string }) => {
+    const code = String(input?.code ?? "").trim();
+    if (!code || code.length > 2000) throw new Error("Codice di autorizzazione mancante.");
+    return { code };
+  })
+  .handler(async ({ data }) => {
+    await assertDirettore(await currentUser());
+    return ebCompletaCollegamento(data.code);
+  });
+
+export const spEbScegliConto = createServerFn({ method: "POST" })
+  .inputValidator((input: { uid: string; iban: string }) => {
+    const uid = String(input?.uid ?? "").trim();
+    const iban = String(input?.iban ?? "").trim();
+    if (!uid) throw new Error("Conto mancante.");
+    return { uid, iban };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await ebScegliConto(data.uid, data.iban);
+    return { ok: true };
+  });
+
+// Passaggio Excel → API: elimina un blocco di movimenti dell'ultimo giorno
+// importato per chiamata; il client ripete finché rimanenti > 0.
+export const spEbTaglia = createServerFn({ method: "POST" }).handler(
+  async (): Promise<{ dataTaglio: string; eliminati: number; rimanenti: number }> => {
+    await assertDirettore(await currentUser());
+    return ebTagliaUltimoGiorno();
+  },
+);
+
+export const spEbSincronizza = createServerFn({ method: "POST" })
+  .inputValidator((input: { importId: string; continuation?: string }) => {
+    const importId = String(input?.importId ?? "").slice(0, 60);
+    if (!importId.startsWith("SYNC-")) throw new Error("importId non valido");
+    const continuation = input?.continuation
+      ? String(input.continuation).slice(0, 2000)
+      : undefined;
+    return { importId, continuation };
+  })
+  .handler(async ({ data }): Promise<EbSyncResult> => {
+    await assertDirettore(await currentUser());
+    return ebSincronizza(data.importId, data.continuation);
+  });
 
 // --- Web Push: chiave pubblica + registrazione dispositivo -----------------
 export const spGetVapidPublicKey = createServerFn({ method: "GET" }).handler(

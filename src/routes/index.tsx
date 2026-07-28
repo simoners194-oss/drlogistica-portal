@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useNavigate } from "@tanstack/react-router";
 import { Logo } from "@/components/Logo";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { spLogin, spWhoAmI } from "@/lib/sharepoint.functions";
 import { APP_NAME, APP_TAGLINE } from "@/lib/modules";
-import { defaultLandingFor, normalizeRuolo, writeSession } from "@/lib/session";
+import { defaultLandingFor, normalizeRuolo, readSession, writeSession } from "@/lib/session";
 import { AppFooter } from "@/components/AppFooter";
 import { APP_INFO } from "@/lib/version";
 import { LangSwitcher, useLang } from "@/lib/i18n";
@@ -33,6 +33,22 @@ function Index() {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Ritorno dall'autorizzazione bancaria (Enable Banking): la banca rimanda
+  // qui con ?code=…. Il codice si mette da parte e si completa dal pannello
+  // Banca della sezione Finanza (subito, se il direttore è già loggato).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (!code) return;
+    try {
+      window.sessionStorage.setItem("dr:eb:code", code);
+    } catch {
+      /* sessionStorage non disponibile */
+    }
+    window.history.replaceState(null, "", "/");
+    if (readSession()) navigate({ to: "/finanza" });
+  }, [navigate]);
 
   const handleLogin = async (e?: React.FormEvent) => {
     e?.preventDefault();
