@@ -30,3 +30,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Dati bancari locali del probe e chiavi private — MAI nel repo
+enablebanking-probe.json
+*.pem
