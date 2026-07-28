@@ -111,7 +111,7 @@ import {
   type SpComunicazione,
   type CreateComunicazioneInput,
   type SpPresaVisione,
-  fetchTimbratureOggi,
+  fetchTimbratureRecenti,
   annullaUltimaTimbratura,
   fetchTimbratureGiorno,
   resocontoGiorno,
@@ -222,7 +222,12 @@ export const spGetSnapshot = createServerFn({ method: "GET" }).handler(
     // Garantisce discovery prima delle chiamate in parallelo (evita doppia
     // esecuzione della discovery quando la cache è fredda).
     await discoverSharePoint();
-    const [dipendenti, timbrature] = await Promise.all([fetchDipendenti(), fetchTimbratureOggi()]);
+    // Finestra ~36h, non solo oggi: il turno notturno aperto ieri sera deve
+    // risultare "presente" e chiudibile anche dopo mezzanotte.
+    const [dipendenti, timbrature] = await Promise.all([
+      fetchDipendenti(),
+      fetchTimbratureRecenti(),
+    ]);
     markSync();
     // Scope per ruolo: il dipendente vede SOLO il proprio record e le proprie
     // timbrature. Responsabile/operatore/autorizzatore/amministratore vedono

@@ -7,7 +7,7 @@
 // - un permesso (ore) riduce il previsto delle sue ore;
 // - smart working si timbra come un giorno normale.
 
-import type { EventoTimbratura } from "./presenze-logic";
+import { MAX_TURNO_ORE, type EventoTimbratura } from "./presenze-logic";
 
 export function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -35,31 +35,48 @@ export function lunediDellaSettimana(dateStr: string): string {
   return ymd(d);
 }
 
-// Ore lavorate (decimali) di una giornata dai suoi eventi, sommando i
-// SEGMENTI in servizio (aperti da entrata/fine-pausa, chiusi da
-// uscita/inizio-pausa): copre sia il modello a due tasti con più turni al
-// giorno sia i dati storici con le pause a eventi. Ritorna null se la
-// giornata non è chiusa (l'ultimo evento lascia il dipendente in servizio):
-// non calcolabile in modo attendibile → va corretta prima del rendiconto.
-export function oreLavorateGiorno(
+export interface OreDaTurni {
+  /** Ore (decimali) per GIORNO DI INIZIO TURNO: il notturno 22→02 conta
+   *  tutto sul giorno dell'entrata. */
+  oreGiorno: Map<string, number>;
+  /** Giorni con un turno dimenticato (aperto oltre MAX_TURNO_ORE): ore non
+   *  calcolabili in modo attendibile → da sanare prima del rendiconto. */
+  giorniNonChiusi: Set<string>;
+}
+
+// Ore lavorate dal FLUSSO COMPLETO degli eventi di un dipendente, a segmenti
+// in servizio (aperti da entrata/fine-pausa, chiusi da uscita/inizio-pausa),
+// anche a cavallo di mezzanotte. Un turno ancora in corso (entro il tetto)
+// non produce né ore né anomalia: si valuterà quando chiude.
+export function orePerGiornoDaTurni(
   eventi: { evento: EventoTimbratura; ora: string }[],
-): number | null {
+  now = new Date(),
+): OreDaTurni {
+  const maxMs = MAX_TURNO_ORE * 3600_000;
   const sorted = [...eventi].sort((a, b) => a.ora.localeCompare(b.ora));
-  if (!sorted.length) return null;
-  const last = sorted[sorted.length - 1].evento;
-  if (last === "entrata" || last === "fine-pausa") return null; // giornata aperta
-  let lavoroMs = 0;
-  let dentroDa: number | null = null;
+  const oreMs = new Map<string, number>();
+  const giorniNonChiusi = new Set<string>();
+  let apertura: { ms: number; giorno: string } | null = null;
   for (const e of sorted) {
     const ms = new Date(e.ora).getTime();
     if (e.evento === "entrata" || e.evento === "fine-pausa") {
-      if (dentroDa == null) dentroDa = ms;
-    } else if (dentroDa != null) {
-      lavoroMs += Math.max(0, ms - dentroDa);
-      dentroDa = null;
+      if (apertura == null) {
+        apertura = { ms, giorno: e.ora.slice(0, 10) };
+      } else if (ms - apertura.ms > maxMs) {
+        giorniNonChiusi.add(apertura.giorno);
+        apertura = { ms, giorno: e.ora.slice(0, 10) };
+      }
+    } else if (apertura != null) {
+      const durata = ms - apertura.ms;
+      if (durata > maxMs) giorniNonChiusi.add(apertura.giorno);
+      else oreMs.set(apertura.giorno, (oreMs.get(apertura.giorno) ?? 0) + Math.max(0, durata));
+      apertura = null;
     }
   }
-  return round2(lavoroMs / 3600000);
+  if (apertura != null && now.getTime() - apertura.ms > maxMs) giorniNonChiusi.add(apertura.giorno);
+  const oreGiorno = new Map<string, number>();
+  for (const [g, ms] of oreMs) oreGiorno.set(g, round2(ms / 3600000));
+  return { oreGiorno, giorniNonChiusi };
 }
 
 // Ore previste della settimana: monte ore contrattuale meno le assenze

@@ -12,7 +12,7 @@
 // -----------------------------------------------------------------------------
 
 import { SEDI, type Dipendente, type SedeId, type Timbratura } from "./mock-data";
-import { computeOreOggi } from "./presenze-logic";
+import { computeOreOggi, tagliaEventiVisibili } from "./presenze-logic";
 import {
   spCreateTimbratura,
   spGetDiagnostics,
@@ -122,25 +122,27 @@ function mergeDipendentiTimbrature(dips: SpDipendente[], tims: SpTimbratura[]): 
     byEmp.set(t.dipendenteId, arr);
   }
   return dips.map((d) => {
-    const eventi = (byEmp.get(d.id) ?? []).sort((a, b) => a.dataOra.localeCompare(b.dataOra));
-    const entrata = eventi.find((e) => e.evento === "entrata");
-    const last = eventi[eventi.length - 1];
+    // Lo snapshot copre ~36h: si mostrano gli eventi di OGGI più quelli del
+    // turno ancora in corso aperto ieri sera (notturno). I giorni precedenti
+    // già chiusi — o un turno dimenticato oltre il tetto — restano fuori,
+    // così lo stato del nuovo giorno riparte da "non timbrato".
+    const stream = (byEmp.get(d.id) ?? [])
+      .sort((a, b) => a.dataOra.localeCompare(b.dataOra))
+      .map((e) => ({ evento: e.evento, ora: e.dataOra }));
+    const visibili = tagliaEventiVisibili(stream);
+    const eventiOggi: Timbratura[] = visibili.map((e) => ({ tipo: e.evento, ora: e.ora }));
+    const entrata = eventiOggi.find((e) => e.tipo === "entrata");
+    const last = eventiOggi[eventiOggi.length - 1];
     let stato: Dipendente["stato"] = "non-timbrato";
     if (last) {
       stato =
-        last.evento === "entrata" || last.evento === "fine-pausa"
+        last.tipo === "entrata" || last.tipo === "fine-pausa"
           ? "presente"
-          : last.evento === "inizio-pausa"
+          : last.tipo === "inizio-pausa"
             ? "pausa"
             : "uscito";
     }
-    const ultimaTimbratura: Timbratura | undefined = last
-      ? { tipo: last.evento, ora: last.dataOra }
-      : undefined;
-    const eventiOggi: Timbratura[] = eventi.map((e) => ({
-      tipo: e.evento,
-      ora: e.dataOra,
-    }));
+    const ultimaTimbratura: Timbratura | undefined = last;
     const ore = computeOreOggi(eventiOggi);
     return {
       id: d.id,
@@ -150,7 +152,7 @@ function mergeDipendentiTimbrature(dips: SpDipendente[], tims: SpTimbratura[]): 
       sede: d.sede === "tutte" ? "" : d.sede,
       orarioAtteso: "09:00",
       stato,
-      entrataOra: entrata?.dataOra,
+      entrataOra: entrata?.ora,
       ultimaTimbratura,
       eventiOggi,
       oreLavorateMinuti: ore.oreLavorateMinuti,

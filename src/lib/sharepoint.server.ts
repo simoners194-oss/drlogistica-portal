@@ -38,7 +38,12 @@ import {
   type TipoAcquisto,
   type DecisioneRichiesta,
 } from "./richieste-logic";
-import { anomalieDelGiorno, UNDO_TIMBRATURA_MINUTI, type TipoAnomalia } from "./presenze-logic";
+import {
+  anomalieDaStream,
+  ultimoEventoEffettivo,
+  UNDO_TIMBRATURA_MINUTI,
+  type TipoAnomalia,
+} from "./presenze-logic";
 import { sedeTimbra } from "./mock-data";
 import {
   chiaveMovimento,
@@ -77,7 +82,7 @@ import {
   type VapidKeys,
 } from "./webpush.server";
 import {
-  oreLavorateGiorno,
+  orePerGiornoDaTurni,
   isoDow,
   lunediDellaSettimana,
   orePrevisteSettimana,
@@ -1569,6 +1574,13 @@ export async function fetchTimbratureOggi(): Promise<SpTimbratura[]> {
   return out;
 }
 
+// Finestra "a cavallo di mezzanotte" (~36h): serve alla macchina a stati a
+// TURNI e allo snapshot dashboard — chi è entrato ieri sera alle 22 deve
+// poter uscire alle 2 e risultare presente nel frattempo.
+export async function fetchTimbratureRecenti(oreIndietro = 36): Promise<SpTimbratura[]> {
+  return fetchTimbratureDaISO(new Date(Date.now() - oreIndietro * 3600_000).toISOString());
+}
+
 // ---------------------------------------------------------------------------
 // Anomalie giornaliere (Sprint 3, on-read) — vista operatore.
 // ---------------------------------------------------------------------------
@@ -1591,37 +1603,30 @@ export async function computeAnomalie(giorni = 14): Promise<AnomaliaItem[]> {
     fetchDipendenti(),
   ]);
   const byId = new Map(dips.map((d) => [d.id, d]));
-  const todayStr = new Date().toISOString().slice(0, 10);
 
-  // Raggruppa per dipendente + giorno (esclude oggi/futuro).
-  const groups = new Map<
-    string,
-    { dipId: string; giorno: string; eventi: { evento: EventoTimbratura; ora: string }[] }
-  >();
+  // Flusso COMPLETO per dipendente (i turni vivono anche a cavallo di
+  // mezzanotte: l'analisi per singolo giorno darebbe falsi "non chiusi").
+  // Si includono anche gli eventi di oggi: un turno in corso entro il tetto
+  // non è un'anomalia, uno aperto da più di MAX_TURNO_ORE lo è comunque.
+  const streams = new Map<string, { evento: EventoTimbratura; ora: string }[]>();
   for (const t of tims) {
-    const giorno = t.dataOra.slice(0, 10);
-    if (giorno >= todayStr) continue;
-    const key = `${t.dipendenteId}|${giorno}`;
-    let g = groups.get(key);
-    if (!g) {
-      g = { dipId: t.dipendenteId, giorno, eventi: [] };
-      groups.set(key, g);
-    }
-    g.eventi.push({ evento: t.evento, ora: t.dataOra });
+    const arr = streams.get(t.dipendenteId) ?? [];
+    arr.push({ evento: t.evento, ora: t.dataOra });
+    streams.set(t.dipendenteId, arr);
   }
 
   const out: AnomaliaItem[] = [];
-  for (const g of groups.values()) {
-    const dip = byId.get(g.dipId);
+  for (const [dipId, eventi] of streams) {
+    const dip = byId.get(dipId);
     const ore = dip?.oreSettimanali ?? null;
     const rilevaPausa = !(ore != null && ore <= 16);
-    for (const tipo of anomalieDelGiorno(g.eventi, { rilevaPausa })) {
+    for (const a of anomalieDaStream(eventi, { rilevaPausa })) {
       out.push({
-        dipendenteId: g.dipId,
-        nomeCompleto: dip ? dip.nomeCompleto || `${dip.nome} ${dip.cognome}` : `#${g.dipId}`,
+        dipendenteId: dipId,
+        nomeCompleto: dip ? dip.nomeCompleto || `${dip.nome} ${dip.cognome}` : `#${dipId}`,
         sede: dip?.sede ?? "",
-        data: g.giorno,
-        tipo,
+        data: a.giorno,
+        tipo: a.tipo,
       });
     }
   }
@@ -1801,15 +1806,21 @@ export async function computeRendicontoPeriodo(
     fetchDipendenti(),
   ]);
 
-  // Eventi per dipendente+giorno (giorno = data locale).
-  const eventiByDipDay = new Map<string, { evento: EventoTimbratura; ora: string }[]>();
+  // Flusso eventi per DIPENDENTE (i turni notturni attraversano la
+  // mezzanotte: le ore vanno al giorno di INIZIO turno). Si tiene un giorno
+  // in più oltre la fine del periodo, per chiudere l'eventuale notturno
+  // dell'ultimo giorno; l'uscita orfana a inizio finestra (turno iniziato
+  // prima del periodo) viene ignorata dal calcolo a segmenti.
+  const toPlus = new Date(to);
+  toPlus.setDate(toPlus.getDate() + 1);
+  const toPlusStr = ymd(toPlus);
+  const eventiByDip = new Map<string, { evento: EventoTimbratura; ora: string }[]>();
   for (const t of tims) {
     const giorno = ymd(new Date(t.dataOra));
-    if (giorno < fromStr || giorno > toStr) continue;
-    const key = `${t.dipendenteId}|${giorno}`;
-    const arr = eventiByDipDay.get(key) ?? [];
+    if (giorno < fromStr || giorno > toPlusStr) continue;
+    const arr = eventiByDip.get(t.dipendenteId) ?? [];
     arr.push({ evento: t.evento, ora: t.dataOra });
-    eventiByDipDay.set(key, arr);
+    eventiByDip.set(t.dipendenteId, arr);
   }
 
   // Assenze/ore da richieste (per dipendente+giorno).
@@ -1845,17 +1856,19 @@ export async function computeRendicontoPeriodo(
     let ferieGiorni = 0;
     let malattiaGiorni = 0;
 
-    // Ore lavorate per giorno su tutto il range esteso (servono al calcolo
-    // settimanale); nel totale mensile contano solo i giorni del mese.
+    // Ore lavorate per giorno DI INIZIO TURNO su tutto il range esteso
+    // (servono al calcolo settimanale); nel totale mensile contano solo i
+    // giorni del mese. Un turno dimenticato (aperto > tetto) rende il suo
+    // giorno "non chiuso": da sanare prima del rendiconto.
+    const turni = orePerGiornoDaTurni(eventiByDip.get(dipId) ?? []);
     const oreGiorno = new Map<string, number>();
     for (const g of eachDay(fromStr, toStr)) {
-      const ev = eventiByDipDay.get(`${dipId}|${g}`);
-      if (!ev || ev.length === 0) continue;
-      const ore = oreLavorateGiorno(ev);
-      if (ore == null) {
+      if (turni.giorniNonChiusi.has(g)) {
         if (inMonth(g)) giorniNonChiusi++;
         continue;
       }
+      const ore = turni.oreGiorno.get(g);
+      if (ore == null) continue;
       oreGiorno.set(g, ore);
       if (inMonth(g)) oreLavorate += ore;
     }
@@ -1942,13 +1955,14 @@ export async function createTimbratura(input: CreateTimbraturaInput): Promise<Sp
     throw new Error("dipendenteId non valido per SharePoint (atteso ID intero della lista).");
 
   // Validazione macchina a stati lato server: rifiuta transizioni non valide
-  // anche se il client fosse aggirato. Legge le timbrature odierne del
-  // dipendente e determina l'ultimo evento.
-  const oggi = await fetchTimbratureOggi();
-  const eventiDip = oggi
+  // anche se il client fosse aggirato. Finestra di ~36h, NON il solo giorno
+  // corrente: il turno notturno si chiude anche dopo mezzanotte; un turno
+  // aperto oltre il tetto conta come "nessuna timbratura" (nuova Entrata ok).
+  const recenti = await fetchTimbratureRecenti();
+  const eventiDip = recenti
     .filter((t) => t.dipendenteId === input.dipendenteId)
-    .sort((a, b) => a.dataOra.localeCompare(b.dataOra));
-  const last = eventiDip.length ? eventiDip[eventiDip.length - 1].evento : null;
+    .map((t) => ({ evento: t.evento, ora: t.dataOra }));
+  const last = ultimoEventoEffettivo(eventiDip);
   const allowed = nextAllowedSp(last);
   if (!allowed.includes(input.evento)) {
     logSp(
@@ -2037,10 +2051,12 @@ export async function deleteTimbratura(id: string): Promise<void> {
 // UNDO_TIMBRATURA_MINUTI ("ho premuto il tasto sbagliato"). La finestra è
 // verificata QUI sul dato reale, non sull'orologio del client.
 export async function annullaUltimaTimbratura(dipendenteId: string): Promise<SpTimbratura> {
-  const oggi = await fetchTimbratureOggi();
-  const mie = oggi.filter((t) => t.dipendenteId === dipendenteId);
+  // Finestra 36h: alle 00:02 si può ancora annullare la timbratura delle
+  // 23:59 (il limite vero restano i 5 minuti).
+  const recenti = await fetchTimbratureRecenti();
+  const mie = recenti.filter((t) => t.dipendenteId === dipendenteId);
   const ultima = mie[mie.length - 1];
-  if (!ultima) throw new Error("Nessuna timbratura da annullare oggi.");
+  if (!ultima) throw new Error("Nessuna timbratura da annullare.");
   const etaMs = Date.now() - new Date(ultima.dataOra).getTime();
   if (etaMs > UNDO_TIMBRATURA_MINUTI * 60_000)
     throw new Error(
@@ -2085,24 +2101,33 @@ export async function resocontoGiorno(
   dataISO: string, // YYYY-MM-DD
 ): Promise<ResocontoGiornoRiga[]> {
   const started = Date.now();
-  const dayStart = new Date(`${dataISO}T00:00:00`).toISOString();
-  const dayEnd = new Date(`${dataISO}T23:59:59.999`).toISOString();
-  const [tims, dips] = await Promise.all([fetchTimbratureDaISO(dayStart), fetchDipendenti()]);
-  const delGiorno = tims.filter((t) => t.dataOra <= dayEnd);
-  const perDip = new Map<string, SpTimbratura[]>();
-  for (const t of delGiorno) {
-    const l = perDip.get(t.dipendenteId) ?? [];
+  // Finestra estesa di ±1 giorno: il turno notturno chiude dopo mezzanotte e
+  // l'analisi delle anomalie ragiona a TURNI, non per giorno di calendario.
+  const prevStart = new Date(`${dataISO}T00:00:00`);
+  prevStart.setDate(prevStart.getDate() - 1);
+  const nextEnd = new Date(`${dataISO}T23:59:59.999`);
+  nextEnd.setDate(nextEnd.getDate() + 1);
+  const [tims, dips] = await Promise.all([
+    fetchTimbratureDaISO(prevStart.toISOString()),
+    fetchDipendenti(),
+  ]);
+  const finestra = tims.filter((t) => t.dataOra <= nextEnd.toISOString());
+  const perDipFinestra = new Map<string, SpTimbratura[]>();
+  for (const t of finestra) {
+    const l = perDipFinestra.get(t.dipendenteId) ?? [];
     l.push(t);
-    perDip.set(t.dipendenteId, l);
+    perDipFinestra.set(t.dipendenteId, l);
   }
   const sedeNorm = sede.trim().toLowerCase();
-  const oggi = new Date().toISOString().slice(0, 10);
-  const giornoConcluso = dataISO < oggi;
   const out: ResocontoGiornoRiga[] = [];
   for (const d of dips) {
     if (!d.visibile || !sedeTimbra(d.sede)) continue;
     if (sedeNorm !== "tutte" && d.sede.trim().toLowerCase() !== sedeNorm) continue;
-    const eventi = (perDip.get(d.id) ?? []).sort((a, b) => a.dataOra.localeCompare(b.dataOra));
+    const stream = (perDipFinestra.get(d.id) ?? []).sort((a, b) =>
+      a.dataOra.localeCompare(b.dataOra),
+    );
+    // In tabella si mostrano SOLO gli eventi del giorno richiesto.
+    const eventi = stream.filter((t) => t.dataOra.slice(0, 10) === dataISO);
     const ore = d.oreSettimanali;
     const rilevaPausa = !(ore != null && ore <= 16);
     out.push({
@@ -2111,14 +2136,14 @@ export async function resocontoGiorno(
       codice: d.codice,
       sede: d.sede,
       eventi,
-      // Le anomalie meccaniche hanno senso solo a giornata conclusa.
-      anomalie:
-        giornoConcluso && eventi.length
-          ? anomalieDelGiorno(
-              eventi.map((e) => ({ evento: e.evento, ora: e.dataOra })),
-              { rilevaPausa },
-            )
-          : [],
+      // Anomalie ATTRIBUITE a questo giorno (il turno in corso entro il
+      // tetto non è un'anomalia; quello dimenticato lo è anche oggi).
+      anomalie: anomalieDaStream(
+        stream.map((e) => ({ evento: e.evento, ora: e.dataOra })),
+        { rilevaPausa },
+      )
+        .filter((a) => a.giorno === dataISO)
+        .map((a) => a.tipo),
       senzaTimbrature: eventi.length === 0,
     });
   }
