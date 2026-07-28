@@ -207,6 +207,9 @@ function FinanzaPage() {
   const [ebEditApp, setEbEditApp] = useState(false);
   // Saldo attuale dalla banca (null = collegamento non attivo o non caricato).
   const [ebSaldoInfo, setEbSaldoInfo] = useState<EbSaldoInfo | null>(null);
+  // Motivo per cui il saldo non è disponibile: mostrato SOLO nel pannello
+  // Banca (la tab resta pulita per chi non usa il collegamento).
+  const [ebSaldoErr, setEbSaldoErr] = useState<string | null>(null);
 
   // Storico: annullamento in corso
   const [annullaBusy, setAnnullaBusy] = useState<string | null>(null);
@@ -267,8 +270,14 @@ function FinanzaPage() {
   // semplicemente non si mostra (né la colonna Saldo).
   const loadEbSaldo = () => {
     spEbSaldo()
-      .then((s) => setEbSaldoInfo(s as EbSaldoInfo | null))
-      .catch(() => setEbSaldoInfo(null));
+      .then((s) => {
+        setEbSaldoInfo(s as EbSaldoInfo | null);
+        setEbSaldoErr(s == null ? "Nessun saldo restituito dalla banca." : null);
+      })
+      .catch((err) => {
+        setEbSaldoInfo(null);
+        setEbSaldoErr(err instanceof Error ? err.message : String(err));
+      });
   };
   const refreshAll = (a: number) => {
     loadMovimenti(a);
@@ -1336,6 +1345,11 @@ function FinanzaPage() {
                           </span>
                         )}
                       </div>
+                      {ebSaldoErr && (
+                        <p className="text-xs text-status-absent">
+                          {t("fin.ebSaldoAttuale")}: {ebSaldoErr}
+                        </p>
+                      )}
                       <p className="text-[11px] text-muted-foreground">{t("fin.ebCollegaDesc")}</p>
                     </>
                   )}
