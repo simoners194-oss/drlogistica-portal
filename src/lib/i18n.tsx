@@ -486,6 +486,9 @@ const en = {
   "fin.ebPem": "Private key (contents of the .pem file)",
   "fin.ebSalvaApp": "Save application",
   "fin.ebSalvata": "Application saved (key encrypted).",
+  "fin.ebProvaBtn": "Test connection",
+  "fin.ebProvaOk": "Application recognized",
+  "fin.ebModifica": "Edit app",
   "fin.ebCollega": "Connect bank",
   "fin.ebRinnova": "Renew consent",
   "fin.ebCollegaDesc":
@@ -1148,6 +1151,9 @@ const it: Record<DictKey, string> = {
   "fin.ebPem": "Chiave privata (contenuto del file .pem)",
   "fin.ebSalvaApp": "Salva applicazione",
   "fin.ebSalvata": "Applicazione salvata (chiave cifrata).",
+  "fin.ebProvaBtn": "Prova collegamento",
+  "fin.ebProvaOk": "Applicazione riconosciuta",
+  "fin.ebModifica": "Modifica app",
   "fin.ebCollega": "Collega banca",
   "fin.ebRinnova": "Rinnova consenso",
   "fin.ebCollegaDesc":

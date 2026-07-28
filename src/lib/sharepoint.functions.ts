@@ -85,6 +85,7 @@ import {
   type ArubaStato,
   getEbStato,
   saveEbApp,
+  ebProvaApplicazione,
   ebAvviaCollegamento,
   ebCompletaCollegamento,
   ebScegliConto,
@@ -950,13 +951,22 @@ export const spEbSalvaApp = createServerFn({ method: "POST" })
     if (!/^[0-9a-f-]{36}$/i.test(appId)) throw new Error("App id non valido (atteso un UUID).");
     if (!privateKeyPem || privateKeyPem.length > 10000)
       throw new Error("Chiave privata mancante o troppo lunga.");
-    return { appId, privateKeyPem };
+    // Gli id Enable Banking sono UUID canonici minuscoli: il `kid` del JWT
+    // deve coincidere esattamente, quindi si normalizza qui.
+    return { appId: appId.toLowerCase(), privateKeyPem };
   })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     await assertDirettore(await currentUser());
     await saveEbApp(data.appId, data.privateKeyPem);
     return { ok: true };
   });
+
+export const spEbProva = createServerFn({ method: "POST" }).handler(
+  async (): Promise<{ nome: string; ambiente: string; redirect: string[] }> => {
+    await assertDirettore(await currentUser());
+    return ebProvaApplicazione();
+  },
+);
 
 export const spEbAvviaCollegamento = createServerFn({ method: "POST" }).handler(
   async (): Promise<{ url: string }> => {

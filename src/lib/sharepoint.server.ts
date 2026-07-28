@@ -56,6 +56,7 @@ import type {
   DirezioneFattura,
 } from "./fatture-logic";
 import {
+  ebApplicazione,
   ebAvviaAuth,
   ebCreaSessione,
   ebImportaChiave,
@@ -4336,6 +4337,17 @@ async function getEbCredenziali(): Promise<{ appId: string; privateKeyPem: strin
       "Impossibile decifrare la chiave della banca (segreto server cambiato?). Reinserirla.",
     );
   }
+}
+
+export async function ebProvaApplicazione(): Promise<{
+  nome: string;
+  ambiente: string;
+  redirect: string[];
+}> {
+  const cred = await getEbCredenziali();
+  const res = await ebApplicazione(cred);
+  logSp("info", "eb.prova", `Prova app Enable Banking OK: ${res.nome} (${res.ambiente})`);
+  return res;
 }
 
 export async function ebAvviaCollegamento(): Promise<{ url: string }> {

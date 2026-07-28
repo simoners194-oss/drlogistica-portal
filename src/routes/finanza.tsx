@@ -50,6 +50,7 @@ import {
   spApplicaRegolaFinanza,
   spEbStato,
   spEbSalvaApp,
+  spEbProva,
   spEbAvviaCollegamento,
   spEbCompletaCollegamento,
   spEbScegliConto,
@@ -194,6 +195,8 @@ function FinanzaPage() {
     null,
   );
   const [ebProgress, setEbProgress] = useState("");
+  // Riapre il form app anche a configurazione avvenuta (correzione dati).
+  const [ebEditApp, setEbEditApp] = useState(false);
 
   // Storico: annullamento in corso
   const [annullaBusy, setAnnullaBusy] = useState<string | null>(null);
@@ -330,7 +333,24 @@ function FinanzaPage() {
       await spEbSalvaApp({ data: { appId: ebAppId.trim(), privateKeyPem: ebPem.trim() } });
       toast.success(t("fin.ebSalvata"));
       setEbPem("");
+      setEbEditApp(false);
       loadEbStato();
+    } catch (err) {
+      toast.error(t("fin.ebErr"), { description: errMsg(err) });
+    } finally {
+      setEbBusy(null);
+    }
+  };
+
+  // Prova SENZA passare dalla banca: interroga l'anagrafica dell'app registrata
+  // (isola subito app id sbagliato o chiave privata non corrispondente).
+  const ebProva = async () => {
+    setEbBusy("salva");
+    try {
+      const r = await spEbProva();
+      toast.success(t("fin.ebProvaOk"), {
+        description: `${r.nome} · ${r.ambiente} · ${r.redirect.join(", ")}`,
+      });
     } catch (err) {
       toast.error(t("fin.ebErr"), { description: errMsg(err) });
     } finally {
@@ -1094,7 +1114,7 @@ function FinanzaPage() {
                     </p>
                   )}
 
-                  {!ebStato.configurato ? (
+                  {!ebStato.configurato || ebEditApp ? (
                     <div className="space-y-3 max-w-xl">
                       <p className="text-sm text-muted-foreground">{t("fin.ebNonConfig")}</p>
                       <div>
@@ -1116,19 +1136,34 @@ function FinanzaPage() {
                           className={`${inputCls} font-mono text-xs`}
                         />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => void ebSalvaApp()}
-                        disabled={ebBusy != null || !ebAppId.trim() || !ebPem.trim()}
-                        className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                      >
-                        {ebBusy === "salva" && <Loader2 className="h-4 w-4 animate-spin" />}
-                        {t("fin.ebSalvaApp")}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void ebSalvaApp()}
+                          disabled={ebBusy != null || !ebAppId.trim() || !ebPem.trim()}
+                          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                        >
+                          {ebBusy === "salva" && <Loader2 className="h-4 w-4 animate-spin" />}
+                          {t("fin.ebSalvaApp")}
+                        </button>
+                        {ebEditApp && (
+                          <button
+                            type="button"
+                            onClick={() => setEbEditApp(false)}
+                            className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+                          >
+                            {t("common.cancel")}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <>
                       <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2 text-[13px]">
+                        <div className="sm:col-span-2">
+                          <span className="text-muted-foreground">{t("fin.ebAppId")}: </span>
+                          <b className="font-mono text-xs">{ebStato.appId || "—"}</b>
+                        </div>
                         <div>
                           <span className="text-muted-foreground">{t("fin.ebConto")}: </span>
                           <b>{ebStato.contoIban || "—"}</b>
@@ -1178,6 +1213,26 @@ function FinanzaPage() {
                       )}
 
                       <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void ebProva()}
+                          disabled={ebBusy != null}
+                          className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+                        >
+                          {ebBusy === "salva" && <Loader2 className="h-4 w-4 animate-spin" />}
+                          {t("fin.ebProvaBtn")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEbAppId(ebStato.appId);
+                            setEbEditApp(true);
+                          }}
+                          disabled={ebBusy != null}
+                          className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+                        >
+                          {t("fin.ebModifica")}
+                        </button>
                         <button
                           type="button"
                           onClick={() => void ebCollega()}

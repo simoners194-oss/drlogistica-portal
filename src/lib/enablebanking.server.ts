@@ -112,6 +112,23 @@ export interface EbConto {
   nome: string;
 }
 
+/** Anagrafica dell'applicazione registrata: prova di collegamento SENZA
+ *  passare dalla banca (isola i problemi di app id / chiave privata). */
+export async function ebApplicazione(
+  cred: EbCredenziali,
+): Promise<{ nome: string; ambiente: string; redirect: string[] }> {
+  const app = await ebCall<{ name?: string; environment?: string; redirect_urls?: string[] }>(
+    cred,
+    "GET",
+    "/application",
+  );
+  return {
+    nome: String(app.name ?? cred.appId),
+    ambiente: String(app.environment ?? "?"),
+    redirect: app.redirect_urls ?? [],
+  };
+}
+
 /** Avvia l'autorizzazione: restituisce l'URL della banca da aprire nel browser. */
 export async function ebAvviaAuth(cred: EbCredenziali): Promise<{ url: string }> {
   const validUntil = new Date(Date.now() + 90 * 86400000).toISOString();
