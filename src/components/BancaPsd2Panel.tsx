@@ -458,31 +458,36 @@ export function BancaPsd2Panel() {
                     {t("fin.ebSaldoAttuale")}: {saldoErr}
                   </p>
                 )}
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="w-44">
-                    <label className="text-xs text-muted-foreground">
-                      {t("fin.ebSaldoManuale")}
-                    </label>
-                    <input
-                      value={saldoManuale}
-                      onChange={(e) => setSaldoManuale(e.target.value)}
-                      placeholder="0,00"
-                      inputMode="decimal"
-                      className={inputCls}
-                    />
+                {/* Ripiego: visibile solo senza saldo in cache, con l'ultimo
+                    aggiornamento fallito, o finché il valore è quello manuale
+                    (la banca non l'ha ancora sostituito). */}
+                {(saldo == null || saldoErr != null || saldo.tipo === "Manuale") && (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="w-44">
+                      <label className="text-xs text-muted-foreground">
+                        {t("fin.ebSaldoManuale")}
+                      </label>
+                      <input
+                        value={saldoManuale}
+                        onChange={(e) => setSaldoManuale(e.target.value)}
+                        placeholder="0,00"
+                        inputMode="decimal"
+                        className={inputCls}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void impostaSaldo()}
+                      disabled={busy != null || !saldoManuale.trim()}
+                      className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+                    >
+                      {t("fin.ebImposta")}
+                    </button>
+                    <span className="text-[11px] text-muted-foreground pb-2">
+                      {t("fin.ebSaldoManualeNota")}
+                    </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void impostaSaldo()}
-                    disabled={busy != null || !saldoManuale.trim()}
-                    className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
-                  >
-                    {t("fin.ebImposta")}
-                  </button>
-                  <span className="text-[11px] text-muted-foreground pb-2">
-                    {t("fin.ebSaldoManualeNota")}
-                  </span>
-                </div>
+                )}
                 <p className="text-[11px] text-muted-foreground">{t("fin.ebCollegaDesc")}</p>
               </>
             )}
