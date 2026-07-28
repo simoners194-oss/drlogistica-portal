@@ -6,7 +6,6 @@ import { PresenzeSkeleton } from "@/components/skeletons/PresenzeSkeleton";
 import {
   LogIn,
   Coffee,
-  PlayCircle,
   LogOut,
   Clock,
   Timer,
@@ -14,7 +13,7 @@ import {
   Hourglass,
   TrendingUp,
 } from "lucide-react";
-import { Lock, FileText, History, User } from "lucide-react";
+import { FileText, History, User } from "lucide-react";
 import { QuickAccess } from "@/components/QuickAccess";
 import { formatOra, type Dipendente, type Timbratura } from "@/lib/mock-data";
 import { dataService, displayStato, DISPLAY_DOT } from "@/lib/data-service";
@@ -129,10 +128,8 @@ function PresenzePage() {
     if (!me || busy) return;
     const last = lastEvento(me.eventiOggi ?? []);
     if (!isTransitionAllowed(tipo, last)) {
-      const chiusa = last === "uscita";
-      const motivo = reasonNotAllowed(tipo, last) ?? t("presenze.notAllowedNow");
-      toast.error(chiusa ? t("presenze.dayClosedTitle") : t("presenze.notAllowedNow"), {
-        description: motivo,
+      toast.error(t("presenze.notAllowedNow"), {
+        description: reasonNotAllowed(tipo, last) ?? t("presenze.notAllowedNow"),
       });
       return;
     }
@@ -179,11 +176,11 @@ function PresenzePage() {
     enabled: boolean;
     reason: string | null;
     tone: "primary" | "warn" | "ok" | "danger";
-  }[] = (
+  }[] = // Due soli tasti: la pausa è un'Uscita seguita da una nuova Entrata al
+  // rientro (più turni nello stesso giorno sono legittimi).
+  (
     [
       { tipo: "entrata", Icon: LogIn, tone: "primary" },
-      { tipo: "inizio-pausa", Icon: Coffee, tone: "warn" },
-      { tipo: "fine-pausa", Icon: PlayCircle, tone: "ok" },
       { tipo: "uscita", Icon: LogOut, tone: "danger" },
     ] as const
   ).map((a) => ({
@@ -274,13 +271,14 @@ function PresenzePage() {
       </div>
 
       {/* Riepilogo ore */}
+      {/* Fuori servizio: informativo, non bloccante (si può rientrare). */}
       {ore.chiusa && (
         <div
           role="status"
-          className="mt-5 md:mt-6 flex items-start gap-3 rounded-2xl border border-status-out/40 bg-status-out/5 p-4 sm:p-5 animate-fade-in"
+          className="mt-5 md:mt-6 flex items-start gap-3 rounded-2xl border border-border bg-muted/50 p-4 sm:p-5 animate-fade-in"
         >
-          <span className="h-9 w-9 shrink-0 rounded-lg bg-status-out/15 text-status-out flex items-center justify-center">
-            <Lock className="h-4 w-4" />
+          <span className="h-9 w-9 shrink-0 rounded-lg bg-secondary text-muted-foreground flex items-center justify-center">
+            <LogOut className="h-4 w-4" />
           </span>
           <div className="min-w-0">
             <div className="text-sm sm:text-[15px] font-semibold text-foreground">
@@ -318,30 +316,26 @@ function PresenzePage() {
         />
       </div>
 
-      <div className="mt-5 md:mt-6 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="mt-5 md:mt-6 grid gap-3 sm:gap-4 grid-cols-2">
         {azioni.map((a) => (
           <button
             key={a.tipo}
-            disabled={!a.enabled || busy || ore.chiusa}
+            disabled={!a.enabled || busy}
             onClick={() => timbra(a.tipo)}
-            title={ore.chiusa ? t("presenze.dayClosedMsg") : (a.reason ?? undefined)}
-            aria-label={`${a.label}${ore.chiusa ? ` — ${t("presenze.dayClosedMsg")}` : a.reason ? ` — ${a.reason}` : ""}`}
+            title={a.reason ?? undefined}
+            aria-label={`${a.label}${a.reason ? ` — ${a.reason}` : ""}`}
             className={`group relative rounded-2xl border p-4 sm:p-6 text-left transition-all min-h-[156px] sm:min-h-[176px] flex flex-col justify-between touch-manipulation
               disabled:cursor-not-allowed
-              ${a.enabled && !ore.chiusa ? "border-border bg-card shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-elegant)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.98]" : "border-dashed border-border/70 bg-muted/50 opacity-70"}
+              ${a.enabled ? "border-border bg-card shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-elegant)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.98]" : "border-dashed border-border/70 bg-muted/50 opacity-70"}
             `}
           >
             <div
               className={`inline-flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl text-white shadow-sm ${
-                !a.enabled || ore.chiusa
+                !a.enabled
                   ? "bg-muted-foreground/50"
                   : a.tone === "primary"
                     ? "bg-primary"
-                    : a.tone === "warn"
-                      ? "bg-status-break"
-                      : a.tone === "ok"
-                        ? "bg-status-present"
-                        : "bg-status-absent"
+                    : "bg-status-absent"
               }`}
             >
               <a.Icon className="h-6 w-6 sm:h-7 sm:w-7" />
@@ -353,16 +347,13 @@ function PresenzePage() {
               <div
                 className={`text-[11px] sm:text-xs mt-1 leading-snug ${a.enabled ? "text-muted-foreground" : "text-muted-foreground/90"}`}
               >
-                {ore.chiusa
-                  ? t("presenze.dayClosed")
-                  : a.enabled
-                    ? t("presenze.tapToRecord")
-                    : (a.reason ?? t("presenze.notAvailable"))}
+                {a.enabled ? t("presenze.tapToRecord") : (a.reason ?? t("presenze.notAvailable"))}
               </div>
             </div>
           </button>
         ))}
       </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">{t("presenze.hintPausa")}</p>
 
       {/* Timeline timbrature di oggi */}
       <div className="mt-5 md:mt-6 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">

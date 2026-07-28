@@ -6,7 +6,11 @@ import type { Timbratura } from "./mock-data";
 
 export type EventoTimbratura = Timbratura["tipo"];
 
+// Tutti i tipi di evento ESISTENTI (i dati storici contengono anche le pause).
 export const EVENTI: EventoTimbratura[] = ["entrata", "inizio-pausa", "fine-pausa", "uscita"];
+// Eventi che si possono ANCORA registrare: modello semplificato a due tasti.
+// La pausa non è più un evento: chi stacca preme Uscita e al rientro Entrata.
+export const EVENTI_ATTIVI: EventoTimbratura[] = ["entrata", "uscita"];
 
 // Finestra (minuti) entro cui il dipendente può annullare da solo l'ULTIMA
 // timbratura di oggi ("ho premuto il tasto sbagliato"). Oltre, serve
@@ -14,19 +18,13 @@ export const EVENTI: EventoTimbratura[] = ["entrata", "inizio-pausa", "fine-paus
 export const UNDO_TIMBRATURA_MINUTI = 5;
 
 // Macchina a stati: dato l'ultimo evento (o null se nessuna timbratura oggi),
-// quali eventi sono ammessi.
+// quali eventi sono ammessi. Più turni Entrata→Uscita nello stesso giorno
+// sono LEGITTIMI (la pausa è un turno che si chiude e uno che si riapre).
 export function nextAllowedEvents(last: EventoTimbratura | null): EventoTimbratura[] {
-  switch (last) {
-    case null:
-      return ["entrata"];
-    case "entrata":
-    case "fine-pausa":
-      return ["inizio-pausa", "uscita"];
-    case "inizio-pausa":
-      return ["fine-pausa"];
-    case "uscita":
-      return [];
-  }
+  if (last === null || last === "uscita") return ["entrata"];
+  // In servizio (entrata/fine-pausa) o pausa legacy aperta: si può solo uscire
+  // (l'uscita chiude anche una vecchia pausa rimasta aperta).
+  return ["uscita"];
 }
 
 export function isTransitionAllowed(
@@ -42,103 +40,87 @@ export function reasonNotAllowed(
   last: EventoTimbratura | null,
 ): string | null {
   if (isTransitionAllowed(evento, last)) return null;
-  if (last === "uscita") return GIORNATA_CHIUSA_MESSAGE;
-  switch (evento) {
-    case "entrata":
-      return last === null
-        ? "Timbratura non consentita in questo momento."
-        : "Entrata già registrata oggi.";
-    case "inizio-pausa":
-      return last === null
-        ? "Devi prima registrare l'entrata."
-        : last === "inizio-pausa"
-          ? "Pausa già in corso: registra la fine pausa."
-          : "Disponibile solo dopo un'entrata o una fine pausa.";
-    case "fine-pausa":
-      return last === null
-        ? "Devi prima registrare l'entrata."
-        : "Disponibile solo se hai una pausa in corso.";
-    case "uscita":
-      return last === null
-        ? "Devi prima registrare l'entrata."
-        : "Chiudi prima la pausa in corso, poi registra l'uscita.";
-  }
-  return "Timbratura non consentita in questo momento.";
+  if (evento === "entrata") return "Sei già in servizio: per staccare premi Uscita.";
+  if (evento === "uscita")
+    return last === null
+      ? "Devi prima registrare l'entrata."
+      : "Sei fuori servizio: al rientro premi Entrata.";
+  return BLOCK_MESSAGE;
 }
 
 export const BLOCK_MESSAGE = "Timbratura non consentita in questo momento.";
-
-// Messaggio ufficiale mostrato quando la giornata lavorativa è già stata
-// chiusa con l'Uscita: qualunque ulteriore timbratura è vietata al
-// dipendente e va gestita dal modulo amministrativo.
-export const GIORNATA_CHIUSA_MESSAGE =
-  "La giornata lavorativa è già stata chiusa. Per eventuali correzioni contatta il tuo responsabile.";
 
 // ---------------------------------------------------------------------------
 // Calcolo ore lavorate
 // ---------------------------------------------------------------------------
 
 export interface OreOggi {
-  entrataOra: string | null; // ISO
-  uscitaOra: string | null; // ISO se giornata chiusa
+  entrataOra: string | null; // ISO — prima entrata del giorno
+  uscitaOra: string | null; // ISO — ultima uscita, se ora si è fuori servizio
+  /** Minuti di stacco DENTRO la giornata (tra un'uscita e il rientro
+   *  successivo, o le vecchie pause a eventi). */
   pausaMinuti: number;
   oreLavorateMinuti: number;
   oltreOrarioMinuti: number; // solo se supera 8h
+  /** Vecchia pausa a eventi ancora aperta (solo dati storici). */
   inPausa: boolean;
+  /** Fuori servizio ADESSO (ultimo evento = uscita). Non è definitivo: una
+   *  nuova Entrata apre un altro turno nello stesso giorno. */
   chiusa: boolean;
 }
 
 export const SOGLIA_ORE_MIN = 8 * 60;
 
-// Ordina gli eventi per data ora crescente. Ipotesi: al massimo una entrata
-// e una uscita per giornata; più pause sono ammesse.
+// Calcolo a SEGMENTI: la giornata è una sequenza di turni "in servizio"
+// (aperti da entrata/fine-pausa, chiusi da uscita/inizio-pausa). Le ore
+// lavorate sono la somma dei segmenti; gli stacchi tra un segmento e il
+// successivo sono la "pausa". Copre sia il modello nuovo a due tasti sia i
+// dati storici con gli eventi pausa.
 export function computeOreOggi(events: Timbratura[], now = new Date()): OreOggi {
   const sorted = [...events].sort((a, b) => a.ora.localeCompare(b.ora));
-  const entrata = sorted.find((e) => e.tipo === "entrata");
-  const uscita = sorted.find((e) => e.tipo === "uscita");
-  if (!entrata) {
-    return {
-      entrataOra: null,
-      uscitaOra: null,
-      pausaMinuti: 0,
-      oreLavorateMinuti: 0,
-      oltreOrarioMinuti: 0,
-      inPausa: false,
-      chiusa: false,
-    };
-  }
-  const startMs = new Date(entrata.ora).getTime();
-  const endMs = uscita ? new Date(uscita.ora).getTime() : now.getTime();
-  // Somma degli intervalli di pausa (chiusi con fine-pausa; se aperti, fino a
-  // "now" o all'uscita).
+  let lavoroMs = 0;
   let pausaMs = 0;
-  let inPausa = false;
-  let inizioPausaMs: number | null = null;
+  let dentroDa: number | null = null; // inizio del segmento in corso
+  let fuoriDa: number | null = null; // inizio dello stacco in corso
+  let entrataOra: string | null = null;
+  let uscitaOra: string | null = null;
   for (const e of sorted) {
-    if (e.tipo === "inizio-pausa") {
-      inizioPausaMs = new Date(e.ora).getTime();
-    } else if (e.tipo === "fine-pausa" && inizioPausaMs != null) {
-      pausaMs += Math.max(0, new Date(e.ora).getTime() - inizioPausaMs);
-      inizioPausaMs = null;
+    const ms = new Date(e.ora).getTime();
+    if (e.tipo === "entrata" || e.tipo === "fine-pausa") {
+      if (dentroDa == null) {
+        dentroDa = ms;
+        if (fuoriDa != null) {
+          pausaMs += Math.max(0, ms - fuoriDa); // lo stacco si chiude: era pausa
+          fuoriDa = null;
+        }
+      }
+      if (entrataOra == null && e.tipo === "entrata") entrataOra = e.ora;
+    } else {
+      // uscita | inizio-pausa: chiude il segmento in corso
+      if (dentroDa != null) {
+        lavoroMs += Math.max(0, ms - dentroDa);
+        dentroDa = null;
+        fuoriDa = ms;
+      }
+      if (e.tipo === "uscita") uscitaOra = e.ora;
     }
   }
-  if (inizioPausaMs != null) {
-    // pausa ancora aperta
-    pausaMs += Math.max(0, endMs - inizioPausaMs);
-    inPausa = true;
-  }
+  const last = sorted.length ? sorted[sorted.length - 1].tipo : null;
+  if (dentroDa != null) lavoroMs += Math.max(0, now.getTime() - dentroDa); // turno in corso
+  const inPausa = last === "inizio-pausa"; // solo legacy
+  if (inPausa && fuoriDa != null) pausaMs += Math.max(0, now.getTime() - fuoriDa);
+  const chiusa = last === "uscita";
   const pausaMinuti = Math.floor(pausaMs / 60000);
-  const totMinuti = Math.max(0, Math.floor((endMs - startMs) / 60000));
-  const oreLavorateMinuti = Math.max(0, totMinuti - pausaMinuti);
+  const oreLavorateMinuti = Math.max(0, Math.floor(lavoroMs / 60000));
   const oltreOrarioMinuti = Math.max(0, oreLavorateMinuti - SOGLIA_ORE_MIN);
   return {
-    entrataOra: entrata.ora,
-    uscitaOra: uscita?.ora ?? null,
+    entrataOra,
+    uscitaOra: chiusa ? uscitaOra : null,
     pausaMinuti,
     oreLavorateMinuti,
     oltreOrarioMinuti,
     inPausa,
-    chiusa: Boolean(uscita),
+    chiusa,
   };
 }
 
@@ -157,28 +139,51 @@ export function lastEvento(events: Timbratura[]): EventoTimbratura | null {
 // ---------------------------------------------------------------------------
 // Rilevazione anomalie giornaliere (Sprint 3, on-read)
 // ---------------------------------------------------------------------------
-export type TipoAnomalia = "turno-non-chiuso" | "pausa-non-chiusa";
+export type TipoAnomalia = "turno-non-chiuso" | "pausa-non-chiusa" | "senza-stacco";
 
 export const LABEL_ANOMALIA: Record<TipoAnomalia, string> = {
   "turno-non-chiuso": "Turno non chiuso (manca l'uscita)",
   "pausa-non-chiusa": "Pausa non chiusa (manca la fine pausa)",
+  "senza-stacco": "Giornata lunga senza stacco (informativa)",
 };
 
-// Rileva le anomalie MECCANICHE di una giornata dai suoi eventi:
-// - turno non chiuso: c'è un'entrata ma nessuna uscita;
-// - pausa non chiusa: più inizio-pausa che fine-pausa.
-// `rilevaPausa=false` per chi non ha diritto alla pausa (es. part-time ≤16h),
-// così non si segnala una pausa che non è prevista.
+// Sopra questa durata continuativa, una giornata senza alcuno stacco viene
+// segnalata come anomalia INFORMATIVA (nessun blocco): con i due tasti la
+// pausa non è più dichiarata, si vede solo come uscita+rientro.
+export const SENZA_STACCO_MIN_ORE = 6;
+
+// Rileva le anomalie di una giornata CONCLUSA dai suoi eventi (con orario):
+// - turno non chiuso: l'ultimo evento lascia il dipendente in servizio;
+// - pausa non chiusa: più inizio-pausa che fine-pausa (solo dati storici);
+// - senza stacco (informativa): giornata chiusa, un unico turno continuativo
+//   oltre SENZA_STACCO_MIN_ORE ore, nessuna uscita/rientro né pausa in mezzo.
+// `rilevaPausa=false` per chi non ha diritto alla pausa (es. part-time ≤16h).
 export function anomalieDelGiorno(
-  eventi: EventoTimbratura[],
+  eventi: { evento: EventoTimbratura; ora: string }[],
   opts: { rilevaPausa: boolean },
 ): TipoAnomalia[] {
+  const sorted = [...eventi].sort((a, b) => a.ora.localeCompare(b.ora));
+  const tipi = sorted.map((e) => e.evento);
+  const last = tipi.length ? tipi[tipi.length - 1] : null;
   const out: TipoAnomalia[] = [];
-  if (eventi.includes("entrata") && !eventi.includes("uscita")) out.push("turno-non-chiuso");
-  if (opts.rilevaPausa) {
-    const ip = eventi.filter((e) => e === "inizio-pausa").length;
-    const fp = eventi.filter((e) => e === "fine-pausa").length;
-    if (ip > fp) out.push("pausa-non-chiusa");
+  if (last === "entrata" || last === "fine-pausa") out.push("turno-non-chiuso");
+  const ip = tipi.filter((e) => e === "inizio-pausa").length;
+  const fp = tipi.filter((e) => e === "fine-pausa").length;
+  if (opts.rilevaPausa && ip > fp) out.push("pausa-non-chiusa");
+  if (
+    opts.rilevaPausa &&
+    last === "uscita" &&
+    tipi.filter((e) => e === "entrata").length === 1 &&
+    tipi.filter((e) => e === "uscita").length === 1 &&
+    ip === 0
+  ) {
+    const entrata = sorted.find((e) => e.evento === "entrata");
+    const uscita = sorted.find((e) => e.evento === "uscita");
+    if (entrata && uscita) {
+      const oreContinuative =
+        (new Date(uscita.ora).getTime() - new Date(entrata.ora).getTime()) / 3600000;
+      if (oreContinuative > SENZA_STACCO_MIN_ORE) out.push("senza-stacco");
+    }
   }
   return out;
 }

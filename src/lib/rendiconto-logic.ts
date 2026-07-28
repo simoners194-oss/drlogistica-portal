@@ -35,29 +35,31 @@ export function lunediDellaSettimana(dateStr: string): string {
   return ymd(d);
 }
 
-// Ore lavorate (decimali) di una giornata dai suoi eventi. Ritorna null se la
-// giornata non è chiusa (entrata senza uscita): non calcolabile in modo
-// attendibile → va corretta nelle Anomalie prima del rendiconto.
+// Ore lavorate (decimali) di una giornata dai suoi eventi, sommando i
+// SEGMENTI in servizio (aperti da entrata/fine-pausa, chiusi da
+// uscita/inizio-pausa): copre sia il modello a due tasti con più turni al
+// giorno sia i dati storici con le pause a eventi. Ritorna null se la
+// giornata non è chiusa (l'ultimo evento lascia il dipendente in servizio):
+// non calcolabile in modo attendibile → va corretta prima del rendiconto.
 export function oreLavorateGiorno(
   eventi: { evento: EventoTimbratura; ora: string }[],
 ): number | null {
   const sorted = [...eventi].sort((a, b) => a.ora.localeCompare(b.ora));
-  const entrata = sorted.find((e) => e.evento === "entrata");
-  const uscita = [...sorted].reverse().find((e) => e.evento === "uscita");
-  if (!entrata || !uscita) return null;
-  const start = new Date(entrata.ora).getTime();
-  const end = new Date(uscita.ora).getTime();
-  if (end <= start) return 0;
-  let pausaMs = 0;
-  let ip: number | null = null;
+  if (!sorted.length) return null;
+  const last = sorted[sorted.length - 1].evento;
+  if (last === "entrata" || last === "fine-pausa") return null; // giornata aperta
+  let lavoroMs = 0;
+  let dentroDa: number | null = null;
   for (const e of sorted) {
-    if (e.evento === "inizio-pausa") ip = new Date(e.ora).getTime();
-    else if (e.evento === "fine-pausa" && ip != null) {
-      pausaMs += Math.max(0, new Date(e.ora).getTime() - ip);
-      ip = null;
+    const ms = new Date(e.ora).getTime();
+    if (e.evento === "entrata" || e.evento === "fine-pausa") {
+      if (dentroDa == null) dentroDa = ms;
+    } else if (dentroDa != null) {
+      lavoroMs += Math.max(0, ms - dentroDa);
+      dentroDa = null;
     }
   }
-  return round2(Math.max(0, end - start - pausaMs) / 3600000);
+  return round2(lavoroMs / 3600000);
 }
 
 // Ore previste della settimana: monte ore contrattuale meno le assenze

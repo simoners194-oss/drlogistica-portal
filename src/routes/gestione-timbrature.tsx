@@ -28,7 +28,7 @@ import type {
   SpTimbratura,
   ResocontoGiornoRiga,
 } from "@/lib/sharepoint.server";
-import { EVENTI, type EventoTimbratura } from "@/lib/presenze-logic";
+import { EVENTI_ATTIVI, type EventoTimbratura } from "@/lib/presenze-logic";
 import { formatOra, type SedeId } from "@/lib/mock-data";
 import { useLang } from "@/lib/i18n";
 
@@ -262,7 +262,9 @@ function GestioneTimbraturePage() {
     setSedeFilter("tutte");
     setDipendenteId(a.dipendenteId);
     setData(a.data);
-    setEvento(a.tipo === "turno-non-chiuso" ? "uscita" : "fine-pausa");
+    // Modello a due tasti: qualunque chiusura mancante si sana con un'uscita
+    // (anche una vecchia pausa rimasta aperta).
+    setEvento("uscita");
     setOra("");
   }
 
@@ -561,7 +563,7 @@ function GestioneTimbraturePage() {
                         <span className="text-[11px] text-muted-foreground">
                           {t("gt.dayAddMissing")}
                         </span>
-                        {EVENTI.map((ev) => (
+                        {EVENTI_ATTIVI.map((ev) => (
                           <button
                             key={ev}
                             type="button"
@@ -685,7 +687,7 @@ function GestioneTimbraturePage() {
                     value={evento}
                     onChange={(e) => setEvento(e.target.value as EventoTimbratura)}
                   >
-                    {EVENTI.map((ev) => (
+                    {EVENTI_ATTIVI.map((ev) => (
                       <option key={ev} value={ev}>
                         {tVal("evento", ev)}
                       </option>

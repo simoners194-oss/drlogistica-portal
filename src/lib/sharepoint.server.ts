@@ -1594,7 +1594,10 @@ export async function computeAnomalie(giorni = 14): Promise<AnomaliaItem[]> {
   const todayStr = new Date().toISOString().slice(0, 10);
 
   // Raggruppa per dipendente + giorno (esclude oggi/futuro).
-  const groups = new Map<string, { dipId: string; giorno: string; eventi: EventoTimbratura[] }>();
+  const groups = new Map<
+    string,
+    { dipId: string; giorno: string; eventi: { evento: EventoTimbratura; ora: string }[] }
+  >();
   for (const t of tims) {
     const giorno = t.dataOra.slice(0, 10);
     if (giorno >= todayStr) continue;
@@ -1604,7 +1607,7 @@ export async function computeAnomalie(giorni = 14): Promise<AnomaliaItem[]> {
       g = { dipId: t.dipendenteId, giorno, eventi: [] };
       groups.set(key, g);
     }
-    g.eventi.push(t.evento);
+    g.eventi.push({ evento: t.evento, ora: t.dataOra });
   }
 
   const out: AnomaliaItem[] = [];
@@ -1947,9 +1950,11 @@ export async function createTimbratura(input: CreateTimbraturaInput): Promise<Sp
       `Transizione non ammessa per dip=${input.dipendenteId}: ${last ?? "nessuna"} → ${input.evento}`,
     );
     throw new Error(
-      last === "uscita"
-        ? "La giornata lavorativa è già stata chiusa. Per eventuali correzioni contatta il tuo responsabile."
-        : "Timbratura non consentita in questo momento.",
+      input.evento === "entrata"
+        ? "Sei già in servizio: per staccare premi Uscita."
+        : last === null
+          ? "Devi prima registrare l'entrata."
+          : "Sei fuori servizio: al rientro premi Entrata.",
     );
   }
 
@@ -1989,18 +1994,12 @@ export async function createTimbratura(input: CreateTimbraturaInput): Promise<Sp
 // Macchina a stati identica a src/lib/presenze-logic.ts. Duplicata qui
 // perché sharepoint.server.ts non può importare moduli client-safe che
 // verrebbero comunque bundlati insieme; la logica è banale e stabile.
+// Modello a DUE TASTI: più turni Entrata→Uscita al giorno sono legittimi
+// (la pausa è un'uscita + un rientro); gli eventi pausa restano solo nei
+// dati storici e un'uscita chiude anche una vecchia pausa aperta.
 function nextAllowedSp(last: EventoTimbratura | null): EventoTimbratura[] {
-  switch (last) {
-    case null:
-      return ["entrata"];
-    case "entrata":
-    case "fine-pausa":
-      return ["inizio-pausa", "uscita"];
-    case "inizio-pausa":
-      return ["fine-pausa"];
-    case "uscita":
-      return [];
-  }
+  if (last === null || last === "uscita") return ["entrata"];
+  return ["uscita"];
 }
 
 export async function deleteTimbratura(id: string): Promise<void> {
@@ -2096,7 +2095,7 @@ export async function resocontoGiorno(
       anomalie:
         giornoConcluso && eventi.length
           ? anomalieDelGiorno(
-              eventi.map((e) => e.evento),
+              eventi.map((e) => ({ evento: e.evento, ora: e.dataOra })),
               { rilevaPausa },
             )
           : [],
@@ -2245,8 +2244,10 @@ export async function createTurnoManuale(input: CreateTurnoManualeInput): Promis
     if (Number.isNaN(ip) || Number.isNaN(fp)) throw new Error("Orari della pausa non validi.");
     if (!(entrata < ip && ip < fp && fp < uscita))
       throw new Error("La pausa deve essere compresa tra entrata e uscita (inizio prima di fine).");
-    eventi.push({ evento: "inizio-pausa", iso: input.inizioPausa });
-    eventi.push({ evento: "fine-pausa", iso: input.finePausa });
+    // Modello a due tasti: la pausa si scrive come uscita + rientro
+    // (due turni), non più come eventi pausa dedicati.
+    eventi.push({ evento: "uscita", iso: input.inizioPausa });
+    eventi.push({ evento: "entrata", iso: input.finePausa });
   }
   eventi.push({ evento: "uscita", iso: input.uscita });
   eventi.sort((a, b) => ms(a.iso) - ms(b.iso));
