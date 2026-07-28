@@ -28,6 +28,56 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.8.0",
+    date: "2026-07-28",
+    codename: "Scadenzario e riconciliazione",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        title: "Fatture emesse e ricevute con scadenzario",
+        description:
+          "Import degli XML del pannello Aruba (lo ZIP così com'è): il portale riconosce da solo emesse e ricevute, legge le scadenze dichiarate in fattura e mostra crediti e debiti aperti, in ritardo e pagati, per cliente e per fornitore. I reinvii dopo uno scarto SdI contano una volta sola.",
+      },
+      {
+        tag: "feature",
+        title: "Riconciliazione con il conto corrente",
+        description:
+          'Gli incassi e i pagamenti del conto si abbinano alle fatture: automaticamente quando il bonifico cita il numero o l\'importo coincide, "a scalare" per acconti e saldi mensili, e a mano per i casi particolari. Ogni abbinamento resta registrato e si può rimuovere.',
+      },
+      {
+        tag: "feature",
+        title: "Regole apprese in Finanza",
+        description:
+          "Le correzioni del direttore diventano regole permanenti: tipologia e nome della controparte si applicano da soli a ogni estratto conto futuro e, a scelta, anche all'archivio. Overview delle spese con filtro per tipologia e per anno.",
+      },
+      {
+        tag: "feature",
+        title: "Annulla ultima timbratura",
+        description:
+          "Hai premuto il tasto sbagliato? Entro 5 minuti puoi annullare da solo l'ultima timbratura: i pulsanti corretti tornano subito attivi.",
+      },
+      {
+        tag: "feature",
+        title: "Resoconto giornaliero timbrature",
+        description:
+          "In Gestione timbrature l'operatore sceglie sede e giorno e vede tutti i dipendenti con le loro timbrature — compreso chi non ha timbrato nulla — e corregge al volo: elimina l'evento sbagliato e inserisce quelli mancanti.",
+      },
+      {
+        tag: "improvement",
+        title: "Dashboard più rapida",
+        description:
+          "Tocca una sede nella sintesi per filtrare la dashboard e saltare direttamente al suo riepilogo.",
+      },
+      {
+        tag: "fix",
+        title: "Traduzioni corrette su Chrome",
+        description:
+          'Risolte le etichette assurde che alcuni telefoni mostravano (es. "Minerale lavorato"): era la traduzione automatica di Chrome; ora la lingua della pagina è dichiarata correttamente. Se il problema persiste su un dispositivo, impostare una volta "Non tradurre mai questo sito".',
+      },
+    ],
+  },
+  {
     version: "1.7.0",
     date: "2026-07-22",
     codename: "Finanza",
