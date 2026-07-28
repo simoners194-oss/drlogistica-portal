@@ -4557,6 +4557,9 @@ export interface EbSyncResult {
   /** Chiave di continuazione: il client richiama finché non è null. */
   continuation: string | null;
   errori: string[];
+  /** Motivo per cui il saldo NON si è aggiornato a fine giro (es. limite
+   *  PSD2 o colonna SaldoCache assente): il sync resta valido comunque. */
+  saldoErrore?: string;
 }
 
 // Una PAGINA di transazioni per chiamata (≈100): il client ripete passando
@@ -4664,11 +4667,19 @@ export async function ebSincronizza(
   if (!pagina.continuation && !result.errori.length) {
     const k = cfg.enableBankingFields.UltimaSync;
     if (k) await patchEbConfig({ [k]: new Date().toISOString() });
-    try {
-      const s = await ebSaldo(cred, contoUid, psu);
-      if (s) await salvaSaldoCache(cfg, { ...s, aggiornatoAl: new Date().toISOString() });
-    } catch {
-      /* limite giornaliero: resta l'ultimo saldo noto in cache */
+    if (!cfg.enableBankingFields.SaldoCache) {
+      result.saldoErrore =
+        'Colonna "SaldoCache" assente sulla lista EnableBankingConfig: aggiungerla (testo a più righe) e fare Riscopri.';
+    } else {
+      try {
+        const s = await ebSaldo(cred, contoUid, psu);
+        if (s) await salvaSaldoCache(cfg, { ...s, aggiornatoAl: new Date().toISOString() });
+        else result.saldoErrore = "La banca non ha restituito saldi per il conto.";
+      } catch (err) {
+        // Limite giornaliero o errore transitorio: il sync resta valido.
+        result.saldoErrore = err instanceof Error ? err.message : String(err);
+        logSp("warn", "eb.saldo", `Saldo non aggiornato a fine sync: ${result.saldoErrore}`);
+      }
     }
   }
   logSp(

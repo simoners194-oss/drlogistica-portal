@@ -308,6 +308,7 @@ function FinanzaPage() {
     let scritti = 0;
     let doppioni = 0;
     let pendenti = 0;
+    let saldoErrore: string | undefined;
     try {
       let continuation: string | undefined;
       let guard = 0;
@@ -316,6 +317,7 @@ function FinanzaPage() {
         scritti += r.scritti;
         doppioni += r.doppioni;
         pendenti += r.pendenti;
+        saldoErrore = r.saldoErrore;
         if (r.errori.length) throw new Error(r.errori[0]);
         setEbProgress(String(scritti));
         if (!r.continuation || ++guard > 100) break;
@@ -324,6 +326,9 @@ function FinanzaPage() {
       toast.success(t("fin.ebSyncDone"), {
         description: `${scritti} ${t("fin.ebNuovi")} · ${doppioni} ${t("fin.ebGiaPresenti")} · ${pendenti} ${t("fin.ebPendenti")}`,
       });
+      // Sync ok ma saldo non aggiornato: si dice PERCHÉ (limite banca,
+      // colonna mancante…), altrimenti l'assenza del saldo resta un mistero.
+      if (saldoErrore) toast.warning(t("fin.ebSaldoAttuale"), { description: saldoErrore });
       loadEbStato();
       refreshAll(anno);
     } catch (err) {

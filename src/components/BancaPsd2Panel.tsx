@@ -186,6 +186,7 @@ export function BancaPsd2Panel() {
     let scritti = 0;
     let doppioni = 0;
     let pendenti = 0;
+    let sErr: string | undefined;
     try {
       let continuation: string | undefined;
       let guard = 0;
@@ -194,6 +195,7 @@ export function BancaPsd2Panel() {
         scritti += r.scritti;
         doppioni += r.doppioni;
         pendenti += r.pendenti;
+        sErr = r.saldoErrore;
         if (r.errori.length) throw new Error(r.errori[0]);
         setProgress(String(scritti));
         if (!r.continuation || ++guard > 100) break;
@@ -203,7 +205,16 @@ export function BancaPsd2Panel() {
         description: `${scritti} ${t("fin.ebNuovi")} · ${doppioni} ${t("fin.ebGiaPresenti")} · ${pendenti} ${t("fin.ebPendenti")}`,
       });
       loadStato();
-      loadSaldo();
+      if (sErr) {
+        // Il motivo vero (limite banca, colonna mancante…) non va coperto dal
+        // messaggio generico di cache vuota: si ricarica solo il valore.
+        setSaldoErr(sErr);
+        spEbSaldo()
+          .then((s) => setSaldo(s as EbSaldoInfo | null))
+          .catch(() => setSaldo(null));
+      } else {
+        loadSaldo();
+      }
     } catch (err) {
       toast.error(t("fin.ebErr"), { description: errMsg(err) });
     } finally {
