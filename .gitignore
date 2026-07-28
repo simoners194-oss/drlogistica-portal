@@ -32,5 +32,5 @@ dist-ssr
 *.sw?
 
 # Dati bancari locali del probe e chiavi private — MAI nel repo
-enablebanking-probe.json
+enablebanking-*.json
 *.pem
