@@ -159,8 +159,15 @@ export function scadenzaFattura(dataDocumento: string, giorni: number): string {
 export type StatoIncasso = "Pagata" | "Parziale" | "Non incassata" | "NC";
 
 export interface FatturaStato {
+  /** Incassato UFFICIALE: se Aruba dice incassata è il totale della fattura,
+   *  altrimenti quanto risulta abbinato in banca. */
   incassato: number;
+  /** Quanto risulta dai soli ABBINAMENTI bancari (verifica). */
+  incassatoBanca: number;
+  /** Credito ancora aperto secondo lo stato UFFICIALE. */
   residuo: number;
+  /** Residuo secondo i soli abbinamenti bancari. */
+  residuoBanca: number;
   /** Stato UFFICIALE (Aruba se presente, altrimenti dagli abbinamenti). */
   stato: StatoIncasso;
   /** Stato ricavato dai soli abbinamenti bancari (riconciliazione). */
@@ -190,7 +197,9 @@ export function computeStatoFattura(
   if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) {
     return {
       incassato,
+      incassatoBanca: incassato,
       residuo: 0,
+      residuoBanca: 0,
       stato: "NC",
       statoBanca: "NC",
       aruba: parseIncassoAruba(f.incassoAruba),
@@ -200,11 +209,11 @@ export function computeStatoFattura(
       giorniRitardo: 0,
     };
   }
-  const residuo = Math.max(0, f.totale - incassato);
+  const residuoBanca = Math.max(0, f.totale - incassato);
   // Stato dagli ABBINAMENTI bancari (riconciliazione): informazione di
   // dettaglio, mostra quanto risulta effettivamente arrivato sul conto.
   const statoBanca: StatoIncasso =
-    residuo <= TOLLERANZA_SALDO
+    residuoBanca <= TOLLERANZA_SALDO
       ? "Pagata"
       : incassato > TOLLERANZA_SALDO
         ? "Parziale"
@@ -234,9 +243,15 @@ export function computeStatoFattura(
   const discordante =
     (aruba === "Incassata" && statoBanca !== "Pagata") ||
     (aruba === "Non incassata" && statoBanca === "Pagata");
+  // Credito aperto e incassato UFFICIALI: se Aruba dà la fattura per
+  // incassata il credito è chiuso, anche se in banca l'abbinamento manca.
+  const residuo = aruba === "Incassata" ? 0 : residuoBanca;
+  const incassatoUff = aruba === "Incassata" ? f.totale : incassato;
   return {
-    incassato,
+    incassato: incassatoUff,
+    incassatoBanca: incassato,
     residuo,
+    residuoBanca,
     stato,
     statoBanca,
     aruba,
@@ -332,6 +347,9 @@ export function proponiAbbinamenti(
         f.direzione === direzione &&
         !isNotaCredito(f.tipoDocumento) &&
         !isEsclusaDalCredito(f) &&
+        // Chiusa su Aruba: nessun incasso va allocato qui (lo stato ufficiale
+        // vince; l'eventuale discordanza si vede nella tab Fatture).
+        parseIncassoAruba(f.incassoAruba) !== "Incassata" &&
         f.totale > 0,
     )
     .map((f) => ({
@@ -442,6 +460,8 @@ export function proponiAbbinamentiFIFO(
   for (const f of fatture) {
     if (f.direzione !== direzione) continue;
     if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) continue;
+    // Chiusa su Aruba: fuori dal FIFO (lo stato ufficiale vince).
+    if (parseIncassoAruba(f.incassoAruba) === "Incassata") continue;
     const residuo = round(f.totale - (incassatoPerFattura.get(f.nomeFile) ?? 0));
     if (residuo <= TOLLERANZA_SALDO) continue;
     const key = clienteGroupKey(f.cliente);

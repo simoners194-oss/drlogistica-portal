@@ -225,14 +225,26 @@ export function FattureTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conStato, anniF, clienteF, statiF]);
 
-  // Riepilogo (sugli anni filtrati, tutte le fatture non escluse).
+  // Riepilogo (sugli anni filtrati, tutte le fatture non escluse). Gli importi
+  // seguono lo stato UFFICIALE (Aruba quando c'è); `confermatoBanca` dice
+  // quanta parte dell'incassato risulta anche dagli abbinamenti bancari.
   const riepilogo = useMemo(() => {
     const base = conStato.filter((x) => matchAnno(x) && x.s.stato !== "NC");
     const residuo = base.reduce((s, x) => s + x.s.residuo, 0);
     const inRitardo = base.filter((x) => x.s.inRitardo);
     const ritardoImporto = inRitardo.reduce((s, x) => s + x.s.residuo, 0);
     const incassato = base.reduce((s, x) => s + x.s.incassato, 0);
-    return { n: base.length, residuo, nRitardo: inRitardo.length, ritardoImporto, incassato };
+    const confermatoBanca = base.reduce((s, x) => s + x.s.incassatoBanca, 0);
+    const nDiscordanti = base.filter((x) => x.s.discordante).length;
+    return {
+      n: base.length,
+      residuo,
+      nRitardo: inRitardo.length,
+      ritardoImporto,
+      incassato,
+      confermatoBanca,
+      nDiscordanti,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conStato, anniF]);
 
@@ -724,6 +736,23 @@ export function FattureTab() {
           </div>
           <div className="mt-1 text-2xl font-semibold tabular-nums text-status-present">
             {fmtImporto(riepilogo.incassato)} €
+          </div>
+          {/* La banca CONFERMA una parte dell'incassato ufficiale: la
+              riconciliazione è un controllo, non la fonte dello stato. */}
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            {t("ft.kpiConfermatoBanca")} {fmtImporto(riepilogo.confermatoBanca)} €
+            {riepilogo.nDiscordanti > 0 && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => setStatiF(["discordante"])}
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  {riepilogo.nDiscordanti} {t("ft.kpiDaVerificare")}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
