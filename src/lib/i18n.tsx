@@ -490,6 +490,8 @@ const en = {
   "fin.ebProvaOk": "Application recognized",
   "fin.ebModifica": "Edit app",
   "fin.ebSaldoAttuale": "Current balance",
+  "fin.ebSaldoCacheVuota":
+    "No balance stored yet: it will be fetched with the next synchronization (the bank caps daily PSD2 accesses, so the balance is read only while syncing).",
   "fin.saldo": "Balance",
   "fin.page": "Page",
   "fin.pageOf": "of",
@@ -1160,6 +1162,8 @@ const it: Record<DictKey, string> = {
   "fin.ebProvaOk": "Applicazione riconosciuta",
   "fin.ebModifica": "Modifica app",
   "fin.ebSaldoAttuale": "Saldo attuale",
+  "fin.ebSaldoCacheVuota":
+    "Saldo non ancora memorizzato: arriverà con la prossima sincronizzazione (la banca limita gli accessi PSD2 giornalieri, quindi il saldo si legge solo durante il sync).",
   "fin.saldo": "Saldo",
   "fin.page": "Pagina",
   "fin.pageOf": "di",

@@ -54,11 +54,13 @@ export function BancaPsd2Panel() {
       .then((s) => setStato(s as EbStato))
       .catch((err) => toast.error(t("fin.ebErr"), { description: errMsg(err) }));
   };
+  // Lettura dalla CACHE (mai dalla banca: il limite PSD2 giornaliero si
+  // spende solo durante la sincronizzazione, che aggiorna anche il saldo).
   const loadSaldo = () => {
     spEbSaldo()
       .then((s) => {
         setSaldo(s as EbSaldoInfo | null);
-        setSaldoErr(s == null ? "Nessun saldo restituito dalla banca." : null);
+        setSaldoErr(s == null ? t("fin.ebSaldoCacheVuota") : null);
       })
       .catch((err) => {
         setSaldo(null);

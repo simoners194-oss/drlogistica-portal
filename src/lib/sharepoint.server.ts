@@ -64,7 +64,9 @@ import {
   ebSaldo,
   ebTransazioni,
   type EbConto,
+  type EbPsu,
 } from "./enablebanking.server";
+import { getRequestHeader, getRequestIP } from "@tanstack/react-start/server";
 export { LEGACY_IMPORT_ID };
 export type { RegolaFinanza, FatturaRaw, TerminePagamento, AbbinamentoIncasso, DirezioneFattura };
 import { normalizeRuolo } from "./session";
@@ -297,6 +299,10 @@ export const SP_DISPLAY = {
     ConsensoScade: "ConsensoScade",
     DataTaglio: "DataTaglio",
     UltimaSync: "UltimaSync",
+    // Ultimo saldo noto (JSON): la banca limita gli accessi giornalieri PSD2,
+    // quindi il saldo si chiede SOLO durante la sincronizzazione e le pagine
+    // mostrano questo valore in cache.
+    SaldoCache: "SaldoCache",
   },
   // Richieste di acquisto (modulo Procurement). Lista OPZIONALE.
   acquisti: {
@@ -4371,23 +4377,94 @@ export interface EbSaldoInfo {
   divisa: string;
   tipo: string;
   riferimento: string;
+  /** Quando il saldo è stato letto dalla banca (ISO). */
+  aggiornatoAl?: string;
   /** Progressivo del movimento più recente in archivio: è l'àncora che
    *  permette al client di calcolare il saldo dopo OGNI riga
    *  (saldoRiga = saldo − (progressivoFinale − progressivoRiga)). */
   progressivoFinale: number;
 }
 
-export async function ebSaldoAttuale(): Promise<EbSaldoInfo | null> {
-  const cred = await getEbCredenziali();
+type EbSaldoCache = Omit<EbSaldoInfo, "progressivoFinale">;
+
+/** Contesto PSU dell'azione in corso: IP e browser dell'utente loggato.
+ *  Inoltrati alla banca, marcano la richiesta come "utente presente"
+ *  (esente dal limite giornaliero PSD2). Best-effort. */
+function psuContext(): EbPsu {
+  try {
+    const fwd = getRequestHeader("x-forwarded-for");
+    const ip =
+      getRequestHeader("cf-connecting-ip") ||
+      (fwd ? fwd.split(",")[0].trim() : undefined) ||
+      getRequestIP() ||
+      undefined;
+    return { ip, userAgent: getRequestHeader("user-agent") || undefined };
+  } catch {
+    return {};
+  }
+}
+
+function leggiSaldoCache(cfg: SpDiscovered, f: Record<string, unknown>): EbSaldoCache | null {
+  const k = cfg.enableBankingFields.SaldoCache;
+  if (!k) return null;
+  try {
+    const raw = String(f[k] ?? "").trim();
+    if (!raw) return null;
+    const j = JSON.parse(raw) as EbSaldoCache;
+    return Number.isFinite(j.saldo) ? j : null;
+  } catch {
+    return null;
+  }
+}
+
+async function salvaSaldoCache(cfg: SpDiscovered, s: EbSaldoCache): Promise<void> {
+  const k = cfg.enableBankingFields.SaldoCache;
+  if (!k) return; // colonna assente: si degrada senza cache
+  try {
+    await patchEbConfig({ [k]: JSON.stringify(s) });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// La banca limita gli accessi PSD2 giornalieri per conto: di norma si serve
+// l'ultimo saldo in cache (nessuna chiamata alla banca); `forzaBanca` si usa
+// solo dentro la sincronizzazione, con il contesto PSU dell'utente.
+export async function ebSaldoAttuale(forzaBanca = false): Promise<EbSaldoInfo | null> {
   const cfg = await discoverSharePoint();
+  requireEbList(cfg);
   const row = await fetchEbRow(cfg);
+  const f = row?.fields ?? {};
+  const cache = leggiSaldoCache(cfg, f);
+  const progressivoFinale = async () => {
+    const all = await fetchMovimenti(); // ordinati dal più recente
+    return all[0]?.progressivo ?? 0;
+  };
+  if (!forzaBanca) {
+    return cache ? { ...cache, progressivoFinale: await progressivoFinale() } : null;
+  }
+  const cred = await getEbCredenziali();
   const k = cfg.enableBankingFields.ContoUid;
-  const uid = k ? String(row?.fields?.[k] ?? "").trim() : "";
+  const uid = k ? String(f[k] ?? "").trim() : "";
   if (!uid) throw new Error("Nessun conto selezionato: completare il collegamento banca.");
-  const s = await ebSaldo(cred, uid);
-  if (!s) return null;
-  const all = await fetchMovimenti(); // ordinati dal più recente
-  return { ...s, progressivoFinale: all[0]?.progressivo ?? 0 };
+  try {
+    const s = await ebSaldo(cred, uid, psuContext());
+    if (!s) return cache ? { ...cache, progressivoFinale: await progressivoFinale() } : null;
+    const nuovo: EbSaldoCache = { ...s, aggiornatoAl: new Date().toISOString() };
+    await salvaSaldoCache(cfg, nuovo);
+    return { ...nuovo, progressivoFinale: await progressivoFinale() };
+  } catch (err) {
+    // Limite giornaliero o errore transitorio: si serve l'ultimo saldo noto.
+    if (cache) {
+      logSp(
+        "warn",
+        "eb.saldo",
+        `Saldo dalla banca non disponibile, servito dalla cache: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return { ...cache, progressivoFinale: await progressivoFinale() };
+    }
+    throw err;
+  }
 }
 
 export async function ebAvviaCollegamento(): Promise<{ url: string }> {
@@ -4515,7 +4592,8 @@ export async function ebSincronizza(
     if (ripresa > dal) dal = ripresa;
   }
 
-  const pagina = await ebTransazioni(cred, contoUid, dal, continuation);
+  const psu = psuContext(); // sync avviato dall'utente: esente dal limite PSD2
+  const pagina = await ebTransazioni(cred, contoUid, dal, continuation, psu);
   const esistenti = new Set(await fetchMovimentiChiavi());
   const regole = await fetchRegoleFinanza().catch(() => [] as RegolaFinanza[]);
   const result: EbSyncResult = {
@@ -4581,10 +4659,17 @@ export async function ebSincronizza(
     });
   }
 
-  // Fine giro senza errori: si salva l'orologio dell'ultima sincronizzazione.
+  // Fine giro senza errori: orologio dell'ultima sync + saldo aggiornato in
+  // cache (un solo accesso in più alla banca, dentro l'azione dell'utente).
   if (!pagina.continuation && !result.errori.length) {
     const k = cfg.enableBankingFields.UltimaSync;
     if (k) await patchEbConfig({ [k]: new Date().toISOString() });
+    try {
+      const s = await ebSaldo(cred, contoUid, psu);
+      if (s) await salvaSaldoCache(cfg, { ...s, aggiornatoAl: new Date().toISOString() });
+    } catch {
+      /* limite giornaliero: resta l'ultimo saldo noto in cache */
+    }
   }
   logSp(
     "info",

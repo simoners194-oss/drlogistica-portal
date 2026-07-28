@@ -77,11 +77,20 @@ async function ebJwt(cred: EbCredenziali): Promise<string> {
   return `${base}.${b64urlBytes(new Uint8Array(sig))}`;
 }
 
+/** Contesto dell'utente presente (PSU): con questi header la banca sa che la
+ *  richiesta nasce da un'azione dell'utente e NON la conta nel limite
+ *  giornaliero PSD2 degli accessi non presidiati (tipicamente 4/giorno). */
+export interface EbPsu {
+  ip?: string;
+  userAgent?: string;
+}
+
 async function ebCall<T>(
   cred: EbCredenziali,
   method: "GET" | "POST",
   path: string,
   body?: unknown,
+  psu?: EbPsu,
 ): Promise<T> {
   const res = await fetch(`${EB_API}${path}`, {
     method,
@@ -89,11 +98,18 @@ async function ebCall<T>(
       Authorization: `Bearer ${await ebJwt(cred)}`,
       Accept: "application/json",
       ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(psu?.ip ? { "Psu-Ip-Address": psu.ip } : {}),
+      ...(psu?.userAgent ? { "Psu-User-Agent": psu.userAgent } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
   if (!res.ok) {
+    // Limite PSD2 della banca: messaggio comprensibile al posto del JSON grezzo.
+    if (res.status === 429 && text.includes("ASPSP_RATE_LIMIT_EXCEEDED"))
+      throw new Error(
+        "Limite giornaliero di accessi al conto raggiunto (PSD2): la banca concede pochi accessi al giorno senza utente presente. Riprovare più tardi o domani.",
+      );
     // Il corpo dell'errore Enable Banking è descrittivo e non contiene segreti.
     throw new Error(`Enable Banking ${method} ${path} → HTTP ${res.status}: ${text.slice(0, 300)}`);
   }
@@ -190,6 +206,7 @@ export async function ebTransazioni(
   contoUid: string,
   dateFrom: string,
   continuationKey?: string,
+  psu?: EbPsu,
 ): Promise<{ transazioni: EbTransazione[]; continuation: string | null }> {
   const params = new URLSearchParams({ date_from: dateFrom });
   if (continuationKey) params.set("continuation_key", continuationKey);
@@ -197,6 +214,8 @@ export async function ebTransazioni(
     cred,
     "GET",
     `/accounts/${encodeURIComponent(contoUid)}/transactions?${params.toString()}`,
+    undefined,
+    psu,
   );
   return { transazioni: res.transactions ?? [], continuation: res.continuation_key ?? null };
 }
@@ -214,11 +233,14 @@ interface EbBalanceRow {
 export async function ebSaldo(
   cred: EbCredenziali,
   contoUid: string,
+  psu?: EbPsu,
 ): Promise<{ saldo: number; divisa: string; tipo: string; riferimento: string } | null> {
   const res = await ebCall<{ balances?: EbBalanceRow[] }>(
     cred,
     "GET",
     `/accounts/${encodeURIComponent(contoUid)}/balances`,
+    undefined,
+    psu,
   );
   const saldi = res.balances ?? [];
   if (!saldi.length) return null;
