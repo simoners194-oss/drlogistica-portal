@@ -8,10 +8,18 @@
 
 export type ReleaseTag = "feature" | "improvement" | "fix" | "security";
 
+/** Destinatari di una novità: la pagina Novità mostra a ogni utente solo le
+ *  voci che lo riguardano.
+ *  - "tutti"     — visibile a chiunque (default)
+ *  - "gestione"  — responsabili, operatori, autorizzatori e amministratori
+ *  - "direzione" — solo direzione (DR005) e amministratori */
+export type ReleaseAudience = "tutti" | "gestione" | "direzione";
+
 export interface ReleaseEntry {
   title: string;
   description?: string;
   tag?: ReleaseTag;
+  audience?: ReleaseAudience;
 }
 
 export interface Release {
@@ -35,45 +43,50 @@ export const RELEASES: readonly Release[] = [
     entries: [
       {
         tag: "feature",
+        audience: "direzione",
         title: "Fatture emesse e ricevute con scadenzario",
         description:
-          "Import degli XML del pannello Aruba (lo ZIP così com'è): il portale riconosce da solo emesse e ricevute, legge le scadenze dichiarate in fattura e mostra crediti e debiti aperti, in ritardo e pagati, per cliente e per fornitore. I reinvii dopo uno scarto SdI contano una volta sola.",
+          "La sezione Finanza gestisce ora le fatture elettroniche: caricando l'archivio XML esportato dal servizio di fatturazione, il portale distingue automaticamente le fatture emesse dalle ricevute, legge le scadenze di pagamento indicate in fattura e presenta crediti e debiti — aperti, in ritardo e saldati — riepilogati per cliente e per fornitore.",
       },
       {
         tag: "feature",
+        audience: "direzione",
         title: "Riconciliazione con il conto corrente",
         description:
-          'Gli incassi e i pagamenti del conto si abbinano alle fatture: automaticamente quando il bonifico cita il numero o l\'importo coincide, "a scalare" per acconti e saldi mensili, e a mano per i casi particolari. Ogni abbinamento resta registrato e si può rimuovere.',
+          "Incassi e pagamenti del conto vengono abbinati alle fatture: in automatico quando la causale cita il numero o l'importo corrisponde, con l'imputazione a scalare per acconti e saldi cumulativi, oppure manualmente per i casi particolari. Ogni abbinamento resta tracciato e può essere rimosso.",
       },
       {
         tag: "feature",
-        title: "Regole apprese in Finanza",
+        audience: "direzione",
+        title: "Regole di classificazione personalizzate",
         description:
-          "Le correzioni del direttore diventano regole permanenti: tipologia e nome della controparte si applicano da soli a ogni estratto conto futuro e, a scelta, anche all'archivio. Overview delle spese con filtro per tipologia e per anno.",
+          "Le correzioni apportate ai movimenti bancari — tipologia e controparte — possono essere salvate come regole permanenti: si applicano automaticamente agli estratti conto futuri e, su richiesta, all'archivio esistente. L'overview delle spese è ora filtrabile per tipologia e per anno.",
       },
       {
         tag: "feature",
         title: "Annulla ultima timbratura",
         description:
-          "Hai premuto il tasto sbagliato? Entro 5 minuti puoi annullare da solo l'ultima timbratura: i pulsanti corretti tornano subito attivi.",
+          "In caso di tocco sbagliato, entro 5 minuti è possibile annullare la propria ultima timbratura: i pulsanti corretti tornano subito disponibili.",
       },
       {
         tag: "feature",
-        title: "Resoconto giornaliero timbrature",
+        audience: "gestione",
+        title: "Resoconto giornaliero delle timbrature",
         description:
-          "In Gestione timbrature l'operatore sceglie sede e giorno e vede tutti i dipendenti con le loro timbrature — compreso chi non ha timbrato nulla — e corregge al volo: elimina l'evento sbagliato e inserisce quelli mancanti.",
+          "In Gestione timbrature si selezionano sede e giorno per vedere tutti i dipendenti con le rispettive timbrature — con evidenza di chi non ha registrato nulla — e correggere direttamente: si elimina l'evento errato e si inseriscono quelli mancanti.",
       },
       {
         tag: "improvement",
+        audience: "gestione",
         title: "Dashboard più rapida",
         description:
-          "Tocca una sede nella sintesi per filtrare la dashboard e saltare direttamente al suo riepilogo.",
+          "Toccando una sede nella sintesi, la dashboard si filtra e si posiziona direttamente sul riepilogo di quella sede.",
       },
       {
         tag: "fix",
         title: "Traduzioni corrette su Chrome",
         description:
-          'Risolte le etichette assurde che alcuni telefoni mostravano (es. "Minerale lavorato"): era la traduzione automatica di Chrome; ora la lingua della pagina è dichiarata correttamente. Se il problema persiste su un dispositivo, impostare una volta "Non tradurre mai questo sito".',
+          "Risolte le etichette errate mostrate da alcuni telefoni, dovute alla traduzione automatica di Chrome: la lingua della pagina è ora dichiarata correttamente. Se il problema persiste su un dispositivo, impostare una volta «Non tradurre mai questo sito».",
       },
     ],
   },
@@ -85,6 +98,7 @@ export const RELEASES: readonly Release[] = [
     entries: [
       {
         tag: "feature",
+        audience: "direzione",
         title: "Finanza — estratto conto per la direzione",
         description:
           "Nuova sezione riservata alla direzione: import dell'estratto conto bancario da Excel con classificazione automatica dei movimenti (tipologia, cliente, riferimenti fattura), overview degli incassi per cliente e mese, pagina anomalie per sanare a mano i casi dubbi. I ricaricamenti scartano automaticamente i movimenti già importati.",

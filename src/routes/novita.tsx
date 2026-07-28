@@ -1,10 +1,11 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Sparkles, ShieldCheck, Wrench, TrendingUp } from "lucide-react";
-import { readSession } from "@/lib/session";
+import { readSession, type SessionUser } from "@/lib/session";
+import { isSupervisoreGlobale } from "@/lib/richieste-logic";
 import { APP_INFO, formatReleaseDate } from "@/lib/version";
-import { RELEASES, type ReleaseTag } from "@/lib/releases";
+import { RELEASES, type ReleaseAudience, type ReleaseTag } from "@/lib/releases";
 import { useLang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/novita")({
@@ -41,7 +42,26 @@ const TAG_CLASS: Record<ReleaseTag, string> = {
 
 function NovitaPage() {
   const { t, tVal } = useLang();
-  const sorted = [...RELEASES].sort((a, b) => b.date.localeCompare(a.date));
+  const [session, setSession] = useState<SessionUser | null>(null);
+  useEffect(() => {
+    setSession(readSession());
+  }, []);
+
+  // Novità PER UTENZA: ognuno vede solo le voci che lo riguardano (le novità
+  // della sezione finanziaria non interessano i dipendenti). Le release senza
+  // voci visibili spariscono del tutto dalla timeline.
+  const sorted = useMemo(() => {
+    const admin = session?.ruolo === "amministratore_sistema";
+    const gestione =
+      admin || session?.ruolo === "responsabile" || session?.operatore || session?.autorizza;
+    const direzione = admin || isSupervisoreGlobale(session?.codice ?? "");
+    const visibile = (a?: ReleaseAudience) =>
+      a === "direzione" ? direzione : a === "gestione" ? Boolean(gestione) : true;
+    return [...RELEASES]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((r) => ({ ...r, entries: r.entries.filter((e) => visibile(e.audience)) }))
+      .filter((r) => r.entries.length > 0);
+  }, [session]);
   const latest = sorted[0];
 
   // Segna le novità come "viste" per la versione corrente: spegne il popup.
