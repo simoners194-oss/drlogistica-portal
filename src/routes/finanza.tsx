@@ -115,7 +115,7 @@ function fmtImportId(id: string, legacyLabel: string): string {
 // Blocchi di upload verso il server (sotto il limite server di 150).
 const CHUNK = 100;
 
-type Tab = "movimenti" | "overview" | "fatture" | "anomalie" | "import" | "storico" | "regole";
+type Tab = "movimenti" | "overview" | "fatture" | "anomalie" | "storico" | "regole";
 
 interface SheetInfo {
   name: string;
@@ -158,7 +158,9 @@ function FinanzaPage() {
   const [ovMode, setOvMode] = useState<"incassi" | "spese">("incassi");
   const [ovTipF, setOvTipF] = useState("tutte");
 
-  // Import
+  // Import estratto conto (pannello a scomparsa dentro la tab Movimenti:
+  // "Importa" da solo era ambiguo dopo l'arrivo delle Fatture).
+  const [showImportEC, setShowImportEC] = useState(false);
   const [sheetChoice, setSheetChoice] = useState<SheetChoice | null>(null);
   const [preview, setPreview] = useState<PreviewImport | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -351,8 +353,8 @@ function FinanzaPage() {
       });
       if (errori.length) console.warn("Import movimenti — errori:", errori);
       setPreview(null);
+      setShowImportEC(false);
       refreshAll(anno);
-      setTab("movimenti");
     } catch (err) {
       toast.error(t("fin.errImport"), {
         description: err instanceof Error ? err.message : String(err),
@@ -695,7 +697,6 @@ function FinanzaPage() {
             t("fin.tabAnomalie"),
             anomalie?.length ?? 0,
           )}
-          {tabBtn("import", <Upload className="h-4 w-4" />, t("fin.tabImport"))}
           {tabBtn("storico", <History className="h-4 w-4" />, t("fin.tabStorico"))}
           {tabBtn("regole", <GraduationCap className="h-4 w-4" />, t("fin.tabRegole"))}
         </div>
@@ -756,6 +757,13 @@ function FinanzaPage() {
             </div>
             <button
               type="button"
+              onClick={() => setShowImportEC((v) => !v)}
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+            >
+              <Upload className="h-4 w-4" /> {t("fin.tabImport")}
+            </button>
+            <button
+              type="button"
               onClick={esportaMovimenti}
               disabled={filtrati.length === 0}
               className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
@@ -763,6 +771,131 @@ function FinanzaPage() {
               <Download className="h-4 w-4" /> {t("common.exportCsv")}
             </button>
           </div>
+
+          {/* Import estratto conto (a scomparsa) */}
+          {showImportEC && (
+            <div className="mb-4 rounded-xl border border-border p-4">
+              <div className="text-sm font-semibold text-foreground mb-1">
+                {t("fin.importTitle")}
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">{t("fin.importDesc")}</p>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                disabled={parsing || importing}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void onFile(f);
+                  e.target.value = "";
+                }}
+                className="block text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
+              />
+              {parsing && (
+                <p className="mt-3 text-sm text-muted-foreground inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> {t("fin.parsing")}
+                </p>
+              )}
+              {sheetChoice && (
+                <div className="mt-4 rounded-xl border border-border p-4">
+                  <div className="text-sm font-medium text-foreground">{sheetChoice.fileName}</div>
+                  <p className="mt-1 text-[13px] text-muted-foreground">{t("fin.sheetChoose")}</p>
+                  <div className="mt-3 flex flex-wrap items-end gap-3">
+                    <div className="min-w-64">
+                      <label className="text-xs text-muted-foreground">{t("fin.sheet")}</label>
+                      <select
+                        value={sheetChoice.selected}
+                        onChange={(e) =>
+                          setSheetChoice({ ...sheetChoice, selected: e.target.value })
+                        }
+                        className={inputCls}
+                      >
+                        {sheetChoice.sheets.map((s) => (
+                          <option key={s.name} value={s.name}>
+                            {s.name}
+                            {s.res
+                              ? ` (${s.res.rows.length} ${t("fin.rows")})`
+                              : ` — ${t("fin.sheetNotRecognized")}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void confermaFoglio()}
+                      className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                    >
+                      {t("fin.sheetUse")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSheetChoice(null)}
+                      className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+                    >
+                      {t("common.cancel")}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {preview && (
+                <div className="mt-4 rounded-xl border border-border p-4">
+                  <div className="text-sm font-medium text-foreground">{preview.fileName}</div>
+                  <ul className="mt-2 text-[13px] text-muted-foreground space-y-1">
+                    <li>
+                      {t("fin.previewPeriod")}: {fmtData(preview.dal)} → {fmtData(preview.al)}
+                    </li>
+                    <li>
+                      {t("fin.previewTotal")}: <b>{preview.righe.length}</b>
+                      {preview.scartate > 0 && ` (${preview.scartate} ${t("fin.previewSkipped")})`}
+                    </li>
+                    <li>
+                      {t("fin.previewNew")}:{" "}
+                      <b className="text-status-present">{preview.nuove.length}</b>
+                    </li>
+                    <li>
+                      {t("fin.previewDup")}: <b>{preview.doppioni}</b>
+                    </li>
+                    <li>
+                      {t("fin.previewAnomalie")}:{" "}
+                      <b className={preview.anomalie ? "text-status-absent" : ""}>
+                        {preview.anomalie}
+                      </b>
+                    </li>
+                  </ul>
+                  <div className="mt-3 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={eseguiImport}
+                      disabled={importing || preview.nuove.length === 0}
+                      className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {importing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      {importing
+                        ? `${t("fin.importing")} ${importProgress}`
+                        : `${t("fin.importBtn")} (${preview.nuove.length})`}
+                    </button>
+                    {!importing && (
+                      <button
+                        type="button"
+                        onClick={() => setPreview(null)}
+                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+                      >
+                        {t("common.cancel")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="mt-4 flex items-start gap-2 text-xs text-muted-foreground">
+                <Landmark className="h-4 w-4 shrink-0 mt-0.5" />
+                <p>{t("fin.apiNote")}</p>
+              </div>
+            </div>
+          )}
+
           {movimenti == null ? (
             <div className="py-10 text-center text-sm text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin inline-block" />
@@ -1075,124 +1208,6 @@ function FinanzaPage() {
               ))}
             </ul>
           )}
-        </div>
-      )}
-
-      {/* ------------------------------- Import ---------------------------- */}
-      {tab === "import" && (
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-          <div className="text-sm font-semibold text-foreground mb-1">{t("fin.importTitle")}</div>
-          <p className="text-xs text-muted-foreground mb-4">{t("fin.importDesc")}</p>
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            disabled={parsing || importing}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void onFile(f);
-              e.target.value = "";
-            }}
-            className="block text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
-          />
-          {parsing && (
-            <p className="mt-3 text-sm text-muted-foreground inline-flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> {t("fin.parsing")}
-            </p>
-          )}
-          {sheetChoice && (
-            <div className="mt-4 rounded-xl border border-border p-4">
-              <div className="text-sm font-medium text-foreground">{sheetChoice.fileName}</div>
-              <p className="mt-1 text-[13px] text-muted-foreground">{t("fin.sheetChoose")}</p>
-              <div className="mt-3 flex flex-wrap items-end gap-3">
-                <div className="min-w-64">
-                  <label className="text-xs text-muted-foreground">{t("fin.sheet")}</label>
-                  <select
-                    value={sheetChoice.selected}
-                    onChange={(e) => setSheetChoice({ ...sheetChoice, selected: e.target.value })}
-                    className={inputCls}
-                  >
-                    {sheetChoice.sheets.map((s) => (
-                      <option key={s.name} value={s.name}>
-                        {s.name}
-                        {s.res
-                          ? ` (${s.res.rows.length} ${t("fin.rows")})`
-                          : ` — ${t("fin.sheetNotRecognized")}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void confermaFoglio()}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-                >
-                  {t("fin.sheetUse")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSheetChoice(null)}
-                  className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
-                >
-                  {t("common.cancel")}
-                </button>
-              </div>
-            </div>
-          )}
-          {preview && (
-            <div className="mt-4 rounded-xl border border-border p-4">
-              <div className="text-sm font-medium text-foreground">{preview.fileName}</div>
-              <ul className="mt-2 text-[13px] text-muted-foreground space-y-1">
-                <li>
-                  {t("fin.previewPeriod")}: {fmtData(preview.dal)} → {fmtData(preview.al)}
-                </li>
-                <li>
-                  {t("fin.previewTotal")}: <b>{preview.righe.length}</b>
-                  {preview.scartate > 0 && ` (${preview.scartate} ${t("fin.previewSkipped")})`}
-                </li>
-                <li>
-                  {t("fin.previewNew")}:{" "}
-                  <b className="text-status-present">{preview.nuove.length}</b>
-                </li>
-                <li>
-                  {t("fin.previewDup")}: <b>{preview.doppioni}</b>
-                </li>
-                <li>
-                  {t("fin.previewAnomalie")}:{" "}
-                  <b className={preview.anomalie ? "text-status-absent" : ""}>{preview.anomalie}</b>
-                </li>
-              </ul>
-              <div className="mt-3 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={eseguiImport}
-                  disabled={importing || preview.nuove.length === 0}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                >
-                  {importing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4" />
-                  )}
-                  {importing
-                    ? `${t("fin.importing")} ${importProgress}`
-                    : `${t("fin.importBtn")} (${preview.nuove.length})`}
-                </button>
-                {!importing && (
-                  <button
-                    type="button"
-                    onClick={() => setPreview(null)}
-                    className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
-                  >
-                    {t("common.cancel")}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-          <div className="mt-6 flex items-start gap-2 text-xs text-muted-foreground">
-            <Landmark className="h-4 w-4 shrink-0 mt-0.5" />
-            <p>{t("fin.apiNote")}</p>
-          </div>
         </div>
       )}
 
