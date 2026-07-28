@@ -3,7 +3,7 @@
 // movimenti classificati, overview incassi/spese per cliente, anomalie da
 // sanare a mano, storico degli import con annullamento.
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import {
@@ -22,6 +22,7 @@ import {
   Receipt,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   RefreshCw,
 } from "lucide-react";
 import { FattureTab } from "@/components/FattureTab";
@@ -131,6 +132,91 @@ const CHUNK = 100;
 // Righe per pagina nella tabella movimenti.
 const RIGHE_PAGINA = 500;
 
+// Menu a discesa MULTI-selezione con caselle di spunta (per i filtri
+// incrociati senza affollare la barra): lista vuota = nessun filtro.
+function MultiSelect<T extends string | number>({
+  label,
+  tuttiLabel,
+  selLabel,
+  opzioni,
+  valori,
+  onChange,
+  className,
+}: {
+  label: string;
+  tuttiLabel: string;
+  /** Testo per "N selezionati" quando le voci scelte sono più di due. */
+  selLabel: string;
+  opzioni: { v: T; label: string }[];
+  valori: T[];
+  onChange: (v: T[]) => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+  const riepilogo =
+    valori.length === 0
+      ? tuttiLabel
+      : valori.length <= 2
+        ? opzioni
+            .filter((o) => valori.includes(o.v))
+            .map((o) => o.label)
+            .join(", ")
+        : `${valori.length} ${selLabel}`;
+  return (
+    <div ref={ref} className={`relative ${className ?? ""}`}>
+      <label className="text-xs text-muted-foreground">{label}</label>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`${inputCls} flex items-center justify-between gap-2 text-left`}
+      >
+        <span className="truncate">{riepilogo}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 w-full min-w-44 max-h-64 overflow-auto rounded-lg border border-border bg-card p-1 shadow-[var(--shadow-elegant)]">
+          <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted">
+            <input
+              type="checkbox"
+              className="accent-primary"
+              checked={valori.length === 0}
+              onChange={() => onChange([])}
+            />
+            {tuttiLabel}
+          </label>
+          {opzioni.map((o) => (
+            <label
+              key={String(o.v)}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+            >
+              <input
+                type="checkbox"
+                className="accent-primary"
+                checked={valori.includes(o.v)}
+                onChange={() =>
+                  onChange(
+                    valori.includes(o.v) ? valori.filter((x) => x !== o.v) : [...valori, o.v],
+                  )
+                }
+              />
+              {o.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type Tab = "movimenti" | "overview" | "fatture" | "anomalie" | "storico" | "regole";
 
 interface SheetInfo {
@@ -158,17 +244,18 @@ function FinanzaPage() {
   const { t, lang } = useLang();
   const [session, setSession] = useState<SessionUser | null>(null);
   const [tab, setTab] = useState<Tab>("movimenti");
-  // 0 = tutti gli anni (l'overview passa da colonne-mese a colonne-anno).
-  const [anno, setAnno] = useState(new Date().getFullYear());
+  // Anni selezionati (vuoto = tutti). Con UN solo anno l'overview mostra le
+  // colonne-mese, altrimenti le colonne-anno.
+  const [anni, setAnni] = useState<number[]>([new Date().getFullYear()]);
 
   const [movimenti, setMovimenti] = useState<SpMovimento[] | null>(null);
   const [anomalie, setAnomalie] = useState<SpMovimento[] | null>(null);
   const [storico, setStorico] = useState<ImportStoricoRiga[] | null>(null);
 
   // Filtri archivio movimenti
-  const [tipF, setTipF] = useState("tutte");
+  const [tipiF, setTipiF] = useState<string[]>([]);
   const [cercaF, setCercaF] = useState("");
-  const [meseF, setMeseF] = useState(0); // 0 = tutti
+  const [mesiF, setMesiF] = useState<number[]>([]); // vuoto = tutti
   const [paginaMov, setPaginaMov] = useState(1); // pagine da RIGHE_PAGINA
 
   // Overview: incassi o spese (+ filtro tipologia, utile solo per le spese)
@@ -220,9 +307,13 @@ function FinanzaPage() {
     session != null &&
     (session.ruolo === "amministratore_sistema" || isSupervisoreGlobale(session.codice ?? ""));
 
-  const loadMovimenti = (a: number) => {
+  const loadMovimenti = (a: number[]) => {
     setMovimenti(null);
-    const range = a > 0 ? { from: `${a}-01-01`, to: `${a}-12-31` } : {};
+    // Dal server si chiede l'INTERVALLO min-max; le selezioni non contigue
+    // (es. 2024+2026) vengono rifinite client-side nel filtro.
+    const range = a.length
+      ? { from: `${Math.min(...a)}-01-01`, to: `${Math.max(...a)}-12-31` }
+      : {};
     spGetMovimenti({ data: range })
       .then((l) => setMovimenti(l as SpMovimento[]))
       .catch((err) => {
@@ -256,7 +347,7 @@ function FinanzaPage() {
       .then((s) => setEbSaldoInfo(s as EbSaldoInfo | null))
       .catch(() => setEbSaldoInfo(null));
   };
-  const refreshAll = (a: number) => {
+  const refreshAll = (a: number[]) => {
     loadMovimenti(a);
     loadAnomalie();
     loadStorico();
@@ -275,13 +366,13 @@ function FinanzaPage() {
     setSession(s);
     const dir = s.ruolo === "amministratore_sistema" || isSupervisoreGlobale(s.codice ?? "");
     if (!dir) return;
-    refreshAll(anno);
+    refreshAll(anni);
     loadEbStato(); // serve al tasto Aggiorna per sapere se il sync è attivo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const cambiaAnno = (a: number) => {
-    setAnno(a);
+  const cambiaAnni = (a: number[]) => {
+    setAnni(a);
     loadMovimenti(a);
   };
 
@@ -329,7 +420,7 @@ function FinanzaPage() {
       // colonna mancante…), altrimenti l'assenza del saldo resta un mistero.
       if (saldoErrore) toast.warning(t("fin.ebSaldoAttuale"), { description: saldoErrore });
       loadEbStato();
-      refreshAll(anno);
+      refreshAll(anni);
     } catch (err) {
       toast.error(t("fin.ebErr"), { description: errMsg(err) });
     } finally {
@@ -342,7 +433,7 @@ function FinanzaPage() {
   // movimenti (il sync ricarica poi tutto), altrimenti ricarica soltanto.
   const aggiorna = () => {
     if (ebAttivo && !ebSyncBusy) void ebSync();
-    else refreshAll(anno);
+    else refreshAll(anni);
   };
 
   // --- Import xlsx ----------------------------------------------------------
@@ -452,7 +543,7 @@ function FinanzaPage() {
       if (errori.length) console.warn("Import movimenti — errori:", errori);
       setPreview(null);
       setShowImportEC(false);
-      refreshAll(anno);
+      refreshAll(anni);
     } catch (err) {
       toast.error(t("fin.errImport"), {
         description: err instanceof Error ? err.message : String(err),
@@ -488,12 +579,12 @@ function FinanzaPage() {
         if (r.eliminati === 0) throw new Error("Annullamento interrotto: nessun progresso.");
       }
       toast.success(t("fin.annullaDone"), { description: `${tot} ${t("fin.rows")}` });
-      refreshAll(anno);
+      refreshAll(anni);
     } catch (err) {
       toast.error(t("common.error"), {
         description: err instanceof Error ? err.message : String(err),
       });
-      refreshAll(anno);
+      refreshAll(anni);
     } finally {
       setAnnullaBusy(null);
       setAnnullaProgress(0);
@@ -546,7 +637,7 @@ function FinanzaPage() {
       setRCliente("");
       loadRegole();
       if (rApplica) {
-        loadMovimenti(anno);
+        loadMovimenti(anni);
         loadAnomalie();
       }
     } catch (err) {
@@ -611,8 +702,11 @@ function FinanzaPage() {
   // --- Derivati -------------------------------------------------------------
   const filtrati = useMemo(() => {
     let out = movimenti ?? [];
-    if (tipF !== "tutte") out = out.filter((m) => m.tipologia === tipF);
-    if (meseF > 0) out = out.filter((m) => Number(m.dataContabile.slice(5, 7)) === meseF);
+    // Anni: il server ha fornito l'intervallo min-max; qui si rifiniscono le
+    // selezioni non contigue. Tipologie e mesi: vuoto = tutti, altrimenti OR.
+    if (anni.length) out = out.filter((m) => anni.includes(Number(m.dataContabile.slice(0, 4))));
+    if (tipiF.length) out = out.filter((m) => tipiF.includes(m.tipologia));
+    if (mesiF.length) out = out.filter((m) => mesiF.includes(Number(m.dataContabile.slice(5, 7))));
     if (cercaF.trim()) {
       const q = cercaF.trim().toLowerCase();
       out = out.filter(
@@ -624,14 +718,14 @@ function FinanzaPage() {
       );
     }
     return out;
-  }, [movimenti, tipF, meseF, cercaF]);
+  }, [movimenti, anni, tipiF, mesiF, cercaF]);
 
   // Pagine da RIGHE_PAGINA sulla tabella movimenti; il cambio di filtri o
   // anno riparte dalla prima (il clamp copre i ricaricamenti che accorciano
   // la lista, es. dopo una sincronizzazione).
   useEffect(() => {
     setPaginaMov(1);
-  }, [tipF, meseF, cercaF, anno]);
+  }, [tipiF, mesiF, cercaF, anni]);
   const pagineMovTot = Math.max(1, Math.ceil(filtrati.length / RIGHE_PAGINA));
   const pagMov = Math.min(paginaMov, pagineMovTot);
   const inizioMov = (pagMov - 1) * RIGHE_PAGINA;
@@ -649,13 +743,20 @@ function FinanzaPage() {
   // raggruppati per controparte o, in mancanza, per tipologia), in valore
   // assoluto.
   const overview = useMemo(() => {
-    const all = movimenti ?? [];
-    const anni = [...new Set(all.map((m) => m.dataContabile.slice(0, 4)))].filter(Boolean).sort();
-    const colonne = anno > 0 ? mesi : anni;
+    // Con UN solo anno selezionato le colonne sono i mesi; con più anni (o
+    // nessun filtro) le colonne sono gli anni della selezione.
+    const annoSingolo = anni.length === 1 ? anni[0] : 0;
+    const all = (movimenti ?? []).filter(
+      (m) => anni.length === 0 || anni.includes(Number(m.dataContabile.slice(0, 4))),
+    );
+    const anniColonna = [...new Set(all.map((m) => m.dataContabile.slice(0, 4)))]
+      .filter(Boolean)
+      .sort();
+    const colonne = annoSingolo > 0 ? mesi : anniColonna;
     const colIdx = (m: SpMovimento): number =>
-      anno > 0
+      annoSingolo > 0
         ? Number(m.dataContabile.slice(5, 7)) - 1
-        : anni.indexOf(m.dataContabile.slice(0, 4));
+        : anniColonna.indexOf(m.dataContabile.slice(0, 4));
     let selezione =
       ovMode === "incassi"
         ? all.filter((m) => m.tipologia === "Incasso" && m.importo > 0)
@@ -706,11 +807,11 @@ function FinanzaPage() {
       ),
     ].sort((a, b) => a.localeCompare(b));
     return { righe, colonne, totCol, tot, count: selezione.length, tipologieSpese };
-  }, [movimenti, ovMode, ovTipF, anno, mesi, t]);
+  }, [movimenti, ovMode, ovTipF, anni, mesi, t]);
 
   const esportaMovimenti = () => {
     esportaCsvFile(
-      `movimenti-${anno > 0 ? anno : "tutti"}`,
+      `movimenti-${anni.length ? [...anni].sort().join("-") : "tutti"}`,
       [
         "Data contabile",
         "Data valuta",
@@ -741,7 +842,7 @@ function FinanzaPage() {
   };
   const esportaOverview = () => {
     esportaCsvFile(
-      `overview-${ovMode}-${anno > 0 ? anno : "tutti"}`,
+      `overview-${ovMode}-${anni.length ? [...anni].sort().join("-") : "tutti"}`,
       [ovMode === "incassi" ? "Cliente" : "Controparte / Tipologia", ...overview.colonne, "Totale"],
       [
         ...overview.righe.map(([riga, r]) => [
@@ -809,18 +910,18 @@ function FinanzaPage() {
           {tabBtn("regole", <GraduationCap className="h-4 w-4" />, t("fin.tabRegole"))}
         </div>
         {(tab === "movimenti" || tab === "overview") && (
-          <select
-            value={anno}
-            onChange={(e) => cambiaAnno(Number(e.target.value))}
-            className={`${inputCls} w-auto`}
-          >
-            <option value={0}>{t("fin.allYears")}</option>
-            {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
+          <MultiSelect
+            label={t("ft.anno")}
+            tuttiLabel={t("fin.allYears")}
+            selLabel={t("fin.msSel")}
+            opzioni={Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map((a) => ({
+              v: a,
+              label: String(a),
+            }))}
+            valori={anni}
+            onChange={cambiaAnni}
+            className="w-44"
+          />
         )}
       </div>
 
@@ -828,32 +929,24 @@ function FinanzaPage() {
       {tab === "movimenti" && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="flex flex-wrap items-end gap-3 mb-4">
-            <div className="w-44">
-              <label className="text-xs text-muted-foreground">{t("common.type")}</label>
-              <select value={tipF} onChange={(e) => setTipF(e.target.value)} className={inputCls}>
-                <option value="tutte">{t("common.allF")}</option>
-                {tipologiePresenti.map((tp) => (
-                  <option key={tp} value={tp}>
-                    {tp}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="w-36">
-              <label className="text-xs text-muted-foreground">{t("fin.month")}</label>
-              <select
-                value={meseF}
-                onChange={(e) => setMeseF(Number(e.target.value))}
-                className={inputCls}
-              >
-                <option value={0}>{t("common.all")}</option>
-                {mesi.map((m, i) => (
-                  <option key={m} value={i + 1}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <MultiSelect
+              label={t("common.type")}
+              tuttiLabel={t("common.allF")}
+              selLabel={t("fin.msSel")}
+              opzioni={tipologiePresenti.map((tp) => ({ v: tp, label: tp }))}
+              valori={tipiF}
+              onChange={setTipiF}
+              className="w-48"
+            />
+            <MultiSelect
+              label={t("fin.month")}
+              tuttiLabel={t("common.all")}
+              selLabel={t("fin.msSel")}
+              opzioni={mesi.map((m, i) => ({ v: i + 1, label: m }))}
+              valori={mesiF}
+              onChange={setMesiF}
+              className="w-40"
+            />
             <div className="flex-1 min-w-48">
               <label className="text-xs text-muted-foreground">{t("fin.search")}</label>
               <input

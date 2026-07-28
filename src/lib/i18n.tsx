@@ -510,6 +510,7 @@ const en = {
   "fin.page": "Page",
   "fin.pageOf": "of",
   "fin.aggiorna": "Refresh",
+  "fin.msSel": "selected",
   "fin.ebCollega": "Connect bank",
   "fin.ebRinnova": "Renew consent",
   "fin.ebCollegaDesc":
@@ -1195,6 +1196,7 @@ const it: Record<DictKey, string> = {
   "fin.page": "Pagina",
   "fin.pageOf": "di",
   "fin.aggiorna": "Aggiorna",
+  "fin.msSel": "selezionati",
   "fin.ebCollega": "Collega banca",
   "fin.ebRinnova": "Rinnova consenso",
   "fin.ebCollegaDesc":
