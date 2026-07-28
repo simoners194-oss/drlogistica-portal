@@ -491,6 +491,8 @@ const en = {
   "fin.ebModifica": "Edit app",
   "fin.ebSaldoAttuale": "Current balance",
   "fin.saldo": "Balance",
+  "fin.page": "Page",
+  "fin.pageOf": "of",
   "fin.ebCollega": "Connect bank",
   "fin.ebRinnova": "Renew consent",
   "fin.ebCollegaDesc":
@@ -1158,6 +1160,8 @@ const it: Record<DictKey, string> = {
   "fin.ebModifica": "Modifica app",
   "fin.ebSaldoAttuale": "Saldo attuale",
   "fin.saldo": "Saldo",
+  "fin.page": "Pagina",
+  "fin.pageOf": "di",
   "fin.ebCollega": "Collega banca",
   "fin.ebRinnova": "Rinnova consenso",
   "fin.ebCollegaDesc":

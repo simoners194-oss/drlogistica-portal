@@ -21,6 +21,8 @@ import {
   GraduationCap,
   Wand2,
   Receipt,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { FattureTab } from "@/components/FattureTab";
 import { esportaCsvFile } from "@/lib/csv";
@@ -132,6 +134,8 @@ function fmtImportId(id: string, legacyLabel: string): string {
 
 // Blocchi di upload verso il server (sotto il limite server di 150).
 const CHUNK = 100;
+// Righe per pagina nella tabella movimenti.
+const RIGHE_PAGINA = 500;
 
 type Tab = "movimenti" | "overview" | "fatture" | "anomalie" | "storico" | "regole";
 
@@ -171,6 +175,7 @@ function FinanzaPage() {
   const [tipF, setTipF] = useState("tutte");
   const [cercaF, setCercaF] = useState("");
   const [meseF, setMeseF] = useState(0); // 0 = tutti
+  const [paginaMov, setPaginaMov] = useState(1); // pagine da RIGHE_PAGINA
 
   // Overview: incassi o spese (+ filtro tipologia, utile solo per le spese)
   const [ovMode, setOvMode] = useState<"incassi" | "spese">("incassi");
@@ -736,6 +741,16 @@ function FinanzaPage() {
     }
     return out;
   }, [movimenti, tipF, meseF, cercaF]);
+
+  // Pagine da RIGHE_PAGINA sulla tabella movimenti; il cambio di filtri o
+  // anno riparte dalla prima (il clamp copre i ricaricamenti che accorciano
+  // la lista, es. dopo una sincronizzazione).
+  useEffect(() => {
+    setPaginaMov(1);
+  }, [tipF, meseF, cercaF, anno]);
+  const pagineMovTot = Math.max(1, Math.ceil(filtrati.length / RIGHE_PAGINA));
+  const pagMov = Math.min(paginaMov, pagineMovTot);
+  const inizioMov = (pagMov - 1) * RIGHE_PAGINA;
 
   const tipologiePresenti = useMemo(() => {
     const set = new Set((movimenti ?? []).map((m) => m.tipologia).filter(Boolean));
@@ -1342,7 +1357,7 @@ function FinanzaPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtrati.slice(0, 500).map((m) => (
+                  {filtrati.slice(inizioMov, inizioMov + RIGHE_PAGINA).map((m) => (
                     <tr
                       key={m.id}
                       className="border-b border-border/50 hover:bg-muted/40"
@@ -1385,10 +1400,37 @@ function FinanzaPage() {
                   ))}
                 </tbody>
               </table>
-              <div className="mt-2 text-xs text-muted-foreground">
-                {filtrati.length > 500
-                  ? `${t("fin.first500")} ${filtrati.length}`
-                  : `${filtrati.length} ${t("fin.rows")}`}
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>
+                  {filtrati.length <= RIGHE_PAGINA
+                    ? `${filtrati.length} ${t("fin.rows")}`
+                    : `${inizioMov + 1}–${Math.min(inizioMov + RIGHE_PAGINA, filtrati.length)} ${t("fin.pageOf")} ${filtrati.length} ${t("fin.rows")}`}
+                </span>
+                {pagineMovTot > 1 && (
+                  <span className="inline-flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaginaMov(pagMov - 1)}
+                      disabled={pagMov <= 1}
+                      className="rounded-lg border border-border p-1.5 text-foreground hover:bg-muted disabled:opacity-40"
+                      aria-label="‹"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                    <span>
+                      {t("fin.page")} {pagMov} {t("fin.pageOf")} {pagineMovTot}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPaginaMov(pagMov + 1)}
+                      disabled={pagMov >= pagineMovTot}
+                      className="rounded-lg border border-border p-1.5 text-foreground hover:bg-muted disabled:opacity-40"
+                      aria-label="›"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                )}
               </div>
             </div>
           )}
