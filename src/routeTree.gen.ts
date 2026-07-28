@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SupervisioneRouteImport } from './routes/supervisione'
 import { Route as RichiesteRouteImport } from './routes/richieste'
 import { Route as ReportRouteImport } from './routes/report'
@@ -24,6 +25,11 @@ import { Route as ComunicazioniRouteImport } from './routes/comunicazioni'
 import { Route as AmministrazioneRouteImport } from './routes/amministrazione'
 import { Route as IndexRouteImport } from './routes/index'
 
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SupervisioneRoute = SupervisioneRouteImport.update({
   id: '/supervisione',
   path: '/supervisione',
@@ -110,6 +116,7 @@ export interface FileRoutesByFullPath {
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
   '/supervisione': typeof SupervisioneRoute
+  '/terms': typeof TermsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByTo {
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
   '/supervisione': typeof SupervisioneRoute
+  '/terms': typeof TermsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
   '/supervisione': typeof SupervisioneRoute
+  '/terms': typeof TermsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -161,6 +170,7 @@ export interface FileRouteTypes {
     | '/report'
     | '/richieste'
     | '/supervisione'
+    | '/terms'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
     | '/report'
     | '/richieste'
     | '/supervisione'
+    | '/terms'
   id:
     | '__root__'
     | '/'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/report'
     | '/richieste'
     | '/supervisione'
+    | '/terms'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -210,10 +222,18 @@ export interface RootRouteChildren {
   ReportRoute: typeof ReportRoute
   RichiesteRoute: typeof RichiesteRoute
   SupervisioneRoute: typeof SupervisioneRoute
+  TermsRoute: typeof TermsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/supervisione': {
       id: '/supervisione'
       path: '/supervisione'
@@ -330,6 +350,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReportRoute: ReportRoute,
   RichiesteRoute: RichiesteRoute,
   SupervisioneRoute: SupervisioneRoute,
+  TermsRoute: TermsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
