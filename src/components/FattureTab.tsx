@@ -53,6 +53,14 @@ import type { ArubaProbeResult } from "@/lib/aruba.server";
 const inputCls =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
+// Chip on/off dei filtri multi-selezione (anni e stati).
+const chipCls = (on: boolean) =>
+  `rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+    on
+      ? "border-primary bg-primary text-primary-foreground"
+      : "border-border bg-background text-foreground hover:bg-muted"
+  }`;
+
 function fmtData(iso?: string): string {
   if (!iso) return "—";
   const [y, m, g] = iso.slice(0, 10).split("-");
@@ -80,10 +88,12 @@ export function FattureTab() {
   const [abbinamenti, setAbbinamenti] = useState<AbbinamentoIncasso[] | null>(null);
   const [movimenti, setMovimenti] = useState<SpMovimento[] | null>(null);
 
-  // Filtri
-  const [annoF, setAnnoF] = useState(new Date().getFullYear());
+  // Filtri MULTI-selezione (chip): lista vuota = nessun filtro. Le dimensioni
+  // si incrociano (anni AND stati AND ricerca); dentro la stessa dimensione
+  // le voci selezionate sono in OR (es. 2025+2026, "in ritardo"+"parziale").
+  const [anniF, setAnniF] = useState<number[]>([new Date().getFullYear()]);
   const [clienteF, setClienteF] = useState("");
-  const [statoF, setStatoF] = useState<StatoFiltro>("tutte");
+  const [statiF, setStatiF] = useState<Exclude<StatoFiltro, "tutte">[]>([]);
 
   // Dettaglio espanso + abbinamento manuale
   const [openFile, setOpenFile] = useState<string | null>(null);
@@ -174,33 +184,52 @@ export function FattureTab() {
     [fatture, incassatoPerFattura, termini, oggiISO, reinvii],
   );
 
+  // Anni presenti nei dati (più l'anno corrente): sono i chip selezionabili.
+  const anniDisponibili = useMemo(() => {
+    const s = new Set<number>([new Date().getFullYear()]);
+    for (const f of fatture ?? []) {
+      const y = Number(f.dataDocumento.slice(0, 4));
+      if (y) s.add(y);
+    }
+    return [...s].sort((a, b) => b - a);
+  }, [fatture]);
+
+  const matchAnno = (x: (typeof conStato)[number]) =>
+    anniF.length === 0 || anniF.includes(Number(x.f.dataDocumento.slice(0, 4)));
+  const matchStato = (x: (typeof conStato)[number]) =>
+    statiF.length === 0 ||
+    statiF.some((s) =>
+      s === "ritardo"
+        ? x.s.inRitardo
+        : s === "nonIncassata"
+          ? x.s.stato === "Non incassata"
+          : s === "parziale"
+            ? x.s.stato === "Parziale"
+            : x.s.stato === "Pagata",
+    );
+
   const filtrate = useMemo(() => {
-    let out = conStato;
-    if (annoF > 0) out = out.filter((x) => Number(x.f.dataDocumento.slice(0, 4)) === annoF);
+    let out = conStato.filter((x) => matchAnno(x) && matchStato(x));
     if (clienteF.trim()) {
       const q = clienteF.trim().toLowerCase();
       out = out.filter(
         (x) => x.f.cliente.toLowerCase().includes(q) || x.f.numero.toLowerCase().includes(q),
       );
     }
-    if (statoF === "ritardo") out = out.filter((x) => x.s.inRitardo);
-    else if (statoF === "nonIncassata") out = out.filter((x) => x.s.stato === "Non incassata");
-    else if (statoF === "parziale") out = out.filter((x) => x.s.stato === "Parziale");
-    else if (statoF === "pagata") out = out.filter((x) => x.s.stato === "Pagata");
     return out;
-  }, [conStato, annoF, clienteF, statoF]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conStato, anniF, clienteF, statiF]);
 
-  // Riepilogo (sull'anno filtrato, tutte le fatture non escluse).
+  // Riepilogo (sugli anni filtrati, tutte le fatture non escluse).
   const riepilogo = useMemo(() => {
-    const base = conStato.filter(
-      (x) => (annoF <= 0 || Number(x.f.dataDocumento.slice(0, 4)) === annoF) && x.s.stato !== "NC",
-    );
+    const base = conStato.filter((x) => matchAnno(x) && x.s.stato !== "NC");
     const residuo = base.reduce((s, x) => s + x.s.residuo, 0);
     const inRitardo = base.filter((x) => x.s.inRitardo);
     const ritardoImporto = inRitardo.reduce((s, x) => s + x.s.residuo, 0);
     const incassato = base.reduce((s, x) => s + x.s.incassato, 0);
     return { n: base.length, residuo, nRitardo: inRitardo.length, ritardoImporto, incassato };
-  }, [conStato, annoF]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conStato, anniF]);
 
   // Riepilogo per cliente (come l'OVERVIEW del direttore, compattata).
   const perCliente = useMemo(() => {
@@ -210,7 +239,7 @@ export function FattureTab() {
     >();
     for (const x of conStato) {
       if (x.s.stato === "NC" || x.s.residuo <= 0) continue;
-      if (annoF > 0 && Number(x.f.dataDocumento.slice(0, 4)) !== annoF) continue;
+      if (!matchAnno(x)) continue;
       const key = clienteGroupKey(x.f.cliente) || x.f.cliente;
       const row = m.get(key) ?? { cliente: x.f.cliente, aperte: 0, residuo: 0, ritardo: 0 };
       row.aperte++;
@@ -219,7 +248,8 @@ export function FattureTab() {
       m.set(key, row);
     }
     return [...m.values()].sort((a, b) => b.residuo - a.residuo);
-  }, [conStato, annoF]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conStato, anniF]);
 
   // Movimenti con residuo da allocare per l'abbinamento manuale: incassi per
   // le emesse, uscite (in valore assoluto) per le ricevute.
@@ -534,7 +564,7 @@ export function FattureTab() {
 
   const esporta = () => {
     esportaCsvFile(
-      `fatture-${dir === "Ricevuta" ? "ricevute" : "emesse"}-${annoF > 0 ? annoF : "tutte"}`,
+      `fatture-${dir === "Ricevuta" ? "ricevute" : "emesse"}-${anniF.length ? [...anniF].sort().join("-") : "tutte"}`,
       [
         "Numero",
         "Data documento",
@@ -663,36 +693,60 @@ export function FattureTab() {
       {/* Azioni + filtri */}
       <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
         <div className="flex flex-wrap items-end gap-3 mb-4">
-          <div className="w-28">
+          <div>
             <label className="text-xs text-muted-foreground">{t("ft.anno")}</label>
-            <select
-              value={annoF}
-              onChange={(e) => setAnnoF(Number(e.target.value))}
-              className={inputCls}
-            >
-              <option value={0}>{t("fin.allYears")}</option>
-              {Array.from({ length: 4 }, (_, i) => new Date().getFullYear() - i).map((a) => (
-                <option key={a} value={a}>
+            <div className="flex flex-wrap gap-1.5 pt-1.5">
+              <button
+                type="button"
+                onClick={() => setAnniF([])}
+                className={chipCls(anniF.length === 0)}
+              >
+                {t("fin.allYears")}
+              </button>
+              {anniDisponibili.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() =>
+                    setAnniF(anniF.includes(a) ? anniF.filter((x) => x !== a) : [...anniF, a])
+                  }
+                  className={chipCls(anniF.includes(a))}
+                >
                   {a}
-                </option>
+                </button>
               ))}
-            </select>
+            </div>
           </div>
-          <div className="w-44">
+          <div>
             <label className="text-xs text-muted-foreground">{t("common.status")}</label>
-            <select
-              value={statoF}
-              onChange={(e) => setStatoF(e.target.value as StatoFiltro)}
-              className={inputCls}
-            >
-              <option value="tutte">{t("common.allF")}</option>
-              <option value="ritardo">{t("ft.fRitardo")}</option>
-              <option value="nonIncassata">
-                {ricevute ? t("ft.nonPagata") : t("ft.nonIncassata")}
-              </option>
-              <option value="parziale">{t("ft.parziale")}</option>
-              <option value="pagata">{t("ft.pagata")}</option>
-            </select>
+            <div className="flex flex-wrap gap-1.5 pt-1.5">
+              <button
+                type="button"
+                onClick={() => setStatiF([])}
+                className={chipCls(statiF.length === 0)}
+              >
+                {t("common.allF")}
+              </button>
+              {(
+                [
+                  ["ritardo", t("ft.fRitardo")],
+                  ["nonIncassata", ricevute ? t("ft.nonPagata") : t("ft.nonIncassata")],
+                  ["parziale", t("ft.parziale")],
+                  ["pagata", t("ft.pagata")],
+                ] as [Exclude<StatoFiltro, "tutte">, string][]
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() =>
+                    setStatiF(statiF.includes(v) ? statiF.filter((x) => x !== v) : [...statiF, v])
+                  }
+                  className={chipCls(statiF.includes(v))}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex-1 min-w-44">
             <label className="text-xs text-muted-foreground">{t("ft.cerca")}</label>
