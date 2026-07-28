@@ -39,6 +39,23 @@ export interface FatturaRaw {
   /** Scadenza DICHIARATA in fattura (DatiPagamento) — quando c'è vince sui
    *  termini di pagamento. YYYY-MM-DD. */
   scadenza?: string;
+  /** Stato d'incasso REGISTRATO SU ARUBA (colonna "Incassi" dell'export):
+   *  "Incassata" | "Non incassata" | "Non gestita" | "". È la fonte primaria
+   *  dello stato; la riconciliazione bancaria resta un'informazione in più. */
+  incassoAruba?: string;
+  /** Data incasso registrata su Aruba (YYYY-MM-DD). */
+  dataIncasso?: string;
+}
+
+export type IncassoAruba = "Incassata" | "Non incassata" | "Non gestita" | "";
+
+/** Normalizza il valore della colonna "Incassi" dell'export Aruba. */
+export function parseIncassoAruba(v: unknown): IncassoAruba {
+  const s = normalizeTesto(String(v ?? ""));
+  if (s.startsWith("incassat")) return "Incassata";
+  if (s.startsWith("non incassat")) return "Non incassata";
+  if (s.startsWith("non gestit")) return "Non gestita";
+  return "";
 }
 
 /** P.IVA dell'azienda: decide la direzione di un XML FatturaPA (cedente = noi
@@ -144,7 +161,14 @@ export type StatoIncasso = "Pagata" | "Parziale" | "Non incassata" | "NC";
 export interface FatturaStato {
   incassato: number;
   residuo: number;
+  /** Stato UFFICIALE (Aruba se presente, altrimenti dagli abbinamenti). */
   stato: StatoIncasso;
+  /** Stato ricavato dai soli abbinamenti bancari (riconciliazione). */
+  statoBanca: StatoIncasso;
+  /** Valore registrato su Aruba, "" se la fattura non è gestita lì. */
+  aruba: IncassoAruba;
+  /** Aruba dice incassata ma la banca non lo conferma (o viceversa). */
+  discordante: boolean;
   scadenza: string;
   inRitardo: boolean;
   giorniRitardo: number;
@@ -164,15 +188,40 @@ export function computeStatoFattura(
   // Le note di credito non si "incassano" e le scartate/rifiutate dallo SdI
   // non sono crediti: entrambe fuori dal computo di residui e ritardi.
   if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) {
-    return { incassato, residuo: 0, stato: "NC", scadenza, inRitardo: false, giorniRitardo: 0 };
+    return {
+      incassato,
+      residuo: 0,
+      stato: "NC",
+      statoBanca: "NC",
+      aruba: parseIncassoAruba(f.incassoAruba),
+      discordante: false,
+      scadenza,
+      inRitardo: false,
+      giorniRitardo: 0,
+    };
   }
   const residuo = Math.max(0, f.totale - incassato);
-  const stato: StatoIncasso =
+  // Stato dagli ABBINAMENTI bancari (riconciliazione): informazione di
+  // dettaglio, mostra quanto risulta effettivamente arrivato sul conto.
+  const statoBanca: StatoIncasso =
     residuo <= TOLLERANZA_SALDO
       ? "Pagata"
       : incassato > TOLLERANZA_SALDO
         ? "Parziale"
         : "Non incassata";
+  // Stato UFFICIALE: quello registrato su Aruba, se presente. La banca non
+  // può "riaprire" una fattura che l'amministrazione ha marcato incassata,
+  // né chiuderne una che Aruba dà per non incassata (salvo incasso parziale
+  // già visibile, che resta l'informazione più ricca).
+  const aruba = parseIncassoAruba(f.incassoAruba);
+  const stato: StatoIncasso =
+    aruba === "Incassata"
+      ? "Pagata"
+      : aruba === "Non incassata"
+        ? statoBanca === "Parziale"
+          ? "Parziale"
+          : "Non incassata"
+        : statoBanca;
   const inRitardo = stato !== "Pagata" && oggiISO > scadenza;
   const giorniRitardo = inRitardo
     ? Math.floor(
@@ -180,7 +229,22 @@ export function computeStatoFattura(
           86400000,
       )
     : 0;
-  return { incassato, residuo, stato, scadenza, inRitardo, giorniRitardo };
+  // Discordanza: utile per capire cosa manca in banca (o cosa la banca ha
+  // trovato e l'amministrazione non ha ancora registrato su Aruba).
+  const discordante =
+    (aruba === "Incassata" && statoBanca !== "Pagata") ||
+    (aruba === "Non incassata" && statoBanca === "Pagata");
+  return {
+    incassato,
+    residuo,
+    stato,
+    statoBanca,
+    aruba,
+    discordante,
+    scadenza,
+    inRitardo,
+    giorniRitardo,
+  };
 }
 
 // --- Riconciliazione automatica ---------------------------------------------
@@ -675,6 +739,9 @@ const H = {
   totale: "totale documento",
   netto: "netto a pagare",
   statoSdI: "stato",
+  // Stato d'incasso gestito dall'amministrazione dentro Aruba.
+  incassoAruba: "incassi",
+  dataIncasso: "data incasso",
 } as const;
 
 export interface ParseFattureResult {
@@ -705,6 +772,8 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
     totale: col(H.totale),
     netto: col(H.netto),
     statoSdI: col(H.statoSdI),
+    incassoAruba: col(H.incassoAruba),
+    dataIncasso: col(H.dataIncasso),
   };
   const cell = (r: unknown[], i: number) => (i >= 0 ? r[i] : undefined);
   const rows: FatturaRaw[] = [];
@@ -733,6 +802,8 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
       netto: cellToImporto(cell(r, idx.netto)) ?? totale,
       statoSdI: String(cell(r, idx.statoSdI) ?? "").trim(),
       direzione: "Emessa", // l'export "Check fatture inviate" è delle emesse
+      incassoAruba: parseIncassoAruba(cell(r, idx.incassoAruba)) || undefined,
+      dataIncasso: cellToIsoDate(cell(r, idx.dataIncasso)) ?? undefined,
     });
   }
   return { rows, scartate };

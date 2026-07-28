@@ -862,6 +862,8 @@ export const spImportFatture = createServerFn({ method: "POST" })
         statoSdI: String(r.statoSdI ?? "").slice(0, 40),
         direzione,
         scadenza: re.test(r.scadenza ?? "") ? r.scadenza : undefined,
+        incassoAruba: r.incassoAruba ? String(r.incassoAruba).slice(0, 30) : undefined,
+        dataIncasso: re.test(r.dataIncasso ?? "") ? r.dataIncasso : undefined,
       };
     });
     return { rows, direzione };

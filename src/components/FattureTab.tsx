@@ -75,7 +75,8 @@ function csvNum(n: number): string {
 
 const CHUNK = 100;
 
-type StatoFiltro = "tutte" | "ritardo" | "nonIncassata" | "parziale" | "pagata";
+type StatoFiltro =
+  "tutte" | "ritardo" | "nonIncassata" | "parziale" | "pagata" | "discordante" | "nonGestita";
 
 export function FattureTab() {
   const { t } = useLang();
@@ -205,7 +206,11 @@ export function FattureTab() {
           ? x.s.stato === "Non incassata"
           : s === "parziale"
             ? x.s.stato === "Parziale"
-            : x.s.stato === "Pagata",
+            : s === "pagata"
+              ? x.s.stato === "Pagata"
+              : s === "discordante"
+                ? x.s.discordante
+                : x.s.stato !== "NC" && !x.s.aruba,
     );
 
   const filtrate = useMemo(() => {
@@ -576,6 +581,10 @@ export function FattureTab() {
         "Scadenza",
         "Stato",
         "Ritardo gg",
+        "Incasso Aruba",
+        "Data incasso Aruba",
+        "Stato da banca",
+        "Discordante",
         "Stato SdI",
         "Nome file",
       ],
@@ -590,9 +599,38 @@ export function FattureTab() {
         fmtData(s.scadenza),
         s.stato,
         s.inRitardo ? s.giorniRitardo : "",
+        s.aruba,
+        f.dataIncasso ? fmtData(f.dataIncasso) : "",
+        s.statoBanca,
+        s.discordante ? "Sì" : "",
         f.statoSdI,
         f.nomeFile,
       ]),
+    );
+  };
+
+  // Pallino di provenienza dello stato: "A" = registrato su Aruba (fonte
+  // ufficiale), "B" = ricavato dalla riconciliazione bancaria. Il triangolo
+  // segnala che le due fonti non concordano.
+  const fonte = (x: (typeof conStato)[number]) => {
+    if (x.s.stato === "NC") return null;
+    if (!x.s.aruba)
+      return (
+        <span className="ml-1 text-[10px] text-muted-foreground" title={t("ft.fonteBanca")}>
+          B
+        </span>
+      );
+    return (
+      <span
+        className={`ml-1 text-[10px] ${x.s.discordante ? "text-status-absent font-semibold" : "text-muted-foreground"}`}
+        title={
+          x.s.discordante
+            ? `${t("ft.fonteAruba")} · ${t("ft.discordante")}`
+            : `${t("ft.fonteAruba")}${x.f.dataIncasso ? ` · ${fmtData(x.f.dataIncasso)}` : ""}`
+        }
+      >
+        A{x.s.discordante ? " ⚠" : ""}
+      </span>
     );
   };
 
@@ -733,6 +771,8 @@ export function FattureTab() {
                   ["nonIncassata", ricevute ? t("ft.nonPagata") : t("ft.nonIncassata")],
                   ["parziale", t("ft.parziale")],
                   ["pagata", t("ft.pagata")],
+                  ["discordante", t("ft.fDiscordanti")],
+                  ["nonGestita", t("ft.fNonGestita")],
                 ] as [Exclude<StatoFiltro, "tutte">, string][]
               ).map(([v, label]) => (
                 <button
@@ -1031,7 +1071,10 @@ export function FattureTab() {
                       >
                         {x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)}
                       </td>
-                      <td className="py-1.5 pr-3">{badge(x)}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">
+                        {badge(x)}
+                        {fonte(x)}
+                      </td>
                     </tr>,
                     aperta && (
                       <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">

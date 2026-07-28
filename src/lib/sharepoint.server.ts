@@ -267,6 +267,11 @@ export const SP_DISPLAY = {
     // Scadenza dichiarata in fattura (XML DatiPagamento): quando c'è vince
     // sui termini di pagamento per cliente.
     ScadenzaPagamento: "ScadenzaPagamento",
+    // Stato d'incasso gestito dall'amministrazione DENTRO Aruba (colonna
+    // "Incassi" dell'export): è la fonte primaria dello stato fattura; la
+    // riconciliazione bancaria resta un'informazione aggiuntiva. OPZIONALI.
+    IncassoAruba: "IncassoAruba",
+    DataIncasso: "DataIncasso",
   },
   // Termini di pagamento per cliente (giorni). Gestita dal direttore. OPZIONALE.
   terminiPagamento: {
@@ -3859,6 +3864,11 @@ function mapFattura(
     statoSdI: F.StatoSdI ? String(f[F.StatoSdI] ?? "") : "",
     direzione,
     scadenza: /^\d{4}-\d{2}-\d{2}$/.test(scad) ? scad : undefined,
+    incassoAruba: F.IncassoAruba ? String(f[F.IncassoAruba] ?? "") || undefined : undefined,
+    dataIncasso: (() => {
+      const d = F.DataIncasso ? iso(f[F.DataIncasso]) : "";
+      return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined;
+    })(),
   };
 }
 
@@ -3921,13 +3931,20 @@ export async function importFatture(
     vistiNelBlocco.add(r.nomeFile);
     const prev = esistenti.get(r.nomeFile);
     if (prev) {
-      // Già in archivio: si aggiorna SOLO lo Stato SdI se cambiato (i dati
-      // contabili della fattura sono immutabili per definizione).
-      if (F.StatoSdI && r.statoSdI && r.statoSdI !== prev.statoSdI) {
+      // Già in archivio: si aggiornano SOLO gli stati che evolvono nel tempo
+      // (Stato SdI e incasso registrato su Aruba); i dati contabili della
+      // fattura sono immutabili per definizione.
+      const patch: Record<string, unknown> = {};
+      if (F.StatoSdI && r.statoSdI && r.statoSdI !== prev.statoSdI) patch[F.StatoSdI] = r.statoSdI;
+      if (F.IncassoAruba && r.incassoAruba && r.incassoAruba !== (prev.incassoAruba ?? ""))
+        patch[F.IncassoAruba] = r.incassoAruba;
+      if (F.DataIncasso && r.dataIncasso && r.dataIncasso !== (prev.dataIncasso ?? ""))
+        patch[F.DataIncasso] = `${r.dataIncasso}T00:00:00Z`;
+      if (Object.keys(patch).length) {
         ops.push(async () => {
           await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${prev.id}/fields`, {
             method: "PATCH",
-            body: JSON.stringify({ [F.StatoSdI]: r.statoSdI }),
+            body: JSON.stringify(patch),
           });
           return "aggiornata";
         });
@@ -3952,6 +3969,8 @@ export async function importFatture(
     if (F.NettoAPagare) fields[F.NettoAPagare] = r.netto;
     if (F.StatoSdI) fields[F.StatoSdI] = r.statoSdI;
     if (F.ScadenzaPagamento && r.scadenza) fields[F.ScadenzaPagamento] = `${r.scadenza}T00:00:00Z`;
+    if (F.IncassoAruba && r.incassoAruba) fields[F.IncassoAruba] = r.incassoAruba;
+    if (F.DataIncasso && r.dataIncasso) fields[F.DataIncasso] = `${r.dataIncasso}T00:00:00Z`;
     ops.push(async () => {
       await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
         method: "POST",
