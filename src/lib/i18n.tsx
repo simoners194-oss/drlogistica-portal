@@ -108,6 +108,12 @@ const en = {
     "Clock-out recorded. If this is a break, press Clock in when you return: multiple shifts on the same day are allowed.",
   "presenze.hintPausa":
     "Going on a break? Press Clock out, then Clock in when you return. Hours are the sum of your shifts.",
+  "presenze.offlineQueuedTitle": "You're offline",
+  "presenze.offlineQueuedMsg":
+    "The clock event was saved on this device with the actual time and will be sent automatically as soon as the connection is back.",
+  "presenze.offlineSent": "Queued clock events sent",
+  "presenze.offlinePending":
+    "clock event(s) waiting for connection — keep this page open when back online",
   "presenze.totalBreak": "Total break",
   "presenze.inProgress": "In progress",
   "presenze.workedHours": "Worked hours",
@@ -799,6 +805,12 @@ const it: Record<DictKey, string> = {
     "Uscita registrata. Se è una pausa, al rientro premi Entrata: puoi timbrare più turni nello stesso giorno.",
   "presenze.hintPausa":
     "Vai in pausa? Premi Uscita, e al rientro premi Entrata. Le ore sono la somma dei tuoi turni.",
+  "presenze.offlineQueuedTitle": "Sei offline",
+  "presenze.offlineQueuedMsg":
+    "La timbratura è stata salvata sul dispositivo con l'ora reale e verrà inviata automaticamente appena torna la connessione.",
+  "presenze.offlineSent": "Timbrature in coda inviate",
+  "presenze.offlinePending":
+    "timbrature in attesa di rete — riapri questa pagina quando torna la linea",
   "presenze.totalBreak": "Pausa totale",
   "presenze.inProgress": "In corso",
   "presenze.workedHours": "Ore lavorate",

@@ -28,7 +28,8 @@ import {
   UNDO_TIMBRATURA_MINUTI,
   type EventoTimbratura,
 } from "@/lib/presenze-logic";
-import { spAnnullaUltimaTimbratura } from "@/lib/sharepoint.functions";
+import { spAnnullaUltimaTimbratura, spCreateTimbratura } from "@/lib/sharepoint.functions";
+import { accoda, isErroreRete, leggiCoda, salvaCoda, svuotaCoda } from "@/lib/timbratura-offline";
 import { Undo2 } from "lucide-react";
 
 export const Route = createFileRoute("/presenze")({
@@ -57,6 +58,9 @@ function PresenzePage() {
   const [busy, setBusy] = useState(false);
   const [oreSett, setOreSett] = useState<number | null>(null);
   const avvisoOrarioRef = useRef(false);
+  // Timbrature in coda offline (salvate sul dispositivo, in attesa di rete).
+  const [codaCount, setCodaCount] = useState(0);
+  const flushingRef = useRef(false);
 
   useEffect(() => {
     const s = readSession();
@@ -93,6 +97,50 @@ function PresenzePage() {
     }
   }, [me, now, oreSett]);
 
+  // Invia la coda offline: al ritorno della rete, all'apertura della pagina e
+  // periodicamente. Gli orari inviati sono quelli REALI della pressione.
+  const inviaCoda = async () => {
+    if (flushingRef.current || !me) return;
+    if (!leggiCoda().length) return;
+    flushingRef.current = true;
+    try {
+      const esito = await svuotaCoda(async (item) => {
+        await spCreateTimbratura({
+          data: {
+            dipendenteId: me.id,
+            evento: item.evento,
+            origine: "Web",
+            note: "Recuperata offline",
+            dataOraClient: item.dataOra,
+          },
+        });
+      });
+      setCodaCount(esito.rimaste);
+      if (esito.inviate > 0) {
+        toast.success(t("presenze.offlineSent"), { description: `${esito.inviate}` });
+        await dataService.getDipendenti().catch(() => null);
+        const updated = await dataService.getDipendente(me.id).catch(() => undefined);
+        if (updated) setMe(updated);
+      }
+    } finally {
+      flushingRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!me?.id) return;
+    setCodaCount(leggiCoda().length);
+    void inviaCoda();
+    const onOnline = () => void inviaCoda();
+    window.addEventListener("online", onOnline);
+    const iv = setInterval(onOnline, 30_000);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      clearInterval(iv);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.id]);
+
   // Annulla l'ultima timbratura ("tasto sbagliato"): possibile solo entro i
   // minuti di finestra; la verifica vera è comunque lato server.
   const annullaUltima = async () => {
@@ -105,6 +153,21 @@ function PresenzePage() {
       )
     )
       return;
+    // L'ultima timbratura è ancora in coda offline: si toglie dal dispositivo,
+    // il server non l'ha mai vista.
+    const coda = leggiCoda();
+    if (coda.length > 0) {
+      coda.pop();
+      salvaCoda(coda);
+      setCodaCount(coda.length);
+      const eventi = (me.eventiOggi ?? []).slice(0, -1);
+      const prev = eventi[eventi.length - 1];
+      setMe({ ...me, eventiOggi: eventi, ultimaTimbratura: prev });
+      toast.success(t("presenze.undoDone"), {
+        description: `${t(`evento.${ultima.tipo}`)} · ${formatOra(ultima.ora)}`,
+      });
+      return;
+    }
     setBusy(true);
     try {
       await spAnnullaUltimaTimbratura();
@@ -141,9 +204,26 @@ function PresenzePage() {
         description: `${formatOra(updated.ultimaTimbratura?.ora)} · ${t("presenze.statusLabel")} ${t(`dstato.${displayStato(updated)}`)}`,
       });
     } catch (err) {
-      toast.error(t("presenze.entryNotSaved"), {
-        description: err instanceof Error ? err.message : String(err),
-      });
+      if (isErroreRete(err)) {
+        // Niente rete: l'evento va in coda sul dispositivo con l'ora REALE
+        // della pressione e la pagina si aggiorna come se fosse registrato.
+        const oraLocale = new Date().toISOString();
+        const coda = accoda(tipo, oraLocale);
+        setCodaCount(coda.length);
+        setMe({
+          ...me,
+          eventiOggi: [...(me.eventiOggi ?? []), { tipo, ora: oraLocale }],
+          ultimaTimbratura: { tipo, ora: oraLocale },
+        });
+        toast(t("presenze.offlineQueuedTitle"), {
+          description: t("presenze.offlineQueuedMsg"),
+          duration: 8000,
+        });
+      } else {
+        toast.error(t("presenze.entryNotSaved"), {
+          description: err instanceof Error ? err.message : String(err),
+        });
+      }
     } finally {
       setBusy(false);
     }
@@ -177,18 +257,18 @@ function PresenzePage() {
     reason: string | null;
     tone: "primary" | "warn" | "ok" | "danger";
   }[] = // Due soli tasti: la pausa è un'Uscita seguita da una nuova Entrata al
-  // rientro (più turni nello stesso giorno sono legittimi).
-  (
-    [
-      { tipo: "entrata", Icon: LogIn, tone: "primary" },
-      { tipo: "uscita", Icon: LogOut, tone: "danger" },
-    ] as const
-  ).map((a) => ({
-    ...a,
-    label: t(`evento.${a.tipo}`),
-    enabled: isTransitionAllowed(a.tipo, last),
-    reason: reasonNotAllowed(a.tipo, last),
-  }));
+    // rientro (più turni nello stesso giorno sono legittimi).
+    (
+      [
+        { tipo: "entrata", Icon: LogIn, tone: "primary" },
+        { tipo: "uscita", Icon: LogOut, tone: "danger" },
+      ] as const
+    ).map((a) => ({
+      ...a,
+      label: t(`evento.${a.tipo}`),
+      enabled: isTransitionAllowed(a.tipo, last),
+      reason: reasonNotAllowed(a.tipo, last),
+    }));
 
   return (
     <AppShell title={t("presenze.title")} subtitle={`${me.nome} ${me.cognome} · ${me.ruolo}`}>
@@ -354,6 +434,11 @@ function PresenzePage() {
         ))}
       </div>
       <p className="mt-2 text-[11px] text-muted-foreground">{t("presenze.hintPausa")}</p>
+      {codaCount > 0 && (
+        <p className="mt-1 text-[12px] font-medium text-status-break">
+          {codaCount} {t("presenze.offlinePending")}
+        </p>
+      )}
 
       {/* Timeline timbrature di oggi */}
       <div className="mt-5 md:mt-6 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">

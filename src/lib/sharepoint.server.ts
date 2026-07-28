@@ -1921,7 +1921,14 @@ export interface CreateTimbraturaInput {
   posizione?: string;
   esito?: string;
   note?: string;
+  /** Recupero OFFLINE: ora reale della pressione, proposta dal client.
+   *  Accettata solo in finestra prudente (mai futuro, max 12h indietro). */
+  dataOraClient?: string;
 }
+
+// Finestra di accettazione dell'orario proposto dal client (coda offline).
+const OFFLINE_MAX_INDIETRO_MS = 12 * 3600_000;
+const OFFLINE_MAX_AVANTI_MS = 2 * 60_000; // tolleranza orologio del device
 
 export async function createTimbratura(input: CreateTimbraturaInput): Promise<SpTimbratura> {
   const started = Date.now();
@@ -1958,7 +1965,20 @@ export async function createTimbratura(input: CreateTimbraturaInput): Promise<Sp
     );
   }
 
-  const dataOra = new Date().toISOString();
+  // Ora dell'evento: quella del server, salvo recupero offline con orario
+  // del client dentro la finestra prudente (fuori finestra → ora server).
+  let dataOra = new Date().toISOString();
+  if (input.dataOraClient) {
+    const ms = new Date(input.dataOraClient).getTime();
+    const nowMs = Date.now();
+    if (
+      Number.isFinite(ms) &&
+      ms <= nowMs + OFFLINE_MAX_AVANTI_MS &&
+      ms >= nowMs - OFFLINE_MAX_INDIETRO_MS
+    ) {
+      dataOra = new Date(ms).toISOString();
+    }
+  }
   const fields: Record<string, unknown> = {
     [lookupIdFieldName(dipendenteField)]: dipInt,
     [eventoField]: eventoToSharePoint(input.evento),
