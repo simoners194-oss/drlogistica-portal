@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
+  Users,
   CheckCircle2,
   Download,
   FileSpreadsheet,
@@ -303,24 +304,80 @@ export function FattureTab() {
   }, [conStato, anniF]);
 
   // Riepilogo per cliente (come l'OVERVIEW del direttore, compattata).
+  // Specchietto per cliente: conteggi e importi, ordinato per FATTURATO
+  // decrescente. Le note di credito entrano nel fatturato (con segno) ma non
+  // nei conteggi di stato, che riguardano le sole fatture.
   const perCliente = useMemo(() => {
     const m = new Map<
       string,
-      { cliente: string; aperte: number; residuo: number; ritardo: number }
+      {
+        key: string;
+        cliente: string;
+        nFatture: number;
+        nPagate: number;
+        nParziali: number;
+        nDaIncassare: number;
+        nRitardo: number;
+        fatturato: number;
+        incassatoFatt: number;
+        incassatoBanca: number;
+        residuo: number;
+        ritardo: number;
+      }
     >();
     for (const x of conStato) {
-      if (x.s.stato === "NC" || x.s.residuo <= 0) continue;
       if (!matchAnno(x)) continue;
       const key = clienteGroupKey(x.f.cliente) || x.f.cliente;
-      const row = m.get(key) ?? { cliente: x.f.cliente, aperte: 0, residuo: 0, ritardo: 0 };
-      row.aperte++;
-      row.residuo += x.s.residuo;
-      if (x.s.inRitardo) row.ritardo += x.s.residuo;
+      const row = m.get(key) ?? {
+        key,
+        cliente: x.f.cliente,
+        nFatture: 0,
+        nPagate: 0,
+        nParziali: 0,
+        nDaIncassare: 0,
+        nRitardo: 0,
+        fatturato: 0,
+        incassatoFatt: 0,
+        incassatoBanca: 0,
+        residuo: 0,
+        ritardo: 0,
+      };
+      // Il fatturato comprende le note di credito, che sono negative.
+      row.fatturato += x.f.totale;
+      row.incassatoFatt += x.s.incassatoIncassi ?? x.s.incassatoFatturazione ?? 0;
+      row.incassatoBanca += x.s.incassatoBanca;
+      if (x.s.stato !== "NC") {
+        row.nFatture++;
+        row.residuo += x.s.residuo;
+        if (x.s.annullataDaNC || x.s.stato === "Pagata") row.nPagate++;
+        else if (x.s.stato === "Parziale") row.nParziali++;
+        else row.nDaIncassare++;
+        if (x.s.inRitardo) {
+          row.nRitardo++;
+          row.ritardo += x.s.residuo;
+        }
+      }
       m.set(key, row);
     }
-    return [...m.values()].sort((a, b) => b.residuo - a.residuo);
+    return [...m.values()].sort((a, b) => b.fatturato - a.fatturato);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conStato, anniF]);
+
+  // Cliente espanso nello specchietto (mostra le sue fatture).
+  const [clienteAperto, setClienteAperto] = useState<string | null>(null);
+  const fattureDelCliente = useMemo(
+    () =>
+      clienteAperto == null
+        ? []
+        : conStato
+            .filter(
+              (x) =>
+                matchAnno(x) && (clienteGroupKey(x.f.cliente) || x.f.cliente) === clienteAperto,
+            )
+            .sort((a, b) => b.f.dataDocumento.localeCompare(a.f.dataDocumento)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conStato, clienteAperto, anniF],
+  );
 
   // Movimenti con residuo da allocare per l'abbinamento manuale: incassi per
   // le emesse, uscite (in valore assoluto) per le ricevute.
@@ -1394,34 +1451,138 @@ export function FattureTab() {
       {perCliente.length > 0 && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
-            <AlertTriangle className="h-4 w-4 text-status-absent" />{" "}
+            <Users className="h-4 w-4 text-muted-foreground" />
             {ricevute ? t("ft.perFornitoreTitle") : t("ft.perClienteTitle")}
+            <span className="text-xs font-normal text-muted-foreground">({perCliente.length})</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-[13px] leading-tight">
               <thead>
                 <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                  <th className="py-1.5 pr-2">{t("fin.cliente")}</th>
-                  <th className="py-1.5 pr-2 text-right">{t("ft.aperte")}</th>
-                  <th className="py-1.5 pr-2 text-right">{t("ft.residuo")}</th>
-                  <th className="py-1.5 pr-2 text-right">{t("ft.diCuiRitardo")}</th>
+                  <th className="py-1.5 pr-2">{ricevute ? t("ft.fornitore") : t("fin.cliente")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("ft.nFatture")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("ft.nPagate")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("ft.nParziali")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("ft.nDaIncassare")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("ft.totFatturato")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("ft.totIncassatoFatt")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("ft.totIncassatoBanca")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("ft.totDaIncassare")}</th>
                 </tr>
               </thead>
               <tbody>
-                {perCliente.map((r) => (
-                  <tr key={r.cliente} className="border-b border-border/50">
-                    <td className="py-1 pr-2 max-w-64 truncate">{r.cliente}</td>
-                    <td className="py-1 pr-2 text-right">{r.aperte}</td>
-                    <td className="py-1 pr-2 text-right whitespace-nowrap font-medium">
-                      {fmtImporto(r.residuo)}
-                    </td>
-                    <td
-                      className={`py-1.5 pr-3 text-right whitespace-nowrap ${r.ritardo > 0 ? "text-status-absent font-medium" : "text-muted-foreground"}`}
+                {perCliente.map((r) => {
+                  const aperto = clienteAperto === r.key;
+                  return [
+                    <tr
+                      key={r.key}
+                      onClick={() => setClienteAperto(aperto ? null : r.key)}
+                      className={`border-b border-border/50 cursor-pointer hover:bg-muted/40 ${aperto ? "bg-muted/30" : ""}`}
                     >
-                      {r.ritardo > 0 ? fmtImporto(r.ritardo) : "—"}
-                    </td>
-                  </tr>
-                ))}
+                      <td className="py-1 pr-2 max-w-64 truncate font-medium" title={r.cliente}>
+                        {r.cliente}
+                      </td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{r.nFatture}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums text-status-present">
+                        {r.nPagate || ""}
+                      </td>
+                      <td className="py-1 pr-2 text-right tabular-nums text-status-break">
+                        {r.nParziali || ""}
+                      </td>
+                      <td
+                        className={`py-1 pr-2 text-right tabular-nums ${r.nRitardo > 0 ? "text-status-absent font-medium" : ""}`}
+                        title={r.nRitardo > 0 ? `${r.nRitardo} ${t("ft.kpiRitardoN")}` : undefined}
+                      >
+                        {r.nDaIncassare || ""}
+                      </td>
+                      <td className="py-1 pr-2 text-right tabular-nums font-medium">
+                        {fmtImporto(r.fatturato)}
+                      </td>
+                      <td className="py-1 pr-2 text-right tabular-nums text-status-present">
+                        {fmtImporto(r.incassatoFatt)}
+                      </td>
+                      <td className="py-1 pr-2 text-right tabular-nums text-muted-foreground">
+                        {fmtImporto(r.incassatoBanca)}
+                      </td>
+                      <td
+                        className={`py-1 pr-2 text-right tabular-nums font-medium ${r.ritardo > 0 ? "text-status-absent" : ""}`}
+                        title={
+                          r.ritardo > 0
+                            ? `${fmtImporto(r.ritardo)} ${t("ft.diCuiRitardo")}`
+                            : undefined
+                        }
+                      >
+                        {fmtImporto(r.residuo)}
+                      </td>
+                    </tr>,
+                    aperto && (
+                      <tr key={`${r.key}-det`} className="border-b border-border/50">
+                        <td colSpan={9} className="py-2 px-3 bg-muted/20">
+                          {/* Dettaglio del cliente: le sue fatture, con le tre
+                              letture affiancate come nella tabella principale. */}
+                          <table className="w-full text-[12px]">
+                            <thead>
+                              <tr className="text-left text-[11px] text-muted-foreground">
+                                <th className="py-1 pr-2">{t("ft.numero")}</th>
+                                <th className="py-1 pr-2">{t("ft.data")}</th>
+                                <th className="py-1 pr-2 text-right">{t("common.total")}</th>
+                                <th className="py-1 pr-2">{t("ft.scadenza")}</th>
+                                <th className="py-1 pr-2">{t("ft.colFatturazione")}</th>
+                                <th className="py-1 pr-2">{t("ft.colIncassi")}</th>
+                                <th className="py-1 pr-2">{t("ft.colBanca")}</th>
+                                <th className="py-1 pr-2 text-right">{t("ft.residuo")}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {fattureDelCliente.map((x) => (
+                                <tr key={x.f.nomeFile} className="border-t border-border/40">
+                                  <td className="py-0.5 pr-2 whitespace-nowrap">{x.f.numero}</td>
+                                  <td className="py-0.5 pr-2 whitespace-nowrap">
+                                    {fmtData(x.f.dataDocumento)}
+                                  </td>
+                                  <td
+                                    className={`py-0.5 pr-2 text-right whitespace-nowrap tabular-nums ${isNotaCredito(x.f.tipoDocumento) ? "text-status-absent" : ""}`}
+                                  >
+                                    {fmtImporto(x.f.totale)}
+                                  </td>
+                                  <td
+                                    className={`py-0.5 pr-2 whitespace-nowrap ${x.s.inRitardo ? "text-status-absent" : "text-muted-foreground"}`}
+                                  >
+                                    {x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)}
+                                  </td>
+                                  <td className="py-0.5 pr-2 whitespace-nowrap">
+                                    {badgeStato(x, x.s.statoFatturazione, true)}
+                                  </td>
+                                  <td className="py-0.5 pr-2 whitespace-nowrap">
+                                    {x.s.statoIncassi == null ? (
+                                      <span className="text-[11px] text-muted-foreground">—</span>
+                                    ) : (
+                                      <>
+                                        {badgeStato(x, x.s.statoIncassi, false)}
+                                        <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
+                                          {fmtImporto(x.s.incassatoIncassi ?? 0)}
+                                        </span>
+                                      </>
+                                    )}
+                                  </td>
+                                  <td className="py-0.5 pr-2 whitespace-nowrap">
+                                    {badgeStato(x, x.s.statoBanca, false)}
+                                    <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
+                                      {fmtImporto(x.s.incassatoBanca)}
+                                    </span>
+                                  </td>
+                                  <td className="py-0.5 pr-2 text-right whitespace-nowrap tabular-nums font-medium">
+                                    {x.s.stato === "NC" ? "" : fmtImporto(x.s.residuo)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    ),
+                  ];
+                })}
               </tbody>
             </table>
           </div>
