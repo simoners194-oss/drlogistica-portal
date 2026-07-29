@@ -24,6 +24,8 @@ import {
   aperturaTurnoCorrente,
   computeOreOggi,
   confermaRichiesta,
+  pausaApertaDa,
+  PAUSA_LUNGA_MINUTI,
   formatDurata,
   MAX_TURNO_ORE,
   isTransitionAllowed,
@@ -32,7 +34,11 @@ import {
   UNDO_TIMBRATURA_MINUTI,
   type EventoTimbratura,
 } from "@/lib/presenze-logic";
-import { spAnnullaUltimaTimbratura, spCreateTimbratura } from "@/lib/sharepoint.functions";
+import {
+  spAnnullaUltimaTimbratura,
+  spCreateTimbratura,
+  spGetMiaSettimana,
+} from "@/lib/sharepoint.functions";
 import { accoda, isErroreRete, leggiCoda, salvaCoda, svuotaCoda } from "@/lib/timbratura-offline";
 import { Undo2 } from "lucide-react";
 
@@ -100,6 +106,44 @@ function PresenzePage() {
       });
     }
   }, [me, now, oreSett]);
+
+  // Promemoria "sei ancora in pausa": la pausa lasciata aperta è l'anomalia
+  // più fastidiosa da correggere a posteriori.
+  const ultimoAvvisoPausaRef = useRef(0);
+  useEffect(() => {
+    if (!me) return;
+    const aperta = pausaApertaDa(
+      (me.eventiOggi ?? []).map((e) => ({ evento: e.tipo, ora: e.ora })),
+    );
+    if (!aperta) return;
+    const minuti = (now.getTime() - new Date(aperta).getTime()) / 60_000;
+    if (minuti < PAUSA_LUNGA_MINUTI) return;
+    if (now.getTime() - ultimoAvvisoPausaRef.current < 30 * 60_000) return;
+    ultimoAvvisoPausaRef.current = now.getTime();
+    toast.warning(t("presenze.pausaLungaTitle"), {
+      description: `${t("presenze.pausaLungaMsg")} (${formatDurata(Math.floor(minuti))})`,
+      duration: 12000,
+    });
+  }, [me, now, t]);
+
+  // Riepilogo settimanale: la domenica sera (o il lunedì, sulla settimana
+  // appena chiusa) si mostra quanto risulta lavorato, così eventuali
+  // timbrature mancanti si segnalano subito e non a fine mese.
+  const [settimana, setSettimana] = useState<{
+    oreLavorate: number;
+    orePreviste: number | null;
+    giorniNonChiusi: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!me) return;
+    const g = new Date().getDay(); // 0 = domenica
+    const ora = new Date().getHours();
+    const mostra = (g === 0 && ora >= 18) || g === 1;
+    if (!mostra) return;
+    spGetMiaSettimana({ data: {} })
+      .then((s) => setSettimana(s))
+      .catch(() => setSettimana(null));
+  }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Promemoria "manca l'uscita": turno ancora aperto oltre le ore previste,
   // ripetuto ogni 30 minuti finché la giornata non viene chiusa. È l'avviso
@@ -386,6 +430,33 @@ function PresenzePage() {
       </div>
 
       {/* Riepilogo ore */}
+      {/* Riepilogo della settimana: compare la domenica sera e il lunedì. */}
+      {settimana &&
+        settimana.orePreviste != null &&
+        (settimana.oreLavorate < settimana.orePreviste || settimana.giorniNonChiusi > 0) && (
+          <div
+            role="status"
+            className="mt-5 md:mt-6 flex items-start gap-3 rounded-2xl border border-status-break/40 bg-status-break/5 p-4 sm:p-5"
+          >
+            <span className="h-9 w-9 shrink-0 rounded-lg bg-status-break/15 text-status-break flex items-center justify-center">
+              <Timer className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm sm:text-[15px] font-semibold text-foreground">
+                {t("presenze.settTitle")}
+              </div>
+              <p className="text-[13px] text-muted-foreground mt-0.5 leading-snug">
+                {settimana.oreLavorate.toLocaleString(locale, { maximumFractionDigits: 2 })}
+                {" / "}
+                {settimana.orePreviste} {t("presenze.settOre")}
+                {settimana.giorniNonChiusi > 0 &&
+                  ` · ${settimana.giorniNonChiusi} ${t("presenze.settAperti")}`}
+                . {t("presenze.settMsg")}
+              </p>
+            </div>
+          </div>
+        )}
+
       {/* Fuori servizio: informativo, non bloccante (si può rientrare). */}
       {ore.chiusa && (
         <div

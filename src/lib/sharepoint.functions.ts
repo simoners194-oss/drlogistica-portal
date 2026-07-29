@@ -7,6 +7,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { normalizeRuolo } from "./session";
 import { isSupervisoreGlobale } from "./richieste-logic";
 import { arubaProvaConnessione, type ArubaProbeResult } from "./aruba.server";
+import { lunediDellaSettimana, ymd } from "./rendiconto-logic";
 import {
   setSessionCookie,
   readSessionUser,
@@ -1224,6 +1225,42 @@ export const spGetRendiconto = createServerFn({ method: "GET" })
     assertCap(me.operatore || me.autorizza || me.ruolo === "responsabile" || isAdmin(me));
     return computeRendiconto(data.anno, data.mese);
   });
+
+// Riepilogo della SETTIMANA CORRENTE del dipendente collegato: nessuna
+// capability richiesta (ognuno vede solo i propri dati). Alimenta l'avviso
+// "settimana sotto le ore previste" e, a seguire, la vista "Le mie ore".
+export const spGetMiaSettimana = createServerFn({ method: "GET" })
+  .inputValidator((input?: { oggi?: string }) => {
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    return { oggi: input?.oggi && re.test(input.oggi) ? input.oggi : undefined };
+  })
+  .handler(
+    async ({
+      data,
+    }): Promise<{
+      lunedi: string;
+      domenica: string;
+      oreLavorate: number;
+      orePreviste: number | null;
+      giorniNonChiusi: number;
+    }> => {
+      const me = await currentUser();
+      const oggi = data.oggi ?? new Date().toISOString().slice(0, 10);
+      const lunedi = lunediDellaSettimana(oggi);
+      const dom = new Date(`${lunedi}T00:00:00`);
+      dom.setDate(dom.getDate() + 6);
+      const domenica = ymd(dom);
+      const righe = await computeRendicontoPeriodo(lunedi, domenica);
+      const mia = righe.find((r) => r.dipendenteId === me.id);
+      return {
+        lunedi,
+        domenica,
+        oreLavorate: mia?.oreLavorate ?? 0,
+        orePreviste: mia?.oreSettimanali ?? null,
+        giorniNonChiusi: mia?.giorniNonChiusi ?? 0,
+      };
+    },
+  );
 
 // Rendiconto su periodo arbitrario (settimana fiscale / settimana del mese).
 export const spGetRendicontoPeriodo = createServerFn({ method: "GET" })

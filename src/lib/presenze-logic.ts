@@ -219,8 +219,19 @@ export function lastEvento(events: Timbratura[]): EventoTimbratura | null {
 
 /** Oltre queste ore continuative senza pause si chiede conferma all'uscita. */
 export const CONFERMA_SENZA_PAUSA_ORE = 6;
+/** Entro questi minuti da un'uscita, una nuova entrata sembra un doppio tocco. */
+export const RIENTRO_RAPIDO_MINUTI = 3;
+/** Oltre questi minuti di pausa aperta parte il promemoria "sei in pausa". */
+export const PAUSA_LUNGA_MINUTI = 90;
 
-export type ConfermaTimbratura = "pausa-ripetuta" | "uscita-senza-pausa";
+export type ConfermaTimbratura = "pausa-ripetuta" | "uscita-senza-pausa" | "rientro-rapido";
+
+/** Da quando è aperta la pausa in corso (ISO), o null se non si è in pausa. */
+export function pausaApertaDa(eventi: EventoConOra[]): string | null {
+  const sorted = [...eventi].sort((a, b) => a.ora.localeCompare(b.ora));
+  const last = sorted[sorted.length - 1];
+  return last && last.evento === "inizio-pausa" ? last.ora : null;
+}
 
 /** Conferma da chiedere PRIMA di registrare l'evento, oppure null.
  *  - pausa ripetuta: non è un errore, ma spesso si preme Pausa per una sosta
@@ -232,6 +243,15 @@ export function confermaRichiesta(
   now = new Date(),
 ): ConfermaTimbratura | null {
   const sorted = [...eventi].sort((a, b) => a.ora.localeCompare(b.ora));
+  const ultimo = sorted[sorted.length - 1];
+  if (evento === "entrata") {
+    // Doppio tocco: entrata a ridosso dell'uscita appena registrata.
+    if (ultimo?.evento === "uscita") {
+      const min = (now.getTime() - new Date(ultimo.ora).getTime()) / 60_000;
+      if (min <= RIENTRO_RAPIDO_MINUTI) return "rientro-rapido";
+    }
+    return null;
+  }
   if (evento === "inizio-pausa") {
     const giaFatte = sorted.filter((e) => e.evento === "inizio-pausa").length;
     return giaFatte >= 1 ? "pausa-ripetuta" : null;

@@ -137,6 +137,18 @@ const en = {
     "You are starting another break: is that right?\n\nBreak start / Break end are for long breaks (meal, planned stop). For a few minutes away you do not need to clock.",
   "presenze.ask.uscita-senza-pausa":
     "Today no break is recorded, after more than six hours on duty.\n\nConfirm the clock-out?",
+  "presenze.ask.rientro-rapido":
+    "You clocked out a moment ago.\n\nAre you starting a new shift? If you pressed the wrong button, cancel and use Undo.",
+  "presenze.pausaLungaTitle": "You are still on a break",
+  "presenze.pausaLungaMsg":
+    "Your break is still open: press Break end when you are back, otherwise the day will need a manual correction.",
+  "presenze.settTitle": "Your week",
+  "presenze.settOre": "hours",
+  "presenze.settAperti": "day(s) with an open shift",
+  "presenze.settMsg":
+    "If something is missing, report it now: corrections are easier straight away.",
+  "gt.ieriTitle": "Shifts left open yesterday",
+  "gt.ieriMsg": "Hours cannot be counted until they are closed. Tap a name to correct it.",
   "presenze.undoLast": "Undo last entry",
   "presenze.undoConfirm": "Undo your last clock entry? Use this if you pressed the wrong button.",
   "presenze.undoDone": "Entry undone — the correct buttons are enabled again",
@@ -853,6 +865,19 @@ const it: Record<DictKey, string> = {
     "Stai registrando un'altra pausa: è corretto?\n\nInizio e Fine pausa servono per le pause lunghe (pasto, sosta programmata). Per un allontanamento di pochi minuti non serve timbrare.",
   "presenze.ask.uscita-senza-pausa":
     "Oggi non risulta nessuna pausa, dopo più di sei ore in servizio.\n\nConfermi l'uscita?",
+  "presenze.ask.rientro-rapido":
+    "Hai appena registrato l'uscita.\n\nStai iniziando un nuovo turno? Se hai premuto il tasto sbagliato, annulla e usa Annulla ultima timbratura.",
+  "presenze.pausaLungaTitle": "Risulti ancora in pausa",
+  "presenze.pausaLungaMsg":
+    "La pausa è ancora aperta: premi Fine pausa quando rientri, altrimenti la giornata andrà corretta a mano.",
+  "presenze.settTitle": "La tua settimana",
+  "presenze.settOre": "ore",
+  "presenze.settAperti": "giornate con turno aperto",
+  "presenze.settMsg":
+    "Se manca qualcosa segnalalo subito: le correzioni sono più semplici a caldo.",
+  "gt.ieriTitle": "Turni rimasti aperti ieri",
+  "gt.ieriMsg":
+    "Finché non vengono chiusi le ore non si conteggiano. Tocca un nome per correggere.",
   "presenze.undoLast": "Annulla ultima timbratura",
   "presenze.undoConfirm": "Annullare l'ultima timbratura? Usalo se hai premuto il tasto sbagliato.",
   "presenze.undoDone": "Timbratura annullata — i pulsanti corretti sono di nuovo attivi",

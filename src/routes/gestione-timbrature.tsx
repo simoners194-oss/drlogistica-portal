@@ -119,6 +119,14 @@ function GestioneTimbraturePage() {
     loadAnomalie();
   }, []);
 
+  // Turni rimasti aperti IERI: il "giro del mattino" dell'operatore.
+  const turniApertiIeri = useMemo(() => {
+    const ieri = new Date();
+    ieri.setDate(ieri.getDate() - 1);
+    const g = ieri.toISOString().slice(0, 10);
+    return (anomalie ?? []).filter((a) => a.data === g && a.tipo === "turno-non-chiuso");
+  }, [anomalie]);
+
   const sediOptions = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
@@ -341,6 +349,37 @@ function GestioneTimbraturePage() {
 
   return (
     <AppShell title={t("gt.title")} subtitle={t("gt.subtitle")}>
+      {/* Riepilogo del mattino: chi IERI non ha chiuso il turno. Sta in cima
+          perché è la correzione più urgente (blocca il conteggio ore). */}
+      {turniApertiIeri.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-status-absent/40 bg-status-absent/5 p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <span className="h-9 w-9 shrink-0 rounded-lg bg-status-absent/15 text-status-absent flex items-center justify-center">
+              <AlertTriangle className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-foreground">
+                {t("gt.ieriTitle")} ({turniApertiIeri.length})
+              </div>
+              <p className="text-[13px] text-muted-foreground mt-0.5">{t("gt.ieriMsg")}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {turniApertiIeri.map((a) => (
+                  <button
+                    key={`${a.dipendenteId}-${a.data}`}
+                    type="button"
+                    onClick={() => correggi(a)}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground hover:bg-muted"
+                  >
+                    {a.nomeCompleto}
+                    {a.sede ? ` · ${a.sede}` : ""}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tab: inserimento / anomalie */}
       <div className="mb-4 inline-flex rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
         <button
