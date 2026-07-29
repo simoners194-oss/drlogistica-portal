@@ -34,13 +34,14 @@ import {
   aggregaIncassiAruba,
   type MovimentoAruba,
   TERMINI_DEFAULT_GIORNI,
+  TOLLERANZA_SALDO,
   type AbbinamentoIncasso,
   type DirezioneFattura,
   type FatturaRaw,
   type TerminePagamento,
   type StatoIncasso,
 } from "@/lib/fatture-logic";
-import { clienteGroupKey } from "@/lib/finanza-logic";
+import { clienteGroupKey, normalizeTesto } from "@/lib/finanza-logic";
 import {
   spGetFatture,
   spImportFatture,
@@ -439,6 +440,127 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [conStato, clienteAperto, anniF],
   );
+
+  // ESTRATTO CONTO del cliente aperto: la quadratura completa, fattura per
+  // fattura e movimento per movimento. Serve a rispondere alla sola domanda
+  // che conta ("quanto deve ancora pagare davvero") senza sorprese: i
+  // movimenti bancari del cliente NON agganciati ad alcuna fattura sono la
+  // ragione tipica per cui i totali non tornano, e qui si vedono.
+  const estrattoCliente = useMemo(() => {
+    if (clienteAperto == null) return null;
+    const numeri = new Set(fattureDelCliente.map((x) => normalizeTesto(x.f.numero)));
+    // Un movimento è del cliente se la controparte estratta coincide, oppure
+    // se cita il numero di una sua fattura (controparte scritta diversamente).
+    const suoi = (movimenti ?? []).filter(
+      (m) =>
+        (clienteGroupKey(m.cliente) || m.cliente) === clienteAperto ||
+        (!!m.nrFattura && numeri.has(normalizeTesto(m.nrFattura))),
+    );
+    // Sulle attive contano gli incassi (entrate), sulle passive le uscite.
+    const rilevanti = suoi.filter((m) => (ricevute ? m.importo < 0 : m.importo > 0));
+    const allocatoPerMov = new Map<string, number>();
+    for (const a of abbinamenti ?? [])
+      allocatoPerMov.set(
+        a.movimentoChiave,
+        (allocatoPerMov.get(a.movimentoChiave) ?? 0) + a.importo,
+      );
+    const righe = rilevanti
+      .map((m) => {
+        const allocato = allocatoPerMov.get(m.chiave) ?? 0;
+        const fattureAbb = (abbinamenti ?? [])
+          .filter((a) => a.movimentoChiave === m.chiave)
+          .map((a) => fattureDelCliente.find((x) => x.f.nomeFile === a.fatturaFile)?.f.numero)
+          .filter(Boolean) as string[];
+        return {
+          m,
+          allocato,
+          residuo: Math.round((Math.abs(m.importo) - allocato) * 100) / 100,
+          fattureAbb,
+        };
+      })
+      .sort((a, b) => b.m.dataContabile.localeCompare(a.m.dataContabile));
+    const fatturato = fattureDelCliente.reduce((s, x) => s + x.f.totale, 0);
+    const incassatoFatt = fattureDelCliente.reduce(
+      (s, x) =>
+        s +
+        (isNotaCredito(x.f.tipoDocumento)
+          ? 0
+          : (x.s.incassatoIncassi ?? x.s.incassatoFatturazione ?? 0)),
+      0,
+    );
+    const incassatoBanca = fattureDelCliente.reduce(
+      (s, x) => s + (isNotaCredito(x.f.tipoDocumento) ? 0 : x.s.incassatoBanca),
+      0,
+    );
+    const totaleBanca = righe.reduce((s, r) => s + Math.abs(r.m.importo), 0);
+    const nonAttribuito = righe.reduce((s, r) => s + r.residuo, 0);
+    return {
+      righe,
+      fatturato: Math.round(fatturato * 100) / 100,
+      incassatoFatt: Math.round(incassatoFatt * 100) / 100,
+      incassatoBanca: Math.round(incassatoBanca * 100) / 100,
+      residuo: Math.round((fatturato - incassatoFatt) * 100) / 100,
+      totaleBanca: Math.round(totaleBanca * 100) / 100,
+      nonAttribuito: Math.round(nonAttribuito * 100) / 100,
+      nNonAttribuiti: righe.filter((r) => r.residuo > TOLLERANZA_SALDO).length,
+    };
+  }, [clienteAperto, fattureDelCliente, movimenti, abbinamenti, ricevute]);
+
+  // Estratto conto del cliente in CSV: fatture e movimenti nello stesso file,
+  // distinti dalla colonna Tipo, così la quadratura si rifà in Excel.
+  const esportaEstratto = () => {
+    if (!estrattoCliente || clienteAperto == null) return;
+    const nome = fattureDelCliente[0]?.f.cliente ?? clienteAperto;
+    esportaCsvFile(
+      `estratto-${nome.replace(/[^\w]+/g, "-").toLowerCase()}`,
+      [
+        "Tipo",
+        "Data",
+        "Anno",
+        "Trimestre",
+        "Mese",
+        "Numero",
+        "Importo",
+        "Scadenza",
+        ricevute ? "Pagato fatturazione" : "Incassato fatturazione",
+        ricevute ? "Pagato banca" : "Incassato banca",
+        "Residuo",
+        "Stato fatturazione",
+        "Abbinato a",
+        "Descrizione",
+      ],
+      [
+        ...fattureDelCliente.map((x) => [
+          isNotaCredito(x.f.tipoDocumento) ? "Nota di credito" : "Fattura",
+          csvData(x.f.dataDocumento),
+          ...csvPeriodo(x.f.dataDocumento),
+          x.f.numero,
+          csvNum(x.f.totale),
+          csvData(x.s.scadenza),
+          csvNum(x.s.incassatoIncassi ?? x.s.incassatoFatturazione ?? 0),
+          csvNum(x.s.incassatoBanca),
+          csvNum(x.s.stato === "NC" ? 0 : x.s.residuo),
+          x.s.statoFatturazione ?? "non gestita",
+          "",
+          x.f.tipoDocumento,
+        ]),
+        ...estrattoCliente.righe.map((r) => [
+          "Movimento bancario",
+          csvData(r.m.dataContabile),
+          ...csvPeriodo(r.m.dataContabile),
+          r.m.nrFattura,
+          csvNum(Math.abs(r.m.importo)),
+          "",
+          "",
+          csvNum(r.allocato),
+          csvNum(r.residuo),
+          "",
+          r.fattureAbb.join(" "),
+          r.m.descrizione,
+        ]),
+      ],
+    );
+  };
 
   // Movimenti con residuo da allocare per l'abbinamento manuale: incassi per
   // le emesse, uscite (in valore assoluto) per le ricevute.
@@ -1716,6 +1838,111 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                               ))}
                             </tbody>
                           </table>
+                          {/* Quadratura + movimenti bancari del cliente: senza
+                              i movimenti NON attribuiti la differenza fra le
+                              colonne resta inspiegata. */}
+                          {estrattoCliente && (
+                            <div className="mt-3 border-t border-border pt-3">
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] mb-2">
+                                <span className="font-semibold text-foreground">
+                                  {t("ft.quadratura")}
+                                </span>
+                                <span>
+                                  {t("ft.totFatturato")}:{" "}
+                                  <b className="tabular-nums">
+                                    {fmtImporto(estrattoCliente.fatturato)}
+                                  </b>
+                                </span>
+                                <span>
+                                  {tp("ft.totIncassatoFatt", "ft.totPagatoFatt")}:{" "}
+                                  <b className="tabular-nums text-status-present">
+                                    {fmtImporto(estrattoCliente.incassatoFatt)}
+                                  </b>
+                                </span>
+                                <span>
+                                  {tp("ft.totDaIncassare", "ft.totDaPagare")}:{" "}
+                                  <b className="tabular-nums">
+                                    {fmtImporto(estrattoCliente.residuo)}
+                                  </b>
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {t("ft.colBanca")}:{" "}
+                                  <b className="tabular-nums">
+                                    {fmtImporto(estrattoCliente.totaleBanca)}
+                                  </b>{" "}
+                                  ({estrattoCliente.righe.length})
+                                </span>
+                                {estrattoCliente.nNonAttribuiti > 0 && (
+                                  <span
+                                    className="text-status-absent"
+                                    title={t("ft.nonAttribuitoTip")}
+                                  >
+                                    {t("ft.nonAttribuito")}:{" "}
+                                    <b className="tabular-nums">
+                                      {fmtImporto(estrattoCliente.nonAttribuito)}
+                                    </b>{" "}
+                                    ({estrattoCliente.nNonAttribuiti})
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    esportaEstratto();
+                                  }}
+                                  className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[12px] hover:bg-muted"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                  {t("ft.esportaEstratto")}
+                                </button>
+                              </div>
+                              {estrattoCliente.righe.length > 0 && (
+                                <table className="w-full text-[12px]">
+                                  <thead>
+                                    <tr className="text-left text-[11px] text-muted-foreground">
+                                      <th className="py-1 pr-2">{t("ft.data")}</th>
+                                      <th className="py-1 pr-2 text-right">{t("common.total")}</th>
+                                      <th className="py-1 pr-2 text-right">{t("ft.abbinato")}</th>
+                                      <th className="py-1 pr-2 text-right">{t("ft.residuo")}</th>
+                                      <th className="py-1 pr-2">{t("ft.numero")}</th>
+                                      <th className="py-1 pr-2">{t("fin.causale")}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {estrattoCliente.righe.map((r) => (
+                                      <tr key={r.m.chiave} className="border-t border-border/40">
+                                        <td className="py-0.5 pr-2 whitespace-nowrap">
+                                          {fmtData(r.m.dataContabile)}
+                                        </td>
+                                        <td className="py-0.5 pr-2 text-right tabular-nums whitespace-nowrap">
+                                          {fmtImporto(Math.abs(r.m.importo))}
+                                        </td>
+                                        <td className="py-0.5 pr-2 text-right tabular-nums whitespace-nowrap text-status-present">
+                                          {r.allocato ? fmtImporto(r.allocato) : ""}
+                                        </td>
+                                        <td
+                                          className={`py-0.5 pr-2 text-right tabular-nums whitespace-nowrap ${r.residuo > TOLLERANZA_SALDO ? "text-status-absent font-medium" : "text-muted-foreground"}`}
+                                        >
+                                          {r.residuo > TOLLERANZA_SALDO
+                                            ? fmtImporto(r.residuo)
+                                            : ""}
+                                        </td>
+                                        <td className="py-0.5 pr-2 whitespace-nowrap">
+                                          {r.fattureAbb.join(", ") || r.m.nrFattura}
+                                        </td>
+                                        <td
+                                          className="py-0.5 pr-2 max-w-72 truncate text-muted-foreground"
+                                          title={r.m.descrizione}
+                                        >
+                                          {r.m.causale || r.m.descrizione}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ),

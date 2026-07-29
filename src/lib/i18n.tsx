@@ -833,6 +833,12 @@ const en = {
   "ft.totPagatoBanca": "Paid (bank)",
   "ft.totDaPagare": "To pay",
   "ft.discordantePassiva": "paid from the account but not recorded in Aruba",
+  "ft.quadratura": "Reconciliation",
+  "ft.abbinato": "Matched",
+  "ft.nonAttribuito": "not allocated",
+  "ft.nonAttribuitoTip":
+    "Money received from this counterparty that is not linked to any invoice. Until it is matched, the outstanding balance shown is higher than the real one.",
+  "ft.esportaEstratto": "Export statement",
   "ft.fScartate": "Rejected",
   "ft.scartata": "rejected by SdI",
   "ft.scartateTip":
@@ -1652,6 +1658,12 @@ const it: Record<DictKey, string> = {
   "ft.totPagatoBanca": "Pagato banca",
   "ft.totDaPagare": "Da pagare",
   "ft.discordantePassiva": "risulta pagata dal conto ma non su Aruba",
+  "ft.quadratura": "Quadratura",
+  "ft.abbinato": "Abbinato",
+  "ft.nonAttribuito": "non attribuito",
+  "ft.nonAttribuitoTip":
+    "Denaro ricevuto da questa controparte che non risulta collegato ad alcuna fattura. Finché non viene abbinato, il residuo mostrato è più alto di quello reale.",
+  "ft.esportaEstratto": "Esporta estratto",
   "ft.fScartate": "Scartate",
   "ft.scartata": "scartata dallo SdI",
   "ft.scartateTip":
