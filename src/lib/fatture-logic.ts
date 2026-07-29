@@ -944,6 +944,10 @@ export function parseFatturaPA(
     const collegate = figliDi(body, "DatiGenerali/DatiFattureCollegate")
       .map((c) => testoDi(c, "IdDocumento").trim())
       .filter(Boolean);
+    // Le note di credito valgono in DIMINUZIONE: l'XML le scrive con importi
+    // positivi (il segno sta nel tipo documento), l'export xlsx negativi. Qui
+    // si uniforma al segno negativo, così la lettura è coerente ovunque.
+    const segno = td === "TD04" ? -1 : 1;
     rows.push({
       nomeFile: idx === 0 ? nomeFile : `${nomeFile}#${idx + 1}`,
       numero: testoDi(doc, "Numero"),
@@ -954,10 +958,10 @@ export function parseFatturaPA(
       cliente: canonicalCliente(controparte.nome).toUpperCase(),
       piva: controparte.piva,
       metodoPagamento: mp ? `${mp} - ${MODALITA_PAG_LABEL[mp] ?? mp}` : "",
-      imponibile: Math.round(imponibile * 100) / 100,
-      iva: Math.round(iva * 100) / 100,
-      totale,
-      netto: nettoPag ? Math.round(nettoPag * 100) / 100 : totale,
+      imponibile: (segno * Math.round(Math.abs(imponibile) * 100)) / 100,
+      iva: (segno * Math.round(Math.abs(iva) * 100)) / 100,
+      totale: segno * Math.abs(totale),
+      netto: segno * Math.abs(nettoPag ? Math.round(nettoPag * 100) / 100 : totale),
       statoSdI: "",
       direzione,
       scadenza: scadenze.length ? scadenze[scadenze.length - 1] : undefined,
@@ -1029,6 +1033,8 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
       if (r.some((c) => c != null && String(c).trim() !== "")) scartate++;
       continue;
     }
+    const segnoNc = isNotaCredito(String(cell(r, idx.tipoDocumento) ?? "")) ? -1 : 1;
+    const val = (n: number) => segnoNc * Math.abs(n);
     rows.push({
       nomeFile,
       numero: String(cell(r, idx.numero) ?? "").trim(),
@@ -1039,10 +1045,10 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
       cliente: canonicalCliente(String(cell(r, idx.cliente) ?? "")).toUpperCase(),
       piva: String(cell(r, idx.piva) ?? "").trim(),
       metodoPagamento: String(cell(r, idx.metodoPagamento) ?? "").trim(),
-      imponibile: cellToImporto(cell(r, idx.imponibile)) ?? 0,
-      iva: cellToImporto(cell(r, idx.iva)) ?? 0,
-      totale,
-      netto: cellToImporto(cell(r, idx.netto)) ?? totale,
+      imponibile: val(cellToImporto(cell(r, idx.imponibile)) ?? 0),
+      iva: val(cellToImporto(cell(r, idx.iva)) ?? 0),
+      totale: val(totale),
+      netto: val(cellToImporto(cell(r, idx.netto)) ?? totale),
       statoSdI: String(cell(r, idx.statoSdI) ?? "").trim(),
       direzione: "Emessa", // l'export "Check fatture inviate" è delle emesse
       incassoAruba: parseIncassoAruba(cell(r, idx.incassoAruba)) || undefined,

@@ -1171,7 +1171,9 @@ export function FattureTab() {
                       <td className="py-1 pr-2 whitespace-nowrap font-medium">{x.f.numero}</td>
                       <td className="py-1 pr-2 whitespace-nowrap">{fmtData(x.f.dataDocumento)}</td>
                       <td className="py-1 pr-2 max-w-40 truncate">{x.f.cliente}</td>
-                      <td className="py-1 pr-2 text-right whitespace-nowrap">
+                      <td
+                        className={`py-1 pr-2 text-right whitespace-nowrap ${isNotaCredito(x.f.tipoDocumento) ? "text-status-absent" : ""}`}
+                      >
                         {fmtImporto(x.f.totale)}
                         {noteCredito.has(x.f.nomeFile) && (
                           <div
