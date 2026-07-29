@@ -810,6 +810,7 @@ const en = {
   "ft.importDup": "already in the archive",
   "ft.errImport": "Import failed",
   "ft.errFile": "File not recognized",
+  "ft.giaNelCaricamento": "already among the selected files",
   "ft.errFileDesc":
     "No sheet with the expected columns (Numero, Nome file, Totale documento…) was found.",
   "ft.perClienteTitle": "Open receivables by client",
@@ -1612,6 +1613,7 @@ const it: Record<DictKey, string> = {
   "ft.importDup": "già in archivio",
   "ft.errImport": "Import non riuscito",
   "ft.errFile": "File non riconosciuto",
+  "ft.giaNelCaricamento": "già presenti nei file scelti",
   "ft.errFileDesc": "Nessun foglio con le colonne attese (Numero, Nome file, Totale documento…).",
   "ft.perClienteTitle": "Credito aperto per cliente",
   "ft.aperte": "Fatture aperte",

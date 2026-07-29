@@ -123,6 +123,7 @@ export function FattureTab() {
     emesse: FatturaRaw[];
     ricevute: FatturaRaw[];
     scartate: number;
+    duplicati: number;
   } | null>(null);
 
   // Collegamento Aruba (API, sola lettura)
@@ -627,11 +628,14 @@ export function FattureTab() {
         return;
       }
       if (movAruba.length > 0) await applicaIncassiAruba(movAruba);
-      // Dedup nel caricamento stesso (es. ZIP + xlsx insieme): prima vince.
+      // Dedup nel caricamento stesso: stesso documento in due file scelti
+      // insieme (es. lo stesso ZIP scaricato due volte, o ZIP + xlsx). NON
+      // sono file illeggibili: vanno contati a parte, o il messaggio spaventa.
       const visti = new Set<string>();
+      let duplicati = 0;
       const univoche = rows.filter((r) => {
         if (visti.has(r.nomeFile)) {
-          scartate++;
+          duplicati++;
           return false;
         }
         visti.add(r.nomeFile);
@@ -642,6 +646,7 @@ export function FattureTab() {
         emesse: univoche.filter((r) => r.direzione === "Emessa"),
         ricevute: univoche.filter((r) => r.direzione === "Ricevuta"),
         scartate,
+        duplicati,
       });
     } catch (err) {
       toast.error(t("ft.errFile"), {
@@ -1107,6 +1112,8 @@ export function FattureTab() {
                 {previewImp.emesse.length + previewImp.ricevute.length} {t("ft.importRows")} (
                 {previewImp.emesse.length} {t("ft.dirEmesse").toLowerCase()},{" "}
                 {previewImp.ricevute.length} {t("ft.dirRicevute").toLowerCase()})
+                {previewImp.duplicati > 0 &&
+                  ` · ${previewImp.duplicati} ${t("ft.giaNelCaricamento")}`}
                 {previewImp.scartate > 0 && ` · ${previewImp.scartate} ${t("fin.previewSkipped")}`}
                 <div className="mt-2 flex gap-2">
                   <button
