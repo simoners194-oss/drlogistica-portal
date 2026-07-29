@@ -158,18 +158,29 @@ export function scadenzaFattura(dataDocumento: string, giorni: number): string {
 
 export type StatoIncasso = "Pagata" | "Parziale" | "Non incassata" | "NC";
 
+// DUE LETTURE AFFIANCATE, nessuna prevale sull'altra:
+//  - FATTURAZIONE: quanto risulta all'amministrazione dentro Aruba;
+//  - BANCA: quanto risulta arrivato sul conto dagli abbinamenti.
+// Possono dire cose diverse: la differenza è un'informazione, non un errore da
+// nascondere. Il campo `stato` resta come lettura combinata (fatturazione se
+// c'è, altrimenti banca) per filtri e ordinamenti.
 export interface FatturaStato {
-  /** Incassato UFFICIALE: se Aruba dice incassata è il totale della fattura,
-   *  altrimenti quanto risulta abbinato in banca. */
+  /** Incassato secondo la lettura combinata. */
   incassato: number;
-  /** Quanto risulta dai soli ABBINAMENTI bancari (verifica). */
+  /** Incassato secondo la FATTURAZIONE (Aruba); null se non gestita lì. */
+  incassatoFatturazione: number | null;
+  /** Incassato secondo i soli ABBINAMENTI bancari. */
   incassatoBanca: number;
-  /** Credito ancora aperto secondo lo stato UFFICIALE. */
+  /** Residuo secondo la lettura combinata. */
   residuo: number;
+  /** Residuo secondo la FATTURAZIONE; null se non gestita su Aruba. */
+  residuoFatturazione: number | null;
   /** Residuo secondo i soli abbinamenti bancari. */
   residuoBanca: number;
-  /** Stato UFFICIALE (Aruba se presente, altrimenti dagli abbinamenti). */
+  /** Lettura combinata (fatturazione se presente, altrimenti banca). */
   stato: StatoIncasso;
+  /** Stato secondo la FATTURAZIONE; null se la fattura non è gestita su Aruba. */
+  statoFatturazione: StatoIncasso | null;
   /** Stato ricavato dai soli abbinamenti bancari (riconciliazione). */
   statoBanca: StatoIncasso;
   /** Valore registrato su Aruba, "" se la fattura non è gestita lì. */
@@ -197,10 +208,13 @@ export function computeStatoFattura(
   if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) {
     return {
       incassato,
+      incassatoFatturazione: null,
       incassatoBanca: incassato,
       residuo: 0,
+      residuoFatturazione: null,
       residuoBanca: 0,
       stato: "NC",
+      statoFatturazione: null,
       statoBanca: "NC",
       aruba: parseIncassoAruba(f.incassoAruba),
       discordante: false,
@@ -243,16 +257,34 @@ export function computeStatoFattura(
   const discordante =
     (aruba === "Incassata" && statoBanca !== "Pagata") ||
     (aruba === "Non incassata" && statoBanca === "Pagata");
-  // Credito aperto e incassato UFFICIALI: se Aruba dà la fattura per
-  // incassata il credito è chiuso, anche se in banca l'abbinamento manca.
-  const residuo = aruba === "Incassata" ? 0 : residuoBanca;
-  const incassatoUff = aruba === "Incassata" ? f.totale : incassato;
+  // Lettura FATTURAZIONE: esiste solo se Aruba ha uno stato registrato.
+  // "Non incassata" su Aruba non esclude un acconto già visto in banca: in
+  // quel caso la fatturazione mostra comunque il parziale che risulta.
+  const statoFatturazione: StatoIncasso | null =
+    aruba === "Incassata"
+      ? "Pagata"
+      : aruba === "Non incassata"
+        ? statoBanca === "Parziale"
+          ? "Parziale"
+          : "Non incassata"
+        : null;
+  const incassatoFatturazione =
+    aruba === "Incassata" ? f.totale : aruba === "Non incassata" ? incassato : null;
+  const residuoFatturazione =
+    incassatoFatturazione == null ? null : Math.max(0, f.totale - incassatoFatturazione);
+  // Lettura combinata: serve a filtri, ritardi e ordinamenti; nelle viste le
+  // due colonne restano comunque affiancate.
+  const residuo = residuoFatturazione ?? residuoBanca;
+  const incassatoComb = incassatoFatturazione ?? incassato;
   return {
-    incassato: incassatoUff,
+    incassato: incassatoComb,
+    incassatoFatturazione,
     incassatoBanca: incassato,
     residuo,
+    residuoFatturazione,
     residuoBanca,
     stato,
+    statoFatturazione,
     statoBanca,
     aruba,
     discordante,

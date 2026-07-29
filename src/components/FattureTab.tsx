@@ -33,6 +33,7 @@ import {
   type DirezioneFattura,
   type FatturaRaw,
   type TerminePagamento,
+  type StatoIncasso,
 } from "@/lib/fatture-logic";
 import { clienteGroupKey } from "@/lib/finanza-logic";
 import {
@@ -231,6 +232,9 @@ export function FattureTab() {
   const riepilogo = useMemo(() => {
     const base = conStato.filter((x) => matchAnno(x) && x.s.stato !== "NC");
     const residuo = base.reduce((s, x) => s + x.s.residuo, 0);
+    const apertoFatt = base.reduce((s, x) => s + (x.s.residuoFatturazione ?? 0), 0);
+    const apertoBanca = base.reduce((s, x) => s + x.s.residuoBanca, 0);
+    const incassatoFatt = base.reduce((s, x) => s + (x.s.incassatoFatturazione ?? 0), 0);
     const inRitardo = base.filter((x) => x.s.inRitardo);
     const ritardoImporto = inRitardo.reduce((s, x) => s + x.s.residuo, 0);
     const incassato = base.reduce((s, x) => s + x.s.incassato, 0);
@@ -239,6 +243,9 @@ export function FattureTab() {
     return {
       n: base.length,
       residuo,
+      apertoFatt,
+      apertoBanca,
+      incassatoFatt,
       nRitardo: inRitardo.length,
       ritardoImporto,
       incassato,
@@ -646,8 +653,20 @@ export function FattureTab() {
     );
   };
 
-  const badge = (x: (typeof conStato)[number]) => {
-    if (x.s.stato === "NC")
+  // Badge di UNO stato: la stessa resa per la colonna Fatturazione e per la
+  // colonna Banca, che restano affiancate e indipendenti.
+  const badgeStato = (
+    x: (typeof conStato)[number],
+    stato: StatoIncasso | null,
+    mostraRitardo: boolean,
+  ) => {
+    if (stato == null)
+      return (
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+          {t("ft.nonGestita")}
+        </span>
+      );
+    if (stato === "NC")
       return (
         <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
           {reinvii.has(x.f.nomeFile)
@@ -659,22 +678,23 @@ export function FattureTab() {
                 : "—"}
         </span>
       );
-    if (x.s.stato === "Pagata")
+    if (stato === "Pagata")
       return (
         <span className="rounded-full bg-status-present/15 px-2 py-0.5 text-[11px] font-medium text-status-present">
           {t("ft.pagata")}
         </span>
       );
+    const inRitardo = mostraRitardo && x.s.inRitardo;
     return (
       <span
-        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${x.s.inRitardo ? "bg-status-absent/15 text-status-absent" : "bg-status-break/15 text-status-break"}`}
+        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${inRitardo ? "bg-status-absent/15 text-status-absent" : "bg-status-break/15 text-status-break"}`}
       >
-        {x.s.stato === "Parziale"
+        {stato === "Parziale"
           ? t("ft.parziale")
           : x.f.direzione === "Ricevuta"
             ? t("ft.nonPagata")
             : t("ft.nonIncassata")}
-        {x.s.inRitardo ? ` · +${x.s.giorniRitardo}gg` : ""}
+        {inRitardo ? ` · +${x.s.giorniRitardo}gg` : ""}
       </span>
     );
   };
@@ -716,7 +736,10 @@ export function FattureTab() {
             {ricevute ? t("ft.kpiDaPagare") : t("ft.kpiAperto")}
           </div>
           <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
-            {fmtImporto(riepilogo.residuo)} €
+            {fmtImporto(riepilogo.apertoFatt)} €
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            {t("ft.colBanca")}: {fmtImporto(riepilogo.apertoBanca)} €
           </div>
         </div>
         <div className="rounded-2xl border border-status-absent/40 bg-status-absent/5 p-4 shadow-[var(--shadow-card)]">
@@ -735,12 +758,11 @@ export function FattureTab() {
             {ricevute ? t("ft.kpiPagato") : t("ft.kpiIncassato")}
           </div>
           <div className="mt-1 text-2xl font-semibold tabular-nums text-status-present">
-            {fmtImporto(riepilogo.incassato)} €
+            {fmtImporto(riepilogo.incassatoFatt)} €
           </div>
-          {/* La banca CONFERMA una parte dell'incassato ufficiale: la
-              riconciliazione è un controllo, non la fonte dello stato. */}
+          {/* Le due letture affiancate: possono differire, ed è un dato utile. */}
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            {t("ft.kpiConfermatoBanca")} {fmtImporto(riepilogo.confermatoBanca)} €
+            {t("ft.colBanca")}: {fmtImporto(riepilogo.confermatoBanca)} €
             {riepilogo.nDiscordanti > 0 && (
               <>
                 {" · "}
@@ -1061,9 +1083,9 @@ export function FattureTab() {
                   <th className="py-2 pr-3 text-right">
                     {ricevute ? t("ft.pagato") : t("ft.incassato")}
                   </th>
-                  <th className="py-2 pr-3 text-right">{t("ft.residuo")}</th>
                   <th className="py-2 pr-3">{t("ft.scadenza")}</th>
-                  <th className="py-2 pr-3">{t("common.status")}</th>
+                  <th className="py-2 pr-3">{t("ft.colFatturazione")}</th>
+                  <th className="py-2 pr-3">{t("ft.colBanca")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1090,19 +1112,32 @@ export function FattureTab() {
                         {fmtImporto(x.f.totale)}
                       </td>
                       <td className="py-1.5 pr-3 text-right whitespace-nowrap text-status-present">
-                        {x.s.incassato ? fmtImporto(x.s.incassato) : ""}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right whitespace-nowrap font-medium">
-                        {x.s.stato === "NC" ? "" : fmtImporto(x.s.residuo)}
+                        {x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""}
                       </td>
                       <td
                         className={`py-1.5 pr-3 whitespace-nowrap ${x.s.inRitardo ? "text-status-absent font-medium" : "text-muted-foreground"}`}
                       >
                         {x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)}
                       </td>
+                      {/* Le due letture, affiancate: nessuna prevale. */}
                       <td className="py-1.5 pr-3 whitespace-nowrap">
-                        {badge(x)}
-                        {fonte(x)}
+                        {badgeStato(x, x.s.statoFatturazione, true)}
+                        {x.f.dataIncasso && (
+                          <span className="ml-1 text-[11px] text-muted-foreground">
+                            {fmtData(x.f.dataIncasso)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">
+                        {badgeStato(x, x.s.statoBanca, false)}
+                        {x.s.discordante && (
+                          <span
+                            className="ml-1 text-[11px] text-status-absent"
+                            title={t("ft.discordante")}
+                          >
+                            ⚠
+                          </span>
+                        )}
                       </td>
                     </tr>,
                     aperta && (
