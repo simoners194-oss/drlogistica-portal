@@ -382,28 +382,40 @@ export function computeStatoFattura(
   // Le note di credito non si "incassano" e le scartate/rifiutate dallo SdI
   // non sono crediti: entrambe fuori dal computo di residui e ritardi.
   if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) {
+    // Fuori dal credito, ma le informazioni delle fonti NON si buttano: per
+    // una nota di credito "incassata" su Aruba significa che è stata
+    // compensata/liquidata, e va potuto leggere (le viste la etichettano
+    // come compensata, non come pagata).
+    const arubaNC = parseIncassoAruba(f.incassoAruba);
+    const impNC = Math.abs(f.totale);
+    const incassatoNC = typeof f.incassatoAruba === "number" ? Math.abs(f.incassatoAruba) : null;
+    const chiusa = (v: number | null) =>
+      v == null ? null : Math.max(0, impNC - v) <= TOLLERANZA_SALDO ? "Pagata" : "Non incassata";
     return {
+      annullataDaNC: false,
+      notaCredito: 0,
       incassato,
-      incassatoFatturazione: null,
+      incassatoFatturazione:
+        arubaNC === "Incassata" ? impNC : arubaNC === "Non incassata" ? 0 : null,
+      incassatoIncassi: incassatoNC,
       incassatoBanca: incassato,
       residuo: 0,
       residuoFatturazione: null,
+      residuoIncassi: incassatoNC == null ? null : Math.max(0, impNC - incassatoNC),
       residuoBanca: 0,
       stato: "NC",
-      annullataDaNC: false,
-      notaCredito: 0,
-      statoFatturazione: null,
-      statoIncassi: null,
-      incassatoIncassi: null,
-      residuoIncassi: null,
+      statoFatturazione:
+        arubaNC === "Incassata" ? "Pagata" : arubaNC === "Non incassata" ? "Non incassata" : null,
+      statoIncassi: chiusa(incassatoNC),
       statoBanca: "NC",
-      aruba: parseIncassoAruba(f.incassoAruba),
+      aruba: arubaNC,
       discordante: false,
       scadenza,
       inRitardo: false,
       giorniRitardo: 0,
     };
   }
+
   // Base del credito: totale al netto delle note di credito collegate.
   const base = Math.max(0, Math.round((f.totale - notaCredito) * 100) / 100);
   const residuoBanca = Math.max(0, base - incassato);

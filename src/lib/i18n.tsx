@@ -724,6 +724,8 @@ const en = {
   "ft.nessunAbbinamento": "no match yet",
   "ft.ncCollegate": "Credit notes applied",
   "ft.annullataNC": "cancelled by CN",
+  "ft.ncCompensata": "settled",
+  "ft.ncDaCompensare": "to settle",
   "ft.annullataNCTip": "Credit notes cover the whole amount: nothing left to collect.",
   "ft.movApplicati": "Collected amounts updated",
   "ft.movApplicatiDesc": "invoices updated from the Aruba movements report",
@@ -1512,6 +1514,8 @@ const it: Record<DictKey, string> = {
   "ft.nessunAbbinamento": "da abbinare",
   "ft.ncCollegate": "Note di credito collegate",
   "ft.annullataNC": "annullata da NC",
+  "ft.ncCompensata": "compensata",
+  "ft.ncDaCompensare": "da compensare",
   "ft.annullataNCTip":
     "Le note di credito coprono l'intero importo: non c'è più nulla da incassare.",
   "ft.movApplicati": "Incassi aggiornati",

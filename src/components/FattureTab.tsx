@@ -728,6 +728,15 @@ export function FattureTab() {
           {t("ft.nonGestita")}
         </span>
       );
+    // Nota di credito: "incassata" significa compensata/liquidata, non pagata.
+    if (isNotaCredito(x.f.tipoDocumento) && (stato === "Pagata" || stato === "Non incassata"))
+      return (
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${stato === "Pagata" ? "bg-status-present/15 text-status-present" : "bg-status-break/15 text-status-break"}`}
+        >
+          {stato === "Pagata" ? t("ft.ncCompensata") : t("ft.ncDaCompensare")}
+        </span>
+      );
     if (stato === "NC")
       return (
         <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
