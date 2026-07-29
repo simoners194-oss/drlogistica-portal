@@ -107,7 +107,7 @@ const en = {
   "presenze.dayClosedMsg":
     "Clock-out recorded. If this is a break, press Clock in when you return: multiple shifts on the same day are allowed.",
   "presenze.hintPausa":
-    "Going on a break? Press Clock out, then Clock in when you return. Hours are the sum of your shifts.",
+    "You can take several breaks in the same day: Break start when you stop, Break end when you resume. Working hours are the sum of the periods on duty.",
   "presenze.offlineQueuedTitle": "You're offline",
   "presenze.offlineQueuedMsg":
     "The clock event was saved on this device with the actual time and will be sent automatically as soon as the connection is back.",
@@ -130,6 +130,13 @@ const en = {
   "presenze.quickProfile": "Profile",
   "presenze.dailyQuotaTitle": "Daily hours reached",
   "presenze.dailyQuotaMsg": "You have reached your expected hours for today.",
+  "presenze.mancaUscitaTitle": "Clock-out still missing",
+  "presenze.mancaUscitaMsg":
+    "Your shift is still open beyond the expected hours. If you have finished, record the clock-out: an open shift has to be corrected afterwards.",
+  "presenze.ask.pausa-ripetuta":
+    "You are starting another break: is that right?\n\nBreak start / Break end are for long breaks (meal, planned stop). For a few minutes away you do not need to clock.",
+  "presenze.ask.uscita-senza-pausa":
+    "Today no break is recorded, after more than six hours on duty.\n\nConfirm the clock-out?",
   "presenze.undoLast": "Undo last entry",
   "presenze.undoConfirm": "Undo your last clock entry? Use this if you pressed the wrong button.",
   "presenze.undoDone": "Entry undone — the correct buttons are enabled again",
@@ -816,7 +823,7 @@ const it: Record<DictKey, string> = {
   "presenze.dayClosedMsg":
     "Uscita registrata. Se è una pausa, al rientro premi Entrata: puoi timbrare più turni nello stesso giorno.",
   "presenze.hintPausa":
-    "Vai in pausa? Premi Uscita, e al rientro premi Entrata. Le ore sono la somma dei tuoi turni.",
+    "Puoi fare più pause nella stessa giornata: Inizio pausa quando stacchi, Fine pausa quando riprendi. Le ore lavorate sono la somma dei periodi in servizio.",
   "presenze.offlineQueuedTitle": "Sei offline",
   "presenze.offlineQueuedMsg":
     "La timbratura è stata salvata sul dispositivo con l'ora reale e verrà inviata automaticamente appena torna la connessione.",
@@ -839,6 +846,13 @@ const it: Record<DictKey, string> = {
   "presenze.quickProfile": "Profilo",
   "presenze.dailyQuotaTitle": "Monte ore giornaliero raggiunto",
   "presenze.dailyQuotaMsg": "Hai raggiunto le ore previste per oggi.",
+  "presenze.mancaUscitaTitle": "Manca la timbratura di uscita",
+  "presenze.mancaUscitaMsg":
+    "Il tuo turno risulta ancora aperto oltre le ore previste. Se hai finito, registra l'uscita: un turno lasciato aperto va poi corretto a mano.",
+  "presenze.ask.pausa-ripetuta":
+    "Stai registrando un'altra pausa: è corretto?\n\nInizio e Fine pausa servono per le pause lunghe (pasto, sosta programmata). Per un allontanamento di pochi minuti non serve timbrare.",
+  "presenze.ask.uscita-senza-pausa":
+    "Oggi non risulta nessuna pausa, dopo più di sei ore in servizio.\n\nConfermi l'uscita?",
   "presenze.undoLast": "Annulla ultima timbratura",
   "presenze.undoConfirm": "Annullare l'ultima timbratura? Usalo se hai premuto il tasto sbagliato.",
   "presenze.undoDone": "Timbratura annullata — i pulsanti corretti sono di nuovo attivi",

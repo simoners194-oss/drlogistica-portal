@@ -6,11 +6,12 @@ import type { Timbratura } from "./mock-data";
 
 export type EventoTimbratura = Timbratura["tipo"];
 
-// Tutti i tipi di evento ESISTENTI (i dati storici contengono anche le pause).
+// Tutti i tipi di evento.
 export const EVENTI: EventoTimbratura[] = ["entrata", "inizio-pausa", "fine-pausa", "uscita"];
-// Eventi che si possono ANCORA registrare: modello semplificato a due tasti.
-// La pausa non è più un evento: chi stacca preme Uscita e al rientro Entrata.
-export const EVENTI_ATTIVI: EventoTimbratura[] = ["entrata", "uscita"];
+// Eventi registrabili dal dipendente: entrata, pausa (inizio/fine), uscita.
+// Le pause sono RIPETIBILI più volte nella stessa giornata e restano ammessi
+// anche più turni entrata→uscita (chi spezza il turno in più tranche).
+export const EVENTI_ATTIVI: EventoTimbratura[] = EVENTI;
 
 // Finestra (minuti) entro cui il dipendente può annullare da solo l'ULTIMA
 // timbratura di oggi ("ho premuto il tasto sbagliato"). Oltre, serve
@@ -79,13 +80,15 @@ export function tagliaEventiVisibili(eventi: EventoConOra[], now = new Date()): 
 }
 
 // Macchina a stati: dato l'ultimo evento (o null se nessuna timbratura oggi),
-// quali eventi sono ammessi. Più turni Entrata→Uscita nello stesso giorno
-// sono LEGITTIMI (la pausa è un turno che si chiude e uno che si riapre).
+// quali eventi sono ammessi.
+//  - fuori servizio → si entra (anche più volte al giorno: turni spezzati);
+//  - in servizio    → si va in pausa oppure si esce;
+//  - in pausa       → si rientra dalla pausa (ripetibile) oppure si esce
+//                     comunque, se la giornata finisce lì.
 export function nextAllowedEvents(last: EventoTimbratura | null): EventoTimbratura[] {
   if (last === null || last === "uscita") return ["entrata"];
-  // In servizio (entrata/fine-pausa) o pausa legacy aperta: si può solo uscire
-  // (l'uscita chiude anche una vecchia pausa rimasta aperta).
-  return ["uscita"];
+  if (last === "inizio-pausa") return ["fine-pausa", "uscita"];
+  return ["inizio-pausa", "uscita"]; // entrata | fine-pausa
 }
 
 export function isTransitionAllowed(
@@ -101,11 +104,24 @@ export function reasonNotAllowed(
   last: EventoTimbratura | null,
 ): string | null {
   if (isTransitionAllowed(evento, last)) return null;
-  if (evento === "entrata") return "Sei già in servizio: per staccare premi Uscita.";
-  if (evento === "uscita")
-    return last === null
-      ? "Devi prima registrare l'entrata."
-      : "Sei fuori servizio: al rientro premi Entrata.";
+  switch (evento) {
+    case "entrata":
+      return last === "inizio-pausa"
+        ? "Sei in pausa: premi Fine pausa per rientrare."
+        : "Sei già in servizio: per la pausa premi Inizio pausa.";
+    case "inizio-pausa":
+      return last === null
+        ? "Devi prima registrare l'entrata."
+        : last === "inizio-pausa"
+          ? "Pausa già in corso: registra la fine pausa."
+          : "Sei fuori servizio: al rientro premi Entrata.";
+    case "fine-pausa":
+      return last === null
+        ? "Devi prima registrare l'entrata."
+        : "Disponibile solo se hai una pausa in corso.";
+    case "uscita":
+      return "Devi prima registrare l'entrata.";
+  }
   return BLOCK_MESSAGE;
 }
 
@@ -195,6 +211,39 @@ export function lastEvento(events: Timbratura[]): EventoTimbratura | null {
   if (events.length === 0) return null;
   const sorted = [...events].sort((a, b) => a.ora.localeCompare(b.ora));
   return sorted[sorted.length - 1].tipo;
+}
+
+// ---------------------------------------------------------------------------
+// Conferme al dipendente (solo informative: non bloccano mai la timbratura)
+// ---------------------------------------------------------------------------
+
+/** Oltre queste ore continuative senza pause si chiede conferma all'uscita. */
+export const CONFERMA_SENZA_PAUSA_ORE = 6;
+
+export type ConfermaTimbratura = "pausa-ripetuta" | "uscita-senza-pausa";
+
+/** Conferma da chiedere PRIMA di registrare l'evento, oppure null.
+ *  - pausa ripetuta: non è un errore, ma spesso si preme Pausa per una sosta
+ *    breve invece dell'uscita;
+ *  - uscita dopo una giornata lunga senza alcuna pausa registrata. */
+export function confermaRichiesta(
+  evento: EventoTimbratura,
+  eventi: EventoConOra[],
+  now = new Date(),
+): ConfermaTimbratura | null {
+  const sorted = [...eventi].sort((a, b) => a.ora.localeCompare(b.ora));
+  if (evento === "inizio-pausa") {
+    const giaFatte = sorted.filter((e) => e.evento === "inizio-pausa").length;
+    return giaFatte >= 1 ? "pausa-ripetuta" : null;
+  }
+  if (evento === "uscita") {
+    if (sorted.some((e) => e.evento === "inizio-pausa")) return null; // pausa fatta
+    const apertura = aperturaTurnoCorrente(sorted, now);
+    if (!apertura) return null;
+    const ore = (now.getTime() - new Date(apertura).getTime()) / 3600_000;
+    return ore > CONFERMA_SENZA_PAUSA_ORE ? "uscita-senza-pausa" : null;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

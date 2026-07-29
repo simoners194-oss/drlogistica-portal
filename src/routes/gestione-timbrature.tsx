@@ -262,9 +262,8 @@ function GestioneTimbraturePage() {
     setSedeFilter("tutte");
     setDipendenteId(a.dipendenteId);
     setData(a.data);
-    // Modello a due tasti: qualunque chiusura mancante si sana con un'uscita
-    // (anche una vecchia pausa rimasta aperta).
-    setEvento("uscita");
+    // La pausa non chiusa si sana con la fine pausa, il turno con l'uscita.
+    setEvento(a.tipo === "pausa-non-chiusa" ? "fine-pausa" : "uscita");
     setOra("");
   }
 

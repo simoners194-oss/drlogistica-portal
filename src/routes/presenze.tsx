@@ -6,6 +6,7 @@ import { PresenzeSkeleton } from "@/components/skeletons/PresenzeSkeleton";
 import {
   LogIn,
   Coffee,
+  PlayCircle,
   LogOut,
   Clock,
   Timer,
@@ -20,8 +21,11 @@ import { dataService, displayStato, DISPLAY_DOT } from "@/lib/data-service";
 import { readSession } from "@/lib/session";
 import { useLang } from "@/lib/i18n";
 import {
+  aperturaTurnoCorrente,
   computeOreOggi,
+  confermaRichiesta,
   formatDurata,
+  MAX_TURNO_ORE,
   isTransitionAllowed,
   lastEvento,
   reasonNotAllowed,
@@ -95,6 +99,27 @@ function PresenzePage() {
         duration: 8000,
       });
     }
+  }, [me, now, oreSett]);
+
+  // Promemoria "manca l'uscita": turno ancora aperto oltre le ore previste,
+  // ripetuto ogni 30 minuti finché la giornata non viene chiusa. È l'avviso
+  // che il dipendente vede con la pagina aperta; la notifica push a telefono
+  // spento arriverà con la sincronizzazione programmata.
+  const ultimoPromemoriaRef = useRef(0);
+  useEffect(() => {
+    if (!me || oreSett == null || oreSett <= 0) return;
+    const eventi = (me.eventiOggi ?? []).map((e) => ({ evento: e.tipo, ora: e.ora }));
+    const apertura = aperturaTurnoCorrente(eventi, now);
+    if (!apertura) return;
+    const oreTurno = (now.getTime() - new Date(apertura).getTime()) / 3600_000;
+    const soglia = Math.min(oreSett / 5 + 1, MAX_TURNO_ORE);
+    if (oreTurno < soglia) return;
+    if (now.getTime() - ultimoPromemoriaRef.current < 30 * 60_000) return;
+    ultimoPromemoriaRef.current = now.getTime();
+    toast.warning(t("presenze.mancaUscitaTitle"), {
+      description: t("presenze.mancaUscitaMsg"),
+      duration: 12000,
+    });
   }, [me, now, oreSett]);
 
   // Invia la coda offline: al ritorno della rete, all'apertura della pagina e
@@ -196,6 +221,14 @@ function PresenzePage() {
       });
       return;
     }
+    // Conferme informative (mai bloccanti): seconda pausa, o uscita dopo una
+    // giornata lunga senza pause registrate.
+    const conferma = confermaRichiesta(
+      tipo,
+      (me.eventiOggi ?? []).map((e) => ({ evento: e.tipo, ora: e.ora })),
+      now,
+    );
+    if (conferma && !window.confirm(t(`presenze.ask.${conferma}`))) return;
     setBusy(true);
     try {
       const updated = await dataService.timbra(me.id, tipo);
@@ -256,11 +289,13 @@ function PresenzePage() {
     enabled: boolean;
     reason: string | null;
     tone: "primary" | "warn" | "ok" | "danger";
-  }[] = // Due soli tasti: la pausa è un'Uscita seguita da una nuova Entrata al
-    // rientro (più turni nello stesso giorno sono legittimi).
+  }[] = // Quattro tasti: la pausa si può ripetere più volte nella giornata e
+    // restano ammessi più turni entrata→uscita (turni spezzati).
     (
       [
         { tipo: "entrata", Icon: LogIn, tone: "primary" },
+        { tipo: "inizio-pausa", Icon: Coffee, tone: "warn" },
+        { tipo: "fine-pausa", Icon: PlayCircle, tone: "ok" },
         { tipo: "uscita", Icon: LogOut, tone: "danger" },
       ] as const
     ).map((a) => ({
@@ -396,7 +431,7 @@ function PresenzePage() {
         />
       </div>
 
-      <div className="mt-5 md:mt-6 grid gap-3 sm:gap-4 grid-cols-2">
+      <div className="mt-5 md:mt-6 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         {azioni.map((a) => (
           <button
             key={a.tipo}
@@ -415,7 +450,11 @@ function PresenzePage() {
                   ? "bg-muted-foreground/50"
                   : a.tone === "primary"
                     ? "bg-primary"
-                    : "bg-status-absent"
+                    : a.tone === "warn"
+                      ? "bg-status-break"
+                      : a.tone === "ok"
+                        ? "bg-status-present"
+                        : "bg-status-absent"
               }`}
             >
               <a.Icon className="h-6 w-6 sm:h-7 sm:w-7" />

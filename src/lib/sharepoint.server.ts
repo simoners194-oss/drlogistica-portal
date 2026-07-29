@@ -1976,11 +1976,13 @@ export async function createTimbratura(input: CreateTimbraturaInput): Promise<Sp
       `Transizione non ammessa per dip=${input.dipendenteId}: ${last ?? "nessuna"} → ${input.evento}`,
     );
     throw new Error(
-      input.evento === "entrata"
-        ? "Sei già in servizio: per staccare premi Uscita."
-        : last === null
-          ? "Devi prima registrare l'entrata."
-          : "Sei fuori servizio: al rientro premi Entrata.",
+      last === null
+        ? "Devi prima registrare l'entrata."
+        : last === "inizio-pausa"
+          ? "Sei in pausa: premi Fine pausa per rientrare."
+          : last === "uscita"
+            ? "Sei fuori servizio: al rientro premi Entrata."
+            : "Timbratura non consentita in questo momento.",
     );
   }
 
@@ -2033,12 +2035,12 @@ export async function createTimbratura(input: CreateTimbraturaInput): Promise<Sp
 // Macchina a stati identica a src/lib/presenze-logic.ts. Duplicata qui
 // perché sharepoint.server.ts non può importare moduli client-safe che
 // verrebbero comunque bundlati insieme; la logica è banale e stabile.
-// Modello a DUE TASTI: più turni Entrata→Uscita al giorno sono legittimi
-// (la pausa è un'uscita + un rientro); gli eventi pausa restano solo nei
-// dati storici e un'uscita chiude anche una vecchia pausa aperta.
+// Pause RIPETIBILI e più turni al giorno: fuori servizio → entrata; in
+// servizio → inizio pausa oppure uscita; in pausa → fine pausa oppure uscita.
 function nextAllowedSp(last: EventoTimbratura | null): EventoTimbratura[] {
   if (last === null || last === "uscita") return ["entrata"];
-  return ["uscita"];
+  if (last === "inizio-pausa") return ["fine-pausa", "uscita"];
+  return ["inizio-pausa", "uscita"];
 }
 
 export async function deleteTimbratura(id: string): Promise<void> {
@@ -2294,10 +2296,8 @@ export async function createTurnoManuale(input: CreateTurnoManualeInput): Promis
     if (Number.isNaN(ip) || Number.isNaN(fp)) throw new Error("Orari della pausa non validi.");
     if (!(entrata < ip && ip < fp && fp < uscita))
       throw new Error("La pausa deve essere compresa tra entrata e uscita (inizio prima di fine).");
-    // Modello a due tasti: la pausa si scrive come uscita + rientro
-    // (due turni), non più come eventi pausa dedicati.
-    eventi.push({ evento: "uscita", iso: input.inizioPausa });
-    eventi.push({ evento: "entrata", iso: input.finePausa });
+    eventi.push({ evento: "inizio-pausa", iso: input.inizioPausa });
+    eventi.push({ evento: "fine-pausa", iso: input.finePausa });
   }
   eventi.push({ evento: "uscita", iso: input.uscita });
   eventi.sort((a, b) => ms(a.iso) - ms(b.iso));

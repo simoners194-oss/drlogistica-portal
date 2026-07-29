@@ -249,8 +249,7 @@ export const spGetSnapshot = createServerFn({ method: "GET" }).handler(
 export const spCreateTimbratura = createServerFn({ method: "POST" })
   .inputValidator((input: CreateTimbraturaInput): CreateTimbraturaInput => {
     if (!input?.dipendenteId) throw new Error("dipendenteId mancante");
-    // Modello a due tasti: gli eventi pausa esistono solo nei dati storici.
-    const validi: EventoTimbratura[] = ["entrata", "uscita"];
+    const validi: EventoTimbratura[] = ["entrata", "inizio-pausa", "fine-pausa", "uscita"];
     if (!validi.includes(input.evento)) throw new Error("evento non valido");
     const dataOraClient = input.dataOraClient
       ? String(input.dataOraClient).slice(0, 40)

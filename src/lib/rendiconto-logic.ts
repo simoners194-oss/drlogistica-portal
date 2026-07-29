@@ -57,20 +57,26 @@ export function orePerGiornoDaTurni(
   const oreMs = new Map<string, number>();
   const giorniNonChiusi = new Set<string>();
   let apertura: { ms: number; giorno: string } | null = null;
+  // Giorno del TURNO in corso (quello dell'entrata): anche i segmenti dopo
+  // una pausa che scavalca la mezzanotte restano attribuiti lì.
+  let giornoTurno: string | null = null;
   for (const e of sorted) {
     const ms = new Date(e.ora).getTime();
     if (e.evento === "entrata" || e.evento === "fine-pausa") {
+      if (e.evento === "entrata" && giornoTurno == null) giornoTurno = e.ora.slice(0, 10);
       if (apertura == null) {
-        apertura = { ms, giorno: e.ora.slice(0, 10) };
+        apertura = { ms, giorno: giornoTurno ?? e.ora.slice(0, 10) };
       } else if (ms - apertura.ms > maxMs) {
         giorniNonChiusi.add(apertura.giorno);
-        apertura = { ms, giorno: e.ora.slice(0, 10) };
+        giornoTurno = e.ora.slice(0, 10);
+        apertura = { ms, giorno: giornoTurno };
       }
     } else if (apertura != null) {
       const durata = ms - apertura.ms;
       if (durata > maxMs) giorniNonChiusi.add(apertura.giorno);
       else oreMs.set(apertura.giorno, (oreMs.get(apertura.giorno) ?? 0) + Math.max(0, durata));
       apertura = null;
+      if (e.evento === "uscita") giornoTurno = null; // il turno si chiude qui
     }
   }
   if (apertura != null && now.getTime() - apertura.ms > maxMs) giorniNonChiusi.add(apertura.giorno);
