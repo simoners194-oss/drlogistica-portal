@@ -717,7 +717,9 @@ const en = {
   "ft.colFatturazione": "Invoicing",
   "ft.colIncassi": "Collected (invoicing)",
   "ft.colBanca": "Bank",
-  "ft.senzaMovimenti": "report not loaded",
+  "ft.senzaMovimenti": "not present",
+  "ft.senzaMovimentiTip":
+    "No instalment recorded for this invoice in the Aruba movements report (or the report for that year has not been imported).",
   "ft.nonGestita": "not managed",
   "ft.nessunAbbinamento": "no match yet",
   "ft.ncCollegate": "Credit notes applied",
@@ -1501,7 +1503,9 @@ const it: Record<DictKey, string> = {
   "ft.colFatturazione": "Fatturazione",
   "ft.colIncassi": "Incassato fatturazione",
   "ft.colBanca": "Banca",
-  "ft.senzaMovimenti": "report non caricato",
+  "ft.senzaMovimenti": "non presente",
+  "ft.senzaMovimentiTip":
+    "Nessuna rata registrata per questa fattura nel report movimenti di Aruba (oppure il report di quell'anno non è stato importato).",
   "ft.nonGestita": "non gestita",
   "ft.nessunAbbinamento": "da abbinare",
   "ft.ncCollegate": "Note di credito collegate",

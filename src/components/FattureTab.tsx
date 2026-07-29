@@ -1205,7 +1205,10 @@ export function FattureTab() {
                           parziali quantificati (report movimenti). */}
                       <td className="py-1.5 pr-3 whitespace-nowrap">
                         {x.s.statoIncassi == null ? (
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                          <span
+                            className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                            title={t("ft.senzaMovimentiTip")}
+                          >
                             {t("ft.senzaMovimenti")}
                           </span>
                         ) : (
