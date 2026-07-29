@@ -28,6 +28,7 @@ import {
   proponiAbbinamentiFIFO,
   isNotaCredito,
   isEsclusaDalCredito,
+  collegaNoteCredito,
   TERMINI_DEFAULT_GIORNI,
   type AbbinamentoIncasso,
   type DirezioneFattura,
@@ -165,6 +166,10 @@ export function FattureTab() {
     return m;
   }, [abbinamenti]);
 
+  // Note di credito collegate alle fatture che rettificano: il credito si
+  // legge al netto, perché il cliente paga la differenza.
+  const noteCredito = useMemo(() => collegaNoteCredito(fatture ?? []), [fatture]);
+
   // Reinvii (stessa fattura scartata dallo SdI e rispedita): se ne conta una
   // sola, le altre sono escluse dal credito.
   const reinvii = useMemo(() => individuaReinvii(fatture ?? []), [fatture]);
@@ -178,12 +183,13 @@ export function FattureTab() {
           incassatoPerFattura.get(f.nomeFile) ?? 0,
           termini,
           oggiISO,
+          noteCredito.get(f.nomeFile)?.importo ?? 0,
         );
         return reinvii.has(f.nomeFile)
           ? { f, s: { ...s, stato: "NC" as const, residuo: 0, inRitardo: false, giorniRitardo: 0 } }
           : { f, s };
       }),
-    [fatture, incassatoPerFattura, termini, oggiISO, reinvii],
+    [fatture, incassatoPerFattura, termini, oggiISO, reinvii, noteCredito],
   );
 
   // Anni presenti nei dati (più l'anno corrente): sono i chip selezionabili.
@@ -1110,6 +1116,14 @@ export function FattureTab() {
                       <td className="py-1.5 pr-3 max-w-52 truncate">{x.f.cliente}</td>
                       <td className="py-1.5 pr-3 text-right whitespace-nowrap">
                         {fmtImporto(x.f.totale)}
+                        {noteCredito.has(x.f.nomeFile) && (
+                          <div
+                            className="text-[11px] text-muted-foreground"
+                            title={`${t("ft.ncCollegate")}: ${noteCredito.get(x.f.nomeFile)!.numeri.join(", ")}`}
+                          >
+                            −{fmtImporto(noteCredito.get(x.f.nomeFile)!.importo)} NC
+                          </div>
+                        )}
                       </td>
                       <td className="py-1.5 pr-3 text-right whitespace-nowrap text-status-present">
                         {x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""}

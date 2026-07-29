@@ -45,6 +45,10 @@ export interface FatturaRaw {
   incassoAruba?: string;
   /** Data incasso registrata su Aruba (YYYY-MM-DD). */
   dataIncasso?: string;
+  /** Solo per le NOTE DI CREDITO: numero della fattura che rettificano,
+   *  dichiarato nell'XML in DatiGenerali/DatiFattureCollegate/IdDocumento.
+   *  Serve ad abbattere il credito della fattura collegata. */
+  rettificaNumero?: string;
 }
 
 export type IncassoAruba = "Incassata" | "Non incassata" | "Non gestita" | "";
@@ -133,6 +137,37 @@ export function individuaReinvii(fatture: readonly FatturaRaw[]): Set<string> {
   return esclusi;
 }
 
+/** Collega le NOTE DI CREDITO alle fatture che rettificano (numero dichiarato
+ *  nell'XML). Ritorna, per ogni fattura, l'importo complessivo delle NC
+ *  collegate e i loro numeri: il credito residuo va calcolato al netto,
+ *  perché il cliente paga la differenza (compensazione).
+ *  Il collegamento richiede stessa direzione e stessa controparte: due clienti
+ *  possono avere fatture con lo stesso numero. */
+export function collegaNoteCredito(
+  fatture: readonly FatturaRaw[],
+): Map<string, { importo: number; numeri: string[] }> {
+  const perChiave = new Map<string, FatturaRaw>();
+  for (const f of fatture) {
+    if (isNotaCredito(f.tipoDocumento) || f.totale <= 0) continue;
+    perChiave.set(`${f.direzione}|${clienteGroupKey(f.cliente)}|${normalizeTesto(f.numero)}`, f);
+  }
+  const out = new Map<string, { importo: number; numeri: string[] }>();
+  for (const nc of fatture) {
+    if (!isNotaCredito(nc.tipoDocumento) || !nc.rettificaNumero) continue;
+    for (const rif of nc.rettificaNumero.split(/[,;]+/)) {
+      const target = perChiave.get(
+        `${nc.direzione}|${clienteGroupKey(nc.cliente)}|${normalizeTesto(rif)}`,
+      );
+      if (!target) continue;
+      const riga = out.get(target.nomeFile) ?? { importo: 0, numeri: [] };
+      riga.importo = Math.round((riga.importo + Math.abs(nc.totale)) * 100) / 100;
+      riga.numeri.push(nc.numero);
+      out.set(target.nomeFile, riga);
+    }
+  }
+  return out;
+}
+
 // --- Termini di pagamento ----------------------------------------------------
 
 /** Giorni di pagamento per un cliente (match per chiave canonica; la riga
@@ -197,6 +232,8 @@ export function computeStatoFattura(
   incassato: number,
   termini: readonly TerminePagamento[],
   oggiISO: string,
+  /** Importo delle note di credito collegate: il credito si calcola al netto. */
+  notaCredito = 0,
 ): FatturaStato {
   // La scadenza dichiarata in fattura (XML DatiPagamento) vince sui termini.
   const scadenza =
@@ -223,7 +260,9 @@ export function computeStatoFattura(
       giorniRitardo: 0,
     };
   }
-  const residuoBanca = Math.max(0, f.totale - incassato);
+  // Base del credito: totale al netto delle note di credito collegate.
+  const base = Math.max(0, Math.round((f.totale - notaCredito) * 100) / 100);
+  const residuoBanca = Math.max(0, base - incassato);
   // Stato dagli ABBINAMENTI bancari (riconciliazione): informazione di
   // dettaglio, mostra quanto risulta effettivamente arrivato sul conto.
   const statoBanca: StatoIncasso =
@@ -269,9 +308,9 @@ export function computeStatoFattura(
           : "Non incassata"
         : null;
   const incassatoFatturazione =
-    aruba === "Incassata" ? f.totale : aruba === "Non incassata" ? incassato : null;
+    aruba === "Incassata" ? base : aruba === "Non incassata" ? incassato : null;
   const residuoFatturazione =
-    incassatoFatturazione == null ? null : Math.max(0, f.totale - incassatoFatturazione);
+    incassatoFatturazione == null ? null : Math.max(0, base - incassatoFatturazione);
   // Lettura combinata: serve a filtri, ritardi e ordinamenti; nelle viste le
   // due colonne restano comunque affiancate.
   const residuo = residuoFatturazione ?? residuoBanca;
@@ -358,6 +397,9 @@ export function proponiAbbinamenti(
   direzione: DirezioneFattura = "Emessa",
 ): PropostaAbbinamento[] {
   const round = (n: number) => Math.round(n * 100) / 100;
+  // Credito al netto delle note di credito collegate: il cliente paga la
+  // differenza, quindi non va cercato in banca l'importo pieno.
+  const noteCredito = collegaNoteCredito(fatture);
   const incassatoPerFattura = new Map<string, number>();
   const allocatoPerMovimento = new Map<string, number>();
   const coppie = new Set<string>();
@@ -384,7 +426,11 @@ export function proponiAbbinamenti(
     .map((f) => ({
       f,
       key: clienteGroupKey(f.cliente),
-      residuo: round(f.totale - (incassatoPerFattura.get(f.nomeFile) ?? 0)),
+      residuo: round(
+        f.totale -
+          (noteCredito.get(f.nomeFile)?.importo ?? 0) -
+          (incassatoPerFattura.get(f.nomeFile) ?? 0),
+      ),
     }))
     .filter((x) => x.residuo > TOLLERANZA_SALDO)
     // Più vecchie prima: un bonifico cumulativo salda in ordine cronologico.
@@ -485,11 +531,16 @@ export function proponiAbbinamentiFIFO(
       (allocatoPerMovimento.get(a.movimentoChiave) ?? 0) + a.importo,
     );
   }
+  const noteCredito = collegaNoteCredito(fatture);
   const apertePerCliente = new Map<string, { f: FatturaRaw; residuo: number }[]>();
   for (const f of fatture) {
     if (f.direzione !== direzione) continue;
     if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) continue;
-    const residuo = round(f.totale - (incassatoPerFattura.get(f.nomeFile) ?? 0));
+    const residuo = round(
+      f.totale -
+        (noteCredito.get(f.nomeFile)?.importo ?? 0) -
+        (incassatoPerFattura.get(f.nomeFile) ?? 0),
+    );
     if (residuo <= TOLLERANZA_SALDO) continue;
     const key = clienteGroupKey(f.cliente);
     const l = apertePerCliente.get(key) ?? [];
@@ -749,6 +800,10 @@ export function parseFatturaPA(
       .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
       .sort();
     const mp = pagamenti.map((p) => testoDi(p, "ModalitaPagamento")).find(Boolean) ?? "";
+    // Nota di credito: fattura rettificata (può essercene più d'una).
+    const collegate = figliDi(body, "DatiGenerali/DatiFattureCollegate")
+      .map((c) => testoDi(c, "IdDocumento").trim())
+      .filter(Boolean);
     rows.push({
       nomeFile: idx === 0 ? nomeFile : `${nomeFile}#${idx + 1}`,
       numero: testoDi(doc, "Numero"),
@@ -766,6 +821,7 @@ export function parseFatturaPA(
       statoSdI: "",
       direzione,
       scadenza: scadenze.length ? scadenze[scadenze.length - 1] : undefined,
+      rettificaNumero: collegate.length ? collegate.join(", ") : undefined,
     });
   });
   return { rows, scartati };

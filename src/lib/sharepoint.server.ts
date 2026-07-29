@@ -275,6 +275,8 @@ export const SP_DISPLAY = {
     // riconciliazione bancaria resta un'informazione aggiuntiva. OPZIONALI.
     IncassoAruba: "IncassoAruba",
     DataIncasso: "DataIncasso",
+    // Solo per le note di credito: numero della fattura rettificata.
+    RettificaNumero: "RettificaNumero",
   },
   // Termini di pagamento per cliente (giorni). Gestita dal direttore. OPZIONALE.
   terminiPagamento: {
@@ -3930,6 +3932,9 @@ function mapFattura(
     direzione,
     scadenza: /^\d{4}-\d{2}-\d{2}$/.test(scad) ? scad : undefined,
     incassoAruba: F.IncassoAruba ? String(f[F.IncassoAruba] ?? "") || undefined : undefined,
+    rettificaNumero: F.RettificaNumero
+      ? String(f[F.RettificaNumero] ?? "") || undefined
+      : undefined,
     dataIncasso: (() => {
       const d = F.DataIncasso ? iso(f[F.DataIncasso]) : "";
       return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined;
@@ -4006,6 +4011,12 @@ export async function importFatture(
       // devono poter essere caricati in QUALUNQUE ordine.
       if (F.ScadenzaPagamento && r.scadenza && r.scadenza !== (prev.scadenza ?? ""))
         patch[F.ScadenzaPagamento] = `${r.scadenza}T00:00:00Z`;
+      if (
+        F.RettificaNumero &&
+        r.rettificaNumero &&
+        r.rettificaNumero !== (prev.rettificaNumero ?? "")
+      )
+        patch[F.RettificaNumero] = r.rettificaNumero;
       if (F.IncassoAruba && r.incassoAruba && r.incassoAruba !== (prev.incassoAruba ?? ""))
         patch[F.IncassoAruba] = r.incassoAruba;
       if (F.DataIncasso && r.dataIncasso && r.dataIncasso !== (prev.dataIncasso ?? ""))
@@ -4041,6 +4052,7 @@ export async function importFatture(
     if (F.ScadenzaPagamento && r.scadenza) fields[F.ScadenzaPagamento] = `${r.scadenza}T00:00:00Z`;
     if (F.IncassoAruba && r.incassoAruba) fields[F.IncassoAruba] = r.incassoAruba;
     if (F.DataIncasso && r.dataIncasso) fields[F.DataIncasso] = `${r.dataIncasso}T00:00:00Z`;
+    if (F.RettificaNumero && r.rettificaNumero) fields[F.RettificaNumero] = r.rettificaNumero;
     ops.push(async () => {
       await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
         method: "POST",
