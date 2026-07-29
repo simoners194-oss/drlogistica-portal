@@ -14,10 +14,14 @@ export function AppShell({
   children,
   title,
   subtitle,
+  wide = false,
 }: {
   children: ReactNode;
   title: string;
   subtitle?: string;
+  /** Pagine con tabelle larghe (es. Finanza): niente limite di 1400px, così
+   *  le colonne entrano senza dover ridurre lo zoom del browser. */
+  wide?: boolean;
 }) {
   const navigate = useNavigate();
   const { t } = useLang();
@@ -83,7 +87,9 @@ export function AppShell({
               </button>
             </div>
           </header>
-          <main className="flex-1 w-full max-w-[1400px] mx-auto px-5 md:px-8 py-6 md:py-8 animate-fade-in">
+          <main
+            className={`flex-1 w-full mx-auto px-5 md:px-8 py-6 md:py-8 animate-fade-in ${wide ? "max-w-none" : "max-w-[1400px]"}`}
+          >
             <div className="md:hidden mb-5">
               <h1 className="text-[26px] leading-tight font-semibold text-foreground tracking-tight">
                 {title}

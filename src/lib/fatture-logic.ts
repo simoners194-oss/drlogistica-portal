@@ -150,6 +150,9 @@ export interface MovimentoAruba {
   data: string; // YYYY-MM-DD
   cliente: string;
   numeroFattura: string;
+  /** Data della fattura dichiarata nel report: serve a capire quali ANNI
+   *  copre il file, per distinguere "nessuna rata" da "report non caricato". */
+  dataFattura: string;
   /** INCASSO (fatture emesse) o PAGAMENTO (ricevute). */
   flusso: "INCASSO" | "PAGAMENTO";
   importo: number; // sempre positivo
@@ -160,6 +163,7 @@ const H_MOV = {
   data: "data",
   cliente: "cliente/fornitore",
   numero: "numero fattura",
+  dataFattura: "data fattura",
   flusso: "flusso",
   importo: "importo",
   modalita: "modalita di pagamento",
@@ -178,6 +182,7 @@ export function parseMovimentiArubaMatrice(matrix: unknown[][]): MovimentoAruba[
     data: col(H_MOV.data),
     cliente: col(H_MOV.cliente),
     numero: col(H_MOV.numero),
+    dataFattura: col(H_MOV.dataFattura),
     flusso: col(H_MOV.flusso),
     importo: col(H_MOV.importo),
     modalita: col(H_MOV.modalita),
@@ -194,6 +199,7 @@ export function parseMovimentiArubaMatrice(matrix: unknown[][]): MovimentoAruba[
       data: cellToIsoDate(r[idx.data]) ?? "",
       cliente: String(r[idx.cliente] ?? "").trim(),
       numeroFattura: numero,
+      dataFattura: idx.dataFattura >= 0 ? (cellToIsoDate(r[idx.dataFattura]) ?? "") : "",
       flusso: flusso as "INCASSO" | "PAGAMENTO",
       importo: Math.abs(importo),
       modalita: idx.modalita >= 0 ? String(r[idx.modalita] ?? "").trim() : "",
@@ -207,6 +213,10 @@ export function parseMovimentiArubaMatrice(matrix: unknown[][]): MovimentoAruba[
 export function aggregaIncassiAruba(
   movimenti: readonly MovimentoAruba[],
   fatture: readonly FatturaRaw[],
+  /** Per gli ANNI coperti dal report, le fatture senza alcuna rata vengono
+   *  segnate a ZERO: così "nessun incasso registrato" si distingue da "report
+   *  di quell'anno non importato". */
+  azzeraNelPeriodo = true,
 ): Map<string, { incassato: number; ultimaData: string; rate: number }> {
   const perChiave = new Map<string, FatturaRaw>();
   for (const f of fatture)
@@ -230,6 +240,26 @@ export function aggregaIncassiAruba(
     v.rate++;
     if (m.data > v.ultimaData) v.ultimaData = m.data;
     out.set(f.nomeFile, v);
+  }
+  if (azzeraNelPeriodo) {
+    // Anni coperti dal file, per direzione: si guarda la DATA FATTURA delle
+    // rate (il report elenca solo le fatture con movimenti, quindi l'anno si
+    // deduce da lì).
+    const anniPerDirezione = new Map<DirezioneFattura, Set<string>>();
+    for (const m of movimenti) {
+      const d: DirezioneFattura = m.flusso === "INCASSO" ? "Emessa" : "Ricevuta";
+      const anno = (m.dataFattura || m.data).slice(0, 4);
+      if (!anno) continue;
+      const set = anniPerDirezione.get(d) ?? new Set<string>();
+      set.add(anno);
+      anniPerDirezione.set(d, set);
+    }
+    for (const f of fatture) {
+      if (out.has(f.nomeFile)) continue;
+      if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f)) continue;
+      if (!anniPerDirezione.get(f.direzione)?.has(f.dataDocumento.slice(0, 4))) continue;
+      out.set(f.nomeFile, { incassato: 0, ultimaData: "", rate: 0 });
+    }
   }
   return out;
 }

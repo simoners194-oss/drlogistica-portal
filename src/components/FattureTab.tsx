@@ -1140,17 +1140,17 @@ export function FattureTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                  <th className="py-2 pr-3">{t("ft.numero")}</th>
-                  <th className="py-2 pr-3">{t("common.date")}</th>
-                  <th className="py-2 pr-3">{ricevute ? t("ft.fornitore") : t("fin.cliente")}</th>
-                  <th className="py-2 pr-3 text-right">{t("common.total")}</th>
-                  <th className="py-2 pr-3 text-right">
+                  <th className="py-1.5 pr-2">{t("ft.numero")}</th>
+                  <th className="py-1.5 pr-2">{t("common.date")}</th>
+                  <th className="py-1.5 pr-2">{ricevute ? t("ft.fornitore") : t("fin.cliente")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("common.total")}</th>
+                  <th className="py-1.5 pr-2 text-right">
                     {ricevute ? t("ft.pagato") : t("ft.incassato")}
                   </th>
-                  <th className="py-2 pr-3">{t("ft.scadenza")}</th>
-                  <th className="py-2 pr-3">{t("ft.colFatturazione")}</th>
-                  <th className="py-2 pr-3">{t("ft.colIncassi")}</th>
-                  <th className="py-2 pr-3">{t("ft.colBanca")}</th>
+                  <th className="py-1.5 pr-2">{t("ft.scadenza")}</th>
+                  <th className="py-1.5 pr-2">{t("ft.colFatturazione")}</th>
+                  <th className="py-1.5 pr-2">{t("ft.colIncassi")}</th>
+                  <th className="py-1.5 pr-2">{t("ft.colBanca")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1168,12 +1168,10 @@ export function FattureTab() {
                       className={`border-b border-border/50 cursor-pointer hover:bg-muted/40 ${aperta ? "bg-muted/30" : ""}`}
                       title={x.f.nomeFile}
                     >
-                      <td className="py-1.5 pr-3 whitespace-nowrap font-medium">{x.f.numero}</td>
-                      <td className="py-1.5 pr-3 whitespace-nowrap">
-                        {fmtData(x.f.dataDocumento)}
-                      </td>
-                      <td className="py-1.5 pr-3 max-w-52 truncate">{x.f.cliente}</td>
-                      <td className="py-1.5 pr-3 text-right whitespace-nowrap">
+                      <td className="py-1 pr-2 whitespace-nowrap font-medium">{x.f.numero}</td>
+                      <td className="py-1 pr-2 whitespace-nowrap">{fmtData(x.f.dataDocumento)}</td>
+                      <td className="py-1 pr-2 max-w-40 truncate">{x.f.cliente}</td>
+                      <td className="py-1 pr-2 text-right whitespace-nowrap">
                         {fmtImporto(x.f.totale)}
                         {noteCredito.has(x.f.nomeFile) && (
                           <div
@@ -1184,7 +1182,7 @@ export function FattureTab() {
                           </div>
                         )}
                       </td>
-                      <td className="py-1.5 pr-3 text-right whitespace-nowrap text-status-present">
+                      <td className="py-1 pr-2 text-right whitespace-nowrap text-status-present">
                         {x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""}
                       </td>
                       <td
@@ -1193,7 +1191,7 @@ export function FattureTab() {
                         {x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)}
                       </td>
                       {/* Le due letture, affiancate: nessuna prevale. */}
-                      <td className="py-1.5 pr-3 whitespace-nowrap">
+                      <td className="py-1 pr-2 whitespace-nowrap">
                         {badgeStato(x, x.s.statoFatturazione, true)}
                         {x.f.dataIncasso && (
                           <span className="ml-1 text-[11px] text-muted-foreground">
@@ -1203,7 +1201,7 @@ export function FattureTab() {
                       </td>
                       {/* Incassi REGISTRATI su Aruba: stato + importo, con i
                           parziali quantificati (report movimenti). */}
-                      <td className="py-1.5 pr-3 whitespace-nowrap">
+                      <td className="py-1 pr-2 whitespace-nowrap">
                         {x.s.statoIncassi == null ? (
                           <span
                             className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
@@ -1220,7 +1218,7 @@ export function FattureTab() {
                           </>
                         )}
                       </td>
-                      <td className="py-1.5 pr-3 whitespace-nowrap">
+                      <td className="py-1 pr-2 whitespace-nowrap">
                         {/* Zero movimenti collegati NON significa "non pagata":
                             significa che nessun bonifico e' stato abbinato. */}
                         {x.s.statoBanca === "Non incassata" && x.s.incassatoBanca === 0 ? (
@@ -1228,7 +1226,14 @@ export function FattureTab() {
                             {t("ft.nessunAbbinamento")}
                           </span>
                         ) : (
-                          badgeStato(x, x.s.statoBanca, false)
+                          <>
+                            {badgeStato(x, x.s.statoBanca, false)}
+                            {/* Importo abbinato, come per la colonna incassi:
+                                le due letture si confrontano a colpo d'occhio. */}
+                            <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
+                              {fmtImporto(x.s.incassatoBanca)}
+                            </span>
+                          </>
                         )}
                         {x.s.discordante && (
                           <span
@@ -1376,18 +1381,18 @@ export function FattureTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                  <th className="py-2 pr-3">{t("fin.cliente")}</th>
-                  <th className="py-2 pr-3 text-right">{t("ft.aperte")}</th>
-                  <th className="py-2 pr-3 text-right">{t("ft.residuo")}</th>
-                  <th className="py-2 pr-3 text-right">{t("ft.diCuiRitardo")}</th>
+                  <th className="py-1.5 pr-2">{t("fin.cliente")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("ft.aperte")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("ft.residuo")}</th>
+                  <th className="py-1.5 pr-2 text-right">{t("ft.diCuiRitardo")}</th>
                 </tr>
               </thead>
               <tbody>
                 {perCliente.map((r) => (
                   <tr key={r.cliente} className="border-b border-border/50">
-                    <td className="py-1.5 pr-3 max-w-64 truncate">{r.cliente}</td>
-                    <td className="py-1.5 pr-3 text-right">{r.aperte}</td>
-                    <td className="py-1.5 pr-3 text-right whitespace-nowrap font-medium">
+                    <td className="py-1 pr-2 max-w-64 truncate">{r.cliente}</td>
+                    <td className="py-1 pr-2 text-right">{r.aperte}</td>
+                    <td className="py-1 pr-2 text-right whitespace-nowrap font-medium">
                       {fmtImporto(r.residuo)}
                     </td>
                     <td

@@ -894,7 +894,7 @@ function FinanzaPage() {
   );
 
   return (
-    <AppShell title={t("fin.title")} subtitle={t("fin.subtitle")}>
+    <AppShell title={t("fin.title")} subtitle={t("fin.subtitle")} wide>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="inline-flex flex-wrap rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
           {tabBtn("movimenti", <Table2 className="h-4 w-4" />, t("fin.tabMovimenti"))}
