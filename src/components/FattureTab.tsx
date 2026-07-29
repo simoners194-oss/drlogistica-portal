@@ -347,13 +347,16 @@ export function FattureTab() {
         residuo: 0,
         ritardo: 0,
       };
-      // Il fatturato comprende le note di credito, che sono negative.
+      // Fatturato e incassato si leggono AL NETTO delle note di credito, che
+      // pesano in negativo su entrambi: una NC riduce il fatturato e, quando
+      // viene compensata, riduce anche l'incassato. Così "da incassare" resta
+      // la semplice differenza fra le due colonne.
+      const segno = isNotaCredito(x.f.tipoDocumento) ? -1 : 1;
       row.fatturato += x.f.totale;
-      row.incassatoFatt += x.s.incassatoIncassi ?? x.s.incassatoFatturazione ?? 0;
-      row.incassatoBanca += x.s.incassatoBanca;
+      row.incassatoFatt += segno * Math.abs(x.s.incassatoIncassi ?? x.s.incassatoFatturazione ?? 0);
+      row.incassatoBanca += segno * Math.abs(x.s.incassatoBanca);
       if (x.s.stato !== "NC") {
         row.nFatture++;
-        row.residuo += x.s.residuo;
         if (x.s.annullataDaNC || x.s.stato === "Pagata") row.nPagate++;
         else if (x.s.stato === "Parziale") row.nParziali++;
         else row.nDaIncassare++;
@@ -364,6 +367,10 @@ export function FattureTab() {
       }
       m.set(key, row);
     }
+    // Da incassare = fatturato − incassato (fatturazione). È la lettura che
+    // quadra con le due colonne accanto; la banca resta fuori dal conteggio.
+    for (const row of m.values())
+      row.residuo = Math.round((row.fatturato - row.incassatoFatt) * 100) / 100;
     return [...m.values()].sort((a, b) => b.fatturato - a.fatturato);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conStato, anniF]);
