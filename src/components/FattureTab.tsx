@@ -161,9 +161,14 @@ export function FattureTab() {
         aggiornate += res.aggiornate;
       }
     }
-    toast.success(t("ft.movApplicati"), {
-      description: `${aggiornate} ${t("ft.movApplicatiDesc")} (${mov.length} ${t("ft.movRate")})`,
-    });
+    setEsitoImport((prev) => ({
+      nuove: prev?.nuove ?? 0,
+      aggiornate: prev?.aggiornate ?? 0,
+      doppioni: prev?.doppioni ?? 0,
+      rate: mov.length,
+      fattureIncassi: aggiornate,
+      errori: prev?.errori ?? [],
+    }));
     load();
   };
 
@@ -362,6 +367,17 @@ export function FattureTab() {
     return [...m.values()].sort((a, b) => b.fatturato - a.fatturato);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conStato, anniF]);
+
+  // Riepilogo dell'ultimo import: resta a schermo finché non lo si chiude,
+  // così i numeri si leggono con calma (un avviso a scomparsa non basta).
+  const [esitoImport, setEsitoImport] = useState<{
+    nuove: number;
+    aggiornate: number;
+    doppioni: number;
+    rate: number;
+    fattureIncassi: number;
+    errori: string[];
+  } | null>(null);
 
   // Cliente espanso nello specchietto (mostra le sue fatture).
   const [clienteAperto, setClienteAperto] = useState<string | null>(null);
@@ -650,6 +666,14 @@ export function FattureTab() {
       };
       if (previewImp.emesse.length) await importaGruppo(previewImp.emesse, "Emessa");
       if (previewImp.ricevute.length) await importaGruppo(previewImp.ricevute, "Ricevuta");
+      setEsitoImport((prev) => ({
+        nuove,
+        aggiornate,
+        doppioni,
+        rate: prev?.rate ?? 0,
+        fattureIncassi: prev?.fattureIncassi ?? 0,
+        errori,
+      }));
       toast.success(t("ft.importDone"), {
         description: `${nuove} ${t("ft.importNew")} · ${aggiornate} ${t("ft.importUpd")} · ${doppioni} ${t("ft.importDup")}${errori.length ? ` · ${errori.length} ${t("common.error").toLowerCase()}` : ""}`,
       });
@@ -1448,6 +1472,62 @@ export function FattureTab() {
       </div>
 
       {/* Riepilogo per cliente */}
+      {/* Riepilogo dell'import: si chiude solo quando lo decide chi legge. */}
+      {esitoImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-elegant)]">
+            <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+              <CheckCircle2 className="h-5 w-5 text-status-present" />
+              {t("ft.importDone")}
+            </div>
+            <ul className="mt-3 space-y-1 text-sm">
+              {esitoImport.nuove > 0 && (
+                <li>
+                  <b className="tabular-nums">{esitoImport.nuove}</b> {t("ft.importNew")}
+                </li>
+              )}
+              {esitoImport.aggiornate > 0 && (
+                <li>
+                  <b className="tabular-nums">{esitoImport.aggiornate}</b> {t("ft.importUpd")}
+                </li>
+              )}
+              {esitoImport.doppioni > 0 && (
+                <li className="text-muted-foreground">
+                  <b className="tabular-nums">{esitoImport.doppioni}</b> {t("ft.importDup")}
+                </li>
+              )}
+              {esitoImport.rate > 0 && (
+                <li>
+                  <b className="tabular-nums">{esitoImport.fattureIncassi}</b>{" "}
+                  {t("ft.movApplicatiDesc")}{" "}
+                  <span className="text-muted-foreground">
+                    ({esitoImport.rate} {t("ft.movRate")})
+                  </span>
+                </li>
+              )}
+              {esitoImport.errori.length > 0 && (
+                <li className="text-status-absent">
+                  <b className="tabular-nums">{esitoImport.errori.length}</b>{" "}
+                  {t("common.error").toLowerCase()}
+                  <div className="mt-1 max-h-24 overflow-auto text-[11px]">
+                    {esitoImport.errori.slice(0, 5).map((e, i) => (
+                      <div key={i}>{e}</div>
+                    ))}
+                  </div>
+                </li>
+              )}
+            </ul>
+            <button
+              type="button"
+              onClick={() => setEsitoImport(null)}
+              className="mt-4 w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+            >
+              {t("common.close")}
+            </button>
+          </div>
+        </div>
+      )}
+
       {perCliente.length > 0 && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
