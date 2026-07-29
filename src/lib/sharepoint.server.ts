@@ -311,7 +311,8 @@ export const SP_DISPLAY = {
     Sede: "Sede",
     Giorno: "Giorno",
     OrariAttuali: "OrariAttuali",
-    OrariProposti: "OrariProposti",
+    // "OrariPreposti" è la grafia già creata sul sito: accettate entrambe.
+    OrariProposti: "OrariProposti|OrariPreposti",
     Motivo: "Motivo",
     Stato: "Stato",
     Decisore: "Decisore",
@@ -656,13 +657,20 @@ function resolveInternalNames(
   const map: Record<string, string> = {};
   const missing: string[] = [];
   for (const [logical, display] of Object.entries(desired)) {
-    const hit =
-      byDisplay.get(display.toLowerCase()) ??
-      byName.get(display.toLowerCase()) ??
-      byDisplay.get(logical.toLowerCase()) ??
-      byName.get(logical.toLowerCase());
+    // Il display name può elencare più grafie accettate separate da "|"
+    // (accenti, refusi già in produzione): si prova nell'ordine.
+    const varianti = display
+      .split("|")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    let hit: GraphColumn | undefined;
+    for (const v of varianti) {
+      hit = byDisplay.get(v.toLowerCase()) ?? byName.get(v.toLowerCase());
+      if (hit?.name) break;
+    }
+    hit = hit ?? byDisplay.get(logical.toLowerCase()) ?? byName.get(logical.toLowerCase());
     if (hit?.name) map[logical] = hit.name;
-    else missing.push(display);
+    else missing.push(varianti[0] ?? display);
   }
   return { map, missing };
 }
