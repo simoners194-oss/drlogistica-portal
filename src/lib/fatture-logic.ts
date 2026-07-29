@@ -45,6 +45,10 @@ export interface FatturaRaw {
   incassoAruba?: string;
   /** Data incasso registrata su Aruba (YYYY-MM-DD). */
   dataIncasso?: string;
+  /** Incassato REGISTRATO SU ARUBA (somma delle rate del report movimenti):
+   *  è l'unico dato che quantifica gli incassi PARZIALI. undefined se il
+   *  report movimenti non è stato caricato per quell'anno. */
+  incassatoAruba?: number;
   /** Solo per le NOTE DI CREDITO: numero della fattura che rettificano,
    *  dichiarato nell'XML in DatiGenerali/DatiFattureCollegate/IdDocumento.
    *  Serve ad abbattere il credito della fattura collegata. */
@@ -135,6 +139,99 @@ export function individuaReinvii(fatture: readonly FatturaRaw[]): Set<string> {
     for (const f of ordinati) if (f.nomeFile !== vincitore.nomeFile) esclusi.add(f.nomeFile);
   }
   return esclusi;
+}
+
+// --- Report MOVIMENTI di Aruba (rate incassate/pagate per fattura) ----------
+// È il terzo export del pannello: per ogni fattura elenca le rate con data e
+// importo. È l'unica fonte che quantifica gli incassi PARZIALI — lo stato
+// testuale del report fatture dice solo incassata/non incassata.
+
+export interface MovimentoAruba {
+  data: string; // YYYY-MM-DD
+  cliente: string;
+  numeroFattura: string;
+  /** INCASSO (fatture emesse) o PAGAMENTO (ricevute). */
+  flusso: "INCASSO" | "PAGAMENTO";
+  importo: number; // sempre positivo
+  modalita: string;
+}
+
+const H_MOV = {
+  data: "data",
+  cliente: "cliente/fornitore",
+  numero: "numero fattura",
+  flusso: "flusso",
+  importo: "importo",
+  modalita: "modalita di pagamento",
+} as const;
+
+/** Riconosce ed estrae il report movimenti; null se il foglio non è quello. */
+export function parseMovimentiArubaMatrice(matrix: unknown[][]): MovimentoAruba[] | null {
+  const headerIdx = matrix.findIndex((r) => {
+    const c = r.map((x) => normalizeTesto(String(x ?? "")));
+    return c.includes(H_MOV.numero) && c.includes(H_MOV.flusso) && c.includes(H_MOV.importo);
+  });
+  if (headerIdx < 0) return null;
+  const header = matrix[headerIdx].map((c) => normalizeTesto(String(c ?? "")));
+  const col = (n: string) => header.indexOf(n);
+  const idx = {
+    data: col(H_MOV.data),
+    cliente: col(H_MOV.cliente),
+    numero: col(H_MOV.numero),
+    flusso: col(H_MOV.flusso),
+    importo: col(H_MOV.importo),
+    modalita: col(H_MOV.modalita),
+  };
+  const out: MovimentoAruba[] = [];
+  for (const r of matrix.slice(headerIdx + 1)) {
+    const numero = String(r[idx.numero] ?? "").trim();
+    const importo = cellToImporto(r[idx.importo]);
+    const flusso = String(r[idx.flusso] ?? "")
+      .trim()
+      .toUpperCase();
+    if (!numero || importo == null || (flusso !== "INCASSO" && flusso !== "PAGAMENTO")) continue;
+    out.push({
+      data: cellToIsoDate(r[idx.data]) ?? "",
+      cliente: String(r[idx.cliente] ?? "").trim(),
+      numeroFattura: numero,
+      flusso: flusso as "INCASSO" | "PAGAMENTO",
+      importo: Math.abs(importo),
+      modalita: idx.modalita >= 0 ? String(r[idx.modalita] ?? "").trim() : "",
+    });
+  }
+  return out.length ? out : null;
+}
+
+/** Somma le rate per fattura e le aggancia all'archivio (numero + controparte
+ *  + direzione: due clienti possono avere fatture con lo stesso numero). */
+export function aggregaIncassiAruba(
+  movimenti: readonly MovimentoAruba[],
+  fatture: readonly FatturaRaw[],
+): Map<string, { incassato: number; ultimaData: string; rate: number }> {
+  const perChiave = new Map<string, FatturaRaw>();
+  for (const f of fatture)
+    perChiave.set(`${f.direzione}|${clienteGroupKey(f.cliente)}|${normalizeTesto(f.numero)}`, f);
+  const out = new Map<string, { incassato: number; ultimaData: string; rate: number }>();
+  for (const m of movimenti) {
+    const direzione: DirezioneFattura = m.flusso === "INCASSO" ? "Emessa" : "Ricevuta";
+    const f =
+      perChiave.get(
+        `${direzione}|${clienteGroupKey(m.cliente)}|${normalizeTesto(m.numeroFattura)}`,
+      ) ??
+      // fallback: stesso numero e direzione, controparte non combaciante
+      // (ragione sociale scritta diversamente nei due export)
+      fatture.find(
+        (x) =>
+          x.direzione === direzione && normalizeTesto(x.numero) === normalizeTesto(m.numeroFattura),
+      );
+    if (!f) continue;
+    const v = out.get(f.nomeFile) ?? { incassato: 0, ultimaData: "", rate: 0 };
+    v.incassato = Math.round((v.incassato + m.importo) * 100) / 100;
+    v.rate++;
+    if (m.data > v.ultimaData) v.ultimaData = m.data;
+    out.set(f.nomeFile, v);
+  }
+  return out;
 }
 
 /** Collega le NOTE DI CREDITO alle fatture che rettificano (numero dichiarato
@@ -299,16 +396,30 @@ export function computeStatoFattura(
   // Lettura FATTURAZIONE: esiste solo se Aruba ha uno stato registrato.
   // "Non incassata" su Aruba non esclude un acconto già visto in banca: in
   // quel caso la fatturazione mostra comunque il parziale che risulta.
-  const statoFatturazione: StatoIncasso | null =
-    aruba === "Incassata"
+  // Quando il report MOVIMENTI di Aruba è stato caricato, l'importo incassato
+  // è noto al centesimo: vince sullo stato testuale, perché quantifica anche i
+  // parziali (che "Incassata/Non incassata" non sa esprimere).
+  const daMovimenti = typeof f.incassatoAruba === "number";
+  const statoFatturazione: StatoIncasso | null = daMovimenti
+    ? Math.max(0, base - f.incassatoAruba!) <= TOLLERANZA_SALDO
+      ? "Pagata"
+      : f.incassatoAruba! > TOLLERANZA_SALDO
+        ? "Parziale"
+        : "Non incassata"
+    : aruba === "Incassata"
       ? "Pagata"
       : aruba === "Non incassata"
         ? statoBanca === "Parziale"
           ? "Parziale"
           : "Non incassata"
         : null;
-  const incassatoFatturazione =
-    aruba === "Incassata" ? base : aruba === "Non incassata" ? incassato : null;
+  const incassatoFatturazione = daMovimenti
+    ? f.incassatoAruba!
+    : aruba === "Incassata"
+      ? base
+      : aruba === "Non incassata"
+        ? incassato
+        : null;
   const residuoFatturazione =
     incassatoFatturazione == null ? null : Math.max(0, base - incassatoFatturazione);
   // Lettura combinata: serve a filtri, ritardi e ordinamenti; nelle viste le

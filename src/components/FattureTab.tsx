@@ -29,6 +29,9 @@ import {
   isNotaCredito,
   isEsclusaDalCredito,
   collegaNoteCredito,
+  parseMovimentiArubaMatrice,
+  aggregaIncassiAruba,
+  type MovimentoAruba,
   TERMINI_DEFAULT_GIORNI,
   type AbbinamentoIncasso,
   type DirezioneFattura,
@@ -45,6 +48,7 @@ import {
   spCreateAbbinamenti,
   spDeleteAbbinamento,
   spGetMovimenti,
+  spSetIncassiAruba,
   spGetArubaStato,
   spSetArubaCredenziali,
   spArubaProvaConnessione,
@@ -128,6 +132,39 @@ export function FattureTab() {
   const [arubaSaving, setArubaSaving] = useState(false);
   const [arubaTesting, setArubaTesting] = useState(false);
   const [probe, setProbe] = useState<ArubaProbeResult | null>(null);
+
+  // Applica gli incassi del report movimenti alle fatture in archivio: gli
+  // importi per rata sono l'unico dato che quantifica i PARZIALI.
+  const applicaIncassiAruba = async (mov: MovimentoAruba[]) => {
+    const tutte = [...(fattureEm ?? []), ...(fattureRic ?? [])];
+    const mappa = aggregaIncassiAruba(mov, tutte);
+    if (mappa.size === 0) {
+      toast.error(t("ft.movNessuna"), { description: t("ft.movNessunaDesc") });
+      return;
+    }
+    const perDirezione = (d: DirezioneFattura) =>
+      [...mappa.entries()]
+        .filter(([file]) => tutte.find((f) => f.nomeFile === file)?.direzione === d)
+        .map(([nomeFile, v]) => ({
+          nomeFile,
+          incassato: v.incassato,
+          ultimaData: v.ultimaData || undefined,
+        }));
+    let aggiornate = 0;
+    for (const d of ["Emessa", "Ricevuta"] as DirezioneFattura[]) {
+      const righe = perDirezione(d);
+      for (let i = 0; i < righe.length; i += CHUNK) {
+        const res = (await spSetIncassiAruba({
+          data: { righe: righe.slice(i, i + CHUNK), direzione: d },
+        })) as { aggiornate: number; errori: string[] };
+        aggiornate += res.aggiornate;
+      }
+    }
+    toast.success(t("ft.movApplicati"), {
+      description: `${aggiornate} ${t("ft.movApplicatiDesc")} (${mov.length} ${t("ft.movRate")})`,
+    });
+    load();
+  };
 
   const load = () => {
     spGetFatture({ data: { direzione: "Emessa" } })
@@ -448,6 +485,8 @@ export function FattureTab() {
     try {
       const rows: FatturaRaw[] = [];
       let scartate = 0;
+      // Report MOVIMENTI di Aruba: rate incassate per fattura (i parziali).
+      const movAruba: MovimentoAruba[] = [];
       const decoder = new TextDecoder("utf-8");
       const daXml = (testo: string, nome: string) => {
         const res = parseFatturaPA(testo, nome);
@@ -474,6 +513,12 @@ export function FattureTab() {
               header: 1,
               raw: true,
             }) as unknown[][];
+            const mov = parseMovimentiArubaMatrice(matrix);
+            if (mov) {
+              movAruba.push(...mov);
+              trovato = true;
+              break;
+            }
             const res = parseFattureMatrice(matrix);
             if (res && res.rows.length) {
               rows.push(...res.rows);
@@ -487,10 +532,17 @@ export function FattureTab() {
           scartate++;
         }
       }
+      // Solo report movimenti: si applicano subito gli incassi alle fatture
+      // già in archivio, senza passare dall'anteprima di import.
+      if (rows.length === 0 && movAruba.length > 0) {
+        await applicaIncassiAruba(movAruba);
+        return;
+      }
       if (rows.length === 0) {
         toast.error(t("ft.errFile"), { description: t("ft.errFileDesc") });
         return;
       }
+      if (movAruba.length > 0) await applicaIncassiAruba(movAruba);
       // Dedup nel caricamento stesso (es. ZIP + xlsx insieme): prima vince.
       const visti = new Set<string>();
       const univoche = rows.filter((r) => {

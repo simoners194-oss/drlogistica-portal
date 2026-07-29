@@ -72,6 +72,7 @@ import {
   fetchFatture,
   importFatture,
   fetchTerminiPagamento,
+  setIncassiAruba,
   fetchAbbinamenti,
   createAbbinamenti,
   deleteAbbinamento,
@@ -883,6 +884,34 @@ export const spImportFatture = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<ImportFattureResult> => {
     await assertDirettore(await currentUser());
     return importFatture(data.rows, data.direzione);
+  });
+
+// Incassi registrati su Aruba (report movimenti): importi per fattura.
+export const spSetIncassiAruba = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      righe: { nomeFile: string; incassato: number; ultimaData?: string }[];
+      direzione?: string;
+    }) => {
+      if (!Array.isArray(input?.righe) || input.righe.length === 0)
+        throw new Error("Nessun incasso da registrare");
+      if (input.righe.length > 200) throw new Error("Blocco troppo grande (max 200)");
+      const re = /^\d{4}-\d{2}-\d{2}$/;
+      return {
+        direzione: (input.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+        righe: input.righe.map((r) => {
+          const nomeFile = String(r?.nomeFile ?? "").trim();
+          const incassato = Number(r?.incassato);
+          if (!nomeFile || !Number.isFinite(incassato)) throw new Error("Riga incasso non valida");
+          const ultimaData = r.ultimaData && re.test(r.ultimaData) ? r.ultimaData : undefined;
+          return { nomeFile, incassato: Math.round(incassato * 100) / 100, ultimaData };
+        }),
+      };
+    },
+  )
+  .handler(async ({ data }): Promise<{ aggiornate: number; errori: string[] }> => {
+    await assertDirettore(await currentUser());
+    return setIncassiAruba(data.righe, data.direzione);
   });
 
 export const spGetTerminiPagamento = createServerFn({ method: "GET" }).handler(

@@ -277,6 +277,9 @@ export const SP_DISPLAY = {
     DataIncasso: "DataIncasso",
     // Solo per le note di credito: numero della fattura rettificata.
     RettificaNumero: "RettificaNumero",
+    // Somma delle rate incassate registrate su Aruba (report movimenti):
+    // è il dato che quantifica gli incassi parziali. OPZIONALE.
+    IncassatoAruba: "IncassatoAruba",
   },
   // Termini di pagamento per cliente (giorni). Gestita dal direttore. OPZIONALE.
   terminiPagamento: {
@@ -3645,6 +3648,49 @@ export async function importMovimenti(
   return result;
 }
 
+/** Aggiorna gli incassi REGISTRATI SU ARUBA (report movimenti) sulle fatture
+ *  già in archivio: importo complessivo delle rate e data dell'ultima. */
+export async function setIncassiAruba(
+  righe: readonly { nomeFile: string; incassato: number; ultimaData?: string }[],
+  direzione: DirezioneFattura,
+): Promise<{ aggiornate: number; errori: string[] }> {
+  const cfg = await discoverSharePoint();
+  const listId = requireFattureList(cfg, direzione);
+  const F = fattureListPer(cfg, direzione).fields;
+  if (!F.IncassatoAruba)
+    throw new Error(
+      'Colonna "IncassatoAruba" assente sulla lista fatture: aggiungerla (numero) e fare Riscopri.',
+    );
+  const esistenti = new Map((await fetchFatture(direzione)).map((f) => [f.nomeFile, f]));
+  const result = { aggiornate: 0, errori: [] as string[] };
+  const BATCH = 4;
+  const daFare = righe.filter((r) => esistenti.has(r.nomeFile));
+  for (let i = 0; i < daFare.length; i += BATCH) {
+    const blocco = daFare.slice(i, i + BATCH);
+    const esiti = await Promise.allSettled(
+      blocco.map((r) => {
+        const prev = esistenti.get(r.nomeFile)!;
+        const patch: Record<string, unknown> = { [F.IncassatoAruba]: r.incassato };
+        if (F.DataIncasso && r.ultimaData && r.ultimaData !== (prev.dataIncasso ?? ""))
+          patch[F.DataIncasso] = `${r.ultimaData}T00:00:00Z`;
+        return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${prev.id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        });
+      }),
+    );
+    esiti.forEach((e, j) => {
+      if (e.status === "fulfilled") result.aggiornate++;
+      else
+        result.errori.push(
+          `${blocco[j].nomeFile}: ${e.reason instanceof Error ? e.reason.message : String(e.reason)}`,
+        );
+    });
+  }
+  logSp("info", "fatture.incassi", `Incassi Aruba aggiornati su ${result.aggiornate} fatture`);
+  return result;
+}
+
 export interface UpdateMovimentoInput {
   movimentoId: string;
   tipologia?: string;
@@ -3935,6 +3981,7 @@ function mapFattura(
     rettificaNumero: F.RettificaNumero
       ? String(f[F.RettificaNumero] ?? "") || undefined
       : undefined,
+    incassatoAruba: F.IncassatoAruba ? numOrUndef(f[F.IncassatoAruba]) : undefined,
     dataIncasso: (() => {
       const d = F.DataIncasso ? iso(f[F.DataIncasso]) : "";
       return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined;
