@@ -356,6 +356,11 @@ export interface FatturaStato {
   aruba: IncassoAruba;
   /** Aruba dice incassata ma la banca non lo conferma (o viceversa). */
   discordante: boolean;
+  /** Le note di credito collegate coprono l'intero importo: non c'è più
+   *  nulla da incassare, ma non è un pagamento. */
+  annullataDaNC: boolean;
+  /** Importo delle note di credito collegate (0 se nessuna). */
+  notaCredito: number;
   scadenza: string;
   inRitardo: boolean;
   giorniRitardo: number;
@@ -385,6 +390,8 @@ export function computeStatoFattura(
       residuoFatturazione: null,
       residuoBanca: 0,
       stato: "NC",
+      annullataDaNC: false,
+      notaCredito: 0,
       statoFatturazione: null,
       statoIncassi: null,
       incassatoIncassi: null,
@@ -453,6 +460,10 @@ export function computeStatoFattura(
   const residuo = residuoIncassi ?? residuoFatturazione ?? residuoBanca;
   const incassatoComb = incassatoIncassi ?? incassatoFatturazione ?? incassato;
   return {
+    // Coperta per intero dalle note di credito: nulla da incassare, ma non è
+    // un incasso — chi legge deve poter distinguere le due cose.
+    annullataDaNC: notaCredito > 0 && base <= TOLLERANZA_SALDO,
+    notaCredito,
     incassato: incassatoComb,
     incassatoFatturazione,
     incassatoIncassi,

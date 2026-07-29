@@ -740,6 +740,15 @@ export function FattureTab() {
                 : "—"}
         </span>
       );
+    if (x.s.annullataDaNC)
+      return (
+        <span
+          className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+          title={t("ft.annullataNCTip")}
+        >
+          {t("ft.annullataNC")}
+        </span>
+      );
     if (stato === "Pagata")
       return (
         <span className="rounded-full bg-status-present/15 px-2 py-0.5 text-[11px] font-medium text-status-present">
