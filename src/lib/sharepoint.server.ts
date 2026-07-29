@@ -4001,6 +4001,11 @@ export async function importFatture(
       // fattura sono immutabili per definizione.
       const patch: Record<string, unknown> = {};
       if (F.StatoSdI && r.statoSdI && r.statoSdI !== prev.statoSdI) patch[F.StatoSdI] = r.statoSdI;
+      // La scadenza DICHIARATA in fattura arriva solo dall'XML, lo stato
+      // d'incasso solo dal report: i due file si completano a vicenda e
+      // devono poter essere caricati in QUALUNQUE ordine.
+      if (F.ScadenzaPagamento && r.scadenza && r.scadenza !== (prev.scadenza ?? ""))
+        patch[F.ScadenzaPagamento] = `${r.scadenza}T00:00:00Z`;
       if (F.IncassoAruba && r.incassoAruba && r.incassoAruba !== (prev.incassoAruba ?? ""))
         patch[F.IncassoAruba] = r.incassoAruba;
       if (F.DataIncasso && r.dataIncasso && r.dataIncasso !== (prev.dataIncasso ?? ""))
