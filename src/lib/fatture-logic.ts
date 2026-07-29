@@ -430,9 +430,16 @@ export function computeStatoFattura(
   const aruba = parseIncassoAruba(f.incassoAruba);
   // Discordanza: utile per capire cosa manca in banca (o cosa la banca ha
   // trovato e l'amministrazione non ha ancora registrato su Aruba).
+  // Sulle PASSIVE la banca non è una controprova: molti costi non transitano
+  // dal conto aziendale (carte di credito dei soci, contanti) pur avendo
+  // fattura, quindi "pagata su Aruba ma nessun movimento" è la normalità e
+  // non va segnalata. Resta invece informativo il caso opposto: dal conto è
+  // uscito un pagamento che la fatturazione non ha registrato.
   const discordante =
-    (aruba === "Incassata" && statoBanca !== "Pagata") ||
-    (aruba === "Non incassata" && statoBanca === "Pagata");
+    f.direzione === "Ricevuta"
+      ? aruba === "Non incassata" && statoBanca === "Pagata"
+      : (aruba === "Incassata" && statoBanca !== "Pagata") ||
+        (aruba === "Non incassata" && statoBanca === "Pagata");
   // Lettura FATTURAZIONE: esiste solo se Aruba ha uno stato registrato.
   // "Non incassata" su Aruba non esclude un acconto già visto in banca: in
   // quel caso la fatturazione mostra comunque il parziale che risulta.

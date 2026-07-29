@@ -90,6 +90,11 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   // Attive (emesse, crediti) e passive (ricevute, debiti) vivono in due
   // schede distinte: la direzione arriva da lì, non si commuta qui dentro.
   const dir = direzione;
+  const ricevute = dir === "Ricevuta";
+  // Sulle passive non si incassa: si paga. Stesse colonne, altre parole: la
+  // chiave delle attive resta il default, la variante scatta solo qui.
+  const tp = (attiva: Parameters<typeof t>[0], passiva: Parameters<typeof t>[0]) =>
+    t(ricevute ? passiva : attiva);
   const [fattureEm, setFattureEm] = useState<SpFattura[] | null>(null);
   const [fattureRic, setFattureRic] = useState<SpFattura[] | null>(null);
   const fatture = dir === "Emessa" ? fattureEm : fattureRic;
@@ -753,16 +758,16 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       [
         "Numero",
         "Data documento",
-        "Cliente",
+        ricevute ? "Fornitore" : "Cliente",
         "Tipo",
         "Totale",
-        "Incassato",
+        ricevute ? "Pagato" : "Incassato",
         "Residuo",
         "Scadenza",
         "Stato",
         "Ritardo gg",
-        "Incasso Aruba",
-        "Data incasso Aruba",
+        ricevute ? "Pagamento Aruba" : "Incasso Aruba",
+        ricevute ? "Data pagamento Aruba" : "Data incasso Aruba",
         "Stato da banca",
         "Discordante",
         "Stato SdI",
@@ -805,7 +810,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         className={`ml-1 text-[10px] ${x.s.discordante ? "text-status-absent font-semibold" : "text-muted-foreground"}`}
         title={
           x.s.discordante
-            ? `${t("ft.fonteAruba")} · ${t("ft.discordante")}`
+            ? `${t("ft.fonteAruba")} · ${tp("ft.discordante", "ft.discordantePassiva")}`
             : `${t("ft.fonteAruba")}${x.f.dataIncasso ? ` · ${fmtData(x.f.dataIncasso)}` : ""}`
         }
       >
@@ -880,8 +885,6 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
 
   const loading = fatture == null || abbinamenti == null || movimenti == null;
 
-  const ricevute = dir === "Ricevuta";
-
   return (
     <div className="space-y-4">
       {/* Riepilogo */}
@@ -894,8 +897,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
             {fmtImporto(riepilogo.apertoFatt)} €
           </div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            {t("ft.colIncassi")}: {fmtImporto(riepilogo.apertoIncassi)} € · {t("ft.colBanca")}:{" "}
-            {fmtImporto(riepilogo.apertoBanca)} €
+            {tp("ft.colIncassi", "ft.colPagatoFatt")}: {fmtImporto(riepilogo.apertoIncassi)} € ·{" "}
+            {t("ft.colBanca")}: {fmtImporto(riepilogo.apertoBanca)} €
           </div>
         </div>
         <div className="rounded-2xl border border-status-absent/40 bg-status-absent/5 p-4 shadow-[var(--shadow-card)]">
@@ -918,8 +921,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           </div>
           {/* Le due letture affiancate: possono differire, ed è un dato utile. */}
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            {t("ft.colIncassi")}: {fmtImporto(riepilogo.incassatoIncassi)} € · {t("ft.colBanca")}:{" "}
-            {fmtImporto(riepilogo.confermatoBanca)} €
+            {tp("ft.colIncassi", "ft.colPagatoFatt")}: {fmtImporto(riepilogo.incassatoIncassi)} € ·{" "}
+            {t("ft.colBanca")}: {fmtImporto(riepilogo.confermatoBanca)} €
             {riepilogo.nDiscordanti > 0 && (
               <>
                 {" · "}
@@ -1244,7 +1247,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   </th>
                   <th className="py-1.5 pr-2">{t("ft.scadenza")}</th>
                   <th className="py-1.5 pr-2">{t("ft.colFatturazione")}</th>
-                  <th className="py-1.5 pr-2">{t("ft.colIncassi")}</th>
+                  <th className="py-1.5 pr-2">{tp("ft.colIncassi", "ft.colPagatoFatt")}</th>
                   <th className="py-1.5 pr-2">{t("ft.colBanca")}</th>
                 </tr>
               </thead>
@@ -1317,10 +1320,15 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                       </td>
                       <td className="py-1 pr-2 whitespace-nowrap">
                         {/* Zero movimenti collegati NON significa "non pagata":
-                            significa che nessun bonifico e' stato abbinato. */}
+                            significa che nessun bonifico e' stato abbinato.
+                            Sulle passive è la norma — molti costi non passano
+                            dal c/c aziendale — e lo si dice apertamente. */}
                         {x.s.statoBanca === "Non incassata" && x.s.incassatoBanca === 0 ? (
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                            {t("ft.nessunAbbinamento")}
+                          <span
+                            className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                            title={ricevute ? t("ft.fuoriBancaTip") : undefined}
+                          >
+                            {tp("ft.nessunAbbinamento", "ft.fuoriBanca")}
                           </span>
                         ) : (
                           <>
@@ -1335,7 +1343,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                         {x.s.discordante && (
                           <span
                             className="ml-1 text-[11px] text-status-absent"
-                            title={t("ft.discordante")}
+                            title={tp("ft.discordante", "ft.discordantePassiva")}
                           >
                             ⚠
                           </span>
@@ -1539,11 +1547,19 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   <th className="py-1.5 pr-2 text-right">{t("ft.nFatture")}</th>
                   <th className="py-1.5 pr-2 text-right">{t("ft.nPagate")}</th>
                   <th className="py-1.5 pr-2 text-right">{t("ft.nParziali")}</th>
-                  <th className="py-1.5 pr-2 text-right">{t("ft.nDaIncassare")}</th>
+                  <th className="py-1.5 pr-2 text-right">
+                    {tp("ft.nDaIncassare", "ft.nDaPagare")}
+                  </th>
                   <th className="py-1.5 pr-2 text-right">{t("ft.totFatturato")}</th>
-                  <th className="py-1.5 pr-2 text-right">{t("ft.totIncassatoFatt")}</th>
-                  <th className="py-1.5 pr-2 text-right">{t("ft.totIncassatoBanca")}</th>
-                  <th className="py-1.5 pr-2 text-right">{t("ft.totDaIncassare")}</th>
+                  <th className="py-1.5 pr-2 text-right">
+                    {tp("ft.totIncassatoFatt", "ft.totPagatoFatt")}
+                  </th>
+                  <th className="py-1.5 pr-2 text-right">
+                    {tp("ft.totIncassatoBanca", "ft.totPagatoBanca")}
+                  </th>
+                  <th className="py-1.5 pr-2 text-right">
+                    {tp("ft.totDaIncassare", "ft.totDaPagare")}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1604,7 +1620,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                                 <th className="py-1 pr-2 text-right">{t("common.total")}</th>
                                 <th className="py-1 pr-2">{t("ft.scadenza")}</th>
                                 <th className="py-1 pr-2">{t("ft.colFatturazione")}</th>
-                                <th className="py-1 pr-2">{t("ft.colIncassi")}</th>
+                                <th className="py-1 pr-2">
+                                  {tp("ft.colIncassi", "ft.colPagatoFatt")}
+                                </th>
                                 <th className="py-1 pr-2">{t("ft.colBanca")}</th>
                                 <th className="py-1 pr-2 text-right">{t("ft.residuo")}</th>
                               </tr>
@@ -1667,7 +1685,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
 
       <div className="flex items-start gap-2 text-xs text-muted-foreground">
         <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-        <p>{t("ft.nota")}</p>
+        <p>{tp("ft.nota", "ft.notaPassive")}</p>
       </div>
     </div>
   );

@@ -826,6 +826,18 @@ const en = {
   "ft.totIncassatoBanca": "Collected (bank)",
   "ft.totDaIncassare": "Outstanding",
   "ft.diCuiRitardo": "of which overdue",
+  // Payables speak a different language: nothing is "collected", it is paid.
+  "ft.colPagatoFatt": "Paid (invoicing)",
+  "ft.nDaPagare": "To pay",
+  "ft.totPagatoFatt": "Paid (invoicing)",
+  "ft.totPagatoBanca": "Paid (bank)",
+  "ft.totDaPagare": "To pay",
+  "ft.discordantePassiva": "paid from the account but not recorded in Aruba",
+  "ft.fuoriBanca": "not via bank",
+  "ft.fuoriBancaTip":
+    "No movement on the company account. Many costs never go through the current account (partners' credit cards, cash) even though an invoice was issued: this does not mean the invoice is unpaid.",
+  "ft.notaPassive":
+    "Due dates come from the invoice or from the default payment terms (30 days). Credit notes are deducted from the payable. The Bank column only shows what left the company account: payments made with partners' cards or in cash stay empty and are not an anomaly.",
   "ft.nota":
     "Due dates come from the payment terms per client (TerminiPagamento list; default 30 days). Rejected SdI invoices and credit notes are excluded from receivables. Matches survive re-imports on both sides.",
 } as const;
@@ -1629,6 +1641,18 @@ const it: Record<DictKey, string> = {
   "ft.totIncassatoBanca": "Incassato banca",
   "ft.totDaIncassare": "Da incassare",
   "ft.diCuiRitardo": "di cui in ritardo",
+  // Sulle passive non si incassa: si paga. Stesse colonne, altre parole.
+  "ft.colPagatoFatt": "Pagato fatturazione",
+  "ft.nDaPagare": "Da pagare",
+  "ft.totPagatoFatt": "Pagato fatturazione",
+  "ft.totPagatoBanca": "Pagato banca",
+  "ft.totDaPagare": "Da pagare",
+  "ft.discordantePassiva": "risulta pagata dal conto ma non su Aruba",
+  "ft.fuoriBanca": "non dal c/c",
+  "ft.fuoriBancaTip":
+    "Nessun movimento sul conto aziendale. Molti costi non passano dal c/c (carte di credito dei soci, contanti) pur avendo la fattura: non vuol dire che la fattura non sia stata pagata.",
+  "ft.notaPassive":
+    "Le scadenze derivano dalla fattura o dai termini di pagamento predefiniti (30 giorni). Le note di credito si sottraggono dal debito. La colonna Banca mostra solo ciò che è uscito dal conto aziendale: i pagamenti fatti con le carte dei soci o in contanti restano vuoti e non sono un'anomalia.",
   "ft.nota":
     "Le scadenze derivano dai termini di pagamento per cliente (lista TerminiPagamento; default 30 giorni). Le fatture scartate dallo SdI e le note di credito sono escluse dal credito. Gli abbinamenti sopravvivono ai reimport di entrambe le sorgenti.",
 };
