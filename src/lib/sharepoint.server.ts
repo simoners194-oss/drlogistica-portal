@@ -650,9 +650,25 @@ function resolveInternalNames(
   const usable = columns.filter((c) => !c.hidden && !c.readOnly);
   const byDisplay = new Map<string, GraphColumn>();
   const byName = new Map<string, GraphColumn>();
+  // Confronto "morbido": senza spazi, accenti e punteggiatura. Serve quando la
+  // colonna è stata creata con una grafia diversa ("Orari proposti",
+  // "Modalità"): il dato esiste, cambia solo come è scritto il nome.
+  const byLoose = new Map<string, GraphColumn>();
+  const loose = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]/gi, "")
+      .toLowerCase();
   for (const c of usable) {
-    if (c.displayName) byDisplay.set(c.displayName.toLowerCase(), c);
-    if (c.name) byName.set(c.name.toLowerCase(), c);
+    if (c.displayName) {
+      byDisplay.set(c.displayName.toLowerCase(), c);
+      if (!byLoose.has(loose(c.displayName))) byLoose.set(loose(c.displayName), c);
+    }
+    if (c.name) {
+      byName.set(c.name.toLowerCase(), c);
+      if (!byLoose.has(loose(c.name))) byLoose.set(loose(c.name), c);
+    }
   }
   const map: Record<string, string> = {};
   const missing: string[] = [];
@@ -669,6 +685,12 @@ function resolveInternalNames(
       if (hit?.name) break;
     }
     hit = hit ?? byDisplay.get(logical.toLowerCase()) ?? byName.get(logical.toLowerCase());
+    // Ultimo tentativo: confronto morbido su varianti e nome logico.
+    if (!hit?.name)
+      for (const v of [...varianti, logical]) {
+        hit = byLoose.get(loose(v));
+        if (hit?.name) break;
+      }
     if (hit?.name) map[logical] = hit.name;
     else missing.push(varianti[0] ?? display);
   }
@@ -5649,8 +5671,21 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
       throw new Error(
         "Lista 'CorrezioniTimbrature' non trovata — richiesta dalle correzioni orari dei dipendenti",
       );
-    if (disc.correzioniMissing.length)
-      throw new Error(`Colonne mancanti — [${disc.correzioniMissing.join(", ")}]`);
+    if (disc.correzioniMissing.length) {
+      // Elenca le colonne REALI: così si vede subito come sono scritte,
+      // invece di indovinare la grafia.
+      const reali = await getListColumns(disc.siteId, disc.listCorrezioni)
+        .then((cols) =>
+          cols
+            .filter((c) => !c.hidden && !c.readOnly)
+            .map((c) => c.displayName || c.name)
+            .join(", "),
+        )
+        .catch(() => "(elenco non disponibile)");
+      throw new Error(
+        `Colonne mancanti — [${disc.correzioniMissing.join(", ")}]. Sulla lista ci sono: ${reali}`,
+      );
+    }
     return disc.listCorrezioniName ?? undefined;
   });
   await step("banca.config", "Collegamento banca PSD2 (lista EnableBankingConfig)", async () => {
