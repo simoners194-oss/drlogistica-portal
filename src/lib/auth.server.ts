@@ -24,6 +24,8 @@ export interface ServerSessionUser {
   ruolo: Ruolo;
   autorizza: boolean;
   operatore: boolean;
+  // Preposto di sede: vista in sola lettura sulla propria sede.
+  preposto?: boolean;
   // Codice dipendente (es. DR005) — usato per i moduli riservati al direttore.
   // Sessioni emesse prima dell'introduzione del campo → undefined (re-login).
   codice?: string;

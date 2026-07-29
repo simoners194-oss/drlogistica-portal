@@ -40,6 +40,8 @@ import {
 } from "./richieste-logic";
 import {
   anomalieDaStream,
+  aperturaTurnoCorrente,
+  MAX_TURNO_ORE,
   ultimoEventoEffettivo,
   UNDO_TIMBRATURA_MINUTI,
   type TipoAnomalia,
@@ -112,6 +114,7 @@ export const SP_DISPLAY = {
     Visibile: "Visibile",
     Autorizza: "Autorizza",
     Operatore: "Operatore",
+    Preposto: "Preposto",
     OreSettimanali: "OreSettimanali",
     Inquadramento: "Inquadramento",
     GiorniFerieAnnui: "GiorniFerieAnnui",
@@ -299,6 +302,22 @@ export const SP_DISPLAY = {
     // ripetuti (429) — persistere il token riduce le autenticazioni a ~2/ora.
     TokenCache: "TokenCache",
   },
+  // Richieste di CORREZIONE delle timbrature inviate dal dipendente e decise
+  // da chi ha il flag Operatore. Lista OPZIONALE.
+  correzioni: {
+    DipendenteId: "DipendenteId",
+    NomeDipendente: "NomeDipendente",
+    CodiceDipendente: "CodiceDipendente",
+    Sede: "Sede",
+    Giorno: "Giorno",
+    OrariAttuali: "OrariAttuali",
+    OrariProposti: "OrariProposti",
+    Motivo: "Motivo",
+    Stato: "Stato",
+    Decisore: "Decisore",
+    DataDecisione: "DataDecisione",
+    NoteDecisione: "NoteDecisione",
+  },
   // Collegamento banca Enable Banking (PSD2, sola lettura; una riga di config).
   // La chiave privata dell'app è CIFRATA come la password Aruba. OPZIONALE.
   enableBanking: {
@@ -365,6 +384,7 @@ const LIST_NAMES = {
   abbinamenti: ["AbbinamentiIncassi", "AbbinamentoIncasso", "Abbinamenti"],
   arubaConfig: ["ArubaConfig", "ConfigurazioneAruba"],
   enableBanking: ["EnableBankingConfig", "BancaConfig", "EnableBanking"],
+  correzioni: ["CorrezioniTimbrature", "CorrezioneTimbrature", "Correzioni"],
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -492,6 +512,10 @@ export interface SpDiscovered {
   listEnableBankingName: string | null;
   enableBankingFields: Record<string, string>;
   enableBankingMissing: string[];
+  listCorrezioni: string | null;
+  listCorrezioniName: string | null;
+  correzioniFields: Record<string, string>;
+  correzioniMissing: string[];
   cachedAt: string;
   expiresAt: string;
 }
@@ -796,6 +820,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const abb = await softList(LIST_NAMES.abbinamenti, SP_DISPLAY.abbinamenti);
   const aru = await softList(LIST_NAMES.arubaConfig, SP_DISPLAY.arubaConfig);
   const eb = await softList(LIST_NAMES.enableBanking, SP_DISPLAY.enableBanking);
+  const corr = await softList(LIST_NAMES.correzioni, SP_DISPLAY.correzioni);
 
   const now = Date.now();
   discoveredCache = {
@@ -874,6 +899,10 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listEnableBankingName: eb.name,
     enableBankingFields: eb.fields,
     enableBankingMissing: eb.missing,
+    listCorrezioni: corr.id,
+    listCorrezioniName: corr.name,
+    correzioniFields: corr.fields,
+    correzioniMissing: corr.missing,
     cachedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CACHE_TTL_MS).toISOString(),
   };
@@ -966,6 +995,10 @@ export interface SpDipendente {
   // manuali. Default false. L'autorizzazione effettiva è ri-verificata sul
   // server nelle operazioni sensibili, non solo qui.
   operatore: boolean;
+  // Preposto di sede (es. capo appalto): vede in SOLA LETTURA turni e ore
+  // dei dipendenti della PROPRIA sede. Non corregge e non approva nulla.
+  // Colonna SharePoint OPZIONALE: assente/vuota → false.
+  preposto: boolean;
   // Ore contrattuali settimanali (full-time e part-time). null se non impostate.
   // Usate da rilevazione anomalie e rendiconto.
   oreSettimanali: number | null;
@@ -1032,6 +1065,7 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
         visibile: parseSpBool(F.Visibile ? f[F.Visibile] : undefined, true),
         autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
         operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
+        preposto: parseSpBool(F.Preposto ? f[F.Preposto] : undefined, false),
         oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
         inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
         giorniFerieAnnui: parseSpNumber(
@@ -1463,6 +1497,7 @@ export async function loginByCodicePin(
     visibile: parseSpBool(F.Visibile ? f[F.Visibile] : undefined, true),
     autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
     operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
+    preposto: parseSpBool(F.Preposto ? f[F.Preposto] : undefined, false),
     oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
     inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
     giorniFerieAnnui: parseSpNumber(F.GiorniFerieAnnui ? f[F.GiorniFerieAnnui] : undefined, null),
@@ -1525,7 +1560,7 @@ function lookupIdFieldName(internal: string): string {
 }
 
 // Legge le timbrature con DataOra >= fromISO (ordinate crescenti).
-async function fetchTimbratureDaISO(fromISO: string): Promise<SpTimbratura[]> {
+export async function fetchTimbratureDaISO(fromISO: string): Promise<SpTimbratura[]> {
   const cfg = await discoverSharePoint();
   const F = cfg.timbratureFields;
   const dataOraField = requireField(F, "DataOra", "Timbrature");
@@ -4780,20 +4815,216 @@ export async function ebSincronizza(
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// Correzione timbrature richiesta dal DIPENDENTE (lista CorrezioniTimbrature)
+// ---------------------------------------------------------------------------
+// Il dipendente propone gli orari corretti di una giornata; la richiesta va a
+// chi ha il flag Operatore, che vede fianco a fianco quanto risulta e quanto
+// viene chiesto. All'approvazione il portale RISCRIVE la giornata: cancella le
+// timbrature esistenti di quel giorno e inserisce quelle proposte (Manuale).
+
+export interface SpCorrezione {
+  id: string;
+  dipendenteId: string;
+  nomeDipendente: string;
+  codiceDipendente: string;
+  sede: string;
+  giorno: string; // YYYY-MM-DD
+  orariAttuali: string; // testo leggibile (fotografia al momento della richiesta)
+  orariProposti: string; // "entrata 08:00, uscita 17:00" — parsato all'approvazione
+  motivo: string;
+  stato: "In attesa" | "Approvata" | "Respinta";
+  decisore: string;
+  dataDecisione: string;
+  noteDecisione: string;
+}
+
+function requireCorrezioniList(cfg: SpDiscovered): string {
+  if (!cfg.listCorrezioni)
+    throw new Error(
+      'Lista "CorrezioniTimbrature" non trovata su SharePoint. Crearla sul sito DRPORTAL.',
+    );
+  return cfg.listCorrezioni;
+}
+
+function mapCorrezione(
+  cfg: SpDiscovered,
+  it: GraphListItem<Record<string, unknown>>,
+): SpCorrezione {
+  const F = cfg.correzioniFields;
+  const f = it.fields ?? {};
+  const s = (k?: string) => (k ? String(f[k] ?? "").trim() : "");
+  const stato = s(F.Stato);
+  return {
+    id: String(it.id),
+    dipendenteId: s(F.DipendenteId),
+    nomeDipendente: s(F.NomeDipendente),
+    codiceDipendente: s(F.CodiceDipendente),
+    sede: s(F.Sede),
+    giorno: s(F.Giorno).slice(0, 10),
+    orariAttuali: s(F.OrariAttuali),
+    orariProposti: s(F.OrariProposti),
+    motivo: s(F.Motivo),
+    stato: stato === "Approvata" || stato === "Respinta" ? stato : "In attesa",
+    decisore: s(F.Decisore),
+    dataDecisione: s(F.DataDecisione),
+    noteDecisione: s(F.NoteDecisione),
+  };
+}
+
+/** Correzioni: tutte (per l'operatore) o solo le proprie (dipendente). */
+export async function fetchCorrezioni(soloDipendenteId?: string): Promise<SpCorrezione[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listCorrezioni) return [];
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listCorrezioni}/items?expand=fields&$top=500`,
+    ),
+  );
+  let out = res.value.map((it) => mapCorrezione(cfg, it));
+  if (soloDipendenteId) out = out.filter((c) => c.dipendenteId === soloDipendenteId);
+  return out.sort((a, b) => b.giorno.localeCompare(a.giorno) || b.id.localeCompare(a.id));
+}
+
+export interface CreateCorrezioneInput {
+  dipendenteId: string;
+  giorno: string;
+  orariProposti: string;
+  motivo: string;
+}
+
+export async function createCorrezione(input: CreateCorrezioneInput): Promise<SpCorrezione> {
+  const cfg = await discoverSharePoint();
+  const listId = requireCorrezioniList(cfg);
+  const F = cfg.correzioniFields;
+  const dip = (await fetchDipendenti()).find((d) => d.id === input.dipendenteId);
+  // Fotografia degli orari attuali: serve a chi decide per il confronto.
+  const eventi = await fetchTimbratureGiorno(input.dipendenteId, input.giorno);
+  const attuali =
+    eventi.map((e) => `${e.evento} ${e.dataOra.slice(11, 16)}`).join(", ") || "nessuna timbratura";
+  const fields: Record<string, unknown> = {
+    Title: `${dip?.codice ?? input.dipendenteId} ${input.giorno}`,
+  };
+  if (F.DipendenteId) fields[F.DipendenteId] = input.dipendenteId;
+  if (F.NomeDipendente)
+    fields[F.NomeDipendente] = dip ? dip.nomeCompleto || `${dip.nome} ${dip.cognome}` : "";
+  if (F.CodiceDipendente) fields[F.CodiceDipendente] = dip?.codice ?? "";
+  if (F.Sede) fields[F.Sede] = dip?.sede ?? "";
+  if (F.Giorno) fields[F.Giorno] = `${input.giorno}T00:00:00Z`;
+  if (F.OrariAttuali) fields[F.OrariAttuali] = attuali.slice(0, 500);
+  if (F.OrariProposti) fields[F.OrariProposti] = input.orariProposti.slice(0, 500);
+  if (F.Motivo) fields[F.Motivo] = input.motivo.slice(0, 500);
+  if (F.Stato) fields[F.Stato] = "In attesa";
+  const created = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${listId}/items`,
+      { method: "POST", body: JSON.stringify({ fields }) },
+    ),
+  );
+  logSp(
+    "info",
+    "correzione.create",
+    `Correzione richiesta dip=${input.dipendenteId} ${input.giorno}`,
+  );
+  return mapCorrezione(cfg, created);
+}
+
+/** "entrata 08:00, inizio-pausa 12:30, fine-pausa 13:00, uscita 17:00" */
+export function parseOrariProposti(
+  testo: string,
+): { evento: EventoTimbratura; ora: string }[] | null {
+  const out: { evento: EventoTimbratura; ora: string }[] = [];
+  for (const pezzo of testo.split(/[,;\n]+/)) {
+    const m = pezzo.trim().match(/^(entrata|inizio-pausa|fine-pausa|uscita)\s+(\d{1,2}):(\d{2})$/i);
+    if (!m) continue;
+    const evento = m[1].toLowerCase() as EventoTimbratura;
+    const hh = String(Number(m[2])).padStart(2, "0");
+    if (Number(m[2]) > 23 || Number(m[3]) > 59) return null;
+    out.push({ evento, ora: `${hh}:${m[3]}` });
+  }
+  return out.length ? out : null;
+}
+
+export async function decideCorrezione(
+  correzioneId: string,
+  approvata: boolean,
+  decisore: string,
+  note?: string,
+): Promise<SpCorrezione> {
+  const cfg = await discoverSharePoint();
+  const listId = requireCorrezioniList(cfg);
+  const F = cfg.correzioniFields;
+  const item = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${listId}/items/${correzioneId}?expand=fields`,
+    ),
+  );
+  const c = mapCorrezione(cfg, item);
+  if (c.stato !== "In attesa") throw new Error("Richiesta già decisa.");
+
+  if (approvata) {
+    const proposti = parseOrariProposti(c.orariProposti);
+    if (!proposti)
+      throw new Error(
+        'Orari proposti non interpretabili (formato atteso: "entrata 08:00, uscita 17:00").',
+      );
+    // Riscrittura della giornata: via le timbrature esistenti, dentro quelle
+    // approvate (marcate Manuale e tracciate in nota).
+    const esistenti = await fetchTimbratureGiorno(c.dipendenteId, c.giorno);
+    for (const e of esistenti) await deleteTimbratura(e.id);
+    const dipInt = Number(c.dipendenteId);
+    for (const p of proposti) {
+      await insertManuale(
+        cfg,
+        dipInt,
+        p.evento,
+        new Date(`${c.giorno}T${p.ora}:00`).toISOString(),
+        `Correzione approvata #${correzioneId}`,
+      );
+    }
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (F.Stato) patch[F.Stato] = approvata ? "Approvata" : "Respinta";
+  if (F.Decisore) patch[F.Decisore] = decisore;
+  if (F.DataDecisione) patch[F.DataDecisione] = new Date().toISOString();
+  if (F.NoteDecisione && note) patch[F.NoteDecisione] = note.slice(0, 500);
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${correzioneId}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  );
+  logSp(
+    "info",
+    "correzione.decide",
+    `Correzione #${correzioneId} ${approvata ? "approvata" : "respinta"} da ${decisore}`,
+  );
+  return { ...c, stato: approvata ? "Approvata" : "Respinta", decisore };
+}
+
 // --- Sincronizzazione PROGRAMMATA (innesco esterno) -------------------------
 // Il Worker non ha uno scheduler: un flusso Power Automate chiama a orari
 // fissi /cron-banca?token=… . Il token è DERIVATO dal segreto server (nessuna
 // colonna nuova, nessun segreto in chiaro nel repo) e si legge dal pannello
 // Banca in Amministrazione.
 
-export async function ebCronToken(): Promise<string> {
+/** Token dell'innesco programmato, uno per tipo di lavoro. */
+export async function cronToken(job: "banca" | "turni"): Promise<string> {
   const pepper = pinPepper();
   if (!pepper) throw new Error("Segreto server assente: token non generabile.");
-  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`cron:banca:${pepper}`));
+  const d = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`cron:${job}:${pepper}`),
+  );
   return [...new Uint8Array(d)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
     .slice(0, 40);
+}
+
+export async function ebCronToken(): Promise<string> {
+  return cronToken("banca");
 }
 
 /** Confronto a tempo costante: non rivela quanti caratteri sono corretti. */
@@ -4808,6 +5039,48 @@ function tokenUguale(a: string, b: string): boolean {
 // accessi PSD2 da doppioni del flusso o da ritentativi.
 const CRON_MIN_MINUTI = 90;
 const CRON_MAX_PAGINE = 5;
+
+// --- Promemoria PUSH "manca l'uscita" (fase F) ------------------------------
+// Innescato dallo stesso flusso schedulato: cerca i turni ancora aperti oltre
+// le ore previste e manda la notifica al telefono, anche ad app chiusa.
+// Soglia per dipendente: ore contrattuali giornaliere + 1h, comunque entro il
+// tetto del turno; nessuna notifica prima, per non disturbare chi è al lavoro.
+export async function promemoriaUsciteAperte(
+  token: string,
+): Promise<{ controllati: number; avvisati: number; nomi: string[] }> {
+  if (!tokenUguale(token, await cronToken("turni"))) {
+    logSp("warn", "cron.turni", "Chiamata programmata con token non valido");
+    throw new Error("Token non valido.");
+  }
+  const [tims, dips] = await Promise.all([fetchTimbratureRecenti(), fetchDipendenti()]);
+  const perDip = new Map<string, { evento: EventoTimbratura; ora: string }[]>();
+  for (const t of tims) {
+    const l = perDip.get(t.dipendenteId) ?? [];
+    l.push({ evento: t.evento, ora: t.dataOra });
+    perDip.set(t.dipendenteId, l);
+  }
+  const now = new Date();
+  const nomi: string[] = [];
+  let controllati = 0;
+  for (const d of dips) {
+    const eventi = perDip.get(d.id);
+    if (!eventi?.length) continue;
+    controllati++;
+    const apertura = aperturaTurnoCorrente(eventi, now);
+    if (!apertura) continue; // fuori servizio o turno già scaduto (→ anomalie)
+    const ore = (now.getTime() - new Date(apertura).getTime()) / 3600_000;
+    const soglia = Math.min((d.oreSettimanali ?? 40) / 5 + 1, MAX_TURNO_ORE);
+    if (ore < soglia) continue;
+    nomi.push(d.nomeCompleto || `${d.nome} ${d.cognome}`);
+    await sendPushToDipendente(d.id, {
+      title: "Manca la timbratura di uscita",
+      body: `Il tuo turno risulta aperto da ${Math.floor(ore)} ore. Se hai finito, registra l'uscita.`,
+      url: "/presenze",
+    });
+  }
+  logSp("info", "cron.turni", `Promemoria uscite: ${nomi.length} inviati su ${controllati} attivi`);
+  return { controllati, avvisati: nomi.length, nomi };
+}
 
 export async function ebSincronizzaProgrammato(
   token: string,
@@ -5362,6 +5635,15 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
     ];
     if (colonne.length) throw new Error(`Colonne mancanti — [${colonne.join(", ")}]`);
     return `${disc.listFattureName} · ${disc.listFattureRicevuteName} · ${disc.listTerminiName} · ${disc.listAbbinamentiName}`;
+  });
+  await step("list.correzioni", "Lista CorrezioniTimbrature (correzioni dipendenti)", async () => {
+    if (!disc?.listCorrezioni)
+      throw new Error(
+        "Lista 'CorrezioniTimbrature' non trovata — richiesta dalle correzioni orari dei dipendenti",
+      );
+    if (disc.correzioniMissing.length)
+      throw new Error(`Colonne mancanti — [${disc.correzioniMissing.join(", ")}]`);
+    return disc.listCorrezioniName ?? undefined;
   });
   await step("banca.config", "Collegamento banca PSD2 (lista EnableBankingConfig)", async () => {
     if (!disc?.listEnableBanking)

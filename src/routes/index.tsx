@@ -75,6 +75,7 @@ function Index() {
         ruolo,
         autorizza: Boolean(d.autorizza),
         operatore: Boolean(d.operatore),
+        preposto: Boolean(d.preposto),
         oreSettimanali: d.oreSettimanali,
         codice: d.codice,
       });

@@ -62,6 +62,9 @@ export interface SessionUser {
   // Operatore/back-office (DR000): abilita l'inserimento di timbrature manuali.
   // Solo gating UI; l'autorizzazione reale è ri-verificata lato server.
   operatore: boolean;
+  // Preposto di sede: vista in sola lettura sui dipendenti della propria
+  // sede. Solo gating UI; il perimetro reale è imposto dal server.
+  preposto?: boolean;
   // Ore contrattuali settimanali (per l'avviso "monte ore giornaliero" in
   // Presenze). Opzionale: sessioni vecchie senza il campo → undefined.
   oreSettimanali?: number | null;
@@ -89,6 +92,7 @@ export function readSession(): SessionUser | null {
       ruolo: normalizeRuolo(parsed.ruolo),
       autorizza: Boolean(parsed.autorizza),
       operatore: Boolean(parsed.operatore),
+      preposto: Boolean(parsed.preposto),
       oreSettimanali: typeof parsed.oreSettimanali === "number" ? parsed.oreSettimanali : null,
       codice: typeof parsed.codice === "string" && parsed.codice ? parsed.codice : null,
     };

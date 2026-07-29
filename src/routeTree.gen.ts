@@ -11,16 +11,19 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SupervisioneRouteImport } from './routes/supervisione'
+import { Route as SedeRouteImport } from './routes/sede'
 import { Route as RichiesteRouteImport } from './routes/richieste'
 import { Route as ReportRouteImport } from './routes/report'
 import { Route as ProcurementRouteImport } from './routes/procurement'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PresenzeRouteImport } from './routes/presenze'
 import { Route as NovitaRouteImport } from './routes/novita'
+import { Route as LeMieOreRouteImport } from './routes/le-mie-ore'
 import { Route as GestioneTimbratureRouteImport } from './routes/gestione-timbrature'
 import { Route as FinanzaRouteImport } from './routes/finanza'
 import { Route as DocumentiRouteImport } from './routes/documenti'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as CronTurniRouteImport } from './routes/cron-turni'
 import { Route as CronBancaRouteImport } from './routes/cron-banca'
 import { Route as ComunicazioniRouteImport } from './routes/comunicazioni'
 import { Route as AmministrazioneRouteImport } from './routes/amministrazione'
@@ -34,6 +37,11 @@ const TermsRoute = TermsRouteImport.update({
 const SupervisioneRoute = SupervisioneRouteImport.update({
   id: '/supervisione',
   path: '/supervisione',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SedeRoute = SedeRouteImport.update({
+  id: '/sede',
+  path: '/sede',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RichiesteRoute = RichiesteRouteImport.update({
@@ -66,6 +74,11 @@ const NovitaRoute = NovitaRouteImport.update({
   path: '/novita',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LeMieOreRoute = LeMieOreRouteImport.update({
+  id: '/le-mie-ore',
+  path: '/le-mie-ore',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GestioneTimbratureRoute = GestioneTimbratureRouteImport.update({
   id: '/gestione-timbrature',
   path: '/gestione-timbrature',
@@ -84,6 +97,11 @@ const DocumentiRoute = DocumentiRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CronTurniRoute = CronTurniRouteImport.update({
+  id: '/cron-turni',
+  path: '/cron-turni',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CronBancaRoute = CronBancaRouteImport.update({
@@ -112,16 +130,19 @@ export interface FileRoutesByFullPath {
   '/amministrazione': typeof AmministrazioneRoute
   '/comunicazioni': typeof ComunicazioniRoute
   '/cron-banca': typeof CronBancaRoute
+  '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
   '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
+  '/le-mie-ore': typeof LeMieOreRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/privacy': typeof PrivacyRoute
   '/procurement': typeof ProcurementRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
+  '/sede': typeof SedeRoute
   '/supervisione': typeof SupervisioneRoute
   '/terms': typeof TermsRoute
 }
@@ -130,16 +151,19 @@ export interface FileRoutesByTo {
   '/amministrazione': typeof AmministrazioneRoute
   '/comunicazioni': typeof ComunicazioniRoute
   '/cron-banca': typeof CronBancaRoute
+  '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
   '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
+  '/le-mie-ore': typeof LeMieOreRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/privacy': typeof PrivacyRoute
   '/procurement': typeof ProcurementRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
+  '/sede': typeof SedeRoute
   '/supervisione': typeof SupervisioneRoute
   '/terms': typeof TermsRoute
 }
@@ -149,16 +173,19 @@ export interface FileRoutesById {
   '/amministrazione': typeof AmministrazioneRoute
   '/comunicazioni': typeof ComunicazioniRoute
   '/cron-banca': typeof CronBancaRoute
+  '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
   '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
+  '/le-mie-ore': typeof LeMieOreRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/privacy': typeof PrivacyRoute
   '/procurement': typeof ProcurementRoute
   '/report': typeof ReportRoute
   '/richieste': typeof RichiesteRoute
+  '/sede': typeof SedeRoute
   '/supervisione': typeof SupervisioneRoute
   '/terms': typeof TermsRoute
 }
@@ -169,16 +196,19 @@ export interface FileRouteTypes {
     | '/amministrazione'
     | '/comunicazioni'
     | '/cron-banca'
+    | '/cron-turni'
     | '/dashboard'
     | '/documenti'
     | '/finanza'
     | '/gestione-timbrature'
+    | '/le-mie-ore'
     | '/novita'
     | '/presenze'
     | '/privacy'
     | '/procurement'
     | '/report'
     | '/richieste'
+    | '/sede'
     | '/supervisione'
     | '/terms'
   fileRoutesByTo: FileRoutesByTo
@@ -187,16 +217,19 @@ export interface FileRouteTypes {
     | '/amministrazione'
     | '/comunicazioni'
     | '/cron-banca'
+    | '/cron-turni'
     | '/dashboard'
     | '/documenti'
     | '/finanza'
     | '/gestione-timbrature'
+    | '/le-mie-ore'
     | '/novita'
     | '/presenze'
     | '/privacy'
     | '/procurement'
     | '/report'
     | '/richieste'
+    | '/sede'
     | '/supervisione'
     | '/terms'
   id:
@@ -205,16 +238,19 @@ export interface FileRouteTypes {
     | '/amministrazione'
     | '/comunicazioni'
     | '/cron-banca'
+    | '/cron-turni'
     | '/dashboard'
     | '/documenti'
     | '/finanza'
     | '/gestione-timbrature'
+    | '/le-mie-ore'
     | '/novita'
     | '/presenze'
     | '/privacy'
     | '/procurement'
     | '/report'
     | '/richieste'
+    | '/sede'
     | '/supervisione'
     | '/terms'
   fileRoutesById: FileRoutesById
@@ -224,16 +260,19 @@ export interface RootRouteChildren {
   AmministrazioneRoute: typeof AmministrazioneRoute
   ComunicazioniRoute: typeof ComunicazioniRoute
   CronBancaRoute: typeof CronBancaRoute
+  CronTurniRoute: typeof CronTurniRoute
   DashboardRoute: typeof DashboardRoute
   DocumentiRoute: typeof DocumentiRoute
   FinanzaRoute: typeof FinanzaRoute
   GestioneTimbratureRoute: typeof GestioneTimbratureRoute
+  LeMieOreRoute: typeof LeMieOreRoute
   NovitaRoute: typeof NovitaRoute
   PresenzeRoute: typeof PresenzeRoute
   PrivacyRoute: typeof PrivacyRoute
   ProcurementRoute: typeof ProcurementRoute
   ReportRoute: typeof ReportRoute
   RichiesteRoute: typeof RichiesteRoute
+  SedeRoute: typeof SedeRoute
   SupervisioneRoute: typeof SupervisioneRoute
   TermsRoute: typeof TermsRoute
 }
@@ -252,6 +291,13 @@ declare module '@tanstack/react-router' {
       path: '/supervisione'
       fullPath: '/supervisione'
       preLoaderRoute: typeof SupervisioneRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sede': {
+      id: '/sede'
+      path: '/sede'
+      fullPath: '/sede'
+      preLoaderRoute: typeof SedeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/richieste': {
@@ -296,6 +342,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NovitaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/le-mie-ore': {
+      id: '/le-mie-ore'
+      path: '/le-mie-ore'
+      fullPath: '/le-mie-ore'
+      preLoaderRoute: typeof LeMieOreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/gestione-timbrature': {
       id: '/gestione-timbrature'
       path: '/gestione-timbrature'
@@ -322,6 +375,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cron-turni': {
+      id: '/cron-turni'
+      path: '/cron-turni'
+      fullPath: '/cron-turni'
+      preLoaderRoute: typeof CronTurniRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cron-banca': {
@@ -360,16 +420,19 @@ const rootRouteChildren: RootRouteChildren = {
   AmministrazioneRoute: AmministrazioneRoute,
   ComunicazioniRoute: ComunicazioniRoute,
   CronBancaRoute: CronBancaRoute,
+  CronTurniRoute: CronTurniRoute,
   DashboardRoute: DashboardRoute,
   DocumentiRoute: DocumentiRoute,
   FinanzaRoute: FinanzaRoute,
   GestioneTimbratureRoute: GestioneTimbratureRoute,
+  LeMieOreRoute: LeMieOreRoute,
   NovitaRoute: NovitaRoute,
   PresenzeRoute: PresenzeRoute,
   PrivacyRoute: PrivacyRoute,
   ProcurementRoute: ProcurementRoute,
   ReportRoute: ReportRoute,
   RichiesteRoute: RichiesteRoute,
+  SedeRoute: SedeRoute,
   SupervisioneRoute: SupervisioneRoute,
   TermsRoute: TermsRoute,
 }

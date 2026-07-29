@@ -32,6 +32,7 @@ export function AppSidebar() {
   const [ruolo, setRuolo] = useState<Ruolo | null>(null);
   const [operatore, setOperatore] = useState(false);
   const [autorizza, setAutorizza] = useState(false);
+  const [preposto, setPreposto] = useState(false);
   const [sede, setSede] = useState<SessionSede | null>(null);
   const [codice, setCodice] = useState<string>("");
   useEffect(() => {
@@ -39,6 +40,7 @@ export function AppSidebar() {
     setRuolo(s?.ruolo ?? null);
     setOperatore(s?.operatore ?? false);
     setAutorizza(s?.autorizza ?? false);
+    setPreposto(s?.preposto ?? false);
     setSede(s?.sede ?? null);
     setCodice(s?.codice ?? "");
   }, [pathname]);
@@ -58,6 +60,7 @@ export function AppSidebar() {
     const admin = ruolo === "amministratore_sistema";
     if (m.requiresOperatore && !operatore && !admin) return false;
     if (m.requiresAutorizza && !autorizza && !admin) return false;
+    if (m.requiresPreposto && !preposto && !operatore && !admin) return false;
     // Moduli riservati alle sedi storiche (es. Procurement): visibili anche
     // ad autorizzatori (DR005 approva) e a chi ha sede "tutte" (admin).
     if (

@@ -8,6 +8,8 @@
 //   - `ready: false` → modulo predisposto, mostra il badge "In arrivo".
 
 import {
+  Hourglass,
+  MapPin,
   LayoutDashboard,
   Clock,
   FileText,
@@ -45,6 +47,9 @@ export type AppModule = {
   /** Se true, la voce è visibile solo agli utenti con capability autorizza
    *  (approvatore/supervisore — flag `autorizza` in sessione). */
   requiresAutorizza?: boolean;
+  /** Se true, la voce è visibile solo ai preposti di sede (flag `preposto`),
+   *  agli operatori e all'amministratore. */
+  requiresPreposto?: boolean;
   /** Capability alternative: se presenti, la voce è visibile quando il ruolo è
    *  ammesso OPPURE l'utente possiede almeno una di queste capability. */
   orCapabilities?: readonly ("operatore" | "autorizza")[];
@@ -119,6 +124,26 @@ export const MODULES: readonly AppModule[] = [
     ready: true,
     description: "Bacheca interna: riunioni e avvisi, con presa visione.",
     roles: ["dipendente", "responsabile", "amministratore_sistema"],
+  },
+  {
+    id: "le-mie-ore",
+    title: "Le mie ore",
+    url: "/le-mie-ore",
+    icon: Hourglass,
+    ready: true,
+    description: "I tuoi turni del mese e la richiesta di correzione degli orari.",
+    roles: ["dipendente", "responsabile", "amministratore_sistema"],
+    richiedeTimbratura: true,
+  },
+  {
+    id: "sede",
+    title: "La mia sede",
+    url: "/sede",
+    icon: MapPin,
+    ready: true,
+    description: "Turni e ore dei dipendenti della sede, in sola lettura (preposto).",
+    roles: ["dipendente", "responsabile", "amministratore_sistema"],
+    requiresPreposto: true,
   },
   {
     id: "gestione-timbrature",

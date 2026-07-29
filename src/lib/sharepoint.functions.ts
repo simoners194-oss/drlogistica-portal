@@ -97,6 +97,8 @@ import {
   ebSincronizza,
   ebSincronizzaProgrammato,
   ebCronToken,
+  cronToken,
+  promemoriaUsciteAperte,
   type EbStato,
   type EbSyncResult,
   getCodiceDipendente,
@@ -115,9 +117,16 @@ import {
   type CreateComunicazioneInput,
   type SpPresaVisione,
   fetchTimbratureRecenti,
+  fetchTimbratureDaISO,
+  fetchCorrezioni,
+  createCorrezione,
+  decideCorrezione,
+  parseOrariProposti,
+  type SpCorrezione,
   annullaUltimaTimbratura,
   fetchTimbratureGiorno,
   resocontoGiorno,
+  type ResocontoGiornoRiga,
   deleteTimbratura,
   deleteTimbraturaOperatore,
   getLastSyncAt,
@@ -294,6 +303,7 @@ export const spLogin = createServerFn({ method: "POST" })
         ruolo: normalizeRuolo(d.ruolo),
         autorizza: d.autorizza,
         operatore: d.operatore,
+        preposto: d.preposto,
         codice: d.codice,
       });
     }
@@ -1007,6 +1017,25 @@ export const spEbImpostaSaldo = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Innesco ESTERNO del promemoria "manca l'uscita" (fase F): stesso schema del
+// sync bancario, token dedicato. Nessuna sessione: solo il token.
+export const spCronTurni = createServerFn({ method: "POST" })
+  .inputValidator((input: { token: string }) => {
+    const token = String(input?.token ?? "").trim();
+    if (!token || token.length > 100) throw new Error("Token mancante.");
+    return { token };
+  })
+  .handler(async ({ data }) => promemoriaUsciteAperte(data.token));
+
+// Indirizzo del promemoria turni, visibile a operatore/admin.
+export const spCronTurniToken = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ token: string }> => {
+    const me = await currentUser();
+    assertCap(me.operatore || isAdmin(me));
+    return { token: await cronToken("turni") };
+  },
+);
+
 export const spEbAvviaCollegamento = createServerFn({ method: "POST" }).handler(
   async (): Promise<{ url: string }> => {
     await assertDirettore(await currentUser());
@@ -1224,6 +1253,115 @@ export const spGetRendiconto = createServerFn({ method: "GET" })
     const me = await currentUser();
     assertCap(me.operatore || me.autorizza || me.ruolo === "responsabile" || isAdmin(me));
     return computeRendiconto(data.anno, data.mese);
+  });
+
+// --- Le mie ore (self-service) ---------------------------------------------
+// Ognuno vede SOLO le proprie timbrature: nessuna capability richiesta.
+export const spGetMieTimbrature = createServerFn({ method: "GET" })
+  .inputValidator((input: { from: string; to: string }) => {
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    if (!re.test(input?.from ?? "") || !re.test(input?.to ?? ""))
+      throw new Error("Periodo non valido");
+    const giorni =
+      (new Date(`${input.to}T00:00:00`).getTime() - new Date(`${input.from}T00:00:00`).getTime()) /
+      86400000;
+    if (giorni < 0 || giorni > 62) throw new Error("Periodo non valido (max 62 giorni)");
+    return { from: input.from, to: input.to };
+  })
+  .handler(async ({ data }): Promise<SpTimbratura[]> => {
+    const me = await currentUser();
+    // +1 giorno in coda: il turno notturno chiude il giorno dopo.
+    const fine = new Date(`${data.to}T00:00:00`);
+    fine.setDate(fine.getDate() + 2);
+    const tutte = await fetchTimbratureDaISO(new Date(`${data.from}T00:00:00`).toISOString());
+    return tutte.filter((t) => t.dipendenteId === me.id && t.dataOra < fine.toISOString());
+  });
+
+// --- Correzione timbrature: richiesta dal dipendente, decisa dall'operatore -
+export const spGetCorrezioni = createServerFn({ method: "GET" })
+  .inputValidator((input?: { tutte?: boolean }) => ({ tutte: Boolean(input?.tutte) }))
+  .handler(async ({ data }): Promise<SpCorrezione[]> => {
+    const me = await currentUser();
+    // La coda completa è per chi ha il flag Operatore (e per l'admin);
+    // chiunque altro vede soltanto le proprie richieste.
+    const puoVedereTutte = me.operatore || isAdmin(me);
+    return fetchCorrezioni(data.tutte && puoVedereTutte ? undefined : me.id);
+  });
+
+export const spCreateCorrezione = createServerFn({ method: "POST" })
+  .inputValidator((input: { giorno: string; orariProposti: string; motivo: string }) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input?.giorno ?? "")) throw new Error("Giorno non valido");
+    const orariProposti = String(input?.orariProposti ?? "").trim();
+    const motivo = String(input?.motivo ?? "").trim();
+    if (!orariProposti) throw new Error("Indica gli orari corretti.");
+    if (!motivo) throw new Error("Indica il motivo della correzione.");
+    return {
+      giorno: input.giorno,
+      orariProposti: orariProposti.slice(0, 500),
+      motivo: motivo.slice(0, 500),
+    };
+  })
+  .handler(async ({ data }): Promise<SpCorrezione> => {
+    const me = await currentUser();
+    if (!parseOrariProposti(data.orariProposti))
+      throw new Error('Formato orari non valido. Esempio: "entrata 08:00, uscita 17:00".');
+    // Sempre per sé stessi: l'id arriva dalla sessione, mai dal client.
+    return createCorrezione({ ...data, dipendenteId: me.id });
+  });
+
+export const spDecideCorrezione = createServerFn({ method: "POST" })
+  .inputValidator((input: { correzioneId: string; approvata: boolean; note?: string }) => {
+    if (!input?.correzioneId) throw new Error("correzioneId mancante");
+    return {
+      correzioneId: String(input.correzioneId),
+      approvata: Boolean(input.approvata),
+      note: input.note ? String(input.note).slice(0, 500) : undefined,
+    };
+  })
+  .handler(async ({ data }): Promise<SpCorrezione> => {
+    const me = await currentUser();
+    assertCap(me.operatore || isAdmin(me));
+    return decideCorrezione(
+      data.correzioneId,
+      data.approvata,
+      `${me.nome} ${me.cognome}`.trim(),
+      data.note,
+    );
+  });
+
+// --- Vista di sede del PREPOSTO (sola lettura) ------------------------------
+// Il preposto (es. capo appalto) vede turni e ore dei dipendenti della PROPRIA
+// sede: nessuna modifica, nessuna approvazione. Il perimetro è imposto qui.
+export const spGetSedeGiorno = createServerFn({ method: "GET" })
+  .inputValidator((input: { data: string }) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input?.data ?? "")) throw new Error("Data non valida");
+    return { data: input.data };
+  })
+  .handler(async ({ data }): Promise<{ sede: string; righe: ResocontoGiornoRiga[] }> => {
+    const me = await currentUser();
+    assertCap(Boolean(me.preposto) || me.operatore || isAdmin(me));
+    // La sede è quella del record SharePoint, non del client.
+    const mio = (await fetchDipendenti()).find((d) => d.id === me.id);
+    const sede = isAdmin(me) || me.operatore ? "tutte" : (mio?.sede ?? "");
+    if (!sede) throw new Error("Sede non impostata sul tuo record.");
+    return { sede, righe: await resocontoGiorno(sede, data.data) };
+  });
+
+export const spGetSedeOre = createServerFn({ method: "GET" })
+  .inputValidator((input: { from: string; to: string }) => {
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    if (!re.test(input?.from ?? "") || !re.test(input?.to ?? ""))
+      throw new Error("Periodo non valido");
+    return { from: input.from, to: input.to };
+  })
+  .handler(async ({ data }): Promise<RendicontoRiga[]> => {
+    const me = await currentUser();
+    assertCap(Boolean(me.preposto) || me.operatore || isAdmin(me));
+    const mio = (await fetchDipendenti()).find((d) => d.id === me.id);
+    const righe = await computeRendicontoPeriodo(data.from, data.to);
+    if (isAdmin(me) || me.operatore) return righe;
+    const sede = (mio?.sede ?? "").trim().toLowerCase();
+    return righe.filter((r) => r.sede.trim().toLowerCase() === sede);
   });
 
 // Riepilogo della SETTIMANA CORRENTE del dipendente collegato: nessuna

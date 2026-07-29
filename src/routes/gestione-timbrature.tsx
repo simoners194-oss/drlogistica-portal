@@ -15,6 +15,9 @@ import {
 } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
+  spGetCorrezioni,
+  spDecideCorrezione,
+  spCronTurniToken,
   spGetDipendenti,
   spGetAnomalie,
   spCreateTimbraturaManuale,
@@ -23,6 +26,7 @@ import {
   spDeleteTimbratura,
 } from "@/lib/sharepoint.functions";
 import type {
+  SpCorrezione,
   SpDipendente,
   AnomaliaItem,
   SpTimbratura,
@@ -64,7 +68,14 @@ function GestioneTimbraturePage() {
   const [dipendenti, setDipendenti] = useState<SpDipendente[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [topTab, setTopTab] = useState<"inserimento" | "giornata" | "anomalie">("inserimento");
+  const [topTab, setTopTab] = useState<"inserimento" | "giornata" | "anomalie" | "correzioni">(
+    "inserimento",
+  );
+  // Coda delle correzioni chieste dai dipendenti (fase D).
+  const [correzioni, setCorrezioni] = useState<SpCorrezione[] | null>(null);
+  const [corrBusy, setCorrBusy] = useState<string | null>(null);
+  // Indirizzo del promemoria push "manca l'uscita" (flusso schedulato).
+  const [cronUrl, setCronUrl] = useState<string | null>(null);
   const [anomalie, setAnomalie] = useState<AnomaliaItem[] | null>(null);
 
   // Turni del giorno (resoconto per sede): sede + data → TUTTI i dipendenti
@@ -94,6 +105,28 @@ function GestioneTimbraturePage() {
 
   const [submitting, setSubmitting] = useState(false);
 
+  function loadCorrezioni() {
+    spGetCorrezioni({ data: { tutte: true } })
+      .then((l) => setCorrezioni(l as SpCorrezione[]))
+      .catch(() => setCorrezioni([]));
+  }
+
+  async function decidiCorrezione(c: SpCorrezione, approvata: boolean) {
+    setCorrBusy(c.id);
+    try {
+      await spDecideCorrezione({ data: { correzioneId: c.id, approvata } });
+      toast.success(t("gt.corrFatto"));
+      loadCorrezioni();
+      loadAnomalie();
+    } catch (err) {
+      toast.error(t("gt.corrErr"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setCorrBusy(null);
+    }
+  }
+
   function loadAnomalie() {
     spGetAnomalie({ data: { giorni: 14 } })
       .then((list) => setAnomalie(list as AnomaliaItem[]))
@@ -117,7 +150,13 @@ function GestioneTimbraturePage() {
       .then((list) => setDipendenti(list as SpDipendente[]))
       .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)));
     loadAnomalie();
+    loadCorrezioni();
   }, []);
+
+  const corrInAttesa = useMemo(
+    () => (correzioni ?? []).filter((c) => c.stato === "In attesa").length,
+    [correzioni],
+  );
 
   // Turni rimasti aperti IERI: il "giro del mattino" dell'operatore.
   const turniApertiIeri = useMemo(() => {
@@ -410,9 +449,129 @@ function GestioneTimbraturePage() {
             </span>
           )}
         </button>
+        <button
+          type="button"
+          onClick={() => setTopTab("correzioni")}
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${topTab === "correzioni" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <PenLine className="h-4 w-4" /> {t("gt.tabCorrezioni")}
+          {corrInAttesa > 0 && (
+            <span
+              className={`rounded-full px-1.5 text-[11px] ${topTab === "correzioni" ? "bg-primary-foreground/20" : "bg-status-break/15 text-status-break"}`}
+            >
+              {corrInAttesa}
+            </span>
+          )}
+        </button>
       </div>
 
-      {topTab === "anomalie" ? (
+      {topTab === "correzioni" ? (
+        /* ---------------- Correzioni chieste dai dipendenti ---------------- */
+        <div className="max-w-3xl rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-3">
+            <PenLine className="h-4 w-4 text-muted-foreground" /> {t("gt.tabCorrezioni")}
+          </div>
+          {correzioni == null ? (
+            <div className="py-6 text-center">
+              <Loader2 className="h-5 w-5 animate-spin inline-block text-muted-foreground" />
+            </div>
+          ) : correzioni.length === 0 ? (
+            <p className="py-4 text-sm text-muted-foreground">{t("gt.corrVuote")}</p>
+          ) : (
+            <ul className="space-y-3">
+              {correzioni.map((c) => (
+                <li key={c.id} className="rounded-xl border border-border p-3">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-sm font-medium text-foreground">{c.nomeDipendente}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {c.codiceDipendente}
+                      {c.sede ? ` · ${c.sede}` : ""}
+                    </span>
+                    <span className="text-sm tabular-nums">{fmtData(c.giorno)}</span>
+                    <span
+                      className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        c.stato === "Approvata"
+                          ? "bg-status-present/15 text-status-present"
+                          : c.stato === "Respinta"
+                            ? "bg-status-absent/15 text-status-absent"
+                            : "bg-status-break/15 text-status-break"
+                      }`}
+                    >
+                      {t(`mie.stato.${c.stato}`)}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid gap-1 text-[13px] sm:grid-cols-2">
+                    <div>
+                      <span className="text-muted-foreground">{t("gt.corrAttuali")}: </span>
+                      {c.orariAttuali || "—"}
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">{t("gt.corrProposti")}: </span>
+                      <b>{c.orariProposti}</b>
+                    </div>
+                  </div>
+                  {c.motivo && (
+                    <div className="mt-1 text-[13px]">
+                      <span className="text-muted-foreground">{t("gt.corrMotivo")}: </span>
+                      {c.motivo}
+                    </div>
+                  )}
+                  {c.stato === "In attesa" && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void decidiCorrezione(c, true)}
+                        disabled={corrBusy != null}
+                        className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                      >
+                        {corrBusy === c.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        {t("gt.corrApprova")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void decidiCorrezione(c, false)}
+                        disabled={corrBusy != null}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+                      >
+                        {t("gt.corrRespingi")}
+                      </button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Promemoria push programmato: indirizzo per il flusso. */}
+          <div className="mt-5 rounded-xl border border-border p-3">
+            <div className="text-sm font-medium text-foreground">{t("gt.cronTitle")}</div>
+            <p className="mt-1 text-[11px] text-muted-foreground">{t("gt.cronDesc")}</p>
+            {cronUrl ? (
+              <code className="mt-2 block break-all rounded-lg bg-muted px-2 py-1.5 text-[11px]">
+                {cronUrl}
+              </code>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  spCronTurniToken()
+                    .then((r) =>
+                      setCronUrl(`${window.location.origin}/cron-turni?token=${r.token}`),
+                    )
+                    .catch((err) =>
+                      toast.error(t("gt.corrErr"), {
+                        description: err instanceof Error ? err.message : String(err),
+                      }),
+                    );
+                }}
+                className="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+              >
+                {t("gt.cronMostra")}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : topTab === "anomalie" ? (
         /* ---------------- Anomalie ---------------- */
         <div className="max-w-2xl rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground mb-1">
