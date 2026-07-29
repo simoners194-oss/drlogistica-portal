@@ -18,11 +18,11 @@ import {
   Upload,
   Wand2,
 } from "lucide-react";
-import { esportaCsvFile } from "@/lib/csv";
+import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
 import { useLang } from "@/lib/i18n";
 import {
   computeStatoFattura,
-  individuaReinvii,
+  fattureEscluse,
   parseFattureMatrice,
   parseFatturaPA,
   proponiAbbinamenti,
@@ -108,6 +108,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   const [anniF, setAnniF] = useState<number[]>([new Date().getFullYear()]);
   const [clienteF, setClienteF] = useState("");
   const [statiF, setStatiF] = useState<Exclude<StatoFiltro, "tutte">[]>([]);
+  // Gli scarti SdI sono nascosti ovunque: questo chip li isola, ed è l'unico
+  // modo per vederli (serve a ricostruire la storia di una fattura rispedita).
+  const [soloScartate, setSoloScartate] = useState(false);
 
   // Dettaglio espanso + abbinamento manuale
   const [openFile, setOpenFile] = useState<string | null>(null);
@@ -145,7 +148,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   // importi per rata sono l'unico dato che quantifica i PARZIALI.
   const applicaIncassiAruba = async (mov: MovimentoAruba[]) => {
     const tutte = [...(fattureEm ?? []), ...(fattureRic ?? [])];
-    const mappa = aggregaIncassiAruba(mov, tutte);
+    // Una rata non può finire su uno scarto SdI: senza questo filtro l'incasso
+    // si attacca al tentativo scartato e la fattura buona resta "non incassata".
+    const mappa = aggregaIncassiAruba(mov, tutte, true, fattureEscluse(tutte));
     if (mappa.size === 0) {
       toast.error(t("ft.movNessuna"), { description: t("ft.movNessunaDesc") });
       return;
@@ -221,13 +226,13 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     return m;
   }, [abbinamenti]);
 
+  // Scarti SdI e reinvii: contabilmente non esistono. Restano in archivio come
+  // storia, ma fuori da elenco, conteggi, abbinamenti e note di credito.
+  const escluse = useMemo(() => fattureEscluse(fatture ?? []), [fatture]);
+
   // Note di credito collegate alle fatture che rettificano: il credito si
   // legge al netto, perché il cliente paga la differenza.
-  const noteCredito = useMemo(() => collegaNoteCredito(fatture ?? []), [fatture]);
-
-  // Reinvii (stessa fattura scartata dallo SdI e rispedita): se ne conta una
-  // sola, le altre sono escluse dal credito.
-  const reinvii = useMemo(() => individuaReinvii(fatture ?? []), [fatture]);
+  const noteCredito = useMemo(() => collegaNoteCredito(fatture ?? [], escluse), [fatture, escluse]);
 
   // Fatture con stato calcolato.
   const conStato = useMemo(
@@ -240,11 +245,15 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           oggiISO,
           noteCredito.get(f.nomeFile)?.importo ?? 0,
         );
-        return reinvii.has(f.nomeFile)
-          ? { f, s: { ...s, stato: "NC" as const, residuo: 0, inRitardo: false, giorniRitardo: 0 } }
-          : { f, s };
+        return escluse.has(f.nomeFile)
+          ? {
+              f,
+              s: { ...s, stato: "NC" as const, residuo: 0, inRitardo: false, giorniRitardo: 0 },
+              escluso: true,
+            }
+          : { f, s, escluso: false };
       }),
-    [fatture, incassatoPerFattura, termini, oggiISO, reinvii, noteCredito],
+    [fatture, incassatoPerFattura, termini, oggiISO, escluse, noteCredito],
   );
 
   // Anni presenti nei dati (più l'anno corrente): sono i chip selezionabili.
@@ -275,8 +284,18 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                 : x.s.stato !== "NC" && !x.s.aruba,
     );
 
+  const nScartate = useMemo(
+    () => conStato.filter((x) => x.escluso && matchAnno(x)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conStato, anniF],
+  );
+
   const filtrate = useMemo(() => {
-    let out = conStato.filter((x) => matchAnno(x) && matchStato(x));
+    // Gli scarti SdI non compaiono: una fattura scartata non è mai esistita.
+    // Il chip "Scartate" le mostra da sole, per chi deve ricostruire la storia.
+    let out = conStato.filter(
+      (x) => x.escluso === soloScartate && matchAnno(x) && (soloScartate || matchStato(x)),
+    );
     if (clienteF.trim()) {
       const q = clienteF.trim().toLowerCase();
       out = out.filter(
@@ -285,13 +304,13 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conStato, anniF, clienteF, statiF]);
+  }, [conStato, anniF, clienteF, statiF, soloScartate]);
 
   // Riepilogo (sugli anni filtrati, tutte le fatture non escluse). Gli importi
   // seguono lo stato UFFICIALE (Aruba quando c'è); `confermatoBanca` dice
   // quanta parte dell'incassato risulta anche dagli abbinamenti bancari.
   const riepilogo = useMemo(() => {
-    const base = conStato.filter((x) => matchAnno(x) && x.s.stato !== "NC");
+    const base = conStato.filter((x) => !x.escluso && matchAnno(x) && x.s.stato !== "NC");
     const residuo = base.reduce((s, x) => s + x.s.residuo, 0);
     const apertoFatt = base.reduce((s, x) => s + (x.s.residuoFatturazione ?? 0), 0);
     const apertoBanca = base.reduce((s, x) => s + x.s.residuoBanca, 0);
@@ -343,7 +362,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       }
     >();
     for (const x of conStato) {
-      if (!matchAnno(x)) continue;
+      // Scarti e reinvii fuori da TUTTO: se restassero, il fatturato del
+      // cliente conterebbe la stessa fattura una volta per tentativo.
+      if (x.escluso || !matchAnno(x)) continue;
       const key = clienteGroupKey(x.f.cliente) || x.f.cliente;
       const row = m.get(key) ?? {
         key,
@@ -359,14 +380,17 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         residuo: 0,
         ritardo: 0,
       };
-      // Fatturato e incassato si leggono AL NETTO delle note di credito, che
-      // pesano in negativo su entrambi: una NC riduce il fatturato e, quando
-      // viene compensata, riduce anche l'incassato. Così "da incassare" resta
-      // la semplice differenza fra le due colonne.
-      const segno = isNotaCredito(x.f.tipoDocumento) ? -1 : 1;
-      row.fatturato += x.f.totale;
-      row.incassatoFatt += segno * Math.abs(x.s.incassatoIncassi ?? x.s.incassatoFatturazione ?? 0);
-      row.incassatoBanca += segno * Math.abs(x.s.incassatoBanca);
+      // Una nota di credito ABBASSA IL FATTURATO e basta: non è un incasso.
+      // Il suo effetto sull'incassato è già dentro la fattura collegata, il
+      // cui credito è calcolato al netto della NC (il cliente paga la
+      // differenza). Sommarla anche qui la conterebbe due volte, e "da
+      // incassare" resterebbe pari all'importo della nota anche a fattura
+      // completamente annullata.
+      row.fatturato += x.f.totale; // le NC arrivano già con segno negativo
+      if (!isNotaCredito(x.f.tipoDocumento)) {
+        row.incassatoFatt += x.s.incassatoIncassi ?? x.s.incassatoFatturazione ?? 0;
+        row.incassatoBanca += x.s.incassatoBanca;
+      }
       if (x.s.stato !== "NC") {
         row.nFatture++;
         if (x.s.annullataDaNC || x.s.stato === "Pagata") row.nPagate++;
@@ -407,7 +431,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         : conStato
             .filter(
               (x) =>
-                matchAnno(x) && (clienteGroupKey(x.f.cliente) || x.f.cliente) === clienteAperto,
+                !x.escluso &&
+                matchAnno(x) &&
+                (clienteGroupKey(x.f.cliente) || x.f.cliente) === clienteAperto,
             )
             .sort((a, b) => b.f.dataDocumento.localeCompare(a.f.dataDocumento)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -438,7 +464,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     setReconciling(true);
     try {
       const proposte = proponiAbbinamenti(
-        fatture.filter((f) => !reinvii.has(f.nomeFile)),
+        fatture.filter((f) => !escluse.has(f.nomeFile)),
         movimenti.map((m) => ({
           chiave: m.chiave,
           dataContabile: m.dataContabile,
@@ -530,7 +556,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     setFifoBusy(true);
     try {
       const proposte = proponiAbbinamentiFIFO(
-        fatture.filter((f) => !reinvii.has(f.nomeFile)),
+        fatture.filter((f) => !escluse.has(f.nomeFile)),
         movimenti.map((m) => ({
           chiave: m.chiave,
           dataContabile: m.dataContabile,
@@ -758,6 +784,11 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       [
         "Numero",
         "Data documento",
+        // Anno/trimestre/mese gia' pronti: la pivot raggruppa senza dover
+        // convertire la colonna data a mano.
+        "Anno",
+        "Trimestre",
+        "Mese",
         ricevute ? "Fornitore" : "Cliente",
         "Tipo",
         "Totale",
@@ -775,17 +806,18 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       ],
       filtrate.map(({ f, s }) => [
         f.numero,
-        fmtData(f.dataDocumento),
+        csvData(f.dataDocumento),
+        ...csvPeriodo(f.dataDocumento),
         f.cliente,
         f.tipoDocumento,
         csvNum(f.totale),
         csvNum(s.incassato),
         csvNum(s.residuo),
-        fmtData(s.scadenza),
+        csvData(s.scadenza),
         s.stato,
         s.inRitardo ? s.giorniRitardo : "",
         s.aruba,
-        f.dataIncasso ? fmtData(f.dataIncasso) : "",
+        csvData(f.dataIncasso),
         s.statoBanca,
         s.discordante ? "Sì" : "",
         f.statoSdI,
@@ -844,12 +876,12 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     if (stato === "NC")
       return (
         <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-          {reinvii.has(x.f.nomeFile)
-            ? t("ft.reinvio")
-            : isNotaCredito(x.f.tipoDocumento)
-              ? t("ft.nc")
-              : isEsclusaDalCredito(x.f)
-                ? x.f.statoSdI
+          {isNotaCredito(x.f.tipoDocumento)
+            ? t("ft.nc")
+            : isEsclusaDalCredito(x.f)
+              ? x.f.statoSdI || t("ft.scartata")
+              : escluse.has(x.f.nomeFile)
+                ? t("ft.reinvio")
                 : "—"}
         </span>
       );
@@ -997,6 +1029,18 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   {label}
                 </button>
               ))}
+              {/* Gli scarti sono fuori da elenco e conteggi: qui si vedono da
+                  soli, per ricostruire la storia di una fattura rispedita. */}
+              {nScartate > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSoloScartate(!soloScartate)}
+                  title={t("ft.scartateTip")}
+                  className={chipCls(soloScartate)}
+                >
+                  {t("ft.fScartate")} ({nScartate})
+                </button>
+              )}
             </div>
           </div>
           <div className="flex-1 min-w-44">

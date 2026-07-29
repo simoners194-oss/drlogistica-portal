@@ -27,7 +27,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { FattureTab } from "@/components/FattureTab";
-import { esportaCsvFile } from "@/lib/csv";
+import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
 import { useLang } from "@/lib/i18n";
 import { readSession, type SessionUser } from "@/lib/session";
 import { isSupervisoreGlobale } from "@/lib/richieste-logic";
@@ -815,6 +815,11 @@ function FinanzaPage() {
       `movimenti-${anni.length ? [...anni].sort().join("-") : "tutti"}`,
       [
         "Data contabile",
+        // Anno/trimestre/mese già pronti: la pivot raggruppa senza dover
+        // convertire la colonna data a mano.
+        "Anno",
+        "Trimestre",
+        "Mese",
         "Data valuta",
         "Importo",
         "Divisa",
@@ -827,8 +832,9 @@ function FinanzaPage() {
         "Da verificare",
       ],
       filtrati.map((m) => [
-        fmtData(m.dataContabile),
-        fmtData(m.dataValuta),
+        csvData(m.dataContabile),
+        ...csvPeriodo(m.dataContabile),
+        csvData(m.dataValuta),
         csvNum(m.importo),
         m.divisa,
         m.causale,

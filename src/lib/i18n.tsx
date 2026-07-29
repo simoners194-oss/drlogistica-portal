@@ -833,6 +833,10 @@ const en = {
   "ft.totPagatoBanca": "Paid (bank)",
   "ft.totDaPagare": "To pay",
   "ft.discordantePassiva": "paid from the account but not recorded in Aruba",
+  "ft.fScartate": "Rejected",
+  "ft.scartata": "rejected by SdI",
+  "ft.scartateTip":
+    "Invoices rejected by the SdI and duplicate send attempts. They were never issued, so they cannot be collected: they are kept out of the list, the totals and the per-client summary. Click to see them on their own.",
   "ft.fuoriBanca": "not via bank",
   "ft.fuoriBancaTip":
     "No movement on the company account. Many costs never go through the current account (partners' credit cards, cash) even though an invoice was issued: this does not mean the invoice is unpaid.",
@@ -1648,6 +1652,10 @@ const it: Record<DictKey, string> = {
   "ft.totPagatoBanca": "Pagato banca",
   "ft.totDaPagare": "Da pagare",
   "ft.discordantePassiva": "risulta pagata dal conto ma non su Aruba",
+  "ft.fScartate": "Scartate",
+  "ft.scartata": "scartata dallo SdI",
+  "ft.scartateTip":
+    "Fatture scartate dallo SdI e tentativi di invio doppi. Non sono mai state emesse, quindi non possono essere incassate: restano fuori dall'elenco, dai totali e dallo specchietto per cliente. Clicca per vederle da sole.",
   "ft.fuoriBanca": "non dal c/c",
   "ft.fuoriBancaTip":
     "Nessun movimento sul conto aziendale. Molti costi non passano dal c/c (carte di credito dei soci, contanti) pur avendo la fattura: non vuol dire che la fattura non sia stata pagata.",

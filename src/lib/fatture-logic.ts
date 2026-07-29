@@ -141,6 +141,18 @@ export function individuaReinvii(fatture: readonly FatturaRaw[]): Set<string> {
   return esclusi;
 }
 
+/** I documenti che NON esistono ai fini contabili: gli scarti dello SdI (una
+ *  fattura scartata non è mai stata emessa, quindi non può essere incassata) e
+ *  i tentativi doppi di un reinvio. Vanno tenuti fuori da elenchi, conteggi,
+ *  abbinamenti e collegamenti delle note di credito: se restano dentro anche
+ *  solo come riga, il fatturato di un cliente si moltiplica per il numero di
+ *  tentativi (FPR 38/25: 4 copie, 3 scartate → fatturato contato 4 volte). */
+export function fattureEscluse(fatture: readonly FatturaRaw[]): Set<string> {
+  const esclusi = individuaReinvii(fatture);
+  for (const f of fatture) if (isEsclusaDalCredito(f)) esclusi.add(f.nomeFile);
+  return esclusi;
+}
+
 // --- Report MOVIMENTI di Aruba (rate incassate/pagate per fattura) ----------
 // È il terzo export del pannello: per ogni fattura elenca le rate con data e
 // importo. È l'unica fonte che quantifica gli incassi PARZIALI — lo stato
@@ -217,9 +229,12 @@ export function aggregaIncassiAruba(
    *  segnate a ZERO: così "nessun incasso registrato" si distingue da "report
    *  di quell'anno non importato". */
   azzeraNelPeriodo = true,
+  /** Scarti SdI e reinvii: non possono ricevere incassi (vedi fattureEscluse). */
+  esclusi: ReadonlySet<string> = new Set(),
 ): Map<string, { incassato: number; ultimaData: string; rate: number }> {
+  const valide = fatture.filter((f) => !esclusi.has(f.nomeFile));
   const perChiave = new Map<string, FatturaRaw>();
-  for (const f of fatture)
+  for (const f of valide)
     perChiave.set(`${f.direzione}|${clienteGroupKey(f.cliente)}|${normalizeTesto(f.numero)}`, f);
   const out = new Map<string, { incassato: number; ultimaData: string; rate: number }>();
   for (const m of movimenti) {
@@ -230,7 +245,7 @@ export function aggregaIncassiAruba(
       ) ??
       // fallback: stesso numero e direzione, controparte non combaciante
       // (ragione sociale scritta diversamente nei due export)
-      fatture.find(
+      valide.find(
         (x) =>
           x.direzione === direzione && normalizeTesto(x.numero) === normalizeTesto(m.numeroFattura),
       );
@@ -254,7 +269,7 @@ export function aggregaIncassiAruba(
       set.add(anno);
       anniPerDirezione.set(d, set);
     }
-    for (const f of fatture) {
+    for (const f of valide) {
       if (out.has(f.nomeFile)) continue;
       if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f)) continue;
       if (!anniPerDirezione.get(f.direzione)?.has(f.dataDocumento.slice(0, 4))) continue;
@@ -272,15 +287,18 @@ export function aggregaIncassiAruba(
  *  possono avere fatture con lo stesso numero. */
 export function collegaNoteCredito(
   fatture: readonly FatturaRaw[],
+  /** Scarti SdI e reinvii: non sono bersagli validi (vedi fattureEscluse). */
+  esclusi: ReadonlySet<string> = new Set(),
 ): Map<string, { importo: number; numeri: string[] }> {
   const perChiave = new Map<string, FatturaRaw>();
   for (const f of fatture) {
-    if (isNotaCredito(f.tipoDocumento) || f.totale <= 0) continue;
+    if (isNotaCredito(f.tipoDocumento) || f.totale <= 0 || esclusi.has(f.nomeFile)) continue;
     perChiave.set(`${f.direzione}|${clienteGroupKey(f.cliente)}|${normalizeTesto(f.numero)}`, f);
   }
   const out = new Map<string, { importo: number; numeri: string[] }>();
   for (const nc of fatture) {
-    if (!isNotaCredito(nc.tipoDocumento) || !nc.rettificaNumero) continue;
+    if (!isNotaCredito(nc.tipoDocumento) || !nc.rettificaNumero || esclusi.has(nc.nomeFile))
+      continue;
     for (const rif of nc.rettificaNumero.split(/[,;]+/)) {
       const target = perChiave.get(
         `${nc.direzione}|${clienteGroupKey(nc.cliente)}|${normalizeTesto(rif)}`,
