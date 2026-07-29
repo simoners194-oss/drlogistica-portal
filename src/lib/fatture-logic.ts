@@ -379,9 +379,6 @@ export function proponiAbbinamenti(
         f.direzione === direzione &&
         !isNotaCredito(f.tipoDocumento) &&
         !isEsclusaDalCredito(f) &&
-        // Chiusa su Aruba: nessun incasso va allocato qui (lo stato ufficiale
-        // vince; l'eventuale discordanza si vede nella tab Fatture).
-        parseIncassoAruba(f.incassoAruba) !== "Incassata" &&
         f.totale > 0,
     )
     .map((f) => ({
@@ -492,12 +489,6 @@ export function proponiAbbinamentiFIFO(
   for (const f of fatture) {
     if (f.direzione !== direzione) continue;
     if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) continue;
-    // Lo stato registrato su Aruba tiene fuori dal FIFO sia le fatture chiuse
-    // sia quelle dichiarate NON incassate: il FIFO è un'ipotesi (imputa al più
-    // vecchio), mentre l'amministrazione sa. Senza questo vincolo un bonifico
-    // cumulativo finirebbe su fatture che risultano tuttora da incassare.
-    const arubaF = parseIncassoAruba(f.incassoAruba);
-    if (arubaF === "Incassata" || arubaF === "Non incassata") continue;
     const residuo = round(f.totale - (incassatoPerFattura.get(f.nomeFile) ?? 0));
     if (residuo <= TOLLERANZA_SALDO) continue;
     const key = clienteGroupKey(f.cliente);

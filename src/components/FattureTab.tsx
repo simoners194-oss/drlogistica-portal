@@ -1129,7 +1129,15 @@ export function FattureTab() {
                         )}
                       </td>
                       <td className="py-1.5 pr-3 whitespace-nowrap">
-                        {badgeStato(x, x.s.statoBanca, false)}
+                        {/* Zero movimenti collegati NON significa "non pagata":
+                            significa che nessun bonifico e' stato abbinato. */}
+                        {x.s.statoBanca === "Non incassata" && x.s.incassatoBanca === 0 ? (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                            {t("ft.nessunAbbinamento")}
+                          </span>
+                        ) : (
+                          badgeStato(x, x.s.statoBanca, false)
+                        )}
                         {x.s.discordante && (
                           <span
                             className="ml-1 text-[11px] text-status-absent"
