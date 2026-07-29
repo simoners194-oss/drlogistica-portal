@@ -313,6 +313,13 @@ export interface FatturaStato {
   stato: StatoIncasso;
   /** Stato secondo la FATTURAZIONE; null se la fattura non è gestita su Aruba. */
   statoFatturazione: StatoIncasso | null;
+  /** Stato secondo gli INCASSI registrati su Aruba (report movimenti):
+   *  quantifica i parziali. null se il report non è stato caricato. */
+  statoIncassi: StatoIncasso | null;
+  /** Importo incassato secondo il report movimenti; null se non caricato. */
+  incassatoIncassi: number | null;
+  /** Residuo secondo il report movimenti; null se non caricato. */
+  residuoIncassi: number | null;
   /** Stato ricavato dai soli abbinamenti bancari (riconciliazione). */
   statoBanca: StatoIncasso;
   /** Valore registrato su Aruba, "" se la fattura non è gestita lì. */
@@ -349,6 +356,9 @@ export function computeStatoFattura(
       residuoBanca: 0,
       stato: "NC",
       statoFatturazione: null,
+      statoIncassi: null,
+      incassatoIncassi: null,
+      residuoIncassi: null,
       statoBanca: "NC",
       aruba: parseIncassoAruba(f.incassoAruba),
       discordante: false,
@@ -368,26 +378,7 @@ export function computeStatoFattura(
       : incassato > TOLLERANZA_SALDO
         ? "Parziale"
         : "Non incassata";
-  // Stato UFFICIALE: quello registrato su Aruba, se presente. La banca non
-  // può "riaprire" una fattura che l'amministrazione ha marcato incassata,
-  // né chiuderne una che Aruba dà per non incassata (salvo incasso parziale
-  // già visibile, che resta l'informazione più ricca).
   const aruba = parseIncassoAruba(f.incassoAruba);
-  const stato: StatoIncasso =
-    aruba === "Incassata"
-      ? "Pagata"
-      : aruba === "Non incassata"
-        ? statoBanca === "Parziale"
-          ? "Parziale"
-          : "Non incassata"
-        : statoBanca;
-  const inRitardo = stato !== "Pagata" && oggiISO > scadenza;
-  const giorniRitardo = inRitardo
-    ? Math.floor(
-        (new Date(`${oggiISO}T00:00:00`).getTime() - new Date(`${scadenza}T00:00:00`).getTime()) /
-          86400000,
-      )
-    : 0;
   // Discordanza: utile per capire cosa manca in banca (o cosa la banca ha
   // trovato e l'amministrazione non ha ancora registrato su Aruba).
   const discordante =
@@ -396,45 +387,53 @@ export function computeStatoFattura(
   // Lettura FATTURAZIONE: esiste solo se Aruba ha uno stato registrato.
   // "Non incassata" su Aruba non esclude un acconto già visto in banca: in
   // quel caso la fatturazione mostra comunque il parziale che risulta.
-  // Quando il report MOVIMENTI di Aruba è stato caricato, l'importo incassato
-  // è noto al centesimo: vince sullo stato testuale, perché quantifica anche i
-  // parziali (che "Incassata/Non incassata" non sa esprimere).
+  // LETTURA 1 — FATTURAZIONE: lo stato testuale registrato su Aruba, invariato.
+  const statoFatturazione: StatoIncasso | null =
+    aruba === "Incassata" ? "Pagata" : aruba === "Non incassata" ? "Non incassata" : null;
+  const incassatoFatturazione = aruba === "Incassata" ? base : aruba === "Non incassata" ? 0 : null;
+  // LETTURA 2 — INCASSI registrati (report movimenti): stato E importo, con i
+  // parziali quantificati al centesimo. Indipendente dalla lettura 1: le due
+  // possono divergere ed è esattamente ciò che si vuole poter confrontare.
   const daMovimenti = typeof f.incassatoAruba === "number";
-  const statoFatturazione: StatoIncasso | null = daMovimenti
-    ? Math.max(0, base - f.incassatoAruba!) <= TOLLERANZA_SALDO
-      ? "Pagata"
-      : f.incassatoAruba! > TOLLERANZA_SALDO
-        ? "Parziale"
-        : "Non incassata"
-    : aruba === "Incassata"
-      ? "Pagata"
-      : aruba === "Non incassata"
-        ? statoBanca === "Parziale"
+  const incassatoIncassi = daMovimenti ? f.incassatoAruba! : null;
+  const residuoIncassi = incassatoIncassi == null ? null : Math.max(0, base - incassatoIncassi);
+  const statoIncassi: StatoIncasso | null =
+    incassatoIncassi == null
+      ? null
+      : residuoIncassi! <= TOLLERANZA_SALDO
+        ? "Pagata"
+        : incassatoIncassi > TOLLERANZA_SALDO
           ? "Parziale"
-          : "Non incassata"
-        : null;
-  const incassatoFatturazione = daMovimenti
-    ? f.incassatoAruba!
-    : aruba === "Incassata"
-      ? base
-      : aruba === "Non incassata"
-        ? incassato
-        : null;
+          : "Non incassata";
+  // Lettura combinata (solo per filtri, ritardi e ordinamenti): la fonte più
+  // precisa disponibile.
+  const stato: StatoIncasso = statoIncassi ?? statoFatturazione ?? statoBanca;
   const residuoFatturazione =
     incassatoFatturazione == null ? null : Math.max(0, base - incassatoFatturazione);
-  // Lettura combinata: serve a filtri, ritardi e ordinamenti; nelle viste le
-  // due colonne restano comunque affiancate.
-  const residuo = residuoFatturazione ?? residuoBanca;
-  const incassatoComb = incassatoFatturazione ?? incassato;
+  // Lettura combinata: serve a filtri, ritardi e ordinamenti. Si prende la
+  // fonte più precisa disponibile (incassi registrati → fatturazione → banca);
+  // nelle viste le TRE colonne restano comunque affiancate.
+  const inRitardo = stato !== "Pagata" && oggiISO > scadenza;
+  const giorniRitardo = inRitardo
+    ? Math.floor(
+        (new Date(`${oggiISO}T00:00:00`).getTime() - new Date(`${scadenza}T00:00:00`).getTime()) /
+          86400000,
+      )
+    : 0;
+  const residuo = residuoIncassi ?? residuoFatturazione ?? residuoBanca;
+  const incassatoComb = incassatoIncassi ?? incassatoFatturazione ?? incassato;
   return {
     incassato: incassatoComb,
     incassatoFatturazione,
+    incassatoIncassi,
     incassatoBanca: incassato,
     residuo,
     residuoFatturazione,
+    residuoIncassi,
     residuoBanca,
     stato,
     statoFatturazione,
+    statoIncassi,
     statoBanca,
     aruba,
     discordante,

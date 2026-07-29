@@ -277,6 +277,8 @@ export function FattureTab() {
     const residuo = base.reduce((s, x) => s + x.s.residuo, 0);
     const apertoFatt = base.reduce((s, x) => s + (x.s.residuoFatturazione ?? 0), 0);
     const apertoBanca = base.reduce((s, x) => s + x.s.residuoBanca, 0);
+    const apertoIncassi = base.reduce((s, x) => s + (x.s.residuoIncassi ?? 0), 0);
+    const incassatoIncassi = base.reduce((s, x) => s + (x.s.incassatoIncassi ?? 0), 0);
     const incassatoFatt = base.reduce((s, x) => s + (x.s.incassatoFatturazione ?? 0), 0);
     const inRitardo = base.filter((x) => x.s.inRitardo);
     const ritardoImporto = inRitardo.reduce((s, x) => s + x.s.residuo, 0);
@@ -287,8 +289,10 @@ export function FattureTab() {
       n: base.length,
       residuo,
       apertoFatt,
+      apertoIncassi,
       apertoBanca,
       incassatoFatt,
+      incassatoIncassi,
       nRitardo: inRitardo.length,
       ritardoImporto,
       incassato,
@@ -797,7 +801,8 @@ export function FattureTab() {
             {fmtImporto(riepilogo.apertoFatt)} €
           </div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            {t("ft.colBanca")}: {fmtImporto(riepilogo.apertoBanca)} €
+            {t("ft.colIncassi")}: {fmtImporto(riepilogo.apertoIncassi)} € · {t("ft.colBanca")}:{" "}
+            {fmtImporto(riepilogo.apertoBanca)} €
           </div>
         </div>
         <div className="rounded-2xl border border-status-absent/40 bg-status-absent/5 p-4 shadow-[var(--shadow-card)]">
@@ -820,7 +825,8 @@ export function FattureTab() {
           </div>
           {/* Le due letture affiancate: possono differire, ed è un dato utile. */}
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            {t("ft.colBanca")}: {fmtImporto(riepilogo.confermatoBanca)} €
+            {t("ft.colIncassi")}: {fmtImporto(riepilogo.incassatoIncassi)} € · {t("ft.colBanca")}:{" "}
+            {fmtImporto(riepilogo.confermatoBanca)} €
             {riepilogo.nDiscordanti > 0 && (
               <>
                 {" · "}
@@ -1143,6 +1149,7 @@ export function FattureTab() {
                   </th>
                   <th className="py-2 pr-3">{t("ft.scadenza")}</th>
                   <th className="py-2 pr-3">{t("ft.colFatturazione")}</th>
+                  <th className="py-2 pr-3">{t("ft.colIncassi")}</th>
                   <th className="py-2 pr-3">{t("ft.colBanca")}</th>
                 </tr>
               </thead>
@@ -1194,6 +1201,22 @@ export function FattureTab() {
                           </span>
                         )}
                       </td>
+                      {/* Incassi REGISTRATI su Aruba: stato + importo, con i
+                          parziali quantificati (report movimenti). */}
+                      <td className="py-1.5 pr-3 whitespace-nowrap">
+                        {x.s.statoIncassi == null ? (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                            {t("ft.senzaMovimenti")}
+                          </span>
+                        ) : (
+                          <>
+                            {badgeStato(x, x.s.statoIncassi, false)}
+                            <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
+                              {fmtImporto(x.s.incassatoIncassi ?? 0)}
+                            </span>
+                          </>
+                        )}
+                      </td>
                       <td className="py-1.5 pr-3 whitespace-nowrap">
                         {/* Zero movimenti collegati NON significa "non pagata":
                             significa che nessun bonifico e' stato abbinato. */}
@@ -1216,7 +1239,7 @@ export function FattureTab() {
                     </tr>,
                     aperta && (
                       <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
-                        <td colSpan={8} className="py-3 px-3 bg-muted/20">
+                        <td colSpan={9} className="py-3 px-3 bg-muted/20">
                           <div className="text-xs text-muted-foreground mb-2">
                             {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
                             {termini.length
