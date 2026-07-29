@@ -94,6 +94,8 @@ import {
   ebScegliConto,
   ebTagliaUltimoGiorno,
   ebSincronizza,
+  ebSincronizzaProgrammato,
+  ebCronToken,
   type EbStato,
   type EbSyncResult,
   getCodiceDipendente,
@@ -1044,6 +1046,27 @@ export const spEbTaglia = createServerFn({ method: "POST" }).handler(
     return ebTagliaUltimoGiorno();
   },
 );
+
+// Token della sincronizzazione programmata: visibile SOLO al direttore, da
+// incollare nel flusso Power Automate.
+export const spEbCronToken = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ token: string }> => {
+    await assertDirettore(await currentUser());
+    return { token: await ebCronToken() };
+  },
+);
+
+// Innesco ESTERNO (Power Automate a orari fissi): nessuna sessione, l'unica
+// credenziale è il token. Non espone dati: risponde solo con l'esito.
+export const spEbCron = createServerFn({ method: "POST" })
+  .inputValidator((input: { token: string }) => {
+    const token = String(input?.token ?? "").trim();
+    if (!token || token.length > 100) throw new Error("Token mancante.");
+    return { token };
+  })
+  .handler(async ({ data }) => {
+    return ebSincronizzaProgrammato(data.token);
+  });
 
 export const spEbSincronizza = createServerFn({ method: "POST" })
   .inputValidator((input: { importId: string; continuation?: string }) => {

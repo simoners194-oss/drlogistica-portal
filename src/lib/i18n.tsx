@@ -501,6 +501,12 @@ const en = {
   "fin.ebSaldoAttuale": "Current balance",
   "fin.ebSaldoCacheVuota":
     "No balance stored yet: it will be fetched with the next synchronization (the bank caps daily PSD2 accesses, so the balance is read only while syncing).",
+  "fin.ebCronTitle": "Scheduled synchronisation",
+  "fin.ebCronDesc":
+    "The portal has no scheduler of its own: set up a Power Automate flow that calls this address at the chosen times (e.g. 07:00 and 18:00). Keep the address private — the token is the only credential. Scheduled runs use the bank's daily access allowance, so keep them to two a day.",
+  "fin.ebCronMostra": "Show address",
+  "fin.ebCronCopia": "Copy address",
+  "fin.ebCronCopiato": "Address copied",
   "fin.ebSaldoManuale": "Set balance manually",
   "fin.ebSaldoManualeNota": "Replaced by the bank's official balance at the next successful sync.",
   "fin.ebImposta": "Set",
@@ -1193,6 +1199,12 @@ const it: Record<DictKey, string> = {
   "fin.ebSaldoAttuale": "Saldo attuale",
   "fin.ebSaldoCacheVuota":
     "Saldo non ancora memorizzato: arriverà con la prossima sincronizzazione (la banca limita gli accessi PSD2 giornalieri, quindi il saldo si legge solo durante il sync).",
+  "fin.ebCronTitle": "Sincronizzazione programmata",
+  "fin.ebCronDesc":
+    "Il portale non ha uno scheduler proprio: crea un flusso Power Automate che chiama questo indirizzo agli orari scelti (es. 07:00 e 18:00). L'indirizzo va tenuto riservato: il token è l'unica credenziale. Le esecuzioni programmate consumano gli accessi giornalieri concessi dalla banca, quindi restare su due al giorno.",
+  "fin.ebCronMostra": "Mostra indirizzo",
+  "fin.ebCronCopia": "Copia indirizzo",
+  "fin.ebCronCopiato": "Indirizzo copiato",
   "fin.ebSaldoManuale": "Imposta saldo manualmente",
   "fin.ebSaldoManualeNota":
     "Verrà sostituito dal saldo ufficiale della banca alla prossima sincronizzazione riuscita.",

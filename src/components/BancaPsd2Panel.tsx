@@ -19,6 +19,7 @@ import {
   spEbScegliConto,
   spEbTaglia,
   spEbSincronizza,
+  spEbCronToken,
 } from "@/lib/sharepoint.functions";
 import type { EbStato, EbSyncResult, EbSaldoInfo } from "@/lib/sharepoint.server";
 
@@ -49,6 +50,8 @@ export function BancaPsd2Panel() {
   const [saldoErr, setSaldoErr] = useState<string | null>(null);
   // Semina manuale del saldo (virgola decimale italiana ammessa).
   const [saldoManuale, setSaldoManuale] = useState("");
+  // Indirizzo per la sincronizzazione programmata (flusso Power Automate).
+  const [cronUrl, setCronUrl] = useState<string | null>(null);
 
   const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -209,6 +212,15 @@ export function BancaPsd2Panel() {
       toast.error(t("fin.ebErr"), { description: errMsg(err) });
     } finally {
       setBusy(null);
+    }
+  };
+
+  const mostraCron = async () => {
+    try {
+      const r = await spEbCronToken();
+      setCronUrl(`${window.location.origin}/cron-banca?token=${r.token}`);
+    } catch (err) {
+      toast.error(t("fin.ebErr"), { description: errMsg(err) });
     }
   };
 
@@ -489,6 +501,44 @@ export function BancaPsd2Panel() {
                   </div>
                 )}
                 <p className="text-[11px] text-muted-foreground">{t("fin.ebCollegaDesc")}</p>
+
+                {/* Sincronizzazione programmata: indirizzo da incollare nel
+                    flusso schedulato (il Worker non ha uno scheduler). */}
+                {stato.dataTaglio && stato.contoIban && (
+                  <div className="rounded-xl border border-border p-3">
+                    <div className="text-sm font-medium text-foreground">
+                      {t("fin.ebCronTitle")}
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">{t("fin.ebCronDesc")}</p>
+                    {cronUrl ? (
+                      <div className="mt-2 space-y-2">
+                        <code className="block break-all rounded-lg bg-muted px-2 py-1.5 text-[11px]">
+                          {cronUrl}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void navigator.clipboard
+                              ?.writeText(cronUrl)
+                              .then(() => toast.success(t("fin.ebCronCopiato")))
+                              .catch(() => null);
+                          }}
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+                        >
+                          {t("fin.ebCronCopia")}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void mostraCron()}
+                        className="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+                      >
+                        {t("fin.ebCronMostra")}
+                      </button>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>

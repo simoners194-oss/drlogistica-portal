@@ -4649,9 +4649,14 @@ export interface EbSyncResult {
 
 // Una PAGINA di transazioni per chiamata (≈100): il client ripete passando
 // `continuation` finché non torna null — stesso schema dell'import a blocchi.
+// `presidiata` = l'azione nasce da un clic dell'utente: solo in quel caso si
+// inoltrano alla banca gli header PSU (che esentano dal limite giornaliero).
+// Le esecuzioni programmate NON sono presidiate: dichiararlo è corretto e
+// consuma il budget PSD2 (4 accessi/giorno per conto).
 export async function ebSincronizza(
   importId: string,
   continuation?: string,
+  presidiata = true,
 ): Promise<EbSyncResult> {
   const cred = await getEbCredenziali();
   const cfg = await discoverSharePoint();
@@ -4680,7 +4685,7 @@ export async function ebSincronizza(
     if (ripresa > dal) dal = ripresa;
   }
 
-  const psu = psuContext(); // sync avviato dall'utente: esente dal limite PSD2
+  const psu = presidiata ? psuContext() : {};
   const pagina = await ebTransazioni(cred, contoUid, dal, continuation, psu);
   const esistenti = new Set(await fetchMovimentiChiavi());
   const regole = await fetchRegoleFinanza().catch(() => [] as RegolaFinanza[]);
@@ -4773,6 +4778,73 @@ export async function ebSincronizza(
     `Sync banca (dal ${dal}): ${result.scritti} scritti, ${result.doppioni} doppioni, ${result.pendenti} pendenti${pagina.continuation ? ", altre pagine" : ""}`,
   );
   return result;
+}
+
+// --- Sincronizzazione PROGRAMMATA (innesco esterno) -------------------------
+// Il Worker non ha uno scheduler: un flusso Power Automate chiama a orari
+// fissi /cron-banca?token=… . Il token è DERIVATO dal segreto server (nessuna
+// colonna nuova, nessun segreto in chiaro nel repo) e si legge dal pannello
+// Banca in Amministrazione.
+
+export async function ebCronToken(): Promise<string> {
+  const pepper = pinPepper();
+  if (!pepper) throw new Error("Segreto server assente: token non generabile.");
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`cron:banca:${pepper}`));
+  return [...new Uint8Array(d)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 40);
+}
+
+/** Confronto a tempo costante: non rivela quanti caratteri sono corretti. */
+function tokenUguale(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// Intervallo minimo tra due esecuzioni programmate: protegge il budget di
+// accessi PSD2 da doppioni del flusso o da ritentativi.
+const CRON_MIN_MINUTI = 90;
+const CRON_MAX_PAGINE = 5;
+
+export async function ebSincronizzaProgrammato(
+  token: string,
+): Promise<{ esito: string; scritti: number; doppioni: number; pendenti: number }> {
+  if (!tokenUguale(token, await ebCronToken())) {
+    logSp("warn", "eb.cron", "Chiamata programmata con token non valido");
+    throw new Error("Token non valido.");
+  }
+  const stato = await getEbStato();
+  if (!stato.configurato || !stato.contoIban || !stato.dataTaglio)
+    return { esito: "collegamento banca non attivo", scritti: 0, doppioni: 0, pendenti: 0 };
+  if (stato.ultimaSync) {
+    const minuti = (Date.now() - new Date(stato.ultimaSync).getTime()) / 60000;
+    if (minuti < CRON_MIN_MINUTI)
+      return {
+        esito: `saltata: ultima sincronizzazione ${Math.round(minuti)} minuti fa`,
+        scritti: 0,
+        doppioni: 0,
+        pendenti: 0,
+      };
+  }
+  const importId = `SYNC-${new Date().toISOString().slice(0, 19)}`;
+  let continuation: string | undefined;
+  let scritti = 0;
+  let doppioni = 0;
+  let pendenti = 0;
+  for (let i = 0; i < CRON_MAX_PAGINE; i++) {
+    const r = await ebSincronizza(importId, continuation, false);
+    scritti += r.scritti;
+    doppioni += r.doppioni;
+    pendenti += r.pendenti;
+    if (r.errori.length) throw new Error(r.errori[0]);
+    if (!r.continuation) break;
+    continuation = r.continuation;
+  }
+  logSp("info", "eb.cron", `Sync programmata: ${scritti} scritti, ${doppioni} doppioni`);
+  return { esito: "ok", scritti, doppioni, pendenti };
 }
 
 // ---------------------------------------------------------------------------
