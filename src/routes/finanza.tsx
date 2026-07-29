@@ -20,6 +20,7 @@ import {
   GraduationCap,
   Wand2,
   Receipt,
+  ReceiptText,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -217,7 +218,7 @@ function MultiSelect<T extends string | number>({
   );
 }
 
-type Tab = "movimenti" | "overview" | "fatture" | "anomalie" | "storico" | "regole";
+type Tab = "movimenti" | "overview" | "attive" | "passive" | "anomalie" | "storico" | "regole";
 
 interface SheetInfo {
   name: string;
@@ -899,7 +900,8 @@ function FinanzaPage() {
         <div className="inline-flex flex-wrap rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
           {tabBtn("movimenti", <Table2 className="h-4 w-4" />, t("fin.tabMovimenti"))}
           {tabBtn("overview", <TrendingUp className="h-4 w-4" />, t("fin.tabOverview"))}
-          {tabBtn("fatture", <Receipt className="h-4 w-4" />, t("fin.tabFatture"))}
+          {tabBtn("attive", <Receipt className="h-4 w-4" />, t("fin.tabAttive"))}
+          {tabBtn("passive", <ReceiptText className="h-4 w-4" />, t("fin.tabPassive"))}
           {tabBtn(
             "anomalie",
             <AlertTriangle className="h-4 w-4" />,
@@ -1340,7 +1342,8 @@ function FinanzaPage() {
       )}
 
       {/* ------------------------------- Fatture --------------------------- */}
-      {tab === "fatture" && <FattureTab />}
+      {tab === "attive" && <FattureTab direzione="Emessa" />}
+      {tab === "passive" && <FattureTab direzione="Ricevuta" />}
 
       {/* ------------------------------- Anomalie -------------------------- */}
       {tab === "anomalie" && (

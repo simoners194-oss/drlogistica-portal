@@ -702,7 +702,8 @@ const en = {
     "Delete this rule? Already-corrected transactions keep their values; the rule simply stops applying to future imports.",
   "fin.regolaDeleted": "Rule deleted",
   "fin.creaRegolaTip": "Create rule from this transaction",
-  "fin.tabFatture": "Invoices",
+  "fin.tabAttive": "Sales invoices",
+  "fin.tabPassive": "Purchase invoices",
   // --- Fatture emesse (scadenzario) ---
   "ft.errLoad": "Could not load invoices",
   "ft.kpiAperto": "Open receivables",
@@ -1503,7 +1504,8 @@ const it: Record<DictKey, string> = {
     "Eliminare questa regola? I movimenti già corretti mantengono i loro valori; la regola smette solo di applicarsi agli import futuri.",
   "fin.regolaDeleted": "Regola eliminata",
   "fin.creaRegolaTip": "Crea regola da questo movimento",
-  "fin.tabFatture": "Fatture",
+  "fin.tabAttive": "Fatture attive",
+  "fin.tabPassive": "Fatture passive",
   // --- Fatture emesse (scadenzario) ---
   "ft.errLoad": "Impossibile caricare le fatture",
   "ft.kpiAperto": "Credito aperto",

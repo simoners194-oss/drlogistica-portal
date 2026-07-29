@@ -85,10 +85,11 @@ const CHUNK = 100;
 type StatoFiltro =
   "tutte" | "ritardo" | "nonIncassata" | "parziale" | "pagata" | "discordante" | "nonGestita";
 
-export function FattureTab() {
+export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   const { t } = useLang();
-  // Direzione corrente della vista: Emesse (crediti) o Ricevute (debiti).
-  const [dir, setDir] = useState<DirezioneFattura>("Emessa");
+  // Attive (emesse, crediti) e passive (ricevute, debiti) vivono in due
+  // schede distinte: la direzione arriva da lì, non si commuta qui dentro.
+  const dir = direzione;
   const [fattureEm, setFattureEm] = useState<SpFattura[] | null>(null);
   const [fattureRic, setFattureRic] = useState<SpFattura[] | null>(null);
   const fatture = dir === "Emessa" ? fattureEm : fattureRic;
@@ -199,6 +200,11 @@ export function FattureTab() {
       .catch(() => setAruba(null));
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Cambio scheda: si chiudono i dettagli aperti dell'altra direzione.
+  useEffect(() => {
+    setOpenFile(null);
+    setClienteAperto(null);
+  }, [direzione]);
 
   const oggiISO = new Date().toISOString().slice(0, 10);
 
@@ -878,30 +884,6 @@ export function FattureTab() {
 
   return (
     <div className="space-y-4">
-      {/* Direzione: emesse (crediti) / ricevute (debiti) */}
-      <div className="inline-flex rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
-        <button
-          type="button"
-          onClick={() => {
-            setDir("Emessa");
-            setOpenFile(null);
-          }}
-          className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${!ricevute ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          {t("ft.dirEmesse")}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setDir("Ricevuta");
-            setOpenFile(null);
-          }}
-          className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${ricevute ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          {t("ft.dirRicevute")}
-        </button>
-      </div>
-
       {/* Riepilogo */}
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
