@@ -54,6 +54,7 @@ import {
   spGetArubaStato,
   spSetArubaCredenziali,
   spArubaProvaConnessione,
+  spSetRettificaNumero,
 } from "@/lib/sharepoint.functions";
 import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
 import type { ArubaProbeResult } from "@/lib/aruba.server";
@@ -560,6 +561,51 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         ]),
       ],
     );
+  };
+
+  // --- Collegamento manuale NOTA DI CREDITO → fattura -----------------------
+  // Lo storno fatto dentro Aruba non lascia traccia nell'XML: il riferimento
+  // si mette qui e finisce su RettificaNumero, la stessa colonna dell'import,
+  // quindi vale da subito e sopravvive ai reimport.
+  const [ncFile, setNcFile] = useState<string | null>(null);
+  const [ncNumero, setNcNumero] = useState("");
+  const [ncSaving, setNcSaving] = useState(false);
+
+  // Le fatture agganciabili a una NC: stessa controparte e stessa direzione,
+  // niente note di credito né scarti. Le più recenti per prime.
+  const fattureCollegabili = (nc: FatturaRaw) => {
+    const key = clienteGroupKey(nc.cliente) || nc.cliente;
+    return (fatture ?? [])
+      .filter(
+        (f) =>
+          !isNotaCredito(f.tipoDocumento) &&
+          !escluse.has(f.nomeFile) &&
+          f.totale > 0 &&
+          (clienteGroupKey(f.cliente) || f.cliente) === key,
+      )
+      .sort((a, b) => b.dataDocumento.localeCompare(a.dataDocumento));
+  };
+
+  const salvaRettifica = async (nc: FatturaRaw) => {
+    setNcSaving(true);
+    try {
+      await spSetRettificaNumero({
+        data: { nomeFile: nc.nomeFile, numeroFattura: ncNumero, direzione: dir },
+      });
+      // Ricarico l'archivio: il netto del cliente cambia subito.
+      const agg = (await spGetFatture({ data: { direzione: dir } })) as SpFattura[];
+      if (dir === "Emessa") setFattureEm(agg);
+      else setFattureRic(agg);
+      setNcFile(null);
+      setNcNumero("");
+      toast.success(ncNumero ? t("ft.collegataOk") : t("ft.scollegataOk"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setNcSaving(false);
+    }
   };
 
   // Movimenti con residuo da allocare per l'abbinamento manuale: incassi per
@@ -1525,6 +1571,54 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                               ? `${(x.s.scadenza && x.f.dataDocumento && Math.round((new Date(x.s.scadenza).getTime() - new Date(x.f.dataDocumento).getTime()) / 86400000)) || TERMINI_DEFAULT_GIORNI}gg`
                               : `${TERMINI_DEFAULT_GIORNI}gg (default)`}
                           </div>
+                          {/* Nota di credito: collegamento alla fattura che
+                              rettifica. Quando lo storno è stato fatto dentro
+                              Aruba il riferimento non arriva nell'XML, e senza
+                              di esso la NC resta uno storno sospeso che sballa
+                              il netto del cliente. */}
+                          {isNotaCredito(x.f.tipoDocumento) && (
+                            <div
+                              className="flex flex-wrap items-center gap-2 mb-3 text-[13px]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              <span className="text-muted-foreground">{t("ft.collegaA")}</span>
+                              <select
+                                value={
+                                  ncFile === x.f.nomeFile ? ncNumero : (x.f.rettificaNumero ?? "")
+                                }
+                                onChange={(e) => {
+                                  setNcFile(x.f.nomeFile);
+                                  setNcNumero(e.target.value);
+                                }}
+                                className="rounded-lg border border-border bg-background px-2 py-1 text-[13px] max-w-72"
+                              >
+                                <option value="">{t("ft.collegaNessuna")}</option>
+                                {fattureCollegabili(x.f).map((c) => (
+                                  <option key={c.nomeFile} value={c.numero}>
+                                    {c.numero} · {fmtData(c.dataDocumento)} · {fmtImporto(c.totale)}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                disabled={
+                                  ncSaving ||
+                                  ncFile !== x.f.nomeFile ||
+                                  ncNumero === (x.f.rettificaNumero ?? "")
+                                }
+                                onClick={() => void salvaRettifica(x.f)}
+                                className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"
+                              >
+                                {ncSaving ? "…" : t("common.save")}
+                              </button>
+                              {x.f.rettificaNumero && (
+                                <span className="text-[12px] text-muted-foreground">
+                                  {t("ft.collegataOra")} <b>{x.f.rettificaNumero}</b>
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {abbFat.length > 0 ? (
                             <ul className="space-y-1 mb-3">
                               {abbFat.map((a) => {

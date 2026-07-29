@@ -73,6 +73,7 @@ import {
   importFatture,
   fetchTerminiPagamento,
   setIncassiAruba,
+  setRettificaNumero,
   fetchAbbinamenti,
   createAbbinamenti,
   deleteAbbinamento,
@@ -912,6 +913,28 @@ export const spSetIncassiAruba = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ aggiornate: number; errori: string[] }> => {
     await assertDirettore(await currentUser());
     return setIncassiAruba(data.righe, data.direzione);
+  });
+
+// Collegamento manuale NOTA DI CREDITO → fattura rettificata: serve quando lo
+// storno è stato fatto dentro Aruba e l'XML non porta il riferimento.
+export const spSetRettificaNumero = createServerFn({ method: "POST" })
+  .inputValidator((input: { nomeFile: string; numeroFattura: string; direzione?: string }) => {
+    const nomeFile = String(input?.nomeFile ?? "").trim();
+    if (!nomeFile) throw new Error("Nota di credito non indicata");
+    // Vuoto = scollega. Il numero è testo libero (le numerazioni cambiano
+    // formato fra anni e sezionali): si limita solo la lunghezza.
+    const numeroFattura = String(input?.numeroFattura ?? "").trim();
+    if (numeroFattura.length > 60) throw new Error("Numero fattura troppo lungo");
+    return {
+      nomeFile,
+      numeroFattura,
+      direzione: (input.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+    };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await setRettificaNumero(data.nomeFile, data.numeroFattura, data.direzione);
+    return { ok: true };
   });
 
 export const spGetTerminiPagamento = createServerFn({ method: "GET" }).handler(

@@ -3691,6 +3691,39 @@ export async function setIncassiAruba(
   return result;
 }
 
+/** Collega una NOTA DI CREDITO alla fattura che rettifica, quando l'XML non lo
+ *  dichiara (storno fatto a mano dentro Aruba: il riferimento resta lì e non
+ *  arriva nel file). Scrive su RettificaNumero, la stessa colonna che riempie
+ *  l'import: il collegamento vale da subito e sopravvive ai reimport, perché
+ *  l'import non sovrascrive un riferimento gia' presente con uno vuoto.
+ *  Stringa vuota = scollega. */
+export async function setRettificaNumero(
+  nomeFile: string,
+  numeroFattura: string,
+  direzione: DirezioneFattura,
+): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requireFattureList(cfg, direzione);
+  const F = fattureListPer(cfg, direzione).fields;
+  if (!F.RettificaNumero)
+    throw new Error(
+      'Colonna "RettificaNumero" assente sulla lista fatture: aggiungerla (testo) e fare Riscopri.',
+    );
+  const doc = (await fetchFatture(direzione)).find((f) => f.nomeFile === nomeFile);
+  if (!doc) throw new Error(`Documento non trovato in archivio: ${nomeFile}`);
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${doc.id}/fields`, {
+    method: "PATCH",
+    body: JSON.stringify({ [F.RettificaNumero]: numeroFattura }),
+  });
+  logSp(
+    "info",
+    "fatture.rettifica",
+    numeroFattura
+      ? `NC ${doc.numero} collegata alla fattura ${numeroFattura}`
+      : `NC ${doc.numero} scollegata`,
+  );
+}
+
 export interface UpdateMovimentoInput {
   movimentoId: string;
   tipologia?: string;
