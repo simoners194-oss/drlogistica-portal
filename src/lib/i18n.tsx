@@ -797,8 +797,16 @@ const en = {
     "Remove this match? The invoice will go back to unpaid/partially paid for that amount.",
   "ft.import": "Import",
   "ft.importTitle": "Import invoices (ZIP/XML FatturaPA, or xlsx for issued)",
-  "ft.importDesc":
-    "Upload the XML export from the Aruba panel (the ZIP as-is, or single XML files) — the direction is detected automatically from the VAT number: issued and received invoices are filed separately. The xlsx export still works for issued invoices. Keyed by SdI file name: re-importing never duplicates.",
+  "ft.imp1Em":
+    "Invoice XML files (multiple invoices in one ZIP work too) — from Aruba: «Fatture inviate» → export XML.",
+  "ft.imp1Ric":
+    "Invoice XML files (multiple invoices in one ZIP work too) — from Aruba: «Fatture ricevute» → export XML.",
+  "ft.imp2Em": "The Excel export with collection statuses — again from «Fatture inviate».",
+  "ft.imp2Ric": "The Excel export with payment statuses — again from «Fatture ricevute».",
+  "ft.imp3":
+    "The movements list with the instalments — from «Prima nota → Incassi e pagamenti». One file covers both sides: INCASSO rows update issued invoices, PAGAMENTO rows the received ones.",
+  "ft.impNota":
+    "Re-importing never duplicates: invoices already in the archive get their statuses and collections updated, not recreated. Direction is detected automatically from the VAT number.",
   "ft.dirEmesse": "Issued",
   "ft.dirRicevute": "Received",
   "ft.kpiDaPagare": "Open payables",
@@ -1660,8 +1668,16 @@ const it: Record<DictKey, string> = {
     "Rimuovere questo abbinamento? La fattura tornerà non incassata/parziale per quell'importo.",
   "ft.import": "Importa",
   "ft.importTitle": "Importa fatture (ZIP/XML FatturaPA, o xlsx per le emesse)",
-  "ft.importDesc":
-    "Carica l'export XML del pannello Aruba (lo ZIP così com'è, o singoli XML) — la direzione si riconosce da sola dalla P.IVA: emesse e ricevute vengono archiviate separatamente. Per le emesse funziona anche l'export xlsx. Chiave = nome file SdI: reimportare non duplica mai.",
+  "ft.imp1Em":
+    "Gli XML delle fatture (vanno bene anche più fatture in un unico ZIP) — su Aruba da «Fatture inviate» → esporta XML.",
+  "ft.imp1Ric":
+    "Gli XML delle fatture (vanno bene anche più fatture in un unico ZIP) — su Aruba da «Fatture ricevute» → esporta XML.",
+  "ft.imp2Em": "L'export Excel con gli stati d'incasso — sempre da «Fatture inviate».",
+  "ft.imp2Ric": "L'export Excel con gli stati di pagamento — sempre da «Fatture ricevute».",
+  "ft.imp3":
+    "La lista movimenti con le rate — da «Prima nota → Incassi e pagamenti». Un file solo vale per tutte e due le direzioni: le righe INCASSO aggiornano le emesse, le righe PAGAMENTO le ricevute.",
+  "ft.impNota":
+    "Reimportare non duplica mai: le fatture già in archivio vengono aggiornate (stati e incassi), non ricreate. La direzione si riconosce da sola dalla P.IVA.",
   "ft.dirEmesse": "Emesse",
   "ft.dirRicevute": "Ricevute",
   "ft.kpiDaPagare": "Debito aperto",

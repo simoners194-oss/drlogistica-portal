@@ -1554,7 +1554,14 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
             <div className="flex items-center gap-2 text-sm font-medium text-foreground mb-1">
               <FileSpreadsheet className="h-4 w-4 text-primary" /> {t("ft.importTitle")}
             </div>
-            <p className="text-xs text-muted-foreground mb-3">{t("ft.importDesc")}</p>
+            {/* I tre caricamenti, con la strada esatta nel pannello Aruba:
+                chi importa non deve ricordare a memoria da dove si esporta. */}
+            <ol className="list-decimal pl-5 text-xs text-muted-foreground mb-2 space-y-1">
+              <li>{ricevute ? t("ft.imp1Ric") : t("ft.imp1Em")}</li>
+              <li>{ricevute ? t("ft.imp2Ric") : t("ft.imp2Em")}</li>
+              <li>{t("ft.imp3")}</li>
+            </ol>
+            <p className="text-xs text-muted-foreground mb-3">{t("ft.impNota")}</p>
             <input
               type="file"
               accept=".zip,.xml,.xlsx,.xls"
