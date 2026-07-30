@@ -833,6 +833,9 @@ const en = {
   "ft.totPagatoBanca": "Paid (bank)",
   "ft.totDaPagare": "To pay",
   "ft.discordantePassiva": "paid from the account but not recorded in Aruba",
+  "ft.senzaFonte": "excluded, no source",
+  "ft.senzaFonteTip":
+    "Invoices past due on which NO source has spoken: no Aruba status, no instalments in the movements report, not a euro matched in the bank. Most likely collected in periods not covered by the archives (e.g. missing yearly report): load the Aruba reports for those years to classify them. Not counted in the overdue total.",
   "fin.top15": "Top 15 clients",
   "fin.clienti": "Clients",
   "fin.top15TipMov":
@@ -1693,6 +1696,9 @@ const it: Record<DictKey, string> = {
   "ft.totPagatoBanca": "Pagato banca",
   "ft.totDaPagare": "Da pagare",
   "ft.discordantePassiva": "risulta pagata dal conto ma non su Aruba",
+  "ft.senzaFonte": "escluse, senza fonte",
+  "ft.senzaFonteTip":
+    "Fatture oltre scadenza su cui NESSUNA fonte si è espressa: niente stato Aruba, niente rate nel report movimenti, nemmeno un euro abbinato in banca. Con ogni probabilità sono incassate in periodi non coperti dagli archivi (es. report annuale mancante): carica i report Aruba di quegli anni per classificarle. Non contate nel totale in ritardo.",
   "fin.top15": "Top 15 clienti",
   "fin.clienti": "Clienti",
   "fin.top15TipMov":

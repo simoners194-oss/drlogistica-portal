@@ -280,7 +280,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     statiF.length === 0 ||
     statiF.some((s) =>
       s === "ritardo"
-        ? x.s.inRitardo
+        ? // Coerente col KPI: in ritardo solo se almeno una fonte esiste.
+          x.s.inRitardo &&
+          (x.s.statoIncassi != null || x.s.statoFatturazione != null || x.s.incassatoBanca > 0)
         : s === "nonIncassata"
           ? x.s.stato === "Non incassata"
           : s === "parziale"
@@ -346,8 +348,19 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     const apertoIncassi = base.reduce((s, x) => s + (x.s.residuoIncassi ?? 0), 0);
     const incassatoIncassi = base.reduce((s, x) => s + (x.s.incassatoIncassi ?? 0), 0);
     const incassatoFatt = base.reduce((s, x) => s + (x.s.incassatoFatturazione ?? 0), 0);
-    const inRitardo = base.filter((x) => x.s.inRitardo);
+    // "In ritardo" ha senso solo se ALMENO UNA fonte si è espressa: stato su
+    // Aruba, rate nel report incassi, o un euro abbinato in banca. Le fatture
+    // oltre scadenza di cui NESSUNA fonte sa niente (report di quell'anno mai
+    // caricato, banca senza abbinamenti) sono con ogni probabilità incassate
+    // in periodi non coperti dagli archivi: contarle a valore pieno gonfiava
+    // il KPI fino all'assurdo (20M "in ritardo" su 2,5M di credito aperto).
+    // Restano visibili, ma in un contatore a parte.
+    const haFonte = (x: (typeof base)[number]) =>
+      x.s.statoIncassi != null || x.s.statoFatturazione != null || x.s.incassatoBanca > 0;
+    const inRitardo = base.filter((x) => x.s.inRitardo && haFonte(x));
     const ritardoImporto = inRitardo.reduce((s, x) => s + x.s.residuo, 0);
+    const senzaFonte = base.filter((x) => x.s.inRitardo && !haFonte(x));
+    const senzaFonteImporto = senzaFonte.reduce((s, x) => s + x.s.residuo, 0);
     const incassato = base.reduce((s, x) => s + x.s.incassato, 0);
     const confermatoBanca = base.reduce((s, x) => s + x.s.incassatoBanca, 0);
     const nDiscordanti = base.filter((x) => x.s.discordante).length;
@@ -361,6 +374,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       incassatoIncassi,
       nRitardo: inRitardo.length,
       ritardoImporto,
+      nSenzaFonte: senzaFonte.length,
+      senzaFonteImporto,
       incassato,
       confermatoBanca,
       nDiscordanti,
@@ -1284,6 +1299,15 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           </div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
             {riepilogo.nRitardo} {t("ft.kpiRitardoN")}
+            {riepilogo.nSenzaFonte > 0 && (
+              <>
+                {" · "}
+                <span title={t("ft.senzaFonteTip")}>
+                  {riepilogo.nSenzaFonte} {t("ft.senzaFonte")} (
+                  {fmtImporto(riepilogo.senzaFonteImporto)} €)
+                </span>
+              </>
+            )}
           </div>
         </div>
         <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
