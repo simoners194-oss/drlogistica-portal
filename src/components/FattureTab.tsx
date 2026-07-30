@@ -428,6 +428,23 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conStato, anniF]);
 
+  // Il SALDO DEI MOVIMENTI BANCARI in entrata (tipologia Incasso) per gli
+  // anni filtrati: tutti gli accrediti arrivati, abbinati o no. È il secondo
+  // dei "due saldi" chiesti dal direttore, da leggere accanto all'incassato
+  // di fatturazione.
+  const saldoMovimenti = useMemo(() => {
+    let totale = 0;
+    let n = 0;
+    for (const m of movimenti ?? []) {
+      if (m.importo <= 0) continue;
+      if (!m.tipologia.toLowerCase().startsWith("incass")) continue;
+      if (anniF.length && !anniF.includes(Number(m.dataContabile.slice(0, 4)))) continue;
+      totale += m.importo;
+      n++;
+    }
+    return { totale: Math.round(totale * 100) / 100, n };
+  }, [movimenti, anniF]);
+
   // Riepilogo per cliente (come l'OVERVIEW del direttore, compattata).
   // Specchietto per cliente: conteggi e importi, ordinato per FATTURATO
   // decrescente. Le note di credito entrano nel fatturato (con segno) ma non
@@ -1433,6 +1450,54 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           </div>
         </div>
       </div>
+
+      {/* I DUE SALDI, affiancati: quanto risulta incassato alla fatturazione
+          e quanto e' davvero arrivato sul conto (TUTTI i movimenti in entrata
+          degli anni filtrati, abbinati o no). La differenza in mezzo e' il
+          numero da spiegare: compensazioni, registrazioni mancanti, periodi
+          di estratto non coperti. Solo sulle attive: sulle passive le uscite
+          bancarie non sono confrontabili col fatturato fornitori (stipendi,
+          tasse, carte). */}
+      {!ricevute && movimenti != null && (
+        <div
+          className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)] flex flex-wrap items-baseline gap-x-8 gap-y-2"
+          title={t("ft.saldiTip")}
+        >
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              {t("ft.saldoFatt")}
+            </div>
+            <div className="mt-0.5 text-xl font-semibold tabular-nums text-foreground">
+              {fmtImporto(riepilogo.incassatoFatt)} €
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              {t("ft.saldoBanca")}
+            </div>
+            <div className="mt-0.5 text-xl font-semibold tabular-nums text-foreground">
+              {fmtImporto(saldoMovimenti.totale)} €
+              <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
+                ({saldoMovimenti.n})
+              </span>
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              {t("ft.saldiDiff")}
+            </div>
+            <div
+              className={`mt-0.5 text-xl font-semibold tabular-nums ${Math.abs(riepilogo.incassatoFatt - saldoMovimenti.totale) > TOLLERANZA_SALDO ? "text-status-absent" : "text-status-present"}`}
+            >
+              {fmtImporto(
+                Math.round((riepilogo.incassatoFatt - saldoMovimenti.totale) * 100) / 100,
+              )}{" "}
+              €
+            </div>
+          </div>
+          <p className="basis-full text-[11px] text-muted-foreground -mt-1">{t("ft.saldiNota")}</p>
+        </div>
+      )}
 
       {/* Azioni + filtri */}
       <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">

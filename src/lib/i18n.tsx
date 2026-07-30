@@ -873,6 +873,13 @@ const en = {
   "ft.senzaTraccia": "no bank trace",
   "ft.senzaTracciaTip":
     "Part of the invoicing-collected amount with no counterpart even among this client's unmatched movements: other accounts, periods not imported, or set-offs.",
+  "ft.saldoFatt": "Collected per invoicing (Aruba)",
+  "ft.saldoBanca": "Arrived on the bank account",
+  "ft.saldiDiff": "Difference",
+  "ft.saldiTip":
+    "The two balances side by side: what invoicing records as collected, and every credit actually arrived on the account in the selected years (matched or not).",
+  "ft.saldiNota":
+    "The difference is made of: credit notes offset inside transfers, collections not yet recorded in Aruba, statement periods not imported. Per client, open the statement in the summary below.",
   "ft.incManLabel": "Collection status (manual fix):",
   "ft.incManHint": "writes the same field the Aruba report fills — the next report confirms it",
   "ft.incManOk": "Status updated",
@@ -1747,6 +1754,13 @@ const it: Record<DictKey, string> = {
   "ft.senzaTraccia": "senza riscontro in banca",
   "ft.senzaTracciaTip":
     "Parte dell'incassato di fatturazione che non trova riscontro nemmeno fra i movimenti non attribuiti di questa controparte: altri conti, periodi non importati o compensazioni.",
+  "ft.saldoFatt": "Incassato da fatturazione (Aruba)",
+  "ft.saldoBanca": "Arrivato sul conto (movimenti)",
+  "ft.saldiDiff": "Differenza",
+  "ft.saldiTip":
+    "I due saldi affiancati: quanto la fatturazione registra come incassato, e tutti gli accrediti davvero arrivati sul conto negli anni selezionati (abbinati o no).",
+  "ft.saldiNota":
+    "La differenza è fatta di: note di credito compensate dentro i bonifici, incassi non ancora registrati su Aruba, periodi di estratto non importati. Per il dettaglio di un cliente, apri il suo estratto nello specchietto qui sotto.",
   "ft.incManLabel": "Stato incasso (correzione manuale):",
   "ft.incManHint":
     "scrive lo stesso campo che riempie il report Aruba — il prossimo report lo conferma",
