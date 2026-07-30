@@ -499,7 +499,25 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     );
     const totaleBanca = righe.reduce((s, r) => s + Math.abs(r.m.importo), 0);
     const nonAttribuito = righe.reduce((s, r) => s + r.residuo, 0);
+    // LETTURA EFFETTIVA, dalla banca: il fatturato netto meno gli euro
+    // realmente arrivati. Non dipende dagli stati di Aruba (che possono
+    // essere indietro) né dagli abbinamenti: è il numero del direttore.
+    // Le fatture della CONTROPARTE verso di noi si sottraggono dal dovuto:
+    // clienti come iMile le trattengono dentro i bonifici.
+    const altreDirezione = dir === "Emessa" ? (fattureRic ?? []) : (fattureEm ?? []);
+    const controFatture = altreDirezione
+      .filter(
+        (f) =>
+          (clienteGroupKey(f.cliente) || f.cliente) === clienteAperto &&
+          !isNotaCredito(f.tipoDocumento) &&
+          f.totale > 0,
+      )
+      .reduce((s, f) => s + f.totale, 0);
+    const nettoDovuto = Math.round((fatturato - controFatture) * 100) / 100;
     return {
+      controFatture: Math.round(controFatture * 100) / 100,
+      nettoDovuto,
+      residuoEffettivo: Math.round((nettoDovuto - totaleBanca) * 100) / 100,
       righe,
       fatturato: Math.round(fatturato * 100) / 100,
       incassatoFatt: Math.round(incassatoFatt * 100) / 100,
@@ -509,7 +527,16 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       nonAttribuito: Math.round(nonAttribuito * 100) / 100,
       nNonAttribuiti: righe.filter((r) => r.residuo > TOLLERANZA_SALDO).length,
     };
-  }, [clienteAperto, fattureDelCliente, movimenti, abbinamenti, ricevute]);
+  }, [
+    clienteAperto,
+    fattureDelCliente,
+    movimenti,
+    abbinamenti,
+    ricevute,
+    dir,
+    fattureEm,
+    fattureRic,
+  ]);
 
   // --- Spiegazione bonifici (compensazioni incluse) -------------------------
   // Il pulsante "Spiega bonifici" cerca, per ogni movimento non attribuito del
@@ -2178,6 +2205,49 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                                   </button>
                                 </span>
                               </div>
+                              {/* LA LETTURA EFFETTIVA: fatturato netto meno
+                                  euro arrivati. Non dipende dagli stati di
+                                  Aruba (che possono essere indietro) né dagli
+                                  abbinamenti: è il numero da dare al
+                                  direttore, purché l'archivio banca copra
+                                  l'intero rapporto col cliente. */}
+                              {estrattoCliente.righe.length > 0 && (
+                                <div
+                                  className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] mb-2 rounded-lg bg-primary/5 border border-primary/20 px-3 py-1.5"
+                                  title={t("ft.effTip")}
+                                >
+                                  <span className="font-semibold text-foreground">
+                                    {t("ft.effTitolo")}
+                                  </span>
+                                  <span>
+                                    {t("ft.effNetto")}:{" "}
+                                    <b className="tabular-nums">
+                                      {fmtImporto(estrattoCliente.nettoDovuto)}
+                                    </b>
+                                    {estrattoCliente.controFatture > 0 && (
+                                      <span className="text-muted-foreground">
+                                        {" "}
+                                        ({t("ft.effContro")} −
+                                        {fmtImporto(estrattoCliente.controFatture)})
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span>
+                                    {t("ft.effIncassato")}:{" "}
+                                    <b className="tabular-nums text-status-present">
+                                      {fmtImporto(estrattoCliente.totaleBanca)}
+                                    </b>
+                                  </span>
+                                  <span>
+                                    {tp("ft.effResiduo", "ft.effResiduoPassive")}:{" "}
+                                    <b
+                                      className={`tabular-nums ${estrattoCliente.residuoEffettivo > TOLLERANZA_SALDO ? "text-status-absent" : "text-status-present"}`}
+                                    >
+                                      {fmtImporto(estrattoCliente.residuoEffettivo)}
+                                    </b>
+                                  </span>
+                                </div>
+                              )}
                               {/* Le proposte: ogni bonifico non attribuito con
                                   la combinazione di documenti che lo spiega.
                                   Niente si salva finché non si preme Applica. */}

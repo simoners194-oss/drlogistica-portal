@@ -833,6 +833,14 @@ const en = {
   "ft.totPagatoBanca": "Paid (bank)",
   "ft.totDaPagare": "To pay",
   "ft.discordantePassiva": "paid from the account but not recorded in Aruba",
+  "ft.effTitolo": "Effective (from the bank)",
+  "ft.effNetto": "Net due",
+  "ft.effContro": "their invoices to us",
+  "ft.effIncassato": "Actually received",
+  "ft.effResiduo": "Effectively outstanding",
+  "ft.effResiduoPassive": "Effectively to pay",
+  "ft.effTip":
+    "Net invoiced minus euros actually arrived on the account. Independent of Aruba's states (which may lag) and of matches. Reliable when the bank archive covers the whole relationship with this counterparty.",
   "ft.spiegaBtn": "Explain transfers",
   "ft.spiegaTip":
     "For each unmatched transfer, looks for the exact combination of open documents that adds up to it: invoices, unlinked credit notes, even this counterparty's invoices to us. Proposals only — nothing is saved until you apply.",
@@ -1680,6 +1688,14 @@ const it: Record<DictKey, string> = {
   "ft.totPagatoBanca": "Pagato banca",
   "ft.totDaPagare": "Da pagare",
   "ft.discordantePassiva": "risulta pagata dal conto ma non su Aruba",
+  "ft.effTitolo": "Effettivo (dalla banca)",
+  "ft.effNetto": "Netto dovuto",
+  "ft.effContro": "loro fatture verso di noi",
+  "ft.effIncassato": "Arrivato davvero",
+  "ft.effResiduo": "Da incassare effettivo",
+  "ft.effResiduoPassive": "Da pagare effettivo",
+  "ft.effTip":
+    "Fatturato netto meno gli euro davvero arrivati sul conto. Non dipende dagli stati di Aruba (che possono essere indietro) ne' dagli abbinamenti. Affidabile quando l'archivio banca copre l'intero rapporto con questa controparte.",
   "ft.spiegaBtn": "Spiega bonifici",
   "ft.spiegaTip":
     "Per ogni bonifico non attribuito cerca la combinazione esatta di documenti aperti che lo compone: fatture, note di credito non collegate, perfino le fatture di questa controparte verso di noi. Sono proposte — non si salva nulla finché non premi Applica.",
