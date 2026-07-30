@@ -234,21 +234,24 @@ export function aggregaIncassiAruba(
 ): Map<string, { incassato: number; ultimaData: string; rate: number }> {
   const valide = fatture.filter((f) => !esclusi.has(f.nomeFile));
   const perChiave = new Map<string, FatturaRaw>();
-  for (const f of valide)
+  // Indice per il fallback (stesso numero, controparte scritta diversamente):
+  // PRECALCOLATO, mai una scansione lineare. La versione con `find` dentro il
+  // ciclo rinormalizzava ogni numero a ogni rata — migliaia di rate per
+  // migliaia di fatture = decine di milioni di regex, e il browser si
+  // bloccava per ore sull'import del report movimenti.
+  const perNumero = new Map<string, FatturaRaw>();
+  for (const f of valide) {
     perChiave.set(`${f.direzione}|${clienteGroupKey(f.cliente)}|${normalizeTesto(f.numero)}`, f);
+    const kNum = `${f.direzione}|${normalizeTesto(f.numero)}`;
+    if (!perNumero.has(kNum)) perNumero.set(kNum, f);
+  }
   const out = new Map<string, { incassato: number; ultimaData: string; rate: number }>();
   for (const m of movimenti) {
     const direzione: DirezioneFattura = m.flusso === "INCASSO" ? "Emessa" : "Ricevuta";
+    const numero = normalizeTesto(m.numeroFattura);
     const f =
-      perChiave.get(
-        `${direzione}|${clienteGroupKey(m.cliente)}|${normalizeTesto(m.numeroFattura)}`,
-      ) ??
-      // fallback: stesso numero e direzione, controparte non combaciante
-      // (ragione sociale scritta diversamente nei due export)
-      valide.find(
-        (x) =>
-          x.direzione === direzione && normalizeTesto(x.numero) === normalizeTesto(m.numeroFattura),
-      );
+      perChiave.get(`${direzione}|${clienteGroupKey(m.cliente)}|${numero}`) ??
+      perNumero.get(`${direzione}|${numero}`);
     if (!f) continue;
     const v = out.get(f.nomeFile) ?? { incassato: 0, ultimaData: "", rate: 0 };
     v.incassato = Math.round((v.incassato + m.importo) * 100) / 100;

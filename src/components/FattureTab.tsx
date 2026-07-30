@@ -165,30 +165,72 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       toast.error(t("ft.movNessuna"), { description: t("ft.movNessunaDesc") });
       return;
     }
+    const perFile = new Map(tutte.map((f) => [f.nomeFile, f]));
+    // Ai REIMPORT la stragrande maggioranza delle fatture ha già lo stesso
+    // incassato: quelle righe non si mandano proprio al server. È la
+    // differenza fra rifare tutto e aggiornare solo ciò che è cambiato.
     const perDirezione = (d: DirezioneFattura) =>
       [...mappa.entries()]
-        .filter(([file]) => tutte.find((f) => f.nomeFile === file)?.direzione === d)
+        .filter(([file, v]) => {
+          const f = perFile.get(file);
+          if (!f || f.direzione !== d) return false;
+          const stessaData = !v.ultimaData || v.ultimaData === (f.dataIncasso ?? "");
+          return (f.incassatoAruba ?? null) !== v.incassato || !stessaData;
+        })
         .map(([nomeFile, v]) => ({
           nomeFile,
           incassato: v.incassato,
           ultimaData: v.ultimaData || undefined,
         }));
+    const daFare = {
+      Emessa: perDirezione("Emessa"),
+      Ricevuta: perDirezione("Ricevuta"),
+    };
+    const invariate = mappa.size - daFare.Emessa.length - daFare.Ricevuta.length;
+    const blocchiTot =
+      Math.ceil(daFare.Emessa.length / CHUNK) + Math.ceil(daFare.Ricevuta.length / CHUNK);
     let aggiornate = 0;
-    for (const d of ["Emessa", "Ricevuta"] as DirezioneFattura[]) {
-      const righe = perDirezione(d);
-      for (let i = 0; i < righe.length; i += CHUNK) {
-        const res = (await spSetIncassiAruba({
-          data: { righe: righe.slice(i, i + CHUNK), direzione: d },
-        })) as { aggiornate: number; errori: string[] };
-        aggiornate += res.aggiornate;
+    let blocco = 0;
+    // Progresso visibile e timeout per blocco: un caricamento non deve mai
+    // sembrare morto, né poterlo essere davvero. Se un blocco si pianta,
+    // l'errore dice quanto è stato applicato: ricaricare lo stesso file
+    // riparte da lì (le righe già applicate vengono saltate).
+    const tid =
+      blocchiTot > 0 ? toast.loading(`${t("ft.movProgress")} 0/${blocchiTot}`) : undefined;
+    const conTimeout = <T,>(p: Promise<T>): Promise<T> =>
+      Promise.race([
+        p,
+        new Promise<never>((_, rej) =>
+          setTimeout(() => rej(new Error(t("ft.movTimeout"))), 120000),
+        ),
+      ]);
+    try {
+      for (const d of ["Emessa", "Ricevuta"] as DirezioneFattura[]) {
+        const righe = daFare[d];
+        for (let i = 0; i < righe.length; i += CHUNK) {
+          const res = (await conTimeout(
+            spSetIncassiAruba({ data: { righe: righe.slice(i, i + CHUNK), direzione: d } }),
+          )) as { aggiornate: number; errori: string[] };
+          aggiornate += res.aggiornate;
+          blocco++;
+          if (tid) toast.loading(`${t("ft.movProgress")} ${blocco}/${blocchiTot}`, { id: tid });
+        }
       }
+    } catch (err) {
+      if (tid) toast.dismiss(tid);
+      toast.error(t("common.error"), {
+        description: `${err instanceof Error ? err.message : String(err)} — ${blocco}/${blocchiTot} ${t("ft.movRipresa")}`,
+      });
+      load();
+      return;
     }
+    if (tid) toast.dismiss(tid);
     setEsitoImport((prev) => ({
       nuove: prev?.nuove ?? 0,
       aggiornate: prev?.aggiornate ?? 0,
       doppioni: prev?.doppioni ?? 0,
       rate: mov.length,
-      fattureIncassi: aggiornate,
+      fattureIncassi: aggiornate + invariate,
       errori: prev?.errori ?? [],
     }));
     load();

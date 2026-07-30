@@ -3665,7 +3665,18 @@ export async function setIncassiAruba(
   const esistenti = new Map((await fetchFatture(direzione)).map((f) => [f.nomeFile, f]));
   const result = { aggiornate: 0, errori: [] as string[] };
   const BATCH = 4;
-  const daFare = righe.filter((r) => esistenti.has(r.nomeFile));
+  // Solo le righe che CAMBIANO qualcosa: ai reimport la maggior parte delle
+  // fatture ha già lo stesso incassato, e ogni PATCH risparmiata è tempo.
+  const daFare = righe.filter((r) => {
+    const prev = esistenti.get(r.nomeFile);
+    if (!prev) return false;
+    const stessaData = !r.ultimaData || r.ultimaData === (prev.dataIncasso ?? "");
+    return (prev.incassatoAruba ?? null) !== r.incassato || !stessaData;
+  });
+  // Le identiche sono comunque "a posto": contarle evita che il riepilogo
+  // sembri aver saltato metà file.
+  result.aggiornate +=
+    righe.length - daFare.length - righe.filter((r) => !esistenti.has(r.nomeFile)).length;
   for (let i = 0; i < daFare.length; i += BATCH) {
     const blocco = daFare.slice(i, i + BATCH);
     const esiti = await Promise.allSettled(

@@ -729,6 +729,10 @@ const en = {
   "ft.ncCompensata": "settled",
   "ft.ncDaCompensare": "to settle",
   "ft.annullataNCTip": "Credit notes cover the whole amount: nothing left to collect.",
+  "ft.movProgress": "Applying collections — block",
+  "ft.movTimeout": "The server did not respond within 2 minutes",
+  "ft.movRipresa":
+    "blocks applied. Re-upload the same file to finish: rows already applied are skipped automatically.",
   "ft.movApplicati": "Collected amounts updated",
   "ft.movApplicatiDesc": "invoices updated from the Aruba movements report",
   "ft.movRate": "instalments read",
@@ -1587,6 +1591,10 @@ const it: Record<DictKey, string> = {
   "ft.ncDaCompensare": "da compensare",
   "ft.annullataNCTip":
     "Le note di credito coprono l'intero importo: non c'è più nulla da incassare.",
+  "ft.movProgress": "Applico gli incassi — blocco",
+  "ft.movTimeout": "Il server non ha risposto entro 2 minuti",
+  "ft.movRipresa":
+    "blocchi applicati. Ricarica lo stesso file per completare: le righe già applicate vengono saltate da sole.",
   "ft.movApplicati": "Incassi aggiornati",
   "ft.movApplicatiDesc": "fatture aggiornate dal report movimenti di Aruba",
   "ft.movRate": "rate lette",
