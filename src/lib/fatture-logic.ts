@@ -344,10 +344,56 @@ export function collegaNoteCredito(
  *  senza descrizione è quella generica). */
 export function giorniPerCliente(cliente: string, termini: readonly TerminePagamento[]): number {
   const key = clienteGroupKey(cliente);
-  const match = termini.filter((t) => clienteGroupKey(t.cliente) === key && t.giorni > 0);
+  let match = termini.filter((t) => clienteGroupKey(t.cliente) === key && t.giorni > 0);
+  if (!match.length) {
+    // Il foglio contratti usa nomi BREVI ("IMILE" per "IMILE ITALY SRL"):
+    // vale il termine il cui nome e' interamente contenuto nel nome del
+    // cliente; a parita', vince il piu' specifico (piu' parole).
+    const parole = new Set(key.split(" ").filter(Boolean));
+    match = termini
+      .filter((t) => {
+        if (t.giorni <= 0) return false;
+        const tk = clienteGroupKey(t.cliente).split(" ").filter(Boolean);
+        return tk.length > 0 && tk.every((x) => parole.has(x));
+      })
+      .sort(
+        (a, b) =>
+          clienteGroupKey(b.cliente).split(" ").length -
+          clienteGroupKey(a.cliente).split(" ").length,
+      );
+  }
   if (!match.length) return TERMINI_DEFAULT_GIORNI;
   const generico = match.find((t) => !t.descrizione?.trim());
   return (generico ?? match[0]).giorni;
+}
+
+// --- Import del foglio contratti del direttore -------------------------------
+// "CLIENTI_FORNITORI check contratti.xlsx": colonna "GG pagamento" = giorni
+// contrattuali VERIFICATI per cliente. Righe senza valore = default 30 a
+// runtime (non si salvano). Riconosciuto dalle intestazioni, come gli altri.
+
+export interface TermineImport {
+  cliente: string;
+  giorni: number;
+}
+
+export function parseTerminiMatrice(matrix: unknown[][]): TermineImport[] | null {
+  const headerIdx = matrix.findIndex((r) => {
+    const c = r.map((x) => normalizeTesto(String(x ?? "")));
+    return c.includes("cliente") && c.includes("gg pagamento");
+  });
+  if (headerIdx < 0) return null;
+  const header = matrix[headerIdx].map((c) => normalizeTesto(String(c ?? "")));
+  const iCli = header.indexOf("cliente");
+  const iGg = header.indexOf("gg pagamento");
+  const out: TermineImport[] = [];
+  for (const r of matrix.slice(headerIdx + 1)) {
+    const cliente = String(r[iCli] ?? "").trim();
+    const giorni = Number(r[iGg]);
+    if (!cliente || !Number.isFinite(giorni) || giorni <= 0) continue;
+    out.push({ cliente, giorni: Math.round(giorni) });
+  }
+  return out.length ? out : null;
 }
 
 export function scadenzaFattura(dataDocumento: string, giorni: number): string {
@@ -417,11 +463,16 @@ export function computeStatoFattura(
   /** Importo delle note di credito collegate: il credito si calcola al netto. */
   notaCredito = 0,
 ): FatturaStato {
-  // La scadenza dichiarata in fattura (XML DatiPagamento) vince sui termini.
+  // ATTIVE: la scadenza si calcola SEMPRE dai termini contrattuali per
+  // cliente (foglio contratti del direttore; senza termine = 30 giorni): il
+  // conteggio del ritardo parte da li'. Per le PASSIVE ("solo attive per
+  // ora") vale ancora la scadenza dichiarata nell'XML, quando c'e'.
   const scadenza =
-    f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza)
-      ? f.scadenza
-      : scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini));
+    f.direzione === "Emessa"
+      ? scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini))
+      : f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza)
+        ? f.scadenza
+        : scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini));
   // Le note di credito non si "incassano" e le scartate/rifiutate dallo SdI
   // non sono crediti: entrambe fuori dal computo di residui e ritardi.
   if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) {

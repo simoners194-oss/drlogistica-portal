@@ -954,6 +954,18 @@ function FinanzaPage() {
                 >
                   {fmtImporto(ebSaldoInfo.saldo)} {ebSaldoInfo.divisa}
                 </div>
+                {/* I due saldi del conto, come sull'home banking: contabile
+                    (in grande) e disponibile. */}
+                <div className="text-[11px] text-muted-foreground">
+                  {t("fin.saldoContabile")}
+                  {ebSaldoInfo.disponibile != null && (
+                    <>
+                      {" · "}
+                      {t("fin.saldoDisponibile")}:{" "}
+                      <b className="tabular-nums">{fmtImporto(ebSaldoInfo.disponibile)}</b>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>

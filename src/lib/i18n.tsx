@@ -584,6 +584,8 @@ const en = {
   "fin.ebSaldoImpostato": "Balance saved.",
   "fin.ebSaldoNonValido": "Amount not recognized: use e.g. 191493,13.",
   "fin.saldo": "Balance",
+  "fin.saldoContabile": "booked balance",
+  "fin.saldoDisponibile": "available",
   "fin.page": "Page",
   "fin.pageOf": "of",
   "fin.aggiorna": "Refresh",
@@ -878,6 +880,14 @@ const en = {
   "ft.spiegaContro": "counterparty invoice to us, offset inside the transfer: nothing to save",
   "ft.spiegaNc":
     "unlinked credit note: applying will link it to the largest invoice in this combination",
+  "ft.terminiOk": "Payment terms updated from the contracts sheet",
+  "ft.terminiUguali": "unchanged",
+  "ft.ggTermine": "Terms (days)",
+  "ft.ggTermineTip":
+    "Contractual payment days for this client (from the contracts sheet; 30 by default). Due dates and overdue counting start from here.",
+  "ft.mediaGg": "Avg days to pay",
+  "ft.mediaGgTip":
+    "Average days between invoice date and recorded collection date, over collected invoices. Red when the client pays later than the contractual terms.",
   "ft.deltaFattBanca": "Δ invoicing−bank",
   "ft.deltaTip":
     "Collected per invoicing minus what the bank matches confirm. A red figure means Aruba records money the account has no trace of — or the other way round.",
@@ -1474,6 +1484,8 @@ const it: Record<DictKey, string> = {
   "fin.ebSaldoImpostato": "Saldo impostato.",
   "fin.ebSaldoNonValido": "Importo non riconosciuto: usare ad es. 191493,13.",
   "fin.saldo": "Saldo",
+  "fin.saldoContabile": "saldo contabile",
+  "fin.saldoDisponibile": "disponibile",
   "fin.page": "Pagina",
   "fin.pageOf": "di",
   "fin.aggiorna": "Aggiorna",
@@ -1770,6 +1782,14 @@ const it: Record<DictKey, string> = {
     "fattura della controparte verso di noi, compensata dentro il bonifico: niente da salvare",
   "ft.spiegaNc":
     "nota di credito non collegata: applicando verrà collegata alla fattura più grande di questa combinazione",
+  "ft.terminiOk": "Termini di pagamento aggiornati dal foglio contratti",
+  "ft.terminiUguali": "invariati",
+  "ft.ggTermine": "Termine gg",
+  "ft.ggTermineTip":
+    "Giorni di pagamento contrattuali del cliente (dal foglio contratti; 30 di default). Scadenze e conteggio del ritardo partono da qui.",
+  "ft.mediaGg": "Media gg incasso",
+  "ft.mediaGgTip":
+    "Giorni medi tra data fattura e data incasso registrata, sulle fatture incassate. Rossa quando il cliente paga oltre il termine contrattuale.",
   "ft.deltaFattBanca": "Δ fatt.−banca",
   "ft.deltaTip":
     "Incassato secondo la fatturazione meno quanto confermano gli abbinamenti bancari. Una cifra in rosso significa che Aruba registra soldi di cui il conto non ha traccia — o il contrario.",

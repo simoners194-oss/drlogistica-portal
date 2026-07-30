@@ -76,6 +76,7 @@ import {
   setRettificaNumero,
   setIncassoManuale,
   trovaFattureSenzaCliente,
+  importTermini,
   eliminaFatture,
   fetchAbbinamenti,
   createAbbinamenti,
@@ -990,6 +991,23 @@ export const spEliminaFatture = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     await assertDirettore(await currentUser());
     return eliminaFatture(data.ids, data.direzione);
+  });
+
+// Termini di pagamento dal foglio contratti (upsert per cliente).
+export const spImportTermini = createServerFn({ method: "POST" })
+  .inputValidator((input: { rows: { cliente: string; giorni: number }[] }) => {
+    if (!Array.isArray(input?.rows) || input.rows.length === 0)
+      throw new Error("Nessun termine da importare");
+    if (input.rows.length > 200) throw new Error("Blocco troppo grande (max 200)");
+    return {
+      rows: input.rows
+        .map((r) => ({ cliente: String(r?.cliente ?? "").trim(), giorni: Number(r?.giorni) }))
+        .filter((r) => r.cliente && Number.isFinite(r.giorni) && r.giorni > 0),
+    };
+  })
+  .handler(async ({ data }) => {
+    await assertDirettore(await currentUser());
+    return importTermini(data.rows);
   });
 
 export const spGetTerminiPagamento = createServerFn({ method: "GET" }).handler(

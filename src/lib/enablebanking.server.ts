@@ -234,7 +234,13 @@ export async function ebSaldo(
   cred: EbCredenziali,
   contoUid: string,
   psu?: EbPsu,
-): Promise<{ saldo: number; divisa: string; tipo: string; riferimento: string } | null> {
+): Promise<{
+  saldo: number;
+  disponibile?: number;
+  divisa: string;
+  tipo: string;
+  riferimento: string;
+} | null> {
   const res = await ebCall<{ balances?: EbBalanceRow[] }>(
     cred,
     "GET",
@@ -244,15 +250,21 @@ export async function ebSaldo(
   );
   const saldi = res.balances ?? [];
   if (!saldi.length) return null;
-  const PREFERITI = ["ITBD", "CLBD", "CLAV", "ITAV"]; // interim/closing booked prima
-  const scelto =
-    PREFERITI.map((t) => saldi.find((b) => (b.balance_type ?? "").toUpperCase() === t)).find(
-      Boolean,
-    ) ?? saldi[0];
+  const pesca = (tipi: string[]) =>
+    tipi.map((t) => saldi.find((b) => (b.balance_type ?? "").toUpperCase() === t)).find(Boolean);
+  // CONTABILE (booked, coerente con le transazioni BOOK) e DISPONIBILE
+  // (available): la banca li espone entrambi e il direttore li vuole entrambi.
+  const scelto = pesca(["ITBD", "CLBD"]) ?? saldi[0];
+  const dispo = pesca(["ITAV", "CLAV", "XPCD", "FWAV"]);
   const importo = Number(scelto.balance_amount?.amount ?? "");
   if (!Number.isFinite(importo)) return null;
+  const importoDispo = dispo ? Number(dispo.balance_amount?.amount ?? "") : NaN;
   return {
     saldo: Math.round(importo * 100) / 100,
+    disponibile:
+      dispo && dispo !== scelto && Number.isFinite(importoDispo)
+        ? Math.round(importoDispo * 100) / 100
+        : undefined,
     divisa: scelto.balance_amount?.currency ?? "EUR",
     tipo: scelto.balance_type ?? scelto.name ?? "",
     riferimento: (scelto.reference_date ?? scelto.last_change_date_time ?? "").slice(0, 10),

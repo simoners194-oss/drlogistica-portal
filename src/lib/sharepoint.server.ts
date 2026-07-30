@@ -53,6 +53,7 @@ import {
   applicaRegole,
   matchRegola,
   LEGACY_IMPORT_ID,
+  clienteGroupKey,
   type MovimentoRaw,
   type RegolaFinanza,
 } from "./finanza-logic";
@@ -4166,6 +4167,56 @@ export async function eliminaFatture(
   return result;
 }
 
+/** Import dei TERMINI DI PAGAMENTO dal foglio contratti del direttore:
+ *  upsert per cliente (chiave canonica), i giorni si aggiornano al cambio. */
+export async function importTermini(
+  rows: readonly { cliente: string; giorni: number }[],
+): Promise<{ nuovi: number; aggiornati: number; invariati: number }> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listTermini)
+    throw new Error('Lista "TerminiPagamento" assente su SharePoint: crearla e fare Riscopri.');
+  const F = cfg.terminiFields;
+  const res = await gatewayJson<GraphListResponse<Record<string, unknown>>>(
+    `/sites/${cfg.siteId}/lists/${cfg.listTermini}/items?expand=fields&$top=999`,
+  );
+  const esistenti = res.value.map((it) => ({
+    id: String(it.id),
+    cliente: F.Cliente ? String((it.fields ?? {})[F.Cliente] ?? "").trim() : "",
+    giorni: F.Giorni ? (numOrUndef((it.fields ?? {})[F.Giorni]) ?? 0) : 0,
+  }));
+  const out = { nuovi: 0, aggiornati: 0, invariati: 0 };
+  for (const r of rows) {
+    const key = clienteGroupKey(r.cliente);
+    const prev = esistenti.find((e) => clienteGroupKey(e.cliente) === key);
+    if (prev) {
+      if (prev.giorni === r.giorni) {
+        out.invariati++;
+        continue;
+      }
+      await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listTermini}/items/${prev.id}/fields`, {
+        method: "PATCH",
+        body: JSON.stringify({ [F.Giorni ?? "Giorni"]: r.giorni }),
+      });
+      out.aggiornati++;
+    } else {
+      const fields: Record<string, unknown> = { Title: r.cliente };
+      if (F.Cliente) fields[F.Cliente] = r.cliente;
+      if (F.Giorni) fields[F.Giorni] = r.giorni;
+      await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listTermini}/items`, {
+        method: "POST",
+        body: JSON.stringify({ fields }),
+      });
+      out.nuovi++;
+    }
+  }
+  logSp(
+    "info",
+    "termini.import",
+    `Termini di pagamento: ${out.nuovi} nuovi, ${out.aggiornati} aggiornati, ${out.invariati} invariati`,
+  );
+  return out;
+}
+
 export interface ImportFattureResult {
   ricevute: number;
   importate: number;
@@ -4729,6 +4780,9 @@ export async function ebProvaApplicazione(): Promise<{
 
 export interface EbSaldoInfo {
   saldo: number;
+  /** Saldo DISPONIBILE (available), quando la banca lo espone: il "saldo
+   *  normale" dell'home banking, accanto al contabile. */
+  disponibile?: number;
   divisa: string;
   tipo: string;
   riferimento: string;

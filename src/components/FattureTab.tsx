@@ -32,6 +32,8 @@ import {
   isEsclusaDalCredito,
   collegaNoteCredito,
   parseMovimentiArubaMatrice,
+  parseTerminiMatrice,
+  giorniPerCliente,
   aggregaIncassiAruba,
   type MovimentoAruba,
   TERMINI_DEFAULT_GIORNI,
@@ -62,6 +64,7 @@ import {
   spSetRettificaNumero,
   spSetIncassoManuale,
   spTrovaFattureSenzaCliente,
+  spImportTermini,
   spEliminaFatture,
 } from "@/lib/sharepoint.functions";
 import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
@@ -506,6 +509,10 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         incassatoBanca: number;
         residuo: number;
         ritardo: number;
+        /** Statistica del direttore: giorni medi data fattura → data incasso
+         *  (sulle incassate), da confrontare col termine contrattuale. */
+        sommaGg: number;
+        nGg: number;
       }
     >();
     for (const x of conStato) {
@@ -526,6 +533,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         incassatoBanca: 0,
         residuo: 0,
         ritardo: 0,
+        sommaGg: 0,
+        nGg: 0,
       };
       // Una nota di credito ABBASSA IL FATTURATO e basta: non è un incasso.
       // Il suo effetto sull'incassato è già dentro la fattura collegata, il
@@ -537,6 +546,18 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       if (!isNotaCredito(x.f.tipoDocumento)) {
         row.incassatoFatt += x.s.incassatoIncassi ?? x.s.incassatoFatturazione ?? 0;
         row.incassatoBanca += x.s.incassatoBanca;
+        // "anche il pagato dev'essere contato": la media dei giorni di
+        // incasso si calcola su TUTTE le fatture con data incasso nota.
+        if (x.f.dataIncasso && x.f.dataDocumento) {
+          const gg =
+            (new Date(`${x.f.dataIncasso}T00:00:00`).getTime() -
+              new Date(`${x.f.dataDocumento}T00:00:00`).getTime()) /
+            86400000;
+          if (Number.isFinite(gg) && gg >= 0) {
+            row.sommaGg += gg;
+            row.nGg++;
+          }
+        }
       }
       if (x.s.stato !== "NC") {
         row.nFatture++;
@@ -1150,6 +1171,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     try {
       const rows: FatturaRaw[] = [];
       let scartate = 0;
+      let terminiCaricati = false;
       // Report MOVIMENTI di Aruba: rate incassate per fattura (i parziali).
       const movAruba: MovimentoAruba[] = [];
       const decoder = new TextDecoder("utf-8");
@@ -1191,6 +1213,25 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
               trovato = true;
               break;
             }
+            // Foglio contratti del direttore: colonna "GG pagamento" =
+            // termini per cliente. Si importano subito (upsert) e le
+            // scadenze/ritardi si ricalcolano da soli.
+            const term = parseTerminiMatrice(matrix);
+            if (term) {
+              terminiCaricati = true;
+              const esito = (await spImportTermini({ data: { rows: term } })) as {
+                nuovi: number;
+                aggiornati: number;
+                invariati: number;
+              };
+              const agg = (await spGetTerminiPagamento()) as TerminePagamento[];
+              setTermini(agg);
+              toast.success(t("ft.terminiOk"), {
+                description: `${esito.nuovi} ${t("ft.importNew")} · ${esito.aggiornati} ${t("ft.importUpd")} · ${esito.invariati} ${t("ft.terminiUguali")}`,
+              });
+              trovato = true;
+              break;
+            }
           }
           if (!trovato) scartate++;
         } else {
@@ -1203,6 +1244,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         await applicaIncassiAruba(movAruba);
         return;
       }
+      // Solo foglio contratti: l'import dei termini e' gia' avvenuto sopra.
+      if (rows.length === 0 && terminiCaricati) return;
       if (rows.length === 0) {
         toast.error(t("ft.errFile"), { description: t("ft.errFileDesc") });
         return;
@@ -2351,6 +2394,19 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   <th className="py-1.5 pr-2 text-right">
                     {tp("ft.totDaIncassare", "ft.totDaPagare")}
                   </th>
+                  {/* La statistica del direttore: termine contrattuale vs
+                      giorni medi effettivi (Postadoc: 60 gg sulla carta,
+                      paga a 88,7). */}
+                  {!ricevute && (
+                    <>
+                      <th className="py-1.5 pr-2 text-right" title={t("ft.ggTermineTip")}>
+                        {t("ft.ggTermine")}
+                      </th>
+                      <th className="py-1.5 pr-2 text-right" title={t("ft.mediaGgTip")}>
+                        {t("ft.mediaGg")}
+                      </th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -2408,10 +2464,40 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                       >
                         {fmtImporto(r.residuo)}
                       </td>
+                      {!ricevute &&
+                        (() => {
+                          const termine = giorniPerCliente(r.cliente, termini);
+                          const media = r.nGg > 0 ? r.sommaGg / r.nGg : null;
+                          return (
+                            <>
+                              <td
+                                className="py-1 pr-2 text-right tabular-nums text-muted-foreground"
+                                title={t("ft.ggTermineTip")}
+                              >
+                                {termine}
+                              </td>
+                              <td
+                                className={`py-1 pr-2 text-right tabular-nums ${media != null && media > termine ? "text-status-absent font-medium" : "text-muted-foreground"}`}
+                                title={
+                                  media != null
+                                    ? `${r.nGg} ${t("ft.pagata").toLowerCase()}`
+                                    : undefined
+                                }
+                              >
+                                {media != null
+                                  ? media.toLocaleString("it-IT", {
+                                      minimumFractionDigits: 1,
+                                      maximumFractionDigits: 1,
+                                    })
+                                  : ""}
+                              </td>
+                            </>
+                          );
+                        })()}
                     </tr>,
                     aperto && (
                       <tr key={`${r.key}-det`} className="border-b border-border/50">
-                        <td colSpan={10} className="py-2 px-3 bg-muted/20">
+                        <td colSpan={ricevute ? 10 : 12} className="py-2 px-3 bg-muted/20">
                           {/* Dettaglio del cliente: le sue fatture, con le tre
                               letture affiancate come nella tabella principale. */}
                           <table className="w-full text-[12px]">
