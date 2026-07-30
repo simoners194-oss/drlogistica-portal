@@ -56,11 +56,12 @@ import {
   type MovimentoRaw,
   type RegolaFinanza,
 } from "./finanza-logic";
-import type {
-  FatturaRaw,
-  TerminePagamento,
-  AbbinamentoIncasso,
-  DirezioneFattura,
+import {
+  isNotaCredito,
+  type FatturaRaw,
+  type TerminePagamento,
+  type AbbinamentoIncasso,
+  type DirezioneFattura,
 } from "./fatture-logic";
 import {
   ebApplicazione,
@@ -3992,6 +3993,13 @@ function mapFattura(
   const f = it.fields ?? {};
   const iso = (v: unknown) => String(v ?? "").slice(0, 10);
   const scad = F.ScadenzaPagamento ? iso(f[F.ScadenzaPagamento]) : "";
+  // Nota di credito = importi NEGATIVI, sempre. I parser lo garantiscono da
+  // un certo punto in poi, ma le righe importate prima restano positive su
+  // SharePoint (gli importi delle righe esistenti non si ritoccano mai):
+  // il segno si impone qui, alla lettura, così vale per tutto lo storico.
+  const tipoDocumento = F.TipoDocumento ? String(f[F.TipoDocumento] ?? "") : "";
+  const segno = isNotaCredito(tipoDocumento) ? -1 : 1;
+  const importo = (v: unknown) => segno * Math.abs(numOrUndef(v) ?? 0);
   return {
     id: String(it.id),
     nomeFile: String(f["Title"] ?? ""),
@@ -3999,14 +4007,14 @@ function mapFattura(
     idSdi: F.IdSdi ? String(f[F.IdSdi] ?? "") : "",
     dataInvio: F.DataInvio ? iso(f[F.DataInvio]) : "",
     dataDocumento: F.DataDocumento ? iso(f[F.DataDocumento]) : "",
-    tipoDocumento: F.TipoDocumento ? String(f[F.TipoDocumento] ?? "") : "",
+    tipoDocumento,
     cliente: F.Cliente ? String(f[F.Cliente] ?? "") : "",
     piva: F.PIVA ? String(f[F.PIVA] ?? "") : "",
     metodoPagamento: F.MetodoPagamento ? String(f[F.MetodoPagamento] ?? "") : "",
-    imponibile: F.Imponibile ? (numOrUndef(f[F.Imponibile]) ?? 0) : 0,
-    iva: F.Iva ? (numOrUndef(f[F.Iva]) ?? 0) : 0,
-    totale: F.TotaleDocumento ? (numOrUndef(f[F.TotaleDocumento]) ?? 0) : 0,
-    netto: F.NettoAPagare ? (numOrUndef(f[F.NettoAPagare]) ?? 0) : 0,
+    imponibile: F.Imponibile ? importo(f[F.Imponibile]) : 0,
+    iva: F.Iva ? importo(f[F.Iva]) : 0,
+    totale: F.TotaleDocumento ? importo(f[F.TotaleDocumento]) : 0,
+    netto: F.NettoAPagare ? importo(f[F.NettoAPagare]) : 0,
     statoSdI: F.StatoSdI ? String(f[F.StatoSdI] ?? "") : "",
     direzione,
     scadenza: /^\d{4}-\d{2}-\d{2}$/.test(scad) ? scad : undefined,
