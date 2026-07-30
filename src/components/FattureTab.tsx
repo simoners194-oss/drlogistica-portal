@@ -1817,6 +1817,11 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   <th className="py-1.5 pr-2 text-right">
                     {tp("ft.totIncassatoBanca", "ft.totPagatoBanca")}
                   </th>
+                  {/* Il colpo d'occhio chiesto dal direttore: dove la
+                      fatturazione dice "incassato" ma la banca non copre. */}
+                  <th className="py-1.5 pr-2 text-right" title={t("ft.deltaTip")}>
+                    {t("ft.deltaFattBanca")}
+                  </th>
                   <th className="py-1.5 pr-2 text-right">
                     {tp("ft.totDaIncassare", "ft.totDaPagare")}
                   </th>
@@ -1856,6 +1861,17 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                       <td className="py-1 pr-2 text-right tabular-nums text-muted-foreground">
                         {fmtImporto(r.incassatoBanca)}
                       </td>
+                      {(() => {
+                        const delta = Math.round((r.incassatoFatt - r.incassatoBanca) * 100) / 100;
+                        return (
+                          <td
+                            className={`py-1 pr-2 text-right tabular-nums ${Math.abs(delta) > TOLLERANZA_SALDO ? "text-status-absent font-medium" : "text-muted-foreground"}`}
+                            title={t("ft.deltaTip")}
+                          >
+                            {Math.abs(delta) > TOLLERANZA_SALDO ? fmtImporto(delta) : ""}
+                          </td>
+                        );
+                      })()}
                       <td
                         className={`py-1 pr-2 text-right tabular-nums font-medium ${r.ritardo > 0 ? "text-status-absent" : ""}`}
                         title={
@@ -1869,7 +1885,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                     </tr>,
                     aperto && (
                       <tr key={`${r.key}-det`} className="border-b border-border/50">
-                        <td colSpan={9} className="py-2 px-3 bg-muted/20">
+                        <td colSpan={10} className="py-2 px-3 bg-muted/20">
                           {/* Dettaglio del cliente: le sue fatture, con le tre
                               letture affiancate come nella tabella principale. */}
                           <table className="w-full text-[12px]">
@@ -1978,6 +1994,41 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                                     ({estrattoCliente.nNonAttribuiti})
                                   </span>
                                 )}
+                                {/* La scomposizione della differenza: quanto
+                                    dell'incassato di fatturazione la banca non
+                                    copre, e quanto ne resterebbe scoperto anche
+                                    abbinando tutti i movimenti non attribuiti.
+                                    È il numero da spiegare: altri conti,
+                                    periodi non importati o compensazioni. */}
+                                {(() => {
+                                  const delta =
+                                    Math.round(
+                                      (estrattoCliente.incassatoFatt -
+                                        estrattoCliente.incassatoBanca) *
+                                        100,
+                                    ) / 100;
+                                  const scoperto =
+                                    Math.round((delta - estrattoCliente.nonAttribuito) * 100) / 100;
+                                  if (Math.abs(delta) <= TOLLERANZA_SALDO) return null;
+                                  return (
+                                    <span title={t("ft.deltaTip")}>
+                                      {t("ft.deltaFattBanca")}:{" "}
+                                      <b className="tabular-nums text-status-absent">
+                                        {fmtImporto(delta)}
+                                      </b>
+                                      {Math.abs(scoperto) > TOLLERANZA_SALDO && (
+                                        <span
+                                          className="text-muted-foreground"
+                                          title={t("ft.senzaTracciaTip")}
+                                        >
+                                          {" "}
+                                          · {t("ft.senzaTraccia")}:{" "}
+                                          <b className="tabular-nums">{fmtImporto(scoperto)}</b>
+                                        </span>
+                                      )}
+                                    </span>
+                                  );
+                                })()}
                                 <button
                                   type="button"
                                   onClick={(e) => {

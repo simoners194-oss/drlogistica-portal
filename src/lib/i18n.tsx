@@ -833,6 +833,12 @@ const en = {
   "ft.totPagatoBanca": "Paid (bank)",
   "ft.totDaPagare": "To pay",
   "ft.discordantePassiva": "paid from the account but not recorded in Aruba",
+  "ft.deltaFattBanca": "Δ invoicing−bank",
+  "ft.deltaTip":
+    "Collected per invoicing minus what the bank matches confirm. A red figure means Aruba records money the account has no trace of — or the other way round.",
+  "ft.senzaTraccia": "no bank trace",
+  "ft.senzaTracciaTip":
+    "Part of the invoicing-collected amount with no counterpart even among this client's unmatched movements: other accounts, periods not imported, or set-offs.",
   "ft.collegaA": "Corrects invoice",
   "ft.collegaNessuna": "— not linked —",
   "ft.collegataOra": "currently linked to",
@@ -1663,6 +1669,12 @@ const it: Record<DictKey, string> = {
   "ft.totPagatoBanca": "Pagato banca",
   "ft.totDaPagare": "Da pagare",
   "ft.discordantePassiva": "risulta pagata dal conto ma non su Aruba",
+  "ft.deltaFattBanca": "Δ fatt.−banca",
+  "ft.deltaTip":
+    "Incassato secondo la fatturazione meno quanto confermano gli abbinamenti bancari. Una cifra in rosso significa che Aruba registra soldi di cui il conto non ha traccia — o il contrario.",
+  "ft.senzaTraccia": "senza riscontro in banca",
+  "ft.senzaTracciaTip":
+    "Parte dell'incassato di fatturazione che non trova riscontro nemmeno fra i movimenti non attribuiti di questa controparte: altri conti, periodi non importati o compensazioni.",
   "ft.collegaA": "Rettifica la fattura",
   "ft.collegaNessuna": "— nessuna —",
   "ft.collegataOra": "ora collegata a",
