@@ -35,6 +35,10 @@ import {
   type MovimentoAruba,
   TERMINI_DEFAULT_GIORNI,
   TOLLERANZA_SALDO,
+  SPIEGA_TOLLERANZA,
+  spiegaBonifici,
+  type PezzoSpiegazione,
+  type SpiegazioneBonifico,
   type AbbinamentoIncasso,
   type DirezioneFattura,
   type FatturaRaw,
@@ -506,6 +510,120 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       nNonAttribuiti: righe.filter((r) => r.residuo > TOLLERANZA_SALDO).length,
     };
   }, [clienteAperto, fattureDelCliente, movimenti, abbinamenti, ricevute]);
+
+  // --- Spiegazione bonifici (compensazioni incluse) -------------------------
+  // Il pulsante "Spiega bonifici" cerca, per ogni movimento non attribuito del
+  // cliente aperto, la combinazione di documenti che lo spiega al centesimo:
+  // fatture, note di credito non collegate, perfino fatture della controparte
+  // verso di noi. Le proposte restano tali finché non si preme Applica.
+  const [spiegazioni, setSpiegazioni] = useState<SpiegazioneBonifico[] | null>(null);
+  const [spiegaBusy, setSpiegaBusy] = useState(false);
+  useEffect(() => setSpiegazioni(null), [clienteAperto, direzione]);
+
+  const calcolaSpiegazioni = () => {
+    if (!estrattoCliente) return;
+    const pezzi: PezzoSpiegazione[] = [];
+    for (const x of fattureDelCliente) {
+      if (isNotaCredito(x.f.tipoDocumento)) {
+        // Solo le NC NON ancora collegate a una fattura: quelle collegate
+        // abbattono già il credito della fattura e non vanno contate due volte.
+        if (!x.f.rettificaNumero)
+          pezzi.push({
+            chiave: x.f.nomeFile,
+            etichetta: x.f.numero,
+            tipo: "NC",
+            valore: -Math.abs(x.f.totale),
+            totale: -Math.abs(x.f.totale),
+            data: x.f.dataDocumento,
+          });
+        continue;
+      }
+      // Valore atteso in banca: l'incassato registrato su Aruba quando c'è
+      // (è al netto delle trattenute), altrimenti il totale al netto delle NC
+      // collegate; meno quanto la banca ha già abbinato.
+      const base = Math.max(0, x.f.totale - (noteCredito.get(x.f.nomeFile)?.importo ?? 0));
+      const atteso =
+        (x.s.incassatoIncassi && x.s.incassatoIncassi > 0 ? x.s.incassatoIncassi : base) -
+        x.s.incassatoBanca;
+      if (atteso > SPIEGA_TOLLERANZA)
+        pezzi.push({
+          chiave: x.f.nomeFile,
+          etichetta: x.f.numero,
+          tipo: "FT",
+          valore: Math.round(atteso * 100) / 100,
+          totale: base,
+          data: x.f.dataDocumento,
+        });
+    }
+    // Fatture della controparte verso di noi (l'altra direzione): i clienti
+    // come iMile le compensano dentro i loro bonifici.
+    const altre = dir === "Emessa" ? (fattureRic ?? []) : (fattureEm ?? []);
+    for (const f of altre) {
+      if ((clienteGroupKey(f.cliente) || f.cliente) !== clienteAperto) continue;
+      if (isNotaCredito(f.tipoDocumento) || f.totale <= 0) continue;
+      pezzi.push({
+        chiave: f.nomeFile,
+        etichetta: f.numero,
+        tipo: "CONTRO",
+        valore: -f.totale,
+        totale: -f.totale,
+        data: f.dataDocumento,
+      });
+    }
+    const daSpiegare = estrattoCliente.righe
+      .filter((r) => r.residuo > SPIEGA_TOLLERANZA)
+      .map((r) => ({ chiave: r.m.chiave, dataContabile: r.m.dataContabile, importo: r.residuo }));
+    setSpiegazioni(spiegaBonifici(daSpiegare, pezzi));
+  };
+
+  // Applica UNA spiegazione: abbinamenti per le fatture, collegamento
+  // RettificaNumero per le note di credito (alla fattura più grande della
+  // stessa combinazione). Le fatture della controparte restano informative.
+  const applicaSpiegazione = async (s: SpiegazioneBonifico) => {
+    setSpiegaBusy(true);
+    try {
+      const ftPezzi = s.pezzi.filter((p) => p.tipo === "FT");
+      const ncPezzi = s.pezzi.filter((p) => p.tipo === "NC");
+      if (ftPezzi.length) {
+        await spCreateAbbinamenti({
+          data: {
+            rows: ftPezzi.map((p) => ({
+              fatturaFile: p.chiave,
+              movimentoChiave: s.movimentoChiave,
+              importo: p.valore,
+              origine: "Auto" as const,
+            })),
+          },
+        });
+      }
+      if (ncPezzi.length && ftPezzi.length) {
+        const grande = [...ftPezzi].sort((a, b) => b.valore - a.valore)[0];
+        for (const nc of ncPezzi)
+          await spSetRettificaNumero({
+            data: { nomeFile: nc.chiave, numeroFattura: grande.etichetta, direzione: dir },
+          });
+      }
+      // Ricarico tutto: abbinamenti, e fatture se ho toccato le NC.
+      const [abb, agg] = await Promise.all([
+        spGetAbbinamenti() as Promise<AbbinamentoIncasso[]>,
+        ncPezzi.length
+          ? (spGetFatture({ data: { direzione: dir } }) as Promise<SpFattura[]>)
+          : Promise.resolve(null),
+      ]);
+      setAbbinamenti(abb);
+      if (agg) (dir === "Emessa" ? setFattureEm : setFattureRic)(agg);
+      setSpiegazioni((prev) =>
+        prev ? prev.filter((x) => x.movimentoChiave !== s.movimentoChiave) : prev,
+      );
+      toast.success(t("ft.spiegaApplicata"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setSpiegaBusy(false);
+    }
+  };
 
   // Estratto conto del cliente in CSV: fatture e movimenti nello stesso file,
   // distinti dalla colonna Tipo, così la quadratura si rifà in Excel.
@@ -2029,18 +2147,114 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                                     </span>
                                   );
                                 })()}
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    esportaEstratto();
-                                  }}
-                                  className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[12px] hover:bg-muted"
-                                >
-                                  <Download className="h-3.5 w-3.5" />
-                                  {t("ft.esportaEstratto")}
-                                </button>
+                                <span className="ml-auto inline-flex items-center gap-2">
+                                  {estrattoCliente.nNonAttribuiti > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        calcolaSpiegazioni();
+                                      }}
+                                      title={t("ft.spiegaTip")}
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground"
+                                    >
+                                      <Wand2 className="h-3.5 w-3.5" />
+                                      {t("ft.spiegaBtn")}
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      esportaEstratto();
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[12px] hover:bg-muted"
+                                  >
+                                    <Download className="h-3.5 w-3.5" />
+                                    {t("ft.esportaEstratto")}
+                                  </button>
+                                </span>
                               </div>
+                              {/* Le proposte: ogni bonifico non attribuito con
+                                  la combinazione di documenti che lo spiega.
+                                  Niente si salva finché non si preme Applica. */}
+                              {spiegazioni && (
+                                <div className="mb-3 rounded-xl border border-border bg-background p-3">
+                                  <div className="text-[12px] font-semibold text-foreground mb-1.5">
+                                    {t("ft.spiegaTitolo")} (
+                                    {spiegazioni.filter((s) => s.pezzi.length).length}/
+                                    {spiegazioni.length})
+                                  </div>
+                                  {spiegazioni.length === 0 ? (
+                                    <p className="text-[12px] text-muted-foreground">
+                                      {t("ft.spiegaNiente")}
+                                    </p>
+                                  ) : (
+                                    <ul className="space-y-1.5">
+                                      {spiegazioni.map((s) => (
+                                        <li
+                                          key={s.movimentoChiave}
+                                          className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]"
+                                        >
+                                          <span className="whitespace-nowrap text-muted-foreground">
+                                            {fmtData(s.data)}
+                                          </span>
+                                          <b className="tabular-nums whitespace-nowrap">
+                                            {fmtImporto(s.importo)}
+                                          </b>
+                                          {s.pezzi.length === 0 ? (
+                                            <span className="text-muted-foreground">
+                                              = {t("ft.spiegaNoCombo")}
+                                            </span>
+                                          ) : (
+                                            <>
+                                              <span>=</span>
+                                              {s.pezzi.map((p) => (
+                                                <span
+                                                  key={p.chiave}
+                                                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                                    p.tipo === "FT"
+                                                      ? "bg-status-present/15 text-status-present"
+                                                      : p.tipo === "NC"
+                                                        ? "bg-status-absent/15 text-status-absent"
+                                                        : "bg-muted text-muted-foreground"
+                                                  }`}
+                                                  title={
+                                                    p.tipo === "CONTRO"
+                                                      ? t("ft.spiegaContro")
+                                                      : p.tipo === "NC"
+                                                        ? t("ft.spiegaNc")
+                                                        : undefined
+                                                  }
+                                                >
+                                                  {p.tipo === "FT" ? "" : "− "}
+                                                  {p.etichetta} {fmtImporto(Math.abs(p.valore))}
+                                                </span>
+                                              ))}
+                                              {Math.abs(s.delta) > 0.005 && (
+                                                <span className="text-[11px] text-muted-foreground">
+                                                  [Δ {fmtImporto(s.delta)}]
+                                                </span>
+                                              )}
+                                              <button
+                                                type="button"
+                                                disabled={spiegaBusy}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  void applicaSpiegazione(s);
+                                                }}
+                                                className="rounded-lg bg-primary px-2.5 py-0.5 text-[11px] font-medium text-primary-foreground disabled:opacity-40"
+                                              >
+                                                {t("ft.spiegaApplica")}
+                                              </button>
+                                            </>
+                                          )}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              )}
                               {estrattoCliente.righe.length > 0 && (
                                 <table className="w-full text-[12px]">
                                   <thead>

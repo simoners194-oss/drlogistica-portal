@@ -833,6 +833,17 @@ const en = {
   "ft.totPagatoBanca": "Paid (bank)",
   "ft.totDaPagare": "To pay",
   "ft.discordantePassiva": "paid from the account but not recorded in Aruba",
+  "ft.spiegaBtn": "Explain transfers",
+  "ft.spiegaTip":
+    "For each unmatched transfer, looks for the exact combination of open documents that adds up to it: invoices, unlinked credit notes, even this counterparty's invoices to us. Proposals only — nothing is saved until you apply.",
+  "ft.spiegaTitolo": "Proposed explanations",
+  "ft.spiegaNiente": "Nothing to explain: every transfer is already matched.",
+  "ft.spiegaNoCombo": "no combination found — match by hand",
+  "ft.spiegaApplica": "Apply",
+  "ft.spiegaApplicata": "Matches saved",
+  "ft.spiegaContro": "counterparty invoice to us, offset inside the transfer: nothing to save",
+  "ft.spiegaNc":
+    "unlinked credit note: applying will link it to the largest invoice in this combination",
   "ft.deltaFattBanca": "Δ invoicing−bank",
   "ft.deltaTip":
     "Collected per invoicing minus what the bank matches confirm. A red figure means Aruba records money the account has no trace of — or the other way round.",
@@ -1669,6 +1680,18 @@ const it: Record<DictKey, string> = {
   "ft.totPagatoBanca": "Pagato banca",
   "ft.totDaPagare": "Da pagare",
   "ft.discordantePassiva": "risulta pagata dal conto ma non su Aruba",
+  "ft.spiegaBtn": "Spiega bonifici",
+  "ft.spiegaTip":
+    "Per ogni bonifico non attribuito cerca la combinazione esatta di documenti aperti che lo compone: fatture, note di credito non collegate, perfino le fatture di questa controparte verso di noi. Sono proposte — non si salva nulla finché non premi Applica.",
+  "ft.spiegaTitolo": "Spiegazioni proposte",
+  "ft.spiegaNiente": "Niente da spiegare: tutti i bonifici sono già attribuiti.",
+  "ft.spiegaNoCombo": "nessuna combinazione trovata — da abbinare a mano",
+  "ft.spiegaApplica": "Applica",
+  "ft.spiegaApplicata": "Abbinamenti registrati",
+  "ft.spiegaContro":
+    "fattura della controparte verso di noi, compensata dentro il bonifico: niente da salvare",
+  "ft.spiegaNc":
+    "nota di credito non collegata: applicando verrà collegata alla fattura più grande di questa combinazione",
   "ft.deltaFattBanca": "Δ fatt.−banca",
   "ft.deltaTip":
     "Incassato secondo la fatturazione meno quanto confermano gli abbinamenti bancari. Una cifra in rosso significa che Aruba registra soldi di cui il conto non ha traccia — o il contrario.",

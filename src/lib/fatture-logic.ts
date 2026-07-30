@@ -1105,3 +1105,104 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
   }
   return { rows, scartate };
 }
+
+// --- Spiegazione dei bonifici (compensazioni incluse) ------------------------
+// Certi clienti (iMile su tutti) pagano con bonifici CUMULATIVI al netto di
+// note di credito, trattenute e perfino delle fatture che LORO emettono a noi:
+// l'importo del bonifico non coincide mai con una fattura e la riconciliazione
+// classica non aggancia nulla. Qui si cerca, per ogni movimento non attribuito,
+// la combinazione di documenti aperti che lo spiega al centesimo — fatture in
+// positivo, storni in negativo. La ricerca e' conservativa: si accetta solo la
+// combinazione esatta (tolleranza da arrotondamento), mai un'imputazione
+// parziale, e la spiegazione resta una PROPOSTA finche' l'utente non la applica.
+
+/** Un documento che puo' comporre un bonifico. */
+export interface PezzoSpiegazione {
+  /** nomeFile del documento (chiave per salvare l'abbinamento). */
+  chiave: string;
+  /** Numero leggibile ("FPR 63/26"). */
+  etichetta: string;
+  /** FT = fattura nostra (positivo), NC = nota di credito non collegata
+   *  (negativo), CONTRO = fattura della controparte verso di noi (negativo,
+   *  compensata dentro il bonifico). */
+  tipo: "FT" | "NC" | "CONTRO";
+  /** Importo con cui il documento entra nel bonifico (segno incluso). */
+  valore: number;
+  /** Totale documento, per mostrare l'eventuale trattenuta. */
+  totale: number;
+  data: string; // YYYY-MM-DD
+}
+
+export interface SpiegazioneBonifico {
+  movimentoChiave: string;
+  data: string;
+  importo: number;
+  /** Vuoto = nessuna combinazione trovata per questo movimento. */
+  pezzi: PezzoSpiegazione[];
+  /** importo - somma dei pezzi (residui di arrotondamento, entro tolleranza). */
+  delta: number;
+}
+
+export const SPIEGA_TOLLERANZA = 0.15;
+const SPIEGA_MAX_PEZZI = 7;
+
+export function spiegaBonifici(
+  movimenti: readonly { chiave: string; dataContabile: string; importo: number }[],
+  pezzi: readonly PezzoSpiegazione[],
+  toll = SPIEGA_TOLLERANZA,
+): SpiegazioneBonifico[] {
+  const giorni = (a: string, b: string) =>
+    Math.abs(new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime()) / 86400000;
+  const liberi = pezzi.map((p) => ({ ...p, usato: false }));
+  const out: SpiegazioneBonifico[] = [];
+  // In ordine cronologico: ogni documento spiega UN solo bonifico, e i
+  // bonifici vecchi devono potersi prendere i documenti vecchi.
+  const ordinati = [...movimenti].sort((a, b) => a.dataContabile.localeCompare(b.dataContabile));
+  for (const m of ordinati) {
+    const target = Math.round(Math.abs(m.importo) * 100) / 100;
+    // Candidati: documenti liberi emessi PRIMA dell'arrivo del bonifico, i
+    // piu' vicini nel tempo per primi (un bonifico paga le fatture recenti).
+    const cand = liberi
+      .filter((p) => !p.usato && p.data <= m.dataContabile)
+      .sort((a, b) => giorni(a.data, m.dataContabile) - giorni(b.data, m.dataContabile));
+    const negTot = cand.filter((p) => p.valore < 0).reduce((s, p) => s + p.valore, 0);
+    let trovato: typeof cand | null = null;
+    // Iterative deepening: prima la spiegazione piu' semplice (meno pezzi).
+    for (let maxN = 1; maxN <= SPIEGA_MAX_PEZZI && !trovato; maxN++) {
+      const dfs = (idx: number, resto: number, presi: typeof cand, negResiduo: number) => {
+        if (trovato) return;
+        if (presi.length > 0 && Math.abs(resto) <= toll && presi.some((p) => p.valore > 0)) {
+          trovato = [...presi];
+          return;
+        }
+        if (idx >= cand.length || presi.length >= maxN) return;
+        for (let j = idx; j < cand.length; j++) {
+          const p = cand[j];
+          const nuovoResto = Math.round((resto - p.valore) * 100) / 100;
+          const negDopo = p.valore < 0 ? negResiduo - p.valore : negResiduo;
+          // Uno sforamento in negativo e' lecito solo se gli storni ancora
+          // disponibili possono riassorbirlo (e' cosi' che si spiegano i
+          // bonifici "fattura meno nota di credito").
+          if (nuovoResto < negDopo - toll) continue;
+          dfs(j + 1, nuovoResto, [...presi, p], negDopo);
+          if (trovato) return;
+        }
+      };
+      dfs(0, target, [], negTot);
+    }
+    const scelti: PezzoSpiegazione[] = trovato ?? [];
+    for (const p of scelti) {
+      const l = liberi.find((x) => x.chiave === p.chiave && !x.usato);
+      if (l) l.usato = true;
+    }
+    const somma = scelti.reduce((s, p) => s + p.valore, 0);
+    out.push({
+      movimentoChiave: m.chiave,
+      data: m.dataContabile,
+      importo: target,
+      pezzi: scelti,
+      delta: scelti.length ? Math.round((target - somma) * 100) / 100 : 0,
+    });
+  }
+  return out;
+}
