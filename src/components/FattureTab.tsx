@@ -726,7 +726,15 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           x.f.numero,
           csvNum(x.f.totale),
           csvData(x.s.scadenza),
-          csvNum(x.s.incassatoIncassi ?? x.s.incassatoFatturazione ?? 0),
+          // NC compensata = incasso NEGATIVO (vedi export fatture): la somma
+          // della colonna deve avvicinarsi alla cassa, non al lordo.
+          csvNum(
+            isNotaCredito(x.f.tipoDocumento)
+              ? x.s.statoIncassi === "Pagata" || x.s.statoFatturazione === "Pagata"
+                ? -Math.abs(x.f.totale)
+                : 0
+              : (x.s.incassatoIncassi ?? x.s.incassatoFatturazione ?? 0),
+          ),
           csvNum(x.s.incassatoBanca),
           csvNum(x.s.stato === "NC" ? 0 : x.s.residuo),
           x.s.statoFatturazione ?? "non gestita",
@@ -1167,7 +1175,17 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         f.cliente,
         f.tipoDocumento,
         csvNum(f.totale),
-        csvNum(s.incassato),
+        // Una NC COMPENSATA e' denaro non entrato: nell'incassato pesa in
+        // NEGATIVO, cosi' la somma della colonna si avvicina alla cassa vera
+        // (Aruba registra le fatture al lordo, la banca riceve il netto).
+        // Una NC non compensata non ha ancora pesato su nulla: zero.
+        csvNum(
+          isNotaCredito(f.tipoDocumento)
+            ? s.statoIncassi === "Pagata" || s.statoFatturazione === "Pagata"
+              ? -Math.abs(f.totale)
+              : 0
+            : s.incassato,
+        ),
         csvNum(s.residuo),
         csvData(s.scadenza),
         // Coperta per intero dalle note di credito: nel CSV "Pagata" sarebbe
