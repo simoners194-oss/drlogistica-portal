@@ -892,7 +892,7 @@ export const spImportFatture = createServerFn({ method: "POST" })
 export const spSetIncassiAruba = createServerFn({ method: "POST" })
   .inputValidator(
     (input: {
-      righe: { nomeFile: string; incassato: number; ultimaData?: string }[];
+      righe: { nomeFile: string; incassato: number; ultimaData?: string; id?: string }[];
       direzione?: string;
     }) => {
       if (!Array.isArray(input?.righe) || input.righe.length === 0)
@@ -906,7 +906,8 @@ export const spSetIncassiAruba = createServerFn({ method: "POST" })
           const incassato = Number(r?.incassato);
           if (!nomeFile || !Number.isFinite(incassato)) throw new Error("Riga incasso non valida");
           const ultimaData = r.ultimaData && re.test(r.ultimaData) ? r.ultimaData : undefined;
-          return { nomeFile, incassato: Math.round(incassato * 100) / 100, ultimaData };
+          const id = String(r.id ?? "").trim() || undefined;
+          return { nomeFile, incassato: Math.round(incassato * 100) / 100, ultimaData, id };
         }),
       };
     },

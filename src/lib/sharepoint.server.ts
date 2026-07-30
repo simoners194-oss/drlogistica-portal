@@ -3652,7 +3652,7 @@ export async function importMovimenti(
 /** Aggiorna gli incassi REGISTRATI SU ARUBA (report movimenti) sulle fatture
  *  già in archivio: importo complessivo delle rate e data dell'ultima. */
 export async function setIncassiAruba(
-  righe: readonly { nomeFile: string; incassato: number; ultimaData?: string }[],
+  righe: readonly { nomeFile: string; incassato: number; ultimaData?: string; id?: string }[],
   direzione: DirezioneFattura,
 ): Promise<{ aggiornate: number; errori: string[] }> {
   const cfg = await discoverSharePoint();
@@ -3662,30 +3662,48 @@ export async function setIncassiAruba(
     throw new Error(
       'Colonna "IncassatoAruba" assente sulla lista fatture: aggiungerla (numero) e fare Riscopri.',
     );
-  const esistenti = new Map((await fetchFatture(direzione)).map((f) => [f.nomeFile, f]));
   const result = { aggiornate: 0, errori: [] as string[] };
   const BATCH = 4;
-  // Solo le righe che CAMBIANO qualcosa: ai reimport la maggior parte delle
-  // fatture ha già lo stesso incassato, e ogni PATCH risparmiata è tempo.
-  const daFare = righe.filter((r) => {
-    const prev = esistenti.get(r.nomeFile);
-    if (!prev) return false;
-    const stessaData = !r.ultimaData || r.ultimaData === (prev.dataIncasso ?? "");
-    return (prev.incassatoAruba ?? null) !== r.incassato || !stessaData;
-  });
-  // Le identiche sono comunque "a posto": contarle evita che il riepilogo
-  // sembri aver saltato metà file.
-  result.aggiornate +=
-    righe.length - daFare.length - righe.filter((r) => !esistenti.has(r.nomeFile)).length;
+  // PERCORSO RAPIDO: il client conosce già gli id SharePoint delle fatture
+  // (le ha caricate per mostrarle) e ha già scartato le righe invariate.
+  // Rileggere l'INTERO archivio a ogni blocco solo per ritrovare gli id era
+  // il collo di bottiglia che faceva scadere i timeout sui report grossi.
+  let daFare: { etichetta: string; id: string; incassato: number; ultimaData?: string }[];
+  if (righe.every((r) => r.id)) {
+    daFare = righe.map((r) => ({
+      etichetta: r.nomeFile,
+      id: r.id!,
+      incassato: r.incassato,
+      ultimaData: r.ultimaData,
+    }));
+  } else {
+    // Percorso classico (client vecchi): si risolve per nome file e si
+    // scartano qui le righe che non cambiano nulla.
+    const esistenti = new Map((await fetchFatture(direzione)).map((f) => [f.nomeFile, f]));
+    const cambiate = righe.filter((r) => {
+      const prev = esistenti.get(r.nomeFile);
+      if (!prev) return false;
+      const stessaData = !r.ultimaData || r.ultimaData === (prev.dataIncasso ?? "");
+      return (prev.incassatoAruba ?? null) !== r.incassato || !stessaData;
+    });
+    // Le identiche sono comunque "a posto": contarle evita che il riepilogo
+    // sembri aver saltato metà file.
+    result.aggiornate +=
+      righe.length - cambiate.length - righe.filter((r) => !esistenti.has(r.nomeFile)).length;
+    daFare = cambiate.map((r) => ({
+      etichetta: r.nomeFile,
+      id: esistenti.get(r.nomeFile)!.id,
+      incassato: r.incassato,
+      ultimaData: r.ultimaData,
+    }));
+  }
   for (let i = 0; i < daFare.length; i += BATCH) {
     const blocco = daFare.slice(i, i + BATCH);
     const esiti = await Promise.allSettled(
       blocco.map((r) => {
-        const prev = esistenti.get(r.nomeFile)!;
         const patch: Record<string, unknown> = { [F.IncassatoAruba]: r.incassato };
-        if (F.DataIncasso && r.ultimaData && r.ultimaData !== (prev.dataIncasso ?? ""))
-          patch[F.DataIncasso] = `${r.ultimaData}T00:00:00Z`;
-        return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${prev.id}/fields`, {
+        if (F.DataIncasso && r.ultimaData) patch[F.DataIncasso] = `${r.ultimaData}T00:00:00Z`;
+        return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${r.id}/fields`, {
           method: "PATCH",
           body: JSON.stringify(patch),
         });
@@ -3695,7 +3713,7 @@ export async function setIncassiAruba(
       if (e.status === "fulfilled") result.aggiornate++;
       else
         result.errori.push(
-          `${blocco[j].nomeFile}: ${e.reason instanceof Error ? e.reason.message : String(e.reason)}`,
+          `${blocco[j].etichetta}: ${e.reason instanceof Error ? e.reason.message : String(e.reason)}`,
         );
     });
   }

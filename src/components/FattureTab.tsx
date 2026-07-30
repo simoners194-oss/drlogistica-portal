@@ -180,6 +180,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         })
         .map(([nomeFile, v]) => ({
           nomeFile,
+          // L'id SharePoint evita al server di rileggere l'archivio a ogni
+          // blocco: e' il percorso rapido di setIncassiAruba.
+          id: perFile.get(nomeFile)?.id,
           incassato: v.incassato,
           ultimaData: v.ultimaData || undefined,
           rate: v.rate,
@@ -234,9 +237,13 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       for (const d of ["Emessa", "Ricevuta"] as DirezioneFattura[]) {
         const righe = daFare[d];
         for (let i = 0; i < righe.length; i += PASSO) {
-          const res = (await conTimeout(
-            spSetIncassiAruba({ data: { righe: righe.slice(i, i + PASSO), direzione: d } }),
-          )) as { aggiornate: number; errori: string[] };
+          const chiama = () =>
+            conTimeout(
+              spSetIncassiAruba({ data: { righe: righe.slice(i, i + PASSO), direzione: d } }),
+            );
+          // Un tentativo di riserva: un timeout isolato non deve buttare via
+          // l'intero caricamento.
+          const res = (await chiama().catch(chiama)) as { aggiornate: number; errori: string[] };
           aggiornate += res.aggiornate;
           blocco++;
           if (tid) toast.loading(`${t("ft.movProgress")} ${blocco}/${blocchiTot}`, { id: tid });
