@@ -3736,6 +3736,36 @@ export async function setRettificaNumero(
   );
 }
 
+/** Correzione MANUALE dello stato d'incasso: per la fattura che si SA essere
+ *  stata incassata (registrata su Aruba) senza aspettare il prossimo report.
+ *  Scrive sulle stesse colonne dell'import (IncassoAruba/DataIncasso), quindi
+ *  ogni vista si aggiorna; il report successivo, che ormai dice lo stesso,
+ *  conferma senza toccare nulla. */
+export async function setIncassoManuale(
+  nomeFile: string,
+  stato: "Incassata" | "Non incassata",
+  direzione: DirezioneFattura,
+  dataIncasso?: string,
+): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requireFattureList(cfg, direzione);
+  const F = fattureListPer(cfg, direzione).fields;
+  if (!F.IncassoAruba)
+    throw new Error(
+      'Colonna "IncassoAruba" assente sulla lista fatture: aggiungerla (testo) e fare Riscopri.',
+    );
+  const doc = (await fetchFatture(direzione)).find((f) => f.nomeFile === nomeFile);
+  if (!doc) throw new Error(`Documento non trovato in archivio: ${nomeFile}`);
+  const patch: Record<string, unknown> = { [F.IncassoAruba]: stato };
+  if (F.DataIncasso)
+    patch[F.DataIncasso] = stato === "Incassata" && dataIncasso ? `${dataIncasso}T00:00:00Z` : null;
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${doc.id}/fields`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  logSp("info", "fatture.incassoManuale", `${doc.numero}: stato incasso → ${stato} (manuale)`);
+}
+
 export interface UpdateMovimentoInput {
   movimentoId: string;
   tipologia?: string;

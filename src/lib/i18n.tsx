@@ -873,6 +873,9 @@ const en = {
   "ft.senzaTraccia": "no bank trace",
   "ft.senzaTracciaTip":
     "Part of the invoicing-collected amount with no counterpart even among this client's unmatched movements: other accounts, periods not imported, or set-offs.",
+  "ft.incManLabel": "Collection status (manual fix):",
+  "ft.incManHint": "writes the same field the Aruba report fills — the next report confirms it",
+  "ft.incManOk": "Status updated",
   "ft.collegaA": "Corrects invoice",
   "ft.collegaNessuna": "— not linked —",
   "ft.collegataOra": "currently linked to",
@@ -1744,6 +1747,10 @@ const it: Record<DictKey, string> = {
   "ft.senzaTraccia": "senza riscontro in banca",
   "ft.senzaTracciaTip":
     "Parte dell'incassato di fatturazione che non trova riscontro nemmeno fra i movimenti non attribuiti di questa controparte: altri conti, periodi non importati o compensazioni.",
+  "ft.incManLabel": "Stato incasso (correzione manuale):",
+  "ft.incManHint":
+    "scrive lo stesso campo che riempie il report Aruba — il prossimo report lo conferma",
+  "ft.incManOk": "Stato aggiornato",
   "ft.collegaA": "Rettifica la fattura",
   "ft.collegaNessuna": "— nessuna —",
   "ft.collegataOra": "ora collegata a",

@@ -74,6 +74,7 @@ import {
   fetchTerminiPagamento,
   setIncassiAruba,
   setRettificaNumero,
+  setIncassoManuale,
   fetchAbbinamenti,
   createAbbinamenti,
   deleteAbbinamento,
@@ -934,6 +935,32 @@ export const spSetRettificaNumero = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     await assertDirettore(await currentUser());
     await setRettificaNumero(data.nomeFile, data.numeroFattura, data.direzione);
+    return { ok: true };
+  });
+
+// Stato d'incasso corretto A MANO (senza aspettare il prossimo report).
+export const spSetIncassoManuale = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: { nomeFile: string; stato: string; direzione?: string; dataIncasso?: string }) => {
+      const nomeFile = String(input?.nomeFile ?? "").trim();
+      if (!nomeFile) throw new Error("Fattura non indicata");
+      if (input.stato !== "Incassata" && input.stato !== "Non incassata")
+        throw new Error("Stato non valido");
+      const dataIncasso =
+        input.dataIncasso && /^\d{4}-\d{2}-\d{2}$/.test(input.dataIncasso)
+          ? input.dataIncasso
+          : undefined;
+      return {
+        nomeFile,
+        stato: input.stato as "Incassata" | "Non incassata",
+        direzione: (input.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+        dataIncasso,
+      };
+    },
+  )
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await setIncassoManuale(data.nomeFile, data.stato, data.direzione, data.dataIncasso);
     return { ok: true };
   });
 

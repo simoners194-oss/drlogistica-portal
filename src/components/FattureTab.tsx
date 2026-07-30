@@ -60,6 +60,7 @@ import {
   spSetArubaCredenziali,
   spArubaProvaConnessione,
   spSetRettificaNumero,
+  spSetIncassoManuale,
 } from "@/lib/sharepoint.functions";
 import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
 import type { ArubaProbeResult } from "@/lib/aruba.server";
@@ -799,6 +800,40 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         ]),
       ],
     );
+  };
+
+  // --- Stato d'incasso corretto a mano ---------------------------------------
+  // Per la fattura che si SA essere stata incassata (già registrata su Aruba)
+  // senza aspettare il prossimo report: scrive sulle stesse colonne
+  // dell'import, quindi tutte le viste si aggiornano e il report successivo
+  // — che ormai dice lo stesso — conferma senza toccare nulla.
+  const [incFile, setIncFile] = useState<string | null>(null);
+  const [incStato, setIncStato] = useState<"Incassata" | "Non incassata">("Incassata");
+  const [incData, setIncData] = useState("");
+  const [incSaving, setIncSaving] = useState(false);
+
+  const salvaIncassoManuale = async (f: FatturaRaw) => {
+    setIncSaving(true);
+    try {
+      await spSetIncassoManuale({
+        data: {
+          nomeFile: f.nomeFile,
+          stato: incStato,
+          direzione: dir,
+          dataIncasso: incStato === "Incassata" ? incData || oggiISO : undefined,
+        },
+      });
+      const agg = (await spGetFatture({ data: { direzione: dir } })) as SpFattura[];
+      (dir === "Emessa" ? setFattureEm : setFattureRic)(agg);
+      setIncFile(null);
+      toast.success(t("ft.incManOk"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setIncSaving(false);
+    }
   };
 
   // --- Collegamento manuale NOTA DI CREDITO → fattura -----------------------
@@ -1847,6 +1882,55 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                               ? `${(x.s.scadenza && x.f.dataDocumento && Math.round((new Date(x.s.scadenza).getTime() - new Date(x.f.dataDocumento).getTime()) / 86400000)) || TERMINI_DEFAULT_GIORNI}gg`
                               : `${TERMINI_DEFAULT_GIORNI}gg (default)`}
                           </div>
+                          {/* Correzione manuale dello stato d'incasso: per la
+                              fattura che si SA incassata, senza aspettare il
+                              prossimo report. */}
+                          {!isNotaCredito(x.f.tipoDocumento) && (
+                            <div
+                              className="flex flex-wrap items-center gap-2 mb-3 text-[13px]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <span className="text-muted-foreground">{t("ft.incManLabel")}</span>
+                              <select
+                                value={incFile === x.f.nomeFile ? incStato : x.s.aruba || ""}
+                                onChange={(e) => {
+                                  setIncFile(x.f.nomeFile);
+                                  setIncStato(e.target.value as "Incassata" | "Non incassata");
+                                  if (!incData) setIncData(oggiISO);
+                                }}
+                                className="rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                              >
+                                {!x.s.aruba && <option value="">{t("ft.nonGestita")}</option>}
+                                <option value="Incassata">
+                                  {ricevute ? t("ft.pagato") : t("ft.pagata")}
+                                </option>
+                                <option value="Non incassata">
+                                  {ricevute ? t("ft.nonPagata") : t("ft.nonIncassata")}
+                                </option>
+                              </select>
+                              {incFile === x.f.nomeFile && incStato === "Incassata" && (
+                                <input
+                                  type="date"
+                                  value={incData || oggiISO}
+                                  onChange={(e) => setIncData(e.target.value)}
+                                  className="rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                                />
+                              )}
+                              <button
+                                type="button"
+                                disabled={
+                                  incSaving || incFile !== x.f.nomeFile || incStato === x.s.aruba
+                                }
+                                onClick={() => void salvaIncassoManuale(x.f)}
+                                className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"
+                              >
+                                {incSaving ? "…" : t("common.save")}
+                              </button>
+                              <span className="text-[11px] text-muted-foreground">
+                                {t("ft.incManHint")}
+                              </span>
+                            </div>
+                          )}
                           {/* Nota di credito: collegamento alla fattura che
                               rettifica. Quando lo storno è stato fatto dentro
                               Aruba il riferimento non arriva nell'XML, e senza
