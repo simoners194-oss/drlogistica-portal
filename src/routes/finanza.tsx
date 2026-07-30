@@ -257,6 +257,8 @@ function FinanzaPage() {
   const [tipiF, setTipiF] = useState<string[]>([]);
   const [cercaF, setCercaF] = useState("");
   const [mesiF, setMesiF] = useState<number[]>([]); // vuoto = tutti
+  // Solo i 15 clienti che hanno portato piu' incassi (negli anni selezionati).
+  const [top15F, setTop15F] = useState(false);
   const [paginaMov, setPaginaMov] = useState(1); // pagine da RIGHE_PAGINA
 
   // Overview: incassi o spese (+ filtro tipologia, utile solo per le spese)
@@ -701,11 +703,32 @@ function FinanzaPage() {
   };
 
   // --- Derivati -------------------------------------------------------------
+  // I 15 clienti con piu' incassi arrivati (importi positivi con controparte
+  // riconosciuta), calcolati sugli anni selezionati e PRIMA degli altri
+  // filtri: il "top" non cambia mentre si affina la ricerca.
+  const topClienti = useMemo(() => {
+    const somme = new Map<string, number>();
+    for (const m of movimenti ?? []) {
+      if (anni.length && !anni.includes(Number(m.dataContabile.slice(0, 4)))) continue;
+      if (m.importo <= 0 || !m.cliente) continue;
+      const k = clienteGroupKey(m.cliente) || m.cliente;
+      somme.set(k, (somme.get(k) ?? 0) + m.importo);
+    }
+    return new Set(
+      [...somme.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15)
+        .map(([k]) => k),
+    );
+  }, [movimenti, anni]);
+
   const filtrati = useMemo(() => {
     let out = movimenti ?? [];
     // Anni: il server ha fornito l'intervallo min-max; qui si rifiniscono le
     // selezioni non contigue. Tipologie e mesi: vuoto = tutti, altrimenti OR.
     if (anni.length) out = out.filter((m) => anni.includes(Number(m.dataContabile.slice(0, 4))));
+    if (top15F)
+      out = out.filter((m) => m.cliente && topClienti.has(clienteGroupKey(m.cliente) || m.cliente));
     if (tipiF.length) out = out.filter((m) => tipiF.includes(m.tipologia));
     if (mesiF.length) out = out.filter((m) => mesiF.includes(Number(m.dataContabile.slice(5, 7))));
     if (cercaF.trim()) {
@@ -719,14 +742,14 @@ function FinanzaPage() {
       );
     }
     return out;
-  }, [movimenti, anni, tipiF, mesiF, cercaF]);
+  }, [movimenti, anni, tipiF, mesiF, cercaF, top15F, topClienti]);
 
   // Pagine da RIGHE_PAGINA sulla tabella movimenti; il cambio di filtri o
   // anno riparte dalla prima (il clamp copre i ricaricamenti che accorciano
   // la lista, es. dopo una sincronizzazione).
   useEffect(() => {
     setPaginaMov(1);
-  }, [tipiF, mesiF, cercaF, anni]);
+  }, [tipiF, mesiF, cercaF, anni, top15F]);
   const pagineMovTot = Math.max(1, Math.ceil(filtrati.length / RIGHE_PAGINA));
   const pagMov = Math.min(paginaMov, pagineMovTot);
   const inizioMov = (pagMov - 1) * RIGHE_PAGINA;
@@ -955,6 +978,23 @@ function FinanzaPage() {
               onChange={setMesiF}
               className="w-40"
             />
+            <div>
+              <label className="text-xs text-muted-foreground">{t("fin.clienti")}</label>
+              <div className="pt-1.5">
+                <button
+                  type="button"
+                  onClick={() => setTop15F(!top15F)}
+                  title={t("fin.top15TipMov")}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    top15F
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background text-foreground hover:bg-muted"
+                  }`}
+                >
+                  {t("fin.top15")}
+                </button>
+              </div>
+            </div>
             <div className="flex-1 min-w-48">
               <label className="text-xs text-muted-foreground">{t("fin.search")}</label>
               <input

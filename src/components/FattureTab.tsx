@@ -117,6 +117,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   // Gli scarti SdI sono nascosti ovunque: questo chip li isola, ed è l'unico
   // modo per vederli (serve a ricostruire la storia di una fattura rispedita).
   const [soloScartate, setSoloScartate] = useState(false);
+  // Solo i 15 clienti con piu' fatturato (negli anni selezionati).
+  const [top15F, setTop15F] = useState(false);
 
   // Dettaglio espanso + abbinamento manuale
   const [openFile, setOpenFile] = useState<string | null>(null);
@@ -296,12 +298,33 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     [conStato, anniF],
   );
 
+  // I 15 clienti con piu' fatturato negli anni selezionati (NC in negativo,
+  // scarti esclusi): stessa misura dello specchietto, cosi' i due filtri
+  // raccontano la stessa classifica.
+  const topClienti = useMemo(() => {
+    const somme = new Map<string, number>();
+    for (const x of conStato) {
+      if (x.escluso || !matchAnno(x)) continue;
+      const k = clienteGroupKey(x.f.cliente) || x.f.cliente;
+      somme.set(k, (somme.get(k) ?? 0) + x.f.totale);
+    }
+    return new Set(
+      [...somme.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15)
+        .map(([k]) => k),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conStato, anniF]);
+
   const filtrate = useMemo(() => {
     // Gli scarti SdI non compaiono: una fattura scartata non è mai esistita.
     // Il chip "Scartate" le mostra da sole, per chi deve ricostruire la storia.
     let out = conStato.filter(
       (x) => x.escluso === soloScartate && matchAnno(x) && (soloScartate || matchStato(x)),
     );
+    if (top15F)
+      out = out.filter((x) => topClienti.has(clienteGroupKey(x.f.cliente) || x.f.cliente));
     if (clienteF.trim()) {
       const q = clienteF.trim().toLowerCase();
       out = out.filter(
@@ -310,7 +333,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conStato, anniF, clienteF, statiF, soloScartate]);
+  }, [conStato, anniF, clienteF, statiF, soloScartate, top15F, topClienti]);
 
   // Riepilogo (sugli anni filtrati, tutte le fatture non escluse). Gli importi
   // seguono lo stato UFFICIALE (Aruba quando c'è); `confermatoBanca` dice
@@ -413,9 +436,12 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     // quadra con le due colonne accanto; la banca resta fuori dal conteggio.
     for (const row of m.values())
       row.residuo = Math.round((row.fatturato - row.incassatoFatt) * 100) / 100;
-    return [...m.values()].sort((a, b) => b.fatturato - a.fatturato);
+    // Ordinato per fatturato: con il filtro Top 15 attivo se ne mostrano 15,
+    // ed e' per costruzione la stessa classifica del filtro sull'elenco.
+    const tutte = [...m.values()].sort((a, b) => b.fatturato - a.fatturato);
+    return top15F ? tutte.slice(0, 15) : tutte;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conStato, anniF]);
+  }, [conStato, anniF, top15F]);
 
   // Riepilogo dell'ultimo import: resta a schermo finché non lo si chiude,
   // così i numeri si leggono con calma (un avviso a scomparsa non basta).
@@ -1345,6 +1371,14 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   {label}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setTop15F(!top15F)}
+                title={t("ft.top15Tip")}
+                className={chipCls(top15F)}
+              >
+                {t("fin.top15")}
+              </button>
               {/* Gli scarti sono fuori da elenco e conteggi: qui si vedono da
                   soli, per ricostruire la storia di una fattura rispedita. */}
               {nScartate > 0 && (

@@ -833,6 +833,11 @@ const en = {
   "ft.totPagatoBanca": "Paid (bank)",
   "ft.totDaPagare": "To pay",
   "ft.discordantePassiva": "paid from the account but not recorded in Aruba",
+  "fin.top15": "Top 15 clients",
+  "fin.clienti": "Clients",
+  "fin.top15TipMov":
+    "Only movements of the 15 counterparties with the highest collections in the selected years.",
+  "ft.top15Tip": "Only the 15 clients with the highest invoiced total in the selected years.",
   "ft.effTitolo": "Effective (from the bank)",
   "ft.effNetto": "Net due",
   "ft.effContro": "their invoices to us",
@@ -1688,6 +1693,11 @@ const it: Record<DictKey, string> = {
   "ft.totPagatoBanca": "Pagato banca",
   "ft.totDaPagare": "Da pagare",
   "ft.discordantePassiva": "risulta pagata dal conto ma non su Aruba",
+  "fin.top15": "Top 15 clienti",
+  "fin.clienti": "Clienti",
+  "fin.top15TipMov":
+    "Solo i movimenti delle 15 controparti con più incassi arrivati negli anni selezionati.",
+  "ft.top15Tip": "Solo i 15 clienti con più fatturato negli anni selezionati.",
   "ft.effTitolo": "Effettivo (dalla banca)",
   "ft.effNetto": "Netto dovuto",
   "ft.effContro": "loro fatture verso di noi",
