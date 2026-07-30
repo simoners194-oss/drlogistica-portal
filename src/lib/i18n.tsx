@@ -729,6 +729,8 @@ const en = {
   "ft.ncCompensata": "settled",
   "ft.ncDaCompensare": "to settle",
   "ft.annullataNCTip": "Credit notes cover the whole amount: nothing left to collect.",
+  "ft.movAzzeraConfirm":
+    "invoices are currently recorded as collected but have NO instalment in this file. If this file is the COMPLETE yearly export from Prima nota, press OK and they will be reset to zero. If it is a PARTIAL export (a date range), press Cancel: only the instalments present will be applied, nothing gets reset.",
   "ft.movProgress": "Applying collections — block",
   "ft.movTimeout": "The server did not respond within 2 minutes",
   "ft.movRipresa":
@@ -1609,6 +1611,8 @@ const it: Record<DictKey, string> = {
   "ft.ncDaCompensare": "da compensare",
   "ft.annullataNCTip":
     "Le note di credito coprono l'intero importo: non c'è più nulla da incassare.",
+  "ft.movAzzeraConfirm":
+    "fatture oggi risultano incassate ma in questo file NON hanno nessuna rata. Se il file è l'estrazione COMPLETA dell'anno dalla Prima nota, premi OK e verranno azzerate. Se è un export PARZIALE (un intervallo di date), premi Annulla: si applicano solo le rate presenti, senza azzerare nulla.",
   "ft.movProgress": "Applico gli incassi — blocco",
   "ft.movTimeout": "Il server non ha risposto entro 2 minuti",
   "ft.movRipresa":

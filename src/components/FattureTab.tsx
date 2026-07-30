@@ -182,11 +182,30 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           nomeFile,
           incassato: v.incassato,
           ultimaData: v.ultimaData || undefined,
+          rate: v.rate,
         }));
     const daFare = {
       Emessa: perDirezione("Emessa"),
       Ricevuta: perDirezione("Ricevuta"),
     };
+    // GUARDIA CONTRO GLI EXPORT PARZIALI. La regola "niente rate nel file =
+    // incasso a zero" presume che il file sia l'estrazione COMPLETA dell'anno.
+    // Un export con un filtro date attivo contiene poche rate, ma basta una
+    // rata su una fattura del 2025 per marcare "coperto" l'anno intero: senza
+    // questa domanda, un file parziale azzera l'archivio (successo davvero:
+    // 53 fatture iMile azzerate da un estratto di pochi giorni).
+    const nAzzeramenti =
+      daFare.Emessa.length + daFare.Ricevuta.length
+        ? [...daFare.Emessa, ...daFare.Ricevuta].filter((r) => r.rate === 0 && r.incassato === 0)
+            .length
+        : 0;
+    if (nAzzeramenti > 0) {
+      const completo = window.confirm(`${nAzzeramenti} ${t("ft.movAzzeraConfirm")}`);
+      if (!completo) {
+        daFare.Emessa = daFare.Emessa.filter((r) => !(r.rate === 0 && r.incassato === 0));
+        daFare.Ricevuta = daFare.Ricevuta.filter((r) => !(r.rate === 0 && r.incassato === 0));
+      }
+    }
     const invariate = mappa.size - daFare.Emessa.length - daFare.Ricevuta.length;
     const blocchiTot =
       Math.ceil(daFare.Emessa.length / CHUNK) + Math.ceil(daFare.Ricevuta.length / CHUNK);
