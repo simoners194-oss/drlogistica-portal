@@ -272,10 +272,32 @@ export function aggregaIncassiAruba(
       set.add(anno);
       anniPerDirezione.set(d, set);
     }
+    // Intervallo di DATE RATA coperto dal file: un file completo di un anno
+    // contiene solo le rate DATATE in quell'anno.
+    let minData = "";
+    let maxData = "";
+    for (const m of movimenti) {
+      if (!m.data) continue;
+      if (!minData || m.data < minData) minData = m.data;
+      if (!maxData || m.data > maxData) maxData = m.data;
+    }
     for (const f of valide) {
       if (out.has(f.nomeFile)) continue;
       if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f)) continue;
       if (!anniPerDirezione.get(f.direzione)?.has(f.dataDocumento.slice(0, 4))) continue;
+      // CONFINE D'ANNO: una fattura di dicembre pagata a gennaio non ha rate
+      // nel file del suo anno, ed è NORMALE — il file di un anno non dice
+      // nulla sulle fatture incassate in un altro anno. Un incasso già
+      // registrato si azzera solo se la sua ULTIMA RATA cade nel periodo
+      // coperto dal file: quel dato è stato smentito dal file stesso.
+      // (Successo davvero: il file 2025 ha azzerato la 336/25, incassata a
+      // gennaio 2026 dal file precedente.)
+      const registrato = typeof f.incassatoAruba === "number" && f.incassatoAruba > 0;
+      if (
+        registrato &&
+        !(f.dataIncasso && minData && f.dataIncasso >= minData && f.dataIncasso <= maxData)
+      )
+        continue;
       out.set(f.nomeFile, { incassato: 0, ultimaData: "", rate: 0 });
     }
   }
