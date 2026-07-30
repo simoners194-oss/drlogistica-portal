@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { FattureTab } from "@/components/FattureTab";
 import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
+import { MultiSelect } from "@/components/MultiSelect";
 import { useLang } from "@/lib/i18n";
 import { readSession, type SessionUser } from "@/lib/session";
 import { isSupervisoreGlobale } from "@/lib/richieste-logic";
@@ -133,91 +134,6 @@ const CHUNK = 100;
 // Righe per pagina nella tabella movimenti.
 const RIGHE_PAGINA = 500;
 
-// Menu a discesa MULTI-selezione con caselle di spunta (per i filtri
-// incrociati senza affollare la barra): lista vuota = nessun filtro.
-function MultiSelect<T extends string | number>({
-  label,
-  tuttiLabel,
-  selLabel,
-  opzioni,
-  valori,
-  onChange,
-  className,
-}: {
-  label: string;
-  tuttiLabel: string;
-  /** Testo per "N selezionati" quando le voci scelte sono più di due. */
-  selLabel: string;
-  opzioni: { v: T; label: string }[];
-  valori: T[];
-  onChange: (v: T[]) => void;
-  className?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-  const riepilogo =
-    valori.length === 0
-      ? tuttiLabel
-      : valori.length <= 2
-        ? opzioni
-            .filter((o) => valori.includes(o.v))
-            .map((o) => o.label)
-            .join(", ")
-        : `${valori.length} ${selLabel}`;
-  return (
-    <div ref={ref} className={`relative ${className ?? ""}`}>
-      <label className="text-xs text-muted-foreground">{label}</label>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`${inputCls} flex items-center justify-between gap-2 text-left`}
-      >
-        <span className="truncate">{riepilogo}</span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-      </button>
-      {open && (
-        <div className="absolute z-30 mt-1 w-full min-w-44 max-h-64 overflow-auto rounded-lg border border-border bg-card p-1 shadow-[var(--shadow-elegant)]">
-          <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted">
-            <input
-              type="checkbox"
-              className="accent-primary"
-              checked={valori.length === 0}
-              onChange={() => onChange([])}
-            />
-            {tuttiLabel}
-          </label>
-          {opzioni.map((o) => (
-            <label
-              key={String(o.v)}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
-            >
-              <input
-                type="checkbox"
-                className="accent-primary"
-                checked={valori.includes(o.v)}
-                onChange={() =>
-                  onChange(
-                    valori.includes(o.v) ? valori.filter((x) => x !== o.v) : [...valori, o.v],
-                  )
-                }
-              />
-              {o.label}
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 type Tab = "movimenti" | "overview" | "attive" | "passive" | "anomalie" | "storico" | "regole";
 
 interface SheetInfo {
@@ -257,8 +173,9 @@ function FinanzaPage() {
   const [tipiF, setTipiF] = useState<string[]>([]);
   const [cercaF, setCercaF] = useState("");
   const [mesiF, setMesiF] = useState<number[]>([]); // vuoto = tutti
-  // Solo i 15 clienti che hanno portato piu' incassi (negli anni selezionati).
-  const [top15F, setTop15F] = useState(false);
+  // Clienti selezionati nel menu a tendina (vuoto = tutti). Le voci proposte
+  // sono le 15 controparti con piu' incassi, in ordine decrescente.
+  const [clientiF, setClientiF] = useState<string[]>([]);
   const [paginaMov, setPaginaMov] = useState(1); // pagine da RIGHE_PAGINA
 
   // Overview: incassi o spese (+ filtro tipologia, utile solo per le spese)
@@ -703,23 +620,24 @@ function FinanzaPage() {
   };
 
   // --- Derivati -------------------------------------------------------------
-  // I 15 clienti con piu' incassi arrivati (importi positivi con controparte
-  // riconosciuta), calcolati sugli anni selezionati e PRIMA degli altri
-  // filtri: il "top" non cambia mentre si affina la ricerca.
-  const topClienti = useMemo(() => {
-    const somme = new Map<string, number>();
+  // Le 15 controparti con piu' incassi arrivati (importi positivi, controparte
+  // riconosciuta) negli anni selezionati, in ordine DECRESCENTE: sono le voci
+  // del menu clienti. Calcolate prima degli altri filtri, cosi' l'elenco non
+  // cambia mentre si affina la ricerca.
+  const clientiTop = useMemo(() => {
+    const somme = new Map<string, { nome: string; tot: number }>();
     for (const m of movimenti ?? []) {
       if (anni.length && !anni.includes(Number(m.dataContabile.slice(0, 4)))) continue;
       if (m.importo <= 0 || !m.cliente) continue;
       const k = clienteGroupKey(m.cliente) || m.cliente;
-      somme.set(k, (somme.get(k) ?? 0) + m.importo);
+      const v = somme.get(k) ?? { nome: m.cliente, tot: 0 };
+      v.tot += m.importo;
+      somme.set(k, v);
     }
-    return new Set(
-      [...somme.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 15)
-        .map(([k]) => k),
-    );
+    return [...somme.entries()]
+      .sort((a, b) => b[1].tot - a[1].tot)
+      .slice(0, 15)
+      .map(([k, v]) => ({ v: k, label: v.nome }));
   }, [movimenti, anni]);
 
   const filtrati = useMemo(() => {
@@ -727,8 +645,10 @@ function FinanzaPage() {
     // Anni: il server ha fornito l'intervallo min-max; qui si rifiniscono le
     // selezioni non contigue. Tipologie e mesi: vuoto = tutti, altrimenti OR.
     if (anni.length) out = out.filter((m) => anni.includes(Number(m.dataContabile.slice(0, 4))));
-    if (top15F)
-      out = out.filter((m) => m.cliente && topClienti.has(clienteGroupKey(m.cliente) || m.cliente));
+    if (clientiF.length)
+      out = out.filter(
+        (m) => m.cliente && clientiF.includes(clienteGroupKey(m.cliente) || m.cliente),
+      );
     if (tipiF.length) out = out.filter((m) => tipiF.includes(m.tipologia));
     if (mesiF.length) out = out.filter((m) => mesiF.includes(Number(m.dataContabile.slice(5, 7))));
     if (cercaF.trim()) {
@@ -742,14 +662,14 @@ function FinanzaPage() {
       );
     }
     return out;
-  }, [movimenti, anni, tipiF, mesiF, cercaF, top15F, topClienti]);
+  }, [movimenti, anni, tipiF, mesiF, cercaF, clientiF]);
 
   // Pagine da RIGHE_PAGINA sulla tabella movimenti; il cambio di filtri o
   // anno riparte dalla prima (il clamp copre i ricaricamenti che accorciano
   // la lista, es. dopo una sincronizzazione).
   useEffect(() => {
     setPaginaMov(1);
-  }, [tipiF, mesiF, cercaF, anni, top15F]);
+  }, [tipiF, mesiF, cercaF, anni, clientiF]);
   const pagineMovTot = Math.max(1, Math.ceil(filtrati.length / RIGHE_PAGINA));
   const pagMov = Math.min(paginaMov, pagineMovTot);
   const inizioMov = (pagMov - 1) * RIGHE_PAGINA;
@@ -978,23 +898,15 @@ function FinanzaPage() {
               onChange={setMesiF}
               className="w-40"
             />
-            <div>
-              <label className="text-xs text-muted-foreground">{t("fin.clienti")}</label>
-              <div className="pt-1.5">
-                <button
-                  type="button"
-                  onClick={() => setTop15F(!top15F)}
-                  title={t("fin.top15TipMov")}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    top15F
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border bg-background text-foreground hover:bg-muted"
-                  }`}
-                >
-                  {t("fin.top15")}
-                </button>
-              </div>
-            </div>
+            <MultiSelect
+              label={t("fin.cliente")}
+              tuttiLabel={t("common.allF")}
+              selLabel={t("fin.msSel")}
+              opzioni={clientiTop}
+              valori={clientiF}
+              onChange={setClientiF}
+              className="w-56"
+            />
             <div className="flex-1 min-w-48">
               <label className="text-xs text-muted-foreground">{t("fin.search")}</label>
               <input

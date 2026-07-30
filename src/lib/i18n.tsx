@@ -836,11 +836,6 @@ const en = {
   "ft.senzaFonte": "excluded, no source",
   "ft.senzaFonteTip":
     "Invoices past due on which NO source has spoken: no Aruba status, no instalments in the movements report, not a euro matched in the bank. Most likely collected in periods not covered by the archives (e.g. missing yearly report): load the Aruba reports for those years to classify them. Not counted in the overdue total.",
-  "fin.top15": "Top 15 clients",
-  "fin.clienti": "Clients",
-  "fin.top15TipMov":
-    "Only movements of the 15 counterparties with the highest collections in the selected years.",
-  "ft.top15Tip": "Only the 15 clients with the highest invoiced total in the selected years.",
   "ft.effTitolo": "Effective (from the bank)",
   "ft.effNetto": "Net due",
   "ft.effContro": "their invoices to us",
@@ -1699,11 +1694,6 @@ const it: Record<DictKey, string> = {
   "ft.senzaFonte": "escluse, senza fonte",
   "ft.senzaFonteTip":
     "Fatture oltre scadenza su cui NESSUNA fonte si è espressa: niente stato Aruba, niente rate nel report movimenti, nemmeno un euro abbinato in banca. Con ogni probabilità sono incassate in periodi non coperti dagli archivi (es. report annuale mancante): carica i report Aruba di quegli anni per classificarle. Non contate nel totale in ritardo.",
-  "fin.top15": "Top 15 clienti",
-  "fin.clienti": "Clienti",
-  "fin.top15TipMov":
-    "Solo i movimenti delle 15 controparti con più incassi arrivati negli anni selezionati.",
-  "ft.top15Tip": "Solo i 15 clienti con più fatturato negli anni selezionati.",
   "ft.effTitolo": "Effettivo (dalla banca)",
   "ft.effNetto": "Netto dovuto",
   "ft.effContro": "loro fatture verso di noi",
