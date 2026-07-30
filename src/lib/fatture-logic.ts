@@ -1077,6 +1077,11 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
   if (headerIdx < 0) return null;
   const header = matrix[headerIdx].map((c) => normalizeTesto(String(c ?? "")));
   const col = (name: string) => header.indexOf(name);
+  // L'export delle RICEVUTE ha lo stesso tracciato ma la controparte si
+  // chiama "fornitore": riconoscerlo qui evita il disastro gia' successo
+  // (1.103 fatture di fornitori archiviate come emesse, senza controparte).
+  const colFornitore = col("fornitore");
+  const ricevute = col(H.cliente) < 0 && colFornitore >= 0;
   const idx = {
     numero: col(H.numero),
     nomeFile: col(H.nomeFile),
@@ -1084,7 +1089,7 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
     dataInvio: col(H.dataInvio),
     dataDocumento: col(H.dataDocumento),
     tipoDocumento: col(H.tipoDocumento),
-    cliente: col(H.cliente),
+    cliente: ricevute ? colFornitore : col(H.cliente),
     piva: col(H.piva),
     metodoPagamento: col(H.metodoPagamento),
     imponibile: col(H.imponibile),
@@ -1122,8 +1127,10 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
       iva: val(cellToImporto(cell(r, idx.iva)) ?? 0),
       totale: val(totale),
       netto: val(cellToImporto(cell(r, idx.netto)) ?? totale),
-      statoSdI: String(cell(r, idx.statoSdI) ?? "").trim(),
-      direzione: "Emessa", // l'export "Check fatture inviate" è delle emesse
+      // Lo "stato" dell'export ricevute non e' lo stato SdI delle emesse
+      // (scartata/consegnata): non va confuso con gli scarti.
+      statoSdI: ricevute ? "" : String(cell(r, idx.statoSdI) ?? "").trim(),
+      direzione: ricevute ? "Ricevuta" : "Emessa",
       incassoAruba: parseIncassoAruba(cell(r, idx.incassoAruba)) || undefined,
       dataIncasso: cellToIsoDate(cell(r, idx.dataIncasso)) ?? undefined,
     });

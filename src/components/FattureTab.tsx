@@ -61,6 +61,8 @@ import {
   spArubaProvaConnessione,
   spSetRettificaNumero,
   spSetIncassoManuale,
+  spTrovaFattureSenzaCliente,
+  spEliminaFatture,
 } from "@/lib/sharepoint.functions";
 import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
 import type { ArubaProbeResult } from "@/lib/aruba.server";
@@ -158,6 +160,13 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   // Applica gli incassi del report movimenti alle fatture in archivio: gli
   // importi per rata sono l'unico dato che quantifica i PARZIALI.
   const applicaIncassiAruba = async (mov: MovimentoAruba[]) => {
+    // Archivio non ancora caricato = confronto contro il vuoto: il messaggio
+    // sarebbe "nessuna corrispondenza", che manda fuori strada. Meglio dire
+    // la verita': aspetta che l'elenco compaia e riprova.
+    if (fattureEm == null || fattureRic == null) {
+      toast.error(t("ft.movAttendi"), { description: t("ft.movAttendiDesc") });
+      return;
+    }
     const tutte = [...(fattureEm ?? []), ...(fattureRic ?? [])];
     // Una rata non può finire su uno scarto SdI: senza questo filtro l'incasso
     // si attacca al tentativo scartato e la fattura buona resta "non incassata".
@@ -849,6 +858,50 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         ]),
       ],
     );
+  };
+
+  // --- Pulizia documenti senza controparte -----------------------------------
+  // Un file letto col tracciato sbagliato (l'xlsx delle ricevute importato
+  // come emesse) lascia righe senza cliente che gonfiano archivio e totali,
+  // fino a impedire il caricamento della pagina. Qui si contano, si mostrano
+  // esempi, si chiede conferma e si eliminano a blocchi.
+  const [puliziaBusy, setPuliziaBusy] = useState(false);
+  const pulisciSenzaCliente = async () => {
+    setPuliziaBusy(true);
+    try {
+      const { ids, esempi } = (await spTrovaFattureSenzaCliente({
+        data: { direzione: dir },
+      })) as { ids: string[]; esempi: string[] };
+      if (ids.length === 0) {
+        toast.success(t("ft.puliziaNiente"));
+        return;
+      }
+      const okDel = window.confirm(
+        [`${ids.length} ${t("ft.puliziaConfirm")}`, "", ...esempi].join("\n"),
+      );
+      if (!okDel) return;
+      const tid = toast.loading(`${t("ft.puliziaProgress")} 0/${ids.length}`);
+      let eliminate = 0;
+      try {
+        for (let i = 0; i < ids.length; i += 80) {
+          const res = (await spEliminaFatture({
+            data: { ids: ids.slice(i, i + 80), direzione: dir },
+          })) as { eliminate: number; errori: string[] };
+          eliminate += res.eliminate;
+          toast.loading(`${t("ft.puliziaProgress")} ${eliminate}/${ids.length}`, { id: tid });
+        }
+      } finally {
+        toast.dismiss(tid);
+      }
+      toast.success(`${eliminate} ${t("ft.puliziaFatta")}`);
+      load();
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setPuliziaBusy(false);
+    }
   };
 
   // --- Stato d'incasso corretto a mano ---------------------------------------
@@ -1698,7 +1751,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
               type="file"
               accept=".zip,.xml,.xlsx,.xls"
               multiple
-              disabled={impParsing || impBusy}
+              disabled={impParsing || impBusy || loading}
               onChange={(e) => {
                 const files = Array.from(e.target.files ?? []);
                 if (files.length) void onFiles(files);
@@ -1711,6 +1764,22 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                 <Loader2 className="h-4 w-4 animate-spin" /> {t("fin.parsing")}
               </p>
             )}
+            {/* Pulizia: rimuove i documenti senza controparte lasciati da un
+                file letto col tracciato sbagliato. Conta, mostra esempi e
+                chiede conferma prima di toccare qualsiasi cosa. */}
+            <button
+              type="button"
+              disabled={puliziaBusy}
+              onClick={() => void pulisciSenzaCliente()}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-status-absent/40 px-2.5 py-1.5 text-[12px] text-status-absent hover:bg-status-absent/5 disabled:opacity-50"
+            >
+              {puliziaBusy ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              {t("ft.puliziaBtn")}
+            </button>
             {previewImp && (
               <div className="mt-3 text-[13px] text-muted-foreground">
                 <b className="text-foreground">{previewImp.descrizione}</b> —{" "}

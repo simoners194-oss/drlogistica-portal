@@ -738,6 +738,15 @@ const en = {
   "ft.movApplicati": "Collected amounts updated",
   "ft.movApplicatiDesc": "invoices updated from the Aruba movements report",
   "ft.movRate": "instalments read",
+  "ft.puliziaBtn": "Clean up: documents without counterparty",
+  "ft.puliziaNiente": "Nothing to clean: every document has a counterparty.",
+  "ft.puliziaConfirm":
+    "documents with NO counterparty found (typical of a file read with the wrong layout, e.g. the received-invoices Excel loaded as issued). Delete them from the archive? Examples:",
+  "ft.puliziaProgress": "Deleting",
+  "ft.puliziaFatta": "documents removed from the archive",
+  "ft.movAttendi": "Archive still loading",
+  "ft.movAttendiDesc":
+    "The invoice list has not finished loading yet: wait until it appears on screen, then upload the file again.",
   "ft.movNessuna": "No matching invoice",
   "ft.movNessunaDesc":
     "The movements report does not match any invoice in the archive: import the invoices first.",
@@ -1620,6 +1629,15 @@ const it: Record<DictKey, string> = {
   "ft.movApplicati": "Incassi aggiornati",
   "ft.movApplicatiDesc": "fatture aggiornate dal report movimenti di Aruba",
   "ft.movRate": "rate lette",
+  "ft.puliziaBtn": "Pulizia: documenti senza controparte",
+  "ft.puliziaNiente": "Niente da pulire: tutti i documenti hanno una controparte.",
+  "ft.puliziaConfirm":
+    "documenti SENZA controparte trovati (tipico di un file letto col tracciato sbagliato, es. l'Excel delle ricevute caricato come emesse). Eliminarli dall'archivio? Esempi:",
+  "ft.puliziaProgress": "Elimino",
+  "ft.puliziaFatta": "documenti rimossi dall'archivio",
+  "ft.movAttendi": "Archivio ancora in caricamento",
+  "ft.movAttendiDesc":
+    "L'elenco fatture non ha finito di caricarsi: aspetta che compaia a schermo, poi ricarica il file.",
   "ft.movNessuna": "Nessuna fattura corrispondente",
   "ft.movNessunaDesc":
     "Il report movimenti non corrisponde a nessuna fattura in archivio: importa prima le fatture.",

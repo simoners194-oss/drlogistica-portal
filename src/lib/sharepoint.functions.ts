@@ -75,6 +75,8 @@ import {
   setIncassiAruba,
   setRettificaNumero,
   setIncassoManuale,
+  trovaFattureSenzaCliente,
+  eliminaFatture,
   fetchAbbinamenti,
   createAbbinamenti,
   deleteAbbinamento,
@@ -963,6 +965,31 @@ export const spSetIncassoManuale = createServerFn({ method: "POST" })
     await assertDirettore(await currentUser());
     await setIncassoManuale(data.nomeFile, data.stato, data.direzione, data.dataIncasso);
     return { ok: true };
+  });
+
+// Pulizia dei documenti senza controparte (file letto col tracciato sbagliato).
+export const spTrovaFattureSenzaCliente = createServerFn({ method: "POST" })
+  .inputValidator((input: { direzione?: string }) => ({
+    direzione: (input?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+  }))
+  .handler(async ({ data }) => {
+    await assertDirettore(await currentUser());
+    return trovaFattureSenzaCliente(data.direzione);
+  });
+
+export const spEliminaFatture = createServerFn({ method: "POST" })
+  .inputValidator((input: { ids: string[]; direzione?: string }) => {
+    if (!Array.isArray(input?.ids) || input.ids.length === 0)
+      throw new Error("Nessun documento da eliminare");
+    if (input.ids.length > 80) throw new Error("Blocco troppo grande (max 80)");
+    return {
+      ids: input.ids.map((i) => String(i).trim()).filter(Boolean),
+      direzione: (input.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+    };
+  })
+  .handler(async ({ data }) => {
+    await assertDirettore(await currentUser());
+    return eliminaFatture(data.ids, data.direzione);
   });
 
 export const spGetTerminiPagamento = createServerFn({ method: "GET" }).handler(

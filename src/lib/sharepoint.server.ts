@@ -4105,6 +4105,67 @@ export async function fetchFatture(direzione: DirezioneFattura = "Emessa"): Prom
   return out;
 }
 
+/** PULIZIA: trova i documenti SENZA CONTROPARTE (campo cliente vuoto) in una
+ *  lista fatture. Sono il segno di un file letto col tracciato sbagliato —
+ *  successo con l'export xlsx delle RICEVUTE importato come emesse: 1.103
+ *  righe intruse. Ritorna gli id, l'eliminazione avviene a blocchi. */
+export async function trovaFattureSenzaCliente(
+  direzione: DirezioneFattura,
+): Promise<{ ids: string[]; esempi: string[] }> {
+  const cfg = await discoverSharePoint();
+  const { listId, fields } = fattureListPer(cfg, direzione);
+  if (!listId) return { ids: [], esempi: [] };
+  const items = await fetchMovimentiPages(
+    `/sites/${cfg.siteId}/lists/${listId}/items?expand=fields&$top=999`,
+  );
+  const F = fields;
+  const ids: string[] = [];
+  const esempi: string[] = [];
+  for (const it of items) {
+    const f = it.fields as Record<string, unknown>;
+    const cliente = F.Cliente ? String(f[F.Cliente] ?? "").trim() : "";
+    if (cliente) continue;
+    ids.push(String(it.id));
+    if (esempi.length < 5)
+      esempi.push(`${String(f[F.Numero ?? ""] ?? "?")} · ${String(f["Title"] ?? "")}`.slice(0, 60));
+  }
+  logSp("info", "fatture.pulizia", `${ids.length} documenti senza controparte (${direzione})`);
+  return { ids, esempi };
+}
+
+/** Elimina un blocco di fatture per id (max 80 per chiamata: il client cicla). */
+export async function eliminaFatture(
+  ids: readonly string[],
+  direzione: DirezioneFattura,
+): Promise<{ eliminate: number; errori: string[] }> {
+  const cfg = await discoverSharePoint();
+  const listId = requireFattureList(cfg, direzione);
+  const result = { eliminate: 0, errori: [] as string[] };
+  const BATCH = 4;
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const blocco = ids.slice(i, i + BATCH);
+    const esiti = await Promise.allSettled(
+      blocco.map(async (id) => {
+        // DELETE risponde 204 senza corpo: niente parse JSON.
+        const res = await gatewayFetch(`/sites/${cfg.siteId}/lists/${listId}/items/${id}`, {
+          method: "DELETE",
+        });
+        if (!res.ok && res.status !== 204)
+          throw new Error(`DELETE fattura ${id} → HTTP ${res.status}`);
+      }),
+    );
+    esiti.forEach((e, j) => {
+      if (e.status === "fulfilled") result.eliminate++;
+      else
+        result.errori.push(
+          `id ${blocco[j]}: ${e.reason instanceof Error ? e.reason.message : String(e.reason)}`,
+        );
+    });
+  }
+  logSp("info", "fatture.pulizia", `Eliminati ${result.eliminate} documenti (${direzione})`);
+  return result;
+}
+
 export interface ImportFattureResult {
   ricevute: number;
   importate: number;
