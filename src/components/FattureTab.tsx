@@ -207,8 +207,11 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       }
     }
     const invariate = mappa.size - daFare.Emessa.length - daFare.Ricevuta.length;
+    // Blocchi grossi (il massimo che il server accetta): ogni chiamata
+    // rilegge l'intero archivio, quindi meno chiamate = meno tempo totale.
+    const PASSO = 200;
     const blocchiTot =
-      Math.ceil(daFare.Emessa.length / CHUNK) + Math.ceil(daFare.Ricevuta.length / CHUNK);
+      Math.ceil(daFare.Emessa.length / PASSO) + Math.ceil(daFare.Ricevuta.length / PASSO);
     let aggiornate = 0;
     let blocco = 0;
     // Progresso visibile e timeout per blocco: un caricamento non deve mai
@@ -220,16 +223,19 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     const conTimeout = <T,>(p: Promise<T>): Promise<T> =>
       Promise.race([
         p,
+        // 5 minuti: un blocco su un archivio grosso puo' legittimamente
+        // superare i 2 (e' successo: il taglio a meta' corsa lascia applicato
+        // solo un prefisso del file, che sembra un export parziale).
         new Promise<never>((_, rej) =>
-          setTimeout(() => rej(new Error(t("ft.movTimeout"))), 120000),
+          setTimeout(() => rej(new Error(t("ft.movTimeout"))), 300000),
         ),
       ]);
     try {
       for (const d of ["Emessa", "Ricevuta"] as DirezioneFattura[]) {
         const righe = daFare[d];
-        for (let i = 0; i < righe.length; i += CHUNK) {
+        for (let i = 0; i < righe.length; i += PASSO) {
           const res = (await conTimeout(
-            spSetIncassiAruba({ data: { righe: righe.slice(i, i + CHUNK), direzione: d } }),
+            spSetIncassiAruba({ data: { righe: righe.slice(i, i + PASSO), direzione: d } }),
           )) as { aggiornate: number; errori: string[] };
           aggiornate += res.aggiornate;
           blocco++;
