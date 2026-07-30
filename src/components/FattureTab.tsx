@@ -1100,11 +1100,14 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         csvNum(s.incassato),
         csvNum(s.residuo),
         csvData(s.scadenza),
-        s.stato,
+        // Coperta per intero dalle note di credito: nel CSV "Pagata" sarebbe
+        // una bugia (residuo zero SENZA incasso) e manda a cercare bonifici
+        // che non esistono. Lo stato vero è "annullata da NC", come nell'app.
+        s.annullataDaNC ? "Annullata da NC" : s.stato,
         s.inRitardo ? s.giorniRitardo : "",
         s.aruba,
         csvData(f.dataIncasso),
-        s.statoBanca,
+        s.annullataDaNC ? "Annullata da NC" : s.statoBanca,
         s.discordante ? "Sì" : "",
         f.statoSdI,
         f.nomeFile,
