@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   History,
   Trash2,
+  Pencil,
   GraduationCap,
   Wand2,
   Receipt,
@@ -50,6 +51,9 @@ import {
   spGetImportStorico,
   spAnnullaImport,
   spGetRegoleFinanza,
+  spGetTerminiPagamento,
+  spImportTermini,
+  spDeleteTermine,
   spCreateRegolaFinanza,
   spDeleteRegolaFinanza,
   spApplicaRegolaFinanza,
@@ -258,6 +262,54 @@ function FinanzaPage() {
     spGetRegoleFinanza()
       .then((l) => setRegole(l as RegolaFinanza[]))
       .catch(() => setRegole([]));
+    // Termini d'incasso per cliente: vivono nella stessa tab.
+    spGetTerminiPagamento()
+      .then((l) => setTermini(l as { cliente: string; giorni: number }[]))
+      .catch(() => setTermini([]));
+  };
+
+  // --- Termini d'incasso (giorni di pagamento per cliente) ------------------
+  const [termini, setTermini] = useState<{ cliente: string; giorni: number }[] | null>(null);
+  const [tCliente, setTCliente] = useState("");
+  const [tGiorni, setTGiorni] = useState("");
+  const [tBusy, setTBusy] = useState(false);
+
+  const salvaTermine = async () => {
+    const giorni = Number(tGiorni);
+    if (!tCliente.trim() || !Number.isFinite(giorni) || giorni <= 0) {
+      toast.error(t("fin.termInvalido"));
+      return;
+    }
+    setTBusy(true);
+    try {
+      await spImportTermini({ data: { rows: [{ cliente: tCliente.trim(), giorni }] } });
+      setTCliente("");
+      setTGiorni("");
+      loadRegole();
+      toast.success(t("fin.termSalvato"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTBusy(false);
+    }
+  };
+
+  const eliminaTermine = async (cliente: string) => {
+    if (!window.confirm(`${t("fin.termDeleteConfirm")} ${cliente}?`)) return;
+    setTBusy(true);
+    try {
+      await spDeleteTermine({ data: { cliente } });
+      setTermini((prev) => (prev ? prev.filter((x) => x.cliente !== cliente) : prev));
+      toast.success(t("fin.termEliminato"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTBusy(false);
+    }
   };
   // Saldo attuale dalla banca. Silenzioso: senza collegamento attivo
   // semplicemente non si mostra (né la colonna Saldo); la diagnosi vive nel
@@ -1655,6 +1707,90 @@ function FinanzaPage() {
                     </button>
                   </li>
                 ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Termini d'incasso per cliente: i giorni contrattuali da cui
+              partono scadenze e ritardi delle fatture attive. Si impostano
+              qui a mano, oppure caricando il foglio contratti nell'import
+              della tab Fatture. Chi non è in elenco = 30 giorni. */}
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+            <div className="text-sm font-semibold text-foreground mb-1">
+              {t("fin.termTitle")}
+              {termini != null && (
+                <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                  ({termini.length})
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">{t("fin.termDesc")}</p>
+            <div className="flex flex-wrap items-end gap-3 mb-4">
+              <div className="flex-1 min-w-56">
+                <label className="text-xs text-muted-foreground">{t("fin.cliente")}</label>
+                <input
+                  value={tCliente}
+                  onChange={(e) => setTCliente(e.target.value)}
+                  placeholder={t("fin.termClientePh")}
+                  className={inputCls}
+                />
+              </div>
+              <div className="w-32">
+                <label className="text-xs text-muted-foreground">{t("fin.termGiorni")}</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={tGiorni}
+                  onChange={(e) => setTGiorni(e.target.value)}
+                  placeholder="30"
+                  className={inputCls}
+                />
+              </div>
+              <button
+                type="button"
+                disabled={tBusy}
+                onClick={() => void salvaTermine()}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+              >
+                {t("common.save")}
+              </button>
+            </div>
+            {termini == null ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : termini.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("fin.termEmpty")}</p>
+            ) : (
+              <ul className="divide-y divide-border/60">
+                {[...termini]
+                  .sort((a, b) => a.cliente.localeCompare(b.cliente))
+                  .map((x) => (
+                    <li key={x.cliente} className="flex items-center gap-3 py-1.5 text-sm">
+                      <span className="flex-1 truncate">{x.cliente}</span>
+                      <b className="tabular-nums">
+                        {x.giorni} {t("fin.termGg")}
+                      </b>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTCliente(x.cliente);
+                          setTGiorni(String(x.giorni));
+                        }}
+                        className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                        title={t("common.edit")}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={tBusy}
+                        onClick={() => void eliminaTermine(x.cliente)}
+                        className="rounded-md p-1 text-muted-foreground hover:text-status-absent"
+                        title={t("common.delete")}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
               </ul>
             )}
           </div>

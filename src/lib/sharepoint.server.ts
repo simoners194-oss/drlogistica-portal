@@ -4217,6 +4217,27 @@ export async function importTermini(
   return out;
 }
 
+/** Elimina il termine di pagamento di un cliente (match per chiave canonica). */
+export async function deleteTermine(cliente: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listTermini)
+    throw new Error('Lista "TerminiPagamento" assente su SharePoint: crearla e fare Riscopri.');
+  const F = cfg.terminiFields;
+  const res = await gatewayJson<GraphListResponse<Record<string, unknown>>>(
+    `/sites/${cfg.siteId}/lists/${cfg.listTermini}/items?expand=fields&$top=999`,
+  );
+  const key = clienteGroupKey(cliente);
+  const item = res.value.find(
+    (it) => clienteGroupKey(F.Cliente ? String((it.fields ?? {})[F.Cliente] ?? "") : "") === key,
+  );
+  if (!item) throw new Error(`Termine non trovato per: ${cliente}`);
+  const del = await gatewayFetch(`/sites/${cfg.siteId}/lists/${cfg.listTermini}/items/${item.id}`, {
+    method: "DELETE",
+  });
+  if (!del.ok && del.status !== 204) throw new Error(`DELETE termine → HTTP ${del.status}`);
+  logSp("info", "termini.delete", `Termine eliminato: ${cliente}`);
+}
+
 export interface ImportFattureResult {
   ricevute: number;
   importate: number;

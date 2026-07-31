@@ -77,6 +77,7 @@ import {
   setIncassoManuale,
   trovaFattureSenzaCliente,
   importTermini,
+  deleteTermine,
   eliminaFatture,
   fetchAbbinamenti,
   createAbbinamenti,
@@ -1008,6 +1009,18 @@ export const spImportTermini = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     await assertDirettore(await currentUser());
     return importTermini(data.rows);
+  });
+
+export const spDeleteTermine = createServerFn({ method: "POST" })
+  .inputValidator((input: { cliente: string }) => {
+    const cliente = String(input?.cliente ?? "").trim();
+    if (!cliente) throw new Error("Cliente non indicato");
+    return { cliente };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await deleteTermine(data.cliente);
+    return { ok: true };
   });
 
 export const spGetTerminiPagamento = createServerFn({ method: "GET" }).handler(
