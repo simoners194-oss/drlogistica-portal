@@ -1485,6 +1485,19 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           s.discordante ? "Sì" : "",
           f.statoSdI,
           f.nomeFile,
+          // Classificazione gestionale (solo passive), stessa larghezza
+          // dell'intestazione: competenza sempre calcolata, tipologia e
+          // cliente di riferimento manuali o proposti dallo storico.
+          ...(ricevute
+            ? (() => {
+                const auto = classAuto.get(clienteGroupKey(f.cliente) || f.cliente);
+                const tip = f.tipologiaCosto || auto?.tipologia || "";
+                const cli = f.clienteRif || auto?.clienteRif || "";
+                const fonteClass =
+                  f.tipologiaCosto || f.clienteRif ? "manuale" : tip || cli ? "auto" : "";
+                return [meseCompetenza(f.dataDocumento, f.meseCompetenza), tip, cli, fonteClass];
+              })()
+            : []),
         ];
       }),
     );
