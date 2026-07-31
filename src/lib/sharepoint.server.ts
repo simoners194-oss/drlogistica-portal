@@ -279,6 +279,9 @@ export const SP_DISPLAY = {
     DataIncasso: "DataIncasso",
     // Solo per le note di credito: numero della fattura rettificata.
     RettificaNumero: "RettificaNumero",
+    MeseCompetenza: "MeseCompetenza",
+    TipologiaCosto: "TipologiaCosto",
+    ClienteRif: "ClienteRif",
     // Somma delle rate incassate registrate su Aruba (report movimenti):
     // è il dato che quantifica gli incassi parziali. OPZIONALE.
     IncassatoAruba: "IncassatoAruba",
@@ -4082,6 +4085,9 @@ function mapFattura(
     rettificaNumero: F.RettificaNumero
       ? String(f[F.RettificaNumero] ?? "") || undefined
       : undefined,
+    meseCompetenza: F.MeseCompetenza ? String(f[F.MeseCompetenza] ?? "") || undefined : undefined,
+    tipologiaCosto: F.TipologiaCosto ? String(f[F.TipologiaCosto] ?? "") || undefined : undefined,
+    clienteRif: F.ClienteRif ? String(f[F.ClienteRif] ?? "") || undefined : undefined,
     incassatoAruba: F.IncassatoAruba ? numOrUndef(f[F.IncassatoAruba]) : undefined,
     dataIncasso: (() => {
       const d = F.DataIncasso ? iso(f[F.DataIncasso]) : "";
@@ -4299,6 +4305,12 @@ export async function importFatture(
         patch[F.RettificaNumero] = r.rettificaNumero;
       if (F.IncassoAruba && r.incassoAruba && r.incassoAruba !== (prev.incassoAruba ?? ""))
         patch[F.IncassoAruba] = r.incassoAruba;
+      if (F.MeseCompetenza && r.meseCompetenza && r.meseCompetenza !== (prev.meseCompetenza ?? ""))
+        patch[F.MeseCompetenza] = r.meseCompetenza;
+      if (F.TipologiaCosto && r.tipologiaCosto && r.tipologiaCosto !== (prev.tipologiaCosto ?? ""))
+        patch[F.TipologiaCosto] = r.tipologiaCosto;
+      if (F.ClienteRif && r.clienteRif && r.clienteRif !== (prev.clienteRif ?? ""))
+        patch[F.ClienteRif] = r.clienteRif;
       if (F.DataIncasso && r.dataIncasso && r.dataIncasso !== (prev.dataIncasso ?? ""))
         patch[F.DataIncasso] = `${r.dataIncasso}T00:00:00Z`;
       if (Object.keys(patch).length) {
@@ -4333,6 +4345,9 @@ export async function importFatture(
     if (F.IncassoAruba && r.incassoAruba) fields[F.IncassoAruba] = r.incassoAruba;
     if (F.DataIncasso && r.dataIncasso) fields[F.DataIncasso] = `${r.dataIncasso}T00:00:00Z`;
     if (F.RettificaNumero && r.rettificaNumero) fields[F.RettificaNumero] = r.rettificaNumero;
+    if (F.MeseCompetenza && r.meseCompetenza) fields[F.MeseCompetenza] = r.meseCompetenza;
+    if (F.TipologiaCosto && r.tipologiaCosto) fields[F.TipologiaCosto] = r.tipologiaCosto;
+    if (F.ClienteRif && r.clienteRif) fields[F.ClienteRif] = r.clienteRif;
     ops.push(async () => {
       await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
         method: "POST",

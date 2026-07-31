@@ -49,6 +49,13 @@ export interface FatturaRaw {
    *  è l'unico dato che quantifica gli incassi PARZIALI. undefined se il
    *  report movimenti non è stato caricato per quell'anno. */
   incassatoAruba?: number;
+  /** Classificazione gestionale (amministrazione): MESE DI COMPETENZA
+   *  dichiarato ("GIUGNO"), tipologia di costo ("BUONI PASTO") e cliente di
+   *  riferimento ("ZINGALI"). Arrivano dal report classificato a mano; per
+   *  le fatture nuove valgono i valori proposti dallo storico. */
+  meseCompetenza?: string;
+  tipologiaCosto?: string;
+  clienteRif?: string;
   /** Solo per le NOTE DI CREDITO: numero della fattura che rettificano,
    *  dichiarato nell'XML in DatiGenerali/DatiFattureCollegate/IdDocumento.
    *  Serve ad abbattere il credito della fattura collegata. */
@@ -60,8 +67,9 @@ export type IncassoAruba = "Incassata" | "Non incassata" | "Non gestita" | "";
 /** Normalizza il valore della colonna "Incassi" dell'export Aruba. */
 export function parseIncassoAruba(v: unknown): IncassoAruba {
   const s = normalizeTesto(String(v ?? ""));
-  if (s.startsWith("incassat")) return "Incassata";
-  if (s.startsWith("non incassat")) return "Non incassata";
+  // Il report delle RICEVUTE usa "Pagata/Non pagata": stessa semantica.
+  if (s.startsWith("non incassat") || s.startsWith("non pagat")) return "Non incassata";
+  if (s.startsWith("incassat") || s.startsWith("pagat")) return "Incassata";
   if (s.startsWith("non gestit")) return "Non gestita";
   return "";
 }
@@ -365,6 +373,91 @@ export function giorniPerCliente(cliente: string, termini: readonly TerminePagam
   if (!match.length) return TERMINI_DEFAULT_GIORNI;
   const generico = match.find((t) => !t.descrizione?.trim());
   return (generico ?? match[0]).giorni;
+}
+
+// --- Mese di competenza ------------------------------------------------------
+// Regola del direttore: se il mese e' scritto sulla fattura vale quello;
+// altrimenti, fattura emessa entro il 15 = competenza del mese PRECEDENTE,
+// oltre = mese in corso.
+
+const MESI_NOMI = [
+  "gennaio",
+  "febbraio",
+  "marzo",
+  "aprile",
+  "maggio",
+  "giugno",
+  "luglio",
+  "agosto",
+  "settembre",
+  "ottobre",
+  "novembre",
+  "dicembre",
+];
+
+/** "YYYY-MM" di competenza. `dichiarato` = testo libero dell'amministrazione
+ *  ("GIUGNO", "GIUNGO LUGLIO"...): si prende il primo mese riconoscibile,
+ *  con l'anno dedotto dalla data fattura (mai nel futuro). */
+export function meseCompetenza(dataDocumento: string, dichiarato?: string): string {
+  const annoDoc = Number(dataDocumento.slice(0, 4));
+  const meseDoc = Number(dataDocumento.slice(5, 7));
+  const giorno = Number(dataDocumento.slice(8, 10));
+  if (!annoDoc || !meseDoc) return "";
+  const testo = normalizeTesto(dichiarato ?? "");
+  if (testo) {
+    // tollerante ai refusi: basta il prefisso di 4 lettere ("giun", "lugl").
+    for (let i = 0; i < 12; i++) {
+      const nome = MESI_NOMI[i];
+      if (testo.includes(nome) || testo.includes(nome.slice(0, 4))) {
+        const mese = i + 1;
+        const anno = mese > meseDoc ? annoDoc - 1 : annoDoc;
+        return `${anno}-${String(mese).padStart(2, "0")}`;
+      }
+    }
+  }
+  if (giorno <= 15) {
+    const prec = meseDoc === 1 ? 12 : meseDoc - 1;
+    const anno = meseDoc === 1 ? annoDoc - 1 : annoDoc;
+    return `${anno}-${String(prec).padStart(2, "0")}`;
+  }
+  return `${annoDoc}-${String(meseDoc).padStart(2, "0")}`;
+}
+
+// --- Classificazione automatica dallo storico --------------------------------
+// "Machine learning" dei poveri, che qui basta e avanza: per ogni fornitore
+// si guarda come l'amministrazione ha classificato le SUE fatture passate e
+// si propone la classificazione di maggioranza (almeno 2 casi e >=60%).
+
+export function classificazioneAuto(
+  fatture: readonly FatturaRaw[],
+): Map<string, { tipologia?: string; clienteRif?: string }> {
+  const perForn = new Map<
+    string,
+    { n: number; tip: Map<string, number>; cli: Map<string, number> }
+  >();
+  for (const f of fatture) {
+    if (f.direzione !== "Ricevuta") continue;
+    const tip = (f.tipologiaCosto ?? "").trim();
+    const cli = (f.clienteRif ?? "").trim();
+    if (!tip && !cli) continue;
+    const k = clienteGroupKey(f.cliente) || f.cliente;
+    const v = perForn.get(k) ?? { n: 0, tip: new Map(), cli: new Map() };
+    v.n++;
+    if (tip) v.tip.set(tip, (v.tip.get(tip) ?? 0) + 1);
+    if (cli) v.cli.set(cli, (v.cli.get(cli) ?? 0) + 1);
+    perForn.set(k, v);
+  }
+  const out = new Map<string, { tipologia?: string; clienteRif?: string }>();
+  const maggioranza = (m: Map<string, number>, n: number) => {
+    const top = [...m.entries()].sort((a, b) => b[1] - a[1])[0];
+    return top && top[1] >= 2 && top[1] / n >= 0.6 ? top[0] : undefined;
+  };
+  for (const [k, v] of perForn) {
+    const tipologia = maggioranza(v.tip, v.n);
+    const clienteRif = maggioranza(v.cli, v.n);
+    if (tipologia || clienteRif) out.set(k, { tipologia, clienteRif });
+  }
+  return out;
 }
 
 // --- Import del foglio contratti del direttore -------------------------------
@@ -1132,7 +1225,12 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
   // chiama "fornitore": riconoscerlo qui evita il disastro gia' successo
   // (1.103 fatture di fornitori archiviate come emesse, senza controparte).
   const colFornitore = col("fornitore");
-  const ricevute = col(H.cliente) < 0 && colFornitore >= 0;
+  // Se c'e' la colonna "fornitore" il file e' delle RICEVUTE anche quando
+  // esiste pure una colonna "cliente": nel report classificato a mano quella
+  // e' il CLIENTE DI RIFERIMENTO del costo (es. Satiswelfare -> ZINGALI),
+  // non la controparte. Leggerla come controparte rifarebbe il pasticcio
+  // delle 3.335 righe senza nome.
+  const ricevute = colFornitore >= 0;
   const idx = {
     numero: col(H.numero),
     nomeFile: col(H.nomeFile),
@@ -1141,6 +1239,11 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
     dataDocumento: col(H.dataDocumento),
     tipoDocumento: col(H.tipoDocumento),
     cliente: ricevute ? colFornitore : col(H.cliente),
+    meseCompetenza: col("mese di competenza"),
+    // "descrizione" e' la TIPOLOGIA solo nel report classificato (riconoscibile
+    // dalla presenza di "mese di competenza"): altrove resta ignorata.
+    tipologiaCosto: col("mese di competenza") >= 0 ? col("descrizione") : -1,
+    clienteRif: ricevute && col("mese di competenza") >= 0 ? col(H.cliente) : -1,
     piva: col(H.piva),
     metodoPagamento: col(H.metodoPagamento),
     imponibile: col(H.imponibile),
@@ -1148,8 +1251,8 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
     totale: col(H.totale),
     netto: col(H.netto),
     statoSdI: col(H.statoSdI),
-    incassoAruba: col(H.incassoAruba),
-    dataIncasso: col(H.dataIncasso),
+    incassoAruba: col(H.incassoAruba) >= 0 ? col(H.incassoAruba) : col("pagamenti"),
+    dataIncasso: col(H.dataIncasso) >= 0 ? col(H.dataIncasso) : col("data pagamento"),
   };
   const cell = (r: unknown[], i: number) => (i >= 0 ? r[i] : undefined);
   const rows: FatturaRaw[] = [];
@@ -1184,6 +1287,9 @@ export function parseFattureMatrice(matrix: unknown[][]): ParseFattureResult | n
       direzione: ricevute ? "Ricevuta" : "Emessa",
       incassoAruba: parseIncassoAruba(cell(r, idx.incassoAruba)) || undefined,
       dataIncasso: cellToIsoDate(cell(r, idx.dataIncasso)) ?? undefined,
+      meseCompetenza: String(cell(r, idx.meseCompetenza) ?? "").trim() || undefined,
+      tipologiaCosto: String(cell(r, idx.tipologiaCosto) ?? "").trim() || undefined,
+      clienteRif: String(cell(r, idx.clienteRif) ?? "").trim() || undefined,
     });
   }
   return { rows, scartate };

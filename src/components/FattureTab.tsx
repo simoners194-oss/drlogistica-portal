@@ -34,6 +34,8 @@ import {
   parseMovimentiArubaMatrice,
   parseTerminiMatrice,
   giorniPerCliente,
+  meseCompetenza,
+  classificazioneAuto,
   aggregaIncassiAruba,
   type MovimentoAruba,
   TERMINI_DEFAULT_GIORNI,
@@ -503,6 +505,10 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     }
     return m;
   }, [dir, fattureEm, fattureRic, anniF]);
+
+  // Classificazione proposta per fornitore, imparata dallo storico
+  // compilato a mano (report classificato): maggioranza con almeno 2 casi.
+  const classAuto = useMemo(() => classificazioneAuto(fattureRic ?? []), [fattureRic]);
 
   // Riepilogo per cliente (come l'OVERVIEW del direttore, compattata).
   // Specchietto per cliente: conteggi e importi, ordinato per FATTURATO
@@ -1427,6 +1433,10 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         "Discordante",
         "Stato SdI",
         "Nome file",
+        // Classificazione gestionale (solo passive): competenza calcolata
+        // (dichiarata se c'e', altrimenti regola del giorno 15), tipologia e
+        // cliente di riferimento (dallo storico se non dichiarati).
+        ...(ricevute ? ["Mese competenza", "Tipologia", "Cliente rif", "Class."] : []),
       ],
       filtrate.map(({ f, s }) => {
         // Incassato con la stessa regola della colonna: NC compensata =

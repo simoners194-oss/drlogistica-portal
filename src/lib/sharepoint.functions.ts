@@ -883,6 +883,11 @@ export const spImportFatture = createServerFn({ method: "POST" })
         scadenza: re.test(r.scadenza ?? "") ? r.scadenza : undefined,
         incassoAruba: r.incassoAruba ? String(r.incassoAruba).slice(0, 30) : undefined,
         dataIncasso: re.test(r.dataIncasso ?? "") ? r.dataIncasso : undefined,
+        rettificaNumero: r.rettificaNumero ? String(r.rettificaNumero).slice(0, 60) : undefined,
+        // Classificazione gestionale dal report compilato a mano.
+        meseCompetenza: r.meseCompetenza ? String(r.meseCompetenza).slice(0, 40) : undefined,
+        tipologiaCosto: r.tipologiaCosto ? String(r.tipologiaCosto).slice(0, 120) : undefined,
+        clienteRif: r.clienteRif ? String(r.clienteRif).slice(0, 80) : undefined,
       };
     });
     return { rows, direzione };
