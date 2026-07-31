@@ -389,9 +389,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     [conStato, anniF],
   );
 
-  // I 15 clienti con piu' fatturato negli anni selezionati (NC in negativo,
-  // scarti esclusi), in ordine DECRESCENTE: sono le voci del menu clienti —
-  // la stessa misura e la stessa classifica dello specchietto.
+  // TUTTI i clienti degli anni selezionati, in ordine di fatturato
+  // DECRESCENTE (il direttore: "non prende tutti i clienti" — niente tagli).
   const clientiTop = useMemo(() => {
     const somme = new Map<string, { nome: string; tot: number }>();
     for (const x of conStato) {
@@ -403,7 +402,6 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     }
     return [...somme.entries()]
       .sort((a, b) => b[1].tot - a[1].tot)
-      .slice(0, 15)
       .map(([k, v]) => ({ v: k, label: v.nome }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conStato, anniF]);
@@ -536,13 +534,15 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         sommaGg: 0,
         nGg: 0,
       };
-      // Una nota di credito ABBASSA IL FATTURATO e basta: non è un incasso.
-      // Il suo effetto sull'incassato è già dentro la fattura collegata, il
-      // cui credito è calcolato al netto della NC (il cliente paga la
-      // differenza). Sommarla anche qui la conterebbe due volte, e "da
-      // incassare" resterebbe pari all'importo della nota anche a fattura
-      // completamente annullata.
+      // Una nota di credito abbassa il fatturato; se e' COMPENSATA pesa in
+      // NEGATIVO anche sull'incassato (denaro non entrato) — stessa regola
+      // dell'export CSV, cosi' lo specchietto e i pivot del direttore dicono
+      // lo stesso numero.
       row.fatturato += x.f.totale; // le NC arrivano già con segno negativo
+      if (isNotaCredito(x.f.tipoDocumento)) {
+        if (x.s.statoIncassi === "Pagata" || x.s.statoFatturazione === "Pagata")
+          row.incassatoFatt -= Math.abs(x.f.totale);
+      }
       if (!isNotaCredito(x.f.tipoDocumento)) {
         row.incassatoFatt += x.s.incassatoIncassi ?? x.s.incassatoFatturazione ?? 0;
         row.incassatoBanca += x.s.incassatoBanca;
@@ -593,8 +593,11 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     errori: string[];
   } | null>(null);
 
-  // Cliente espanso nello specchietto (mostra le sue fatture).
+  // Cliente espanso nello specchietto (mostra le sue fatture). Di default si
+  // vedono SOLO le fatture ancora da incassare (intere o parziali): è la
+  // domanda per cui si apre il dettaglio. "Tutte" per lo storico completo.
   const [clienteAperto, setClienteAperto] = useState<string | null>(null);
+  const [dettaglioTutte, setDettaglioTutte] = useState(false);
   const fattureDelCliente = useMemo(
     () =>
       clienteAperto == null
@@ -609,6 +612,19 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
             .sort((a, b) => b.f.dataDocumento.localeCompare(a.f.dataDocumento)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [conStato, clienteAperto, anniF],
+  );
+
+  // Le sole APERTE (da incassare, intere o parziali): il default del dettaglio.
+  const fattureDelClienteAperte = useMemo(
+    () =>
+      fattureDelCliente.filter(
+        (x) =>
+          !isNotaCredito(x.f.tipoDocumento) &&
+          x.s.stato !== "NC" &&
+          !x.s.annullataDaNC &&
+          x.s.residuo > TOLLERANZA_SALDO,
+      ),
+    [fattureDelCliente],
   );
 
   // ESTRATTO CONTO del cliente aperto: la quadratura completa, fattura per
@@ -1380,6 +1396,11 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         "Totale",
         ricevute ? "Pagato" : "Incassato",
         "Residuo",
+        // Le colonne chieste dal direttore: il residuo "da formula" che regge
+        // anche le NC non collegate, lo status a tre valori e i giorni.
+        "Residuo (Totale-Incassato)",
+        "Status",
+        "Giorni",
         "Scadenza",
         "Stato",
         "Ritardo gg",
@@ -1390,38 +1411,55 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         "Stato SdI",
         "Nome file",
       ],
-      filtrate.map(({ f, s }) => [
-        f.numero,
-        csvData(f.dataDocumento),
-        ...csvPeriodo(f.dataDocumento),
-        f.cliente,
-        f.tipoDocumento,
-        csvNum(f.totale),
-        // Una NC COMPENSATA e' denaro non entrato: nell'incassato pesa in
-        // NEGATIVO, cosi' la somma della colonna si avvicina alla cassa vera
-        // (Aruba registra le fatture al lordo, la banca riceve il netto).
-        // Una NC non compensata non ha ancora pesato su nulla: zero.
-        csvNum(
-          isNotaCredito(f.tipoDocumento)
-            ? s.statoIncassi === "Pagata" || s.statoFatturazione === "Pagata"
-              ? -Math.abs(f.totale)
-              : 0
-            : s.incassato,
-        ),
-        csvNum(s.residuo),
-        csvData(s.scadenza),
-        // Coperta per intero dalle note di credito: nel CSV "Pagata" sarebbe
-        // una bugia (residuo zero SENZA incasso) e manda a cercare bonifici
-        // che non esistono. Lo stato vero è "annullata da NC", come nell'app.
-        s.annullataDaNC ? "Annullata da NC" : s.stato,
-        s.inRitardo ? s.giorniRitardo : "",
-        s.aruba,
-        csvData(f.dataIncasso),
-        s.annullataDaNC ? "Annullata da NC" : s.statoBanca,
-        s.discordante ? "Sì" : "",
-        f.statoSdI,
-        f.nomeFile,
-      ]),
+      filtrate.map(({ f, s }) => {
+        // Incassato con la stessa regola della colonna: NC compensata =
+        // negativo, NC aperta = 0.
+        const incassatoCsv = isNotaCredito(f.tipoDocumento)
+          ? s.statoIncassi === "Pagata" || s.statoFatturazione === "Pagata"
+            ? -Math.abs(f.totale)
+            : 0
+          : s.incassato;
+        const pagato = s.stato === "Pagata" || s.annullataDaNC || s.stato === "NC";
+        // "Status": Ritardo / Pagato / In tempo. "Giorni": se pagato, data
+        // documento -> data pagamento; altrimenti data documento -> oggi.
+        const status = s.inRitardo ? "Ritardo" : pagato ? "Pagato" : "In tempo";
+        const ggDa = (a: string, b: string) =>
+          Math.round(
+            (new Date(`${b}T00:00:00`).getTime() - new Date(`${a}T00:00:00`).getTime()) / 86400000,
+          );
+        const giorni =
+          pagato && f.dataIncasso && f.dataDocumento
+            ? ggDa(f.dataDocumento, f.dataIncasso)
+            : f.dataDocumento
+              ? ggDa(f.dataDocumento, oggiISO)
+              : "";
+        return [
+          f.numero,
+          csvData(f.dataDocumento),
+          ...csvPeriodo(f.dataDocumento),
+          f.cliente,
+          f.tipoDocumento,
+          csvNum(f.totale),
+          // NC compensata = negativo (denaro non entrato), NC aperta = 0.
+          csvNum(incassatoCsv),
+          csvNum(s.residuo),
+          csvNum(Math.round((f.totale - incassatoCsv) * 100) / 100),
+          status,
+          giorni,
+          csvData(s.scadenza),
+          // Coperta per intero dalle note di credito: nel CSV "Pagata" sarebbe
+          // una bugia (residuo zero SENZA incasso) e manda a cercare bonifici
+          // che non esistono. Lo stato vero è "annullata da NC", come nell'app.
+          s.annullataDaNC ? "Annullata da NC" : s.stato,
+          s.inRitardo ? s.giorniRitardo : "",
+          s.aruba,
+          csvData(f.dataIncasso),
+          s.annullataDaNC ? "Annullata da NC" : s.statoBanca,
+          s.discordante ? "Sì" : "",
+          f.statoSdI,
+          f.nomeFile,
+        ];
+      }),
     );
   };
 
@@ -2415,7 +2453,10 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   return [
                     <tr
                       key={r.key}
-                      onClick={() => setClienteAperto(aperto ? null : r.key)}
+                      onClick={() => {
+                        setClienteAperto(aperto ? null : r.key);
+                        setDettaglioTutte(false);
+                      }}
                       className={`border-b border-border/50 cursor-pointer hover:bg-muted/40 ${aperto ? "bg-muted/30" : ""}`}
                     >
                       <td className="py-1 pr-2 max-w-64 truncate font-medium" title={r.cliente}>
@@ -2498,8 +2539,28 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                     aperto && (
                       <tr key={`${r.key}-det`} className="border-b border-border/50">
                         <td colSpan={ricevute ? 10 : 12} className="py-2 px-3 bg-muted/20">
-                          {/* Dettaglio del cliente: le sue fatture, con le tre
-                              letture affiancate come nella tabella principale. */}
+                          {/* Dettaglio del cliente: di default le sole fatture
+                              da incassare (intere o parziali), con le tre
+                              letture affiancate. "Tutte" per lo storico. */}
+                          <div
+                            className="flex items-center gap-2 mb-1.5 text-[12px]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span className="font-semibold text-foreground">
+                              {dettaglioTutte
+                                ? `${fattureDelCliente.length} ${t("ft.dettTutte")}`
+                                : `${fattureDelClienteAperte.length} ${tp("ft.dettAperte", "ft.dettApertePassive")}`}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setDettaglioTutte(!dettaglioTutte)}
+                              className="rounded-full border border-border px-2.5 py-0.5 text-[11px] hover:bg-muted"
+                            >
+                              {dettaglioTutte
+                                ? tp("ft.dettSoloAperte", "ft.dettSoloApertePassive")
+                                : t("ft.dettMostraTutte")}
+                            </button>
+                          </div>
                           <table className="w-full text-[12px]">
                             <thead>
                               <tr className="text-left text-[11px] text-muted-foreground">
@@ -2516,48 +2577,50 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                               </tr>
                             </thead>
                             <tbody>
-                              {fattureDelCliente.map((x) => (
-                                <tr key={x.f.nomeFile} className="border-t border-border/40">
-                                  <td className="py-0.5 pr-2 whitespace-nowrap">{x.f.numero}</td>
-                                  <td className="py-0.5 pr-2 whitespace-nowrap">
-                                    {fmtData(x.f.dataDocumento)}
-                                  </td>
-                                  <td
-                                    className={`py-0.5 pr-2 text-right whitespace-nowrap tabular-nums ${isNotaCredito(x.f.tipoDocumento) ? "text-status-absent" : ""}`}
-                                  >
-                                    {fmtImporto(x.f.totale)}
-                                  </td>
-                                  <td
-                                    className={`py-0.5 pr-2 whitespace-nowrap ${x.s.inRitardo ? "text-status-absent" : "text-muted-foreground"}`}
-                                  >
-                                    {x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)}
-                                  </td>
-                                  <td className="py-0.5 pr-2 whitespace-nowrap">
-                                    {badgeStato(x, x.s.statoFatturazione, true)}
-                                  </td>
-                                  <td className="py-0.5 pr-2 whitespace-nowrap">
-                                    {x.s.statoIncassi == null ? (
-                                      <span className="text-[11px] text-muted-foreground">—</span>
-                                    ) : (
-                                      <>
-                                        {badgeStato(x, x.s.statoIncassi, false)}
-                                        <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
-                                          {fmtImporto(x.s.incassatoIncassi ?? 0)}
-                                        </span>
-                                      </>
-                                    )}
-                                  </td>
-                                  <td className="py-0.5 pr-2 whitespace-nowrap">
-                                    {badgeStato(x, x.s.statoBanca, false)}
-                                    <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
-                                      {fmtImporto(x.s.incassatoBanca)}
-                                    </span>
-                                  </td>
-                                  <td className="py-0.5 pr-2 text-right whitespace-nowrap tabular-nums font-medium">
-                                    {x.s.stato === "NC" ? "" : fmtImporto(x.s.residuo)}
-                                  </td>
-                                </tr>
-                              ))}
+                              {(dettaglioTutte ? fattureDelCliente : fattureDelClienteAperte).map(
+                                (x) => (
+                                  <tr key={x.f.nomeFile} className="border-t border-border/40">
+                                    <td className="py-0.5 pr-2 whitespace-nowrap">{x.f.numero}</td>
+                                    <td className="py-0.5 pr-2 whitespace-nowrap">
+                                      {fmtData(x.f.dataDocumento)}
+                                    </td>
+                                    <td
+                                      className={`py-0.5 pr-2 text-right whitespace-nowrap tabular-nums ${isNotaCredito(x.f.tipoDocumento) ? "text-status-absent" : ""}`}
+                                    >
+                                      {fmtImporto(x.f.totale)}
+                                    </td>
+                                    <td
+                                      className={`py-0.5 pr-2 whitespace-nowrap ${x.s.inRitardo ? "text-status-absent" : "text-muted-foreground"}`}
+                                    >
+                                      {x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)}
+                                    </td>
+                                    <td className="py-0.5 pr-2 whitespace-nowrap">
+                                      {badgeStato(x, x.s.statoFatturazione, true)}
+                                    </td>
+                                    <td className="py-0.5 pr-2 whitespace-nowrap">
+                                      {x.s.statoIncassi == null ? (
+                                        <span className="text-[11px] text-muted-foreground">—</span>
+                                      ) : (
+                                        <>
+                                          {badgeStato(x, x.s.statoIncassi, false)}
+                                          <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
+                                            {fmtImporto(x.s.incassatoIncassi ?? 0)}
+                                          </span>
+                                        </>
+                                      )}
+                                    </td>
+                                    <td className="py-0.5 pr-2 whitespace-nowrap">
+                                      {badgeStato(x, x.s.statoBanca, false)}
+                                      <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
+                                        {fmtImporto(x.s.incassatoBanca)}
+                                      </span>
+                                    </td>
+                                    <td className="py-0.5 pr-2 text-right whitespace-nowrap tabular-nums font-medium">
+                                      {x.s.stato === "NC" ? "" : fmtImporto(x.s.residuo)}
+                                    </td>
+                                  </tr>
+                                ),
+                              )}
                             </tbody>
                           </table>
                           {/* Quadratura + movimenti bancari del cliente: senza

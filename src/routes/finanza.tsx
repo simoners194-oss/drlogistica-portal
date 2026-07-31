@@ -620,10 +620,9 @@ function FinanzaPage() {
   };
 
   // --- Derivati -------------------------------------------------------------
-  // Le 15 controparti con piu' incassi arrivati (importi positivi, controparte
-  // riconosciuta) negli anni selezionati, in ordine DECRESCENTE: sono le voci
-  // del menu clienti. Calcolate prima degli altri filtri, cosi' l'elenco non
-  // cambia mentre si affina la ricerca.
+  // TUTTE le controparti con incassi negli anni selezionati, in ordine
+  // DECRESCENTE di incassato: sono le voci del menu clienti. Calcolate prima
+  // degli altri filtri, cosi' l'elenco non cambia mentre si affina la ricerca.
   const clientiTop = useMemo(() => {
     const somme = new Map<string, { nome: string; tot: number }>();
     for (const m of movimenti ?? []) {
@@ -636,7 +635,6 @@ function FinanzaPage() {
     }
     return [...somme.entries()]
       .sort((a, b) => b[1].tot - a[1].tot)
-      .slice(0, 15)
       .map(([k, v]) => ({ v: k, label: v.nome }));
   }, [movimenti, anni]);
 
