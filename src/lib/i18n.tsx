@@ -827,7 +827,7 @@ const en = {
   "ft.pagato": "Paid",
   "ft.nonPagata": "Unpaid",
   "ft.fornitore": "Supplier",
-  "ft.perFornitoreTitle": "Open payables by supplier",
+  "ft.perFornitoreTitle": "Supplier invoices summary",
   "ft.abbPagamento": "Bank payment",
   "ft.importRows": "invoices in the file",
   "ft.importDone": "Import completed",
@@ -839,7 +839,7 @@ const en = {
   "ft.giaNelCaricamento": "already among the selected files",
   "ft.errFileDesc":
     "No sheet with the expected columns (Numero, Nome file, Totale documento…) was found.",
-  "ft.perClienteTitle": "Open receivables by client",
+  "ft.perClienteTitle": "Client invoices summary",
   "ft.aperte": "Open invoices",
   "ft.data": "Date",
   "ft.nFatture": "Invoices",
@@ -880,6 +880,10 @@ const en = {
   "ft.spiegaContro": "counterparty invoice to us, offset inside the transfer: nothing to save",
   "ft.spiegaNc":
     "unlinked credit note: applying will link it to the largest invoice in this combination",
+  "ft.colPassive": "Their invoices",
+  "ft.colAttive": "Our invoices",
+  "ft.colAltraDirTip":
+    "Invoices in the opposite direction with this counterparty, in the selected years (credit notes deducted). Often offset inside their transfers — without this column the net position cannot be explained.",
   "ft.dettAperte": "invoices still to collect (full or partial)",
   "ft.dettApertePassive": "invoices still to pay (full or partial)",
   "ft.dettTutte": "invoices in total",
@@ -1735,7 +1739,7 @@ const it: Record<DictKey, string> = {
   "ft.pagato": "Pagato",
   "ft.nonPagata": "Non pagata",
   "ft.fornitore": "Fornitore",
-  "ft.perFornitoreTitle": "Debito aperto per fornitore",
+  "ft.perFornitoreTitle": "Riepilogo fatture fornitore",
   "ft.abbPagamento": "Pagamento bancario",
   "ft.importRows": "fatture nel file",
   "ft.importDone": "Import completato",
@@ -1746,7 +1750,7 @@ const it: Record<DictKey, string> = {
   "ft.errFile": "File non riconosciuto",
   "ft.giaNelCaricamento": "già presenti nei file scelti",
   "ft.errFileDesc": "Nessun foglio con le colonne attese (Numero, Nome file, Totale documento…).",
-  "ft.perClienteTitle": "Credito aperto per cliente",
+  "ft.perClienteTitle": "Riepilogo fatture cliente",
   "ft.aperte": "Fatture aperte",
   "ft.data": "Data",
   "ft.nFatture": "Fatture",
@@ -1788,6 +1792,10 @@ const it: Record<DictKey, string> = {
     "fattura della controparte verso di noi, compensata dentro il bonifico: niente da salvare",
   "ft.spiegaNc":
     "nota di credito non collegata: applicando verrà collegata alla fattura più grande di questa combinazione",
+  "ft.colPassive": "Loro fatture",
+  "ft.colAttive": "Nostre fatture",
+  "ft.colAltraDirTip":
+    "Fatture nella direzione opposta con questa controparte, negli anni selezionati (note di credito dedotte). Spesso vengono compensate dentro i bonifici — senza questa colonna il netto della posizione non si spiega.",
   "ft.dettAperte": "fatture ancora da incassare (intere o parziali)",
   "ft.dettApertePassive": "fatture ancora da pagare (intere o parziali)",
   "ft.dettTutte": "fatture in totale",

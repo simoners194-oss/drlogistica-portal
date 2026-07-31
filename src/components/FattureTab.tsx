@@ -487,6 +487,23 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     return { totale: Math.round(totale * 100) / 100, n };
   }, [movimenti, anniF]);
 
+  // Fatture dell'ALTRA direzione per controparte (le "loro fatture verso di
+  // noi" sulla scheda attive, le nostre verso il fornitore su quella
+  // passive): spesso vengono compensate dentro i bonifici — vedi iMile — e
+  // senza vederle il netto della controparte non si spiega.
+  const altraDirezionePerCliente = useMemo(() => {
+    const altre = dir === "Emessa" ? (fattureRic ?? []) : (fattureEm ?? []);
+    const m = new Map<string, number>();
+    for (const f of altre) {
+      if (isEsclusaDalCredito(f)) continue;
+      const anno = Number(f.dataDocumento.slice(0, 4));
+      if (anniF.length && !anniF.includes(anno)) continue;
+      const k = clienteGroupKey(f.cliente) || f.cliente;
+      m.set(k, (m.get(k) ?? 0) + f.totale); // NC già col segno negativo
+    }
+    return m;
+  }, [dir, fattureEm, fattureRic, anniF]);
+
   // Riepilogo per cliente (come l'OVERVIEW del direttore, compattata).
   // Specchietto per cliente: conteggi e importi, ordinato per FATTURATO
   // decrescente. Le note di credito entrano nel fatturato (con segno) ma non
@@ -2432,6 +2449,13 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   <th className="py-1.5 pr-2 text-right">
                     {tp("ft.totDaIncassare", "ft.totDaPagare")}
                   </th>
+                  {/* Le fatture dell'ALTRA direzione: quanto la controparte
+                      fattura a noi (o noi al fornitore). Spesso compensate
+                      dentro i bonifici — senza vederle il netto non si
+                      spiega. */}
+                  <th className="py-1.5 pr-2 text-right" title={t("ft.colAltraDirTip")}>
+                    {tp("ft.colPassive", "ft.colAttive")}
+                  </th>
                   {/* La statistica del direttore: termine contrattuale vs
                       giorni medi effettivi (Postadoc: 60 gg sulla carta,
                       paga a 88,7). */}
@@ -2505,6 +2529,17 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                       >
                         {fmtImporto(r.residuo)}
                       </td>
+                      {(() => {
+                        const altre = altraDirezionePerCliente.get(r.key) ?? 0;
+                        return (
+                          <td
+                            className="py-1 pr-2 text-right tabular-nums text-muted-foreground"
+                            title={t("ft.colAltraDirTip")}
+                          >
+                            {altre ? fmtImporto(altre) : ""}
+                          </td>
+                        );
+                      })()}
                       {!ricevute &&
                         (() => {
                           const termine = giorniPerCliente(r.cliente, termini);
@@ -2538,7 +2573,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                     </tr>,
                     aperto && (
                       <tr key={`${r.key}-det`} className="border-b border-border/50">
-                        <td colSpan={ricevute ? 10 : 12} className="py-2 px-3 bg-muted/20">
+                        <td colSpan={ricevute ? 11 : 13} className="py-2 px-3 bg-muted/20">
                           {/* Dettaglio del cliente: di default le sole fatture
                               da incassare (intere o parziali), con le tre
                               letture affiancate. "Tutte" per lo storico. */}
