@@ -756,7 +756,7 @@ const en = {
   "ft.puliziaBtn": "Clean up: documents without counterparty",
   "ft.puliziaNiente": "Nothing to clean: every document has a counterparty.",
   "ft.puliziaConfirm":
-    "documents with NO counterparty found (typical of a file read with the wrong layout, e.g. the received-invoices Excel loaded as issued). Delete them from the archive? Examples:",
+    "misplaced documents found: no counterparty, or supplier invoices that ended up among the ISSUED ones (same SdI file also present among received — the received copy is the good one and stays). Delete them from this archive? Examples:",
   "ft.puliziaProgress": "Deleting",
   "ft.puliziaFatta": "documents removed from the archive",
   "ft.movAttendi": "Archive still loading",
@@ -1680,7 +1680,7 @@ const it: Record<DictKey, string> = {
   "ft.puliziaBtn": "Pulizia: documenti senza controparte",
   "ft.puliziaNiente": "Niente da pulire: tutti i documenti hanno una controparte.",
   "ft.puliziaConfirm":
-    "documenti SENZA controparte trovati (tipico di un file letto col tracciato sbagliato, es. l'Excel delle ricevute caricato come emesse). Eliminarli dall'archivio? Esempi:",
+    "documenti fuori posto trovati: senza controparte, oppure fatture di fornitori finite tra le EMESSE (stesso file SdI presente anche tra le ricevute — la copia ricevuta è quella buona e resta). Eliminarli da questo archivio? Esempi:",
   "ft.puliziaProgress": "Elimino",
   "ft.puliziaFatta": "documenti rimossi dall'archivio",
   "ft.movAttendi": "Archivio ancora in caricamento",

@@ -4125,18 +4125,34 @@ export async function trovaFattureSenzaCliente(
   const items = await fetchMovimentiPages(
     `/sites/${cfg.siteId}/lists/${listId}/items?expand=fields&$top=999`,
   );
+  // Un documento non puo' stare in ENTRAMBE le direzioni: se un nome file
+  // emesso esiste anche tra le ricevute, la copia emessa e' un intruso (file
+  // dei fornitori letto col tracciato sbagliato: successo due volte). La
+  // copia buona e' quella ricevuta, quindi il controllo incrociato scatta
+  // SOLO dal lato emesse.
+  let ricevuteSet = new Set<string>();
+  if (direzione === "Emessa" && cfg.listFattureRicevute) {
+    const ric = await fetchMovimentiPages(
+      `/sites/${cfg.siteId}/lists/${cfg.listFattureRicevute}/items?expand=fields&$top=999`,
+    );
+    ricevuteSet = new Set(
+      ric.map((it) => String((it.fields as Record<string, unknown>)["Title"] ?? "").trim()),
+    );
+  }
   const F = fields;
   const ids: string[] = [];
   const esempi: string[] = [];
   for (const it of items) {
     const f = it.fields as Record<string, unknown>;
     const cliente = F.Cliente ? String(f[F.Cliente] ?? "").trim() : "";
-    if (cliente) continue;
+    const title = String(f["Title"] ?? "").trim();
+    const intruso = !cliente || (ricevuteSet.size > 0 && ricevuteSet.has(title));
+    if (!intruso) continue;
     ids.push(String(it.id));
     if (esempi.length < 5)
-      esempi.push(`${String(f[F.Numero ?? ""] ?? "?")} · ${String(f["Title"] ?? "")}`.slice(0, 60));
+      esempi.push(`${String(f[F.Numero ?? ""] ?? "?")} · ${title}`.slice(0, 60));
   }
-  logSp("info", "fatture.pulizia", `${ids.length} documenti senza controparte (${direzione})`);
+  logSp("info", "fatture.pulizia", `${ids.length} documenti fuori posto (${direzione})`);
   return { ids, esempi };
 }
 
