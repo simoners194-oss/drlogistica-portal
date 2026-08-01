@@ -5669,8 +5669,14 @@ export async function sendPushToSede(
   const sedeLow = (sedeDestinataria || "Tutte").trim().toLowerCase();
   const target = rows.filter((r) => {
     if (sedeLow === "" || sedeLow === "tutte") return true;
+    // MIRATA = solo la sede indicata. I dispositivi SENZA sede registrata
+    // (admin, sottoscrizioni vecchie) restano fuori: prima ricevevano ogni
+    // invio mirato di qualunque sede, e una comunicazione "solo Zingali"
+    // arrivava anche al telefono dell'amministratore. Chi ha la sede vuota
+    // e la vuole, riattiva le notifiche dal portale: la registrazione si
+    // aggiorna con la sede dell'account.
     const s = (r.sede || "").trim().toLowerCase();
-    return s === "" || s === "tutte" || s === sedeLow;
+    return s === "tutte" || s === sedeLow;
   });
   let sent = 0;
   let failed = 0;
