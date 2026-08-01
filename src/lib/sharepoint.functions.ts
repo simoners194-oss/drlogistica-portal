@@ -78,6 +78,10 @@ import {
   trovaFattureSenzaCliente,
   importTermini,
   deleteTermine,
+  fetchRegoleFatture,
+  createRegolaFattura,
+  deleteRegolaFattura,
+  setClassificazione,
   eliminaFatture,
   fetchAbbinamenti,
   createAbbinamenti,
@@ -1025,6 +1029,75 @@ export const spDeleteTermine = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     await assertDirettore(await currentUser());
     await deleteTermine(data.cliente);
+    return { ok: true };
+  });
+
+// Regole di classificazione delle passive + classificazione manuale.
+export const spGetRegoleFatture = createServerFn({ method: "GET" }).handler(async () => {
+  await assertDirettore(await currentUser());
+  return fetchRegoleFatture();
+});
+
+export const spCreateRegolaFattura = createServerFn({ method: "POST" })
+  .inputValidator((input: { fornitore: string; tipologia?: string; clienteRif?: string }) => ({
+    fornitore: String(input?.fornitore ?? "")
+      .trim()
+      .slice(0, 120),
+    tipologia:
+      String(input?.tipologia ?? "")
+        .trim()
+        .slice(0, 120) || undefined,
+    clienteRif:
+      String(input?.clienteRif ?? "")
+        .trim()
+        .slice(0, 80) || undefined,
+  }))
+  .handler(async ({ data }) => {
+    await assertDirettore(await currentUser());
+    return createRegolaFattura(data);
+  });
+
+export const spDeleteRegolaFattura = createServerFn({ method: "POST" })
+  .inputValidator((input: { id: string }) => {
+    const id = String(input?.id ?? "").trim();
+    if (!id) throw new Error("Regola non indicata");
+    return { id };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await deleteRegolaFattura(data.id);
+    return { ok: true };
+  });
+
+export const spSetClassificazione = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      nomeFile: string;
+      direzione?: string;
+      meseCompetenza?: string;
+      tipologiaCosto?: string;
+      clienteRif?: string;
+    }) => {
+      const nomeFile = String(input?.nomeFile ?? "").trim();
+      if (!nomeFile) throw new Error("Fattura non indicata");
+      const campo = (v: unknown, max: number) =>
+        v === undefined ? undefined : String(v).trim().slice(0, max);
+      return {
+        nomeFile,
+        direzione: (input.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+        meseCompetenza: campo(input.meseCompetenza, 40),
+        tipologiaCosto: campo(input.tipologiaCosto, 120),
+        clienteRif: campo(input.clienteRif, 80),
+      };
+    },
+  )
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await setClassificazione(data.nomeFile, data.direzione, {
+      meseCompetenza: data.meseCompetenza,
+      tipologiaCosto: data.tipologiaCosto,
+      clienteRif: data.clienteRif,
+    });
     return { ok: true };
   });
 

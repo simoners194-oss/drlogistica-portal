@@ -36,6 +36,8 @@ import {
   giorniPerCliente,
   meseCompetenza,
   classificazioneAuto,
+  risolviClassificazione,
+  type RegolaFattura,
   aggregaIncassiAruba,
   type MovimentoAruba,
   TERMINI_DEFAULT_GIORNI,
@@ -67,6 +69,8 @@ import {
   spSetIncassoManuale,
   spTrovaFattureSenzaCliente,
   spImportTermini,
+  spGetRegoleFatture,
+  spSetClassificazione,
   spEliminaFatture,
 } from "@/lib/sharepoint.functions";
 import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
@@ -509,6 +513,17 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   // Classificazione proposta per fornitore, imparata dallo storico
   // compilato a mano (report classificato): maggioranza con almeno 2 casi.
   const classAuto = useMemo(() => classificazioneAuto(fattureRic ?? []), [fattureRic]);
+
+  // Regole di classificazione impostate nella tab Regole di Finanza.
+  const [regoleFatture, setRegoleFatture] = useState<RegolaFattura[]>([]);
+  useEffect(() => {
+    spGetRegoleFatture()
+      .then((l) => setRegoleFatture(l as RegolaFattura[]))
+      .catch(() => setRegoleFatture([]));
+  }, []);
+
+  // Risoluzione a catena: manuale → regola → proposta dallo storico.
+  const classificaDi = (f: FatturaRaw) => risolviClassificazione(f, regoleFatture, classAuto);
 
   // Riepilogo per cliente (come l'OVERVIEW del direttore, compattata).
   // Specchietto per cliente: conteggi e importi, ordinato per FATTURATO
@@ -963,6 +978,56 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       setPuliziaBusy(false);
     }
   };
+
+  // --- Classificazione manuale della passiva ---------------------------------
+  // Cliccando la fattura si impostano competenza, tipologia e cliente di
+  // riferimento: scrivono le stesse colonne dell'import, quindi vincono su
+  // regole e proposte e sopravvivono ai reimport.
+  const [clFile, setClFile] = useState<string | null>(null);
+  const [clMese, setClMese] = useState("");
+  const [clTip, setClTip] = useState("");
+  const [clCli, setClCli] = useState("");
+  const [clSaving, setClSaving] = useState(false);
+
+  const apriClassifica = (f: FatturaRaw) => {
+    setClFile(f.nomeFile);
+    setClMese(f.meseCompetenza ?? "");
+    setClTip(f.tipologiaCosto ?? "");
+    setClCli(f.clienteRif ?? "");
+  };
+
+  const salvaClassifica = async (f: FatturaRaw) => {
+    setClSaving(true);
+    try {
+      await spSetClassificazione({
+        data: {
+          nomeFile: f.nomeFile,
+          direzione: dir,
+          meseCompetenza: clMese.trim(),
+          tipologiaCosto: clTip.trim(),
+          clienteRif: clCli.trim(),
+        },
+      });
+      const agg = (await spGetFatture({ data: { direzione: dir } })) as SpFattura[];
+      (dir === "Emessa" ? setFattureEm : setFattureRic)(agg);
+      setClFile(null);
+      toast.success(t("ft.classSalvata"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setClSaving(false);
+    }
+  };
+
+  // Tipologie già usate in archivio: suggerimenti per il campo (datalist).
+  const tipologieNote = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of fattureRic ?? []) if (f.tipologiaCosto) set.add(f.tipologiaCosto);
+    for (const r of regoleFatture) if (r.tipologia) set.add(r.tipologia);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [fattureRic, regoleFatture]);
 
   // --- Stato d'incasso corretto a mano ---------------------------------------
   // Per la fattura che si SA essere stata incassata (già registrata su Aruba)
@@ -1490,12 +1555,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           // cliente di riferimento manuali o proposti dallo storico.
           ...(ricevute
             ? (() => {
-                const auto = classAuto.get(clienteGroupKey(f.cliente) || f.cliente);
-                const tip = f.tipologiaCosto || auto?.tipologia || "";
-                const cli = f.clienteRif || auto?.clienteRif || "";
-                const fonteClass =
-                  f.tipologiaCosto || f.clienteRif ? "manuale" : tip || cli ? "auto" : "";
-                return [meseCompetenza(f.dataDocumento, f.meseCompetenza), tip, cli, fonteClass];
+                const cl = classificaDi(f);
+                return [cl.mese, cl.tipologia, cl.clienteRif, cl.fonte];
               })()
             : []),
         ];
@@ -2059,6 +2120,15 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   <th className="py-1.5 pr-2">{t("ft.colFatturazione")}</th>
                   <th className="py-1.5 pr-2">{tp("ft.colIncassi", "ft.colPagatoFatt")}</th>
                   <th className="py-1.5 pr-2">{t("ft.colBanca")}</th>
+                  {/* Classificazione (solo passive): le stesse colonne del
+                      CSV, visibili in pagina senza dover esportare. */}
+                  {ricevute && (
+                    <>
+                      <th className="py-1.5 pr-2">{t("ft.colCompetenza")}</th>
+                      <th className="py-1.5 pr-2">{t("ft.colTipologia")}</th>
+                      <th className="py-1.5 pr-2">{t("ft.colClienteRif")}</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -2159,10 +2229,43 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                           </span>
                         )}
                       </td>
+                      {ricevute &&
+                        (() => {
+                          const cl = classificaDi(x.f);
+                          const stile =
+                            cl.fonte === "manuale"
+                              ? "text-foreground"
+                              : "text-muted-foreground italic";
+                          const tipTitle =
+                            cl.fonte === "regola"
+                              ? t("ft.classFonteRegola")
+                              : cl.fonte === "auto"
+                                ? t("ft.classFonteAuto")
+                                : undefined;
+                          return (
+                            <>
+                              <td className="py-1 pr-2 whitespace-nowrap tabular-nums text-muted-foreground">
+                                {cl.mese}
+                              </td>
+                              <td
+                                className={`py-1 pr-2 max-w-40 truncate ${stile}`}
+                                title={tipTitle ?? cl.tipologia}
+                              >
+                                {cl.tipologia}
+                              </td>
+                              <td
+                                className={`py-1 pr-2 whitespace-nowrap ${stile}`}
+                                title={tipTitle}
+                              >
+                                {cl.clienteRif}
+                              </td>
+                            </>
+                          );
+                        })()}
                     </tr>,
                     aperta && (
                       <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
-                        <td colSpan={9} className="py-3 px-3 bg-muted/20">
+                        <td colSpan={ricevute ? 12 : 9} className="py-3 px-3 bg-muted/20">
                           <div className="text-xs text-muted-foreground mb-2">
                             {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
                             {termini.length
@@ -2216,6 +2319,54 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                               <span className="text-[11px] text-muted-foreground">
                                 {t("ft.incManHint")}
                               </span>
+                            </div>
+                          )}
+                          {/* Classificazione della passiva: competenza,
+                              tipologia, cliente di riferimento. Il manuale
+                              vince su regole e proposte. */}
+                          {ricevute && (
+                            <div
+                              className="flex flex-wrap items-center gap-2 mb-3 text-[13px]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <span className="text-muted-foreground">{t("ft.classModifica")}</span>
+                              <input
+                                value={
+                                  clFile === x.f.nomeFile ? clMese : (x.f.meseCompetenza ?? "")
+                                }
+                                onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
+                                onChange={(e) => setClMese(e.target.value)}
+                                placeholder={t("ft.classMesePh")}
+                                className="w-44 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                              />
+                              <input
+                                list="tipologie-note"
+                                value={clFile === x.f.nomeFile ? clTip : (x.f.tipologiaCosto ?? "")}
+                                onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
+                                onChange={(e) => setClTip(e.target.value)}
+                                placeholder={t("ft.classPh")}
+                                className="w-64 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                              />
+                              <input
+                                value={clFile === x.f.nomeFile ? clCli : (x.f.clienteRif ?? "")}
+                                onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
+                                onChange={(e) => setClCli(e.target.value)}
+                                placeholder={t("ft.classCliPh")}
+                                className="w-36 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                              />
+                              <datalist id="tipologie-note">
+                                {tipologieNote.map((tp2) => (
+                                  <option key={tp2} value={tp2} />
+                                ))}
+                              </datalist>
+                              <button
+                                type="button"
+                                disabled={clSaving || clFile !== x.f.nomeFile}
+                                onClick={() => void salvaClassifica(x.f)}
+                                className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"
+                              >
+                                {clSaving ? "…" : t("common.save")}
+                              </button>
                             </div>
                           )}
                           {/* Nota di credito: collegamento alla fattura che

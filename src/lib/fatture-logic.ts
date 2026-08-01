@@ -460,6 +460,65 @@ export function classificazioneAuto(
   return out;
 }
 
+// --- Regole di classificazione delle passive ---------------------------------
+// Impostate dal direttore nella tab Regole: per FORNITORE (match "contiene"
+// sul nome canonico) fissano tipologia di costo e/o cliente di riferimento.
+// Nella risoluzione vincono nell'ordine: valore MANUALE della fattura →
+// REGOLA → proposta AUTO dallo storico.
+
+export interface RegolaFattura {
+  id?: string;
+  fornitore: string;
+  tipologia?: string;
+  clienteRif?: string;
+}
+
+export interface ClassificazioneRisolta {
+  mese: string;
+  tipologia: string;
+  clienteRif: string;
+  fonte: "manuale" | "regola" | "auto" | "";
+}
+
+export function risolviClassificazione(
+  f: Pick<
+    FatturaRaw,
+    "cliente" | "dataDocumento" | "meseCompetenza" | "tipologiaCosto" | "clienteRif"
+  >,
+  regole: readonly RegolaFattura[],
+  auto: ReadonlyMap<string, { tipologia?: string; clienteRif?: string }>,
+): ClassificazioneRisolta {
+  const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza);
+  if (f.tipologiaCosto || f.clienteRif)
+    return {
+      mese,
+      tipologia: f.tipologiaCosto ?? "",
+      clienteRif: f.clienteRif ?? "",
+      fonte: "manuale",
+    };
+  const chiave = clienteGroupKey(f.cliente) || f.cliente;
+  const regola = regole.find((r) => {
+    const rk = clienteGroupKey(r.fornitore);
+    return rk && (chiave === rk || chiave.includes(rk));
+  });
+  if (regola && (regola.tipologia || regola.clienteRif))
+    return {
+      mese,
+      tipologia: regola.tipologia ?? "",
+      clienteRif: regola.clienteRif ?? "",
+      fonte: "regola",
+    };
+  const proposta = auto.get(chiave);
+  if (proposta && (proposta.tipologia || proposta.clienteRif))
+    return {
+      mese,
+      tipologia: proposta.tipologia ?? "",
+      clienteRif: proposta.clienteRif ?? "",
+      fonte: "auto",
+    };
+  return { mese, tipologia: "", clienteRif: "", fonte: "" };
+}
+
 // --- Import del foglio contratti del direttore -------------------------------
 // "CLIENTI_FORNITORI check contratti.xlsx": colonna "GG pagamento" = giorni
 // contrattuali VERIFICATI per cliente. Righe senza valore = default 30 a

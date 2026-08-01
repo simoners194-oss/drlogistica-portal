@@ -59,6 +59,7 @@ import {
 } from "./finanza-logic";
 import {
   isNotaCredito,
+  type RegolaFattura,
   type FatturaRaw,
   type TerminePagamento,
   type AbbinamentoIncasso,
@@ -251,6 +252,14 @@ export const SP_DISPLAY = {
     Tipologia: "Tipologia",
     ClienteNuovo: "ClienteNuovo",
   },
+  // Regole di CLASSIFICAZIONE delle fatture passive (tab Regole): per
+  // fornitore (match sul nome, contiene) fissano tipologia di costo e/o
+  // cliente di riferimento. OPZIONALE.
+  regoleFatture: {
+    Fornitore: "Fornitore",
+    Tipologia: "Tipologia",
+    ClienteRif: "ClienteRif",
+  },
   // Fatture (sezione Finanza → Fatture). Title = NOME FILE SdI (chiave
   // univoca, mai il numero). Stesso schema per le DUE liste: FattureEmesse e
   // FattureRicevute (Cliente = controparte: cliente o fornitore). Alimentate
@@ -389,6 +398,7 @@ const LIST_NAMES = {
   codaEmail: ["CodaEmail", "Coda Email", "EmailQueue"],
   movimenti: ["MovimentiBancari", "MovimentoBancario", "Movimenti"],
   regoleFinanza: ["RegoleFinanza", "RegolaFinanza", "RegoleBanca"],
+  regoleFatture: ["RegoleFatture", "RegoleClassificazione", "RegoleFatturePassive"],
   fatture: ["FattureEmesse", "FatturaEmessa", "Fatture"],
   fattureRicevute: ["FattureRicevute", "FatturaRicevuta"],
   terminiPagamento: ["TerminiPagamento", "TerminiDiPagamento", "TerminePagamento"],
@@ -499,6 +509,8 @@ export interface SpDiscovered {
   listRegoleFinanzaName: string | null;
   regoleFinanzaFields: Record<string, string>;
   regoleFinanzaMissing: string[];
+  listRegoleFatture: string | null;
+  regoleFattureFields: Record<string, string>;
   listFatture: string | null;
   listFattureName: string | null;
   fattureFields: Record<string, string>;
@@ -854,6 +866,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const coda = await softList(LIST_NAMES.codaEmail, SP_DISPLAY.codaEmail);
   const mov = await softList(LIST_NAMES.movimenti, SP_DISPLAY.movimenti);
   const reg = await softList(LIST_NAMES.regoleFinanza, SP_DISPLAY.regoleFinanza);
+  const regFat = await softList(LIST_NAMES.regoleFatture, SP_DISPLAY.regoleFatture);
   const fat = await softList(LIST_NAMES.fatture, SP_DISPLAY.fatture);
   const fatR = await softList(LIST_NAMES.fattureRicevute, SP_DISPLAY.fatture);
   const trm = await softList(LIST_NAMES.terminiPagamento, SP_DISPLAY.terminiPagamento);
@@ -915,6 +928,8 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listRegoleFinanzaName: reg.name,
     regoleFinanzaFields: reg.fields,
     regoleFinanzaMissing: reg.missing,
+    listRegoleFatture: regFat.id,
+    regoleFattureFields: regFat.fields,
     listFatture: fat.id,
     listFattureName: fat.name,
     fattureFields: fat.fields,
@@ -4258,6 +4273,92 @@ export async function deleteTermine(cliente: string): Promise<void> {
   });
   if (!del.ok && del.status !== 204) throw new Error(`DELETE termine → HTTP ${del.status}`);
   logSp("info", "termini.delete", `Termine eliminato: ${cliente}`);
+}
+
+// --- Regole di classificazione passive (lista RegoleFatture) ----------------
+
+export async function fetchRegoleFatture(): Promise<RegolaFattura[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listRegoleFatture) return [];
+  const F = cfg.regoleFattureFields;
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listRegoleFatture}/items?expand=fields&$top=999`,
+    ),
+  );
+  return res.value
+    .map((it) => {
+      const f = it.fields ?? {};
+      return {
+        id: String(it.id),
+        fornitore: F.Fornitore ? String(f[F.Fornitore] ?? "").trim() : "",
+        tipologia: F.Tipologia ? String(f[F.Tipologia] ?? "").trim() || undefined : undefined,
+        clienteRif: F.ClienteRif ? String(f[F.ClienteRif] ?? "").trim() || undefined : undefined,
+      };
+    })
+    .filter((r) => r.fornitore);
+}
+
+export async function createRegolaFattura(input: RegolaFattura): Promise<RegolaFattura> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listRegoleFatture)
+    throw new Error('Lista "RegoleFatture" assente su SharePoint: crearla e fare Riscopri.');
+  const F = cfg.regoleFattureFields;
+  if (!input.fornitore.trim()) throw new Error("Il fornitore della regola è obbligatorio.");
+  if (!input.tipologia?.trim() && !input.clienteRif?.trim())
+    throw new Error("La regola deve impostare almeno tipologia o cliente di riferimento.");
+  const fields: Record<string, unknown> = { Title: input.fornitore.trim().slice(0, 120) };
+  if (F.Fornitore) fields[F.Fornitore] = input.fornitore.trim();
+  if (F.Tipologia && input.tipologia?.trim()) fields[F.Tipologia] = input.tipologia.trim();
+  if (F.ClienteRif && input.clienteRif?.trim()) fields[F.ClienteRif] = input.clienteRif.trim();
+  const created = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListItem<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listRegoleFatture}/items`,
+      { method: "POST", body: JSON.stringify({ fields }) },
+    ),
+  );
+  logSp("info", "create.regolaFattura", `Regola classificazione "${input.fornitore}"`);
+  return { ...input, id: String(created.id) };
+}
+
+export async function deleteRegolaFattura(id: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listRegoleFatture) throw new Error('Lista "RegoleFatture" assente su SharePoint.');
+  const res = await gatewayFetch(
+    `/sites/${cfg.siteId}/lists/${cfg.listRegoleFatture}/items/${id}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok && res.status !== 204) throw new Error(`DELETE regola fattura → HTTP ${res.status}`);
+  logSp("info", "delete.regolaFattura", `Rimossa regola classificazione #${id}`);
+}
+
+/** Classificazione MANUALE di una fattura (competenza, tipologia, cliente di
+ *  riferimento): scrive le stesse colonne dell'import del report, quindi il
+ *  valore manuale vince su regole e proposte. Stringa vuota = svuota. */
+export async function setClassificazione(
+  nomeFile: string,
+  direzione: DirezioneFattura,
+  campi: { meseCompetenza?: string; tipologiaCosto?: string; clienteRif?: string },
+): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requireFattureList(cfg, direzione);
+  const F = fattureListPer(cfg, direzione).fields;
+  if (!F.MeseCompetenza || !F.TipologiaCosto || !F.ClienteRif)
+    throw new Error(
+      "Colonne MeseCompetenza/TipologiaCosto/ClienteRif assenti sulla lista fatture: aggiungerle (testo) e fare Riscopri.",
+    );
+  const doc = (await fetchFatture(direzione)).find((f) => f.nomeFile === nomeFile);
+  if (!doc) throw new Error(`Documento non trovato in archivio: ${nomeFile}`);
+  const patch: Record<string, unknown> = {};
+  if (campi.meseCompetenza !== undefined) patch[F.MeseCompetenza] = campi.meseCompetenza;
+  if (campi.tipologiaCosto !== undefined) patch[F.TipologiaCosto] = campi.tipologiaCosto;
+  if (campi.clienteRif !== undefined) patch[F.ClienteRif] = campi.clienteRif;
+  if (!Object.keys(patch).length) return;
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${doc.id}/fields`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  logSp("info", "fatture.classifica", `${doc.numero}: classificazione aggiornata (manuale)`);
 }
 
 export interface ImportFattureResult {
