@@ -908,6 +908,11 @@ const en = {
   "ft.colAttive": "Our invoices",
   "ft.colAltraDirTip":
     "Invoices in the opposite direction with this counterparty, in the selected years (credit notes deducted). Often offset inside their transfers — without this column the net position cannot be explained.",
+  "ft.thFiltra": "Filter this column",
+  "ft.thTutti": "All",
+  "ft.thSoloVisibili": "Only shown",
+  "ft.thVuoto": "(empty)",
+  "ft.thPulisci": "Clear column filters",
   "ft.colCompetenza": "Accrual month",
   "ft.colTipologia": "Cost type",
   "ft.colClienteRif": "Ref. client",
@@ -1854,6 +1859,11 @@ const it: Record<DictKey, string> = {
   "ft.colAttive": "Nostre fatture",
   "ft.colAltraDirTip":
     "Fatture nella direzione opposta con questa controparte, negli anni selezionati (note di credito dedotte). Spesso vengono compensate dentro i bonifici — senza questa colonna il netto della posizione non si spiega.",
+  "ft.thFiltra": "Filtra questa colonna",
+  "ft.thTutti": "Tutti",
+  "ft.thSoloVisibili": "Solo i mostrati",
+  "ft.thVuoto": "(vuoto)",
+  "ft.thPulisci": "Pulisci filtri colonne",
   "ft.colCompetenza": "Competenza",
   "ft.colTipologia": "Tipologia",
   "ft.colClienteRif": "Cliente rif",

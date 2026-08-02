@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Download,
   FileSpreadsheet,
+  Filter,
   KeyRound,
   Link2,
   Loader2,
@@ -412,6 +413,116 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conStato, anniF]);
 
+  const classAuto = useMemo(() => classificazioneAuto(fattureRic ?? []), [fattureRic]);
+
+  // Regole di classificazione impostate nella tab Regole di Finanza.
+  const [regoleFatture, setRegoleFatture] = useState<RegolaFattura[]>([]);
+  useEffect(() => {
+    spGetRegoleFatture()
+      .then((l) => setRegoleFatture(l as RegolaFattura[]))
+      .catch(() => setRegoleFatture([]));
+  }, []);
+
+  // Risoluzione a catena: manuale → regola → proposta dallo storico.
+  const classificaDi = (f: FatturaRaw) => risolviClassificazione(f, regoleFatture, classAuto);
+
+  // --- Filtri di intestazione (stile Excel) ---------------------------------
+  // Ogni colonna dell'elenco ha il suo imbuto: spunte sui VALORI DISTINTI,
+  // a cascata (i valori proposti tengono conto degli altri filtri attivi).
+  // I getter producono il TESTO mostrato in tabella: filtro e occhio
+  // coincidono sempre.
+  const testoStatoF = (x: (typeof conStato)[number]): string =>
+    x.s.annullataDaNC
+      ? t("ft.annullataNC")
+      : x.s.stato === "NC"
+        ? t("ft.nc")
+        : x.s.statoFatturazione == null
+          ? t("ft.nonGestita")
+          : x.s.statoFatturazione;
+  const testoStatoI = (x: (typeof conStato)[number]): string =>
+    x.s.stato === "NC"
+      ? t("ft.nc")
+      : x.s.statoIncassi == null
+        ? t("ft.senzaMovimenti")
+        : x.s.statoIncassi;
+  const testoStatoB = (x: (typeof conStato)[number]): string =>
+    x.s.annullataDaNC
+      ? t("ft.annullataNC")
+      : x.s.stato === "NC"
+        ? t("ft.nc")
+        : x.s.statoBanca === "Non incassata" && x.s.incassatoBanca === 0
+          ? t("ft.nessunAbbinamento")
+          : x.s.statoBanca;
+  type ColFiltro = { key: string; label: string; get: (x: (typeof conStato)[number]) => string };
+  const colonneTh = useMemo<ColFiltro[]>(
+    () => [
+      { key: "numero", label: t("ft.numero"), get: (x) => x.f.numero },
+      { key: "data", label: t("common.date"), get: (x) => fmtData(x.f.dataDocumento) },
+      {
+        key: "controparte",
+        label: ricevute ? t("ft.fornitore") : t("fin.cliente"),
+        get: (x) => x.f.cliente,
+      },
+      { key: "totale", label: t("common.total"), get: (x) => fmtImporto(x.f.totale) },
+      {
+        key: "incassato",
+        label: ricevute ? t("ft.pagato") : t("ft.incassato"),
+        get: (x) => (x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""),
+      },
+      {
+        key: "scadenza",
+        label: t("ft.scadenza"),
+        get: (x) => (x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)),
+      },
+      { key: "fatturazione", label: t("ft.colFatturazione"), get: testoStatoF },
+      {
+        key: "incassi",
+        label: ricevute ? t("ft.colPagatoFatt") : t("ft.colIncassi"),
+        get: testoStatoI,
+      },
+      { key: "banca", label: t("ft.colBanca"), get: testoStatoB },
+      ...(ricevute
+        ? [
+            {
+              key: "competenza",
+              label: t("ft.colCompetenza"),
+              get: (x: (typeof conStato)[number]) => classificaDi(x.f).mese,
+            },
+            {
+              key: "tipologia",
+              label: t("ft.colTipologia"),
+              get: (x: (typeof conStato)[number]) => classificaDi(x.f).tipologia || "—",
+            },
+            {
+              key: "clienterif",
+              label: t("ft.colClienteRif"),
+              get: (x: (typeof conStato)[number]) => classificaDi(x.f).clienteRif || "—",
+            },
+          ]
+        : []),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ricevute, regoleFatture, classAuto, termini, t],
+  );
+  const [filtriTh, setFiltriTh] = useState<Record<string, Set<string>>>({});
+  const [thAperto, setThAperto] = useState<string | null>(null);
+  const [thCerca, setThCerca] = useState("");
+  // Cambio direzione o anni: i filtri di colonna ripartono puliti.
+  useEffect(() => {
+    setFiltriTh({});
+    setThAperto(null);
+  }, [direzione, anniF]);
+  const filtriThAttivi = Object.values(filtriTh).some((v) => v && v.size > 0);
+
+  const passaFiltriTh = (x: (typeof conStato)[number], escludi?: string) => {
+    for (const c of colonneTh) {
+      if (c.key === escludi) continue;
+      const sel = filtriTh[c.key];
+      if (sel && sel.size > 0 && !sel.has(c.get(x))) return false;
+    }
+    return true;
+  };
+
   const filtrate = useMemo(() => {
     // Gli scarti SdI non compaiono: una fattura scartata non è mai esistita.
     // Il chip "Scartate" le mostra da sole, per chi deve ricostruire la storia.
@@ -426,9 +537,10 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         (x) => x.f.cliente.toLowerCase().includes(q) || x.f.numero.toLowerCase().includes(q),
       );
     }
+    if (filtriThAttivi) out = out.filter((x) => passaFiltriTh(x));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conStato, anniF, clienteF, statiF, soloScartate, clientiSel]);
+  }, [conStato, anniF, clienteF, statiF, soloScartate, clientiSel, filtriTh, colonneTh]);
 
   // Riepilogo (sugli anni filtrati, tutte le fatture non escluse). Gli importi
   // seguono lo stato UFFICIALE (Aruba quando c'è); `confermatoBanca` dice
@@ -512,18 +624,6 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
 
   // Classificazione proposta per fornitore, imparata dallo storico
   // compilato a mano (report classificato): maggioranza con almeno 2 casi.
-  const classAuto = useMemo(() => classificazioneAuto(fattureRic ?? []), [fattureRic]);
-
-  // Regole di classificazione impostate nella tab Regole di Finanza.
-  const [regoleFatture, setRegoleFatture] = useState<RegolaFattura[]>([]);
-  useEffect(() => {
-    spGetRegoleFatture()
-      .then((l) => setRegoleFatture(l as RegolaFattura[]))
-      .catch(() => setRegoleFatture([]));
-  }, []);
-
-  // Risoluzione a catena: manuale → regola → proposta dallo storico.
-  const classificaDi = (f: FatturaRaw) => risolviClassificazione(f, regoleFatture, classAuto);
 
   // Riepilogo per cliente (come l'OVERVIEW del direttore, compattata).
   // Specchietto per cliente: conteggi e importi, ordinato per FATTURATO
@@ -2106,29 +2206,147 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           <p className="py-8 text-center text-sm text-muted-foreground">{t("ft.empty")}</p>
         ) : (
           <div className="overflow-x-auto">
+            {/* Filtri di colonna attivi: conteggio e pulizia a un click. */}
+            {filtriThAttivi && (
+              <div className="mb-2 flex items-center gap-3 text-xs text-muted-foreground">
+                <Filter className="h-3.5 w-3.5 text-primary" fill="currentColor" />
+                <span>
+                  {filtrate.length} / {conStato.filter((x) => !x.escluso && matchAnno(x)).length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFiltriTh({})}
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  {t("ft.thPulisci")}
+                </button>
+              </div>
+            )}
             <table className="w-full text-sm">
               <thead>
+                {/* Intestazione GENERATA dal modello colonne: l'ordine dei
+                    th DEVE combaciare con le celle del corpo qui sotto. Ogni
+                    colonna ha il suo imbuto: spunte sui valori distinti, a
+                    cascata come i filtri di Excel. */}
                 <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                  <th className="py-1.5 pr-2">{t("ft.numero")}</th>
-                  <th className="py-1.5 pr-2">{t("common.date")}</th>
-                  <th className="py-1.5 pr-2">{ricevute ? t("ft.fornitore") : t("fin.cliente")}</th>
-                  <th className="py-1.5 pr-2 text-right">{t("common.total")}</th>
-                  <th className="py-1.5 pr-2 text-right">
-                    {ricevute ? t("ft.pagato") : t("ft.incassato")}
-                  </th>
-                  <th className="py-1.5 pr-2">{t("ft.scadenza")}</th>
-                  <th className="py-1.5 pr-2">{t("ft.colFatturazione")}</th>
-                  <th className="py-1.5 pr-2">{tp("ft.colIncassi", "ft.colPagatoFatt")}</th>
-                  <th className="py-1.5 pr-2">{t("ft.colBanca")}</th>
-                  {/* Classificazione (solo passive): le stesse colonne del
-                      CSV, visibili in pagina senza dover esportare. */}
-                  {ricevute && (
-                    <>
-                      <th className="py-1.5 pr-2">{t("ft.colCompetenza")}</th>
-                      <th className="py-1.5 pr-2">{t("ft.colTipologia")}</th>
-                      <th className="py-1.5 pr-2">{t("ft.colClienteRif")}</th>
-                    </>
-                  )}
+                  {colonneTh.map((c) => {
+                    const sel = filtriTh[c.key];
+                    const attivo = (sel?.size ?? 0) > 0;
+                    const aperto = thAperto === c.key;
+                    return (
+                      <th key={c.key} className="py-1.5 pr-2 whitespace-nowrap relative">
+                        <span className="inline-flex items-center gap-1">
+                          {c.label}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setThAperto(aperto ? null : c.key);
+                              setThCerca("");
+                            }}
+                            className={
+                              attivo
+                                ? "text-primary"
+                                : "text-muted-foreground/50 hover:text-foreground"
+                            }
+                            title={t("ft.thFiltra")}
+                          >
+                            <Filter className="h-3 w-3" fill={attivo ? "currentColor" : "none"} />
+                          </button>
+                        </span>
+                        {aperto &&
+                          (() => {
+                            // Valori distinti A CASCATA: contano tutti i
+                            // filtri attivi TRANNE quello di questa colonna.
+                            const base = conStato.filter(
+                              (x) =>
+                                x.escluso === soloScartate &&
+                                matchAnno(x) &&
+                                (soloScartate || matchStato(x)) &&
+                                passaFiltriTh(x, c.key),
+                            );
+                            const conteggi = new Map<string, number>();
+                            for (const x of base) {
+                              const v = c.get(x);
+                              conteggi.set(v, (conteggi.get(v) ?? 0) + 1);
+                            }
+                            const q = thCerca.trim().toLowerCase();
+                            const valori = [...conteggi.entries()]
+                              .sort((a, b) => a[0].localeCompare(b[0]))
+                              .filter(([v]) => !q || v.toLowerCase().includes(q));
+                            const scelte = sel ?? new Set<string>();
+                            const setSel = (ns: Set<string>) =>
+                              setFiltriTh({ ...filtriTh, [c.key]: ns });
+                            return (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-30"
+                                  onClick={() => setThAperto(null)}
+                                />
+                                <div
+                                  className="absolute left-0 top-full z-40 mt-1 w-64 rounded-lg border border-border bg-card p-2 shadow-[var(--shadow-elegant)] font-normal"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    autoFocus
+                                    value={thCerca}
+                                    onChange={(e) => setThCerca(e.target.value)}
+                                    placeholder={t("ft.cerca")}
+                                    className="mb-1.5 w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                                  />
+                                  <div className="mb-1.5 flex gap-3 text-[11px]">
+                                    <button
+                                      type="button"
+                                      className="underline underline-offset-2"
+                                      onClick={() => setSel(new Set())}
+                                    >
+                                      {t("ft.thTutti")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="underline underline-offset-2"
+                                      onClick={() => setSel(new Set(valori.map(([v]) => v)))}
+                                    >
+                                      {t("ft.thSoloVisibili")}
+                                    </button>
+                                  </div>
+                                  <div className="max-h-60 overflow-auto">
+                                    {valori.map(([v, n]) => (
+                                      <label
+                                        key={v || "__vuoto__"}
+                                        className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs text-foreground hover:bg-muted"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          className="accent-primary"
+                                          checked={scelte.size === 0 || scelte.has(v)}
+                                          onChange={() => {
+                                            const ns = new Set(
+                                              scelte.size === 0
+                                                ? [...conteggi.keys()]
+                                                : [...scelte],
+                                            );
+                                            if (ns.has(v)) ns.delete(v);
+                                            else ns.add(v);
+                                            setSel(ns.size === conteggi.size ? new Set() : ns);
+                                          }}
+                                        />
+                                        <span className="flex-1 truncate">
+                                          {v || t("ft.thVuoto")}
+                                        </span>
+                                        <span className="text-muted-foreground tabular-nums">
+                                          {n}
+                                        </span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              </>
+                            );
+                          })()}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
