@@ -905,6 +905,12 @@ const en = {
   "ft.senzaFonte": "excluded, no source",
   "ft.senzaFonteTip":
     "Invoices past due on which NO source has spoken: no Aruba status, no instalments in the movements report, not a euro matched in the bank. Most likely collected in periods not covered by the archives (e.g. missing yearly report): load the Aruba reports for those years to classify them. Not counted in the overdue total.",
+  "ft.solCopia": "Copy reminder",
+  "ft.solEmail": "Reminder email",
+  "ft.solCopiato": "Reminder copied to clipboard: paste it into your email.",
+  "ft.solNessuna": "No overdue invoice to remind for this client.",
+  "ft.solTip":
+    "Formal payment reminder with the client's overdue invoices, plus credit notes and their invoices to us to offset. Copy puts the text in the clipboard; Email opens your mail client with subject and body ready.",
   "ft.effTitolo": "Effective (from the bank)",
   "ft.effNetto": "Net due",
   "ft.effContro": "their invoices to us",
@@ -1875,6 +1881,12 @@ const it: Record<DictKey, string> = {
   "ft.senzaFonte": "escluse, senza fonte",
   "ft.senzaFonteTip":
     "Fatture oltre scadenza su cui NESSUNA fonte si è espressa: niente stato Aruba, niente rate nel report movimenti, nemmeno un euro abbinato in banca. Con ogni probabilità sono incassate in periodi non coperti dagli archivi (es. report annuale mancante): carica i report Aruba di quegli anni per classificarle. Non contate nel totale in ritardo.",
+  "ft.solCopia": "Copia sollecito",
+  "ft.solEmail": "Email sollecito",
+  "ft.solCopiato": "Sollecito copiato negli appunti: incollalo nella email.",
+  "ft.solNessuna": "Nessuna fattura scaduta da sollecitare per questo cliente.",
+  "ft.solTip":
+    "Sollecito formale con le fatture scadute del cliente, più note di credito e loro fatture verso di noi da portare in compensazione. Copia mette il testo negli appunti; Email apre il client di posta con oggetto e corpo pronti.",
   "ft.effTitolo": "Effettivo (dalla banca)",
   "ft.effNetto": "Netto dovuto",
   "ft.effContro": "loro fatture verso di noi",

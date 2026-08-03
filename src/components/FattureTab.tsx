@@ -11,6 +11,8 @@ import {
   Download,
   FileSpreadsheet,
   Filter,
+  Copy,
+  Mail,
   KeyRound,
   Link2,
   Loader2,
@@ -30,6 +32,7 @@ import {
   proponiAbbinamenti,
   proponiAbbinamentiFIFO,
   isNotaCredito,
+  parseIncassoAruba,
   isEsclusaDalCredito,
   collegaNoteCredito,
   parseMovimentiArubaMatrice,
@@ -980,6 +983,103 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
 
   // Estratto conto del cliente in CSV: fatture e movimenti nello stesso file,
   // distinti dalla colonna Tipo, così la quadratura si rifà in Excel.
+  // --- Sollecito di pagamento (solo attive) ---------------------------------
+  // Testo formale con le fatture SCADUTE del cliente aperto, più gli importi
+  // da scalare (nostre NC non collegate e loro fatture verso di noi ancora
+  // aperte). "Copia" mette tutto negli appunti; "Email" apre il client di
+  // posta con oggetto e corpo già pronti.
+  const datiSollecito = () => {
+    const nome = fattureDelCliente[0]?.f.cliente ?? "";
+    const scadute = fattureDelCliente
+      .filter(
+        (x) =>
+          !isNotaCredito(x.f.tipoDocumento) &&
+          x.s.inRitardo &&
+          x.s.residuo > TOLLERANZA_SALDO &&
+          (x.s.statoIncassi != null || x.s.statoFatturazione != null),
+      )
+      .sort((a, b) => a.s.scadenza.localeCompare(b.s.scadenza));
+    // Da scalare: nostre NC del cliente non collegate né compensate…
+    const ncAperte = fattureDelCliente.filter(
+      (x) =>
+        isNotaCredito(x.f.tipoDocumento) &&
+        !x.f.rettificaNumero &&
+        x.s.statoIncassi !== "Pagata" &&
+        x.s.statoFatturazione !== "Pagata",
+    );
+    // …e loro fatture verso di noi non ancora saldate.
+    const chiave = clienteAperto;
+    const loroAperte = (dir === "Emessa" ? (fattureRic ?? []) : (fattureEm ?? [])).filter(
+      (f) =>
+        (clienteGroupKey(f.cliente) || f.cliente) === chiave &&
+        !isNotaCredito(f.tipoDocumento) &&
+        f.totale > 0 &&
+        parseIncassoAruba(f.incassoAruba) !== "Incassata",
+    );
+    return { nome, scadute, ncAperte, loroAperte };
+  };
+
+  const testoSollecito = () => {
+    const { nome, scadute, ncAperte, loroAperte } = datiSollecito();
+    if (!scadute.length) return null;
+    const totale = scadute.reduce((s2, x) => s2 + x.s.residuo, 0);
+    const daScalare =
+      ncAperte.reduce((s2, x) => s2 + Math.abs(x.f.totale), 0) +
+      loroAperte.reduce((s2, f) => s2 + f.totale, 0);
+    const r: string[] = [];
+    r.push(`Spett.le ${nome},`);
+    r.push("");
+    r.push(
+      "dal riscontro dei nostri registri contabili risultano ad oggi le seguenti fatture scadute e non ancora saldate:",
+    );
+    r.push("");
+    for (const x of scadute)
+      r.push(
+        `- ${x.f.numero} del ${fmtData(x.f.dataDocumento)}, scadenza ${fmtData(x.s.scadenza)}, residuo € ${fmtImporto(x.s.residuo)} (${x.s.giorniRitardo} giorni di ritardo)`,
+      );
+    r.push("");
+    r.push(`Totale scaduto: € ${fmtImporto(totale)}`);
+    if (daScalare > TOLLERANZA_SALDO) {
+      r.push("");
+      r.push("Da portare eventualmente in compensazione:");
+      for (const x of ncAperte)
+        r.push(`- ns. nota di credito ${x.f.numero}: € ${fmtImporto(Math.abs(x.f.totale))}`);
+      for (const f of loroAperte)
+        r.push(`- vs. fattura ${f.numero} nei nostri confronti: € ${fmtImporto(f.totale)}`);
+      r.push(`Saldo netto richiesto: € ${fmtImporto(Math.max(0, totale - daScalare))}`);
+    }
+    r.push("");
+    r.push(
+      "Vi preghiamo di provvedere al saldo entro 7 giorni dal ricevimento della presente, ovvero di segnalarci eventuali pagamenti già disposti o discordanze riscontrate.",
+    );
+    r.push("");
+    r.push("Restiamo a disposizione per ogni chiarimento.");
+    r.push("");
+    r.push("Cordiali saluti");
+    r.push("DR Logistica S.r.l.");
+    return { nome, corpo: r.join("\r\n"), totale };
+  };
+
+  const copiaSollecito = async () => {
+    const sol = testoSollecito();
+    if (!sol) {
+      toast(t("ft.solNessuna"));
+      return;
+    }
+    await navigator.clipboard.writeText(sol.corpo);
+    toast.success(t("ft.solCopiato"));
+  };
+
+  const emailSollecito = () => {
+    const sol = testoSollecito();
+    if (!sol) {
+      toast(t("ft.solNessuna"));
+      return;
+    }
+    const oggetto = `Sollecito di pagamento - fatture scadute (DR Logistica S.r.l.)`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(sol.corpo)}`;
+  };
+
   const esportaEstratto = () => {
     if (!estrattoCliente || clienteAperto == null) return;
     const nome = fattureDelCliente[0]?.f.cliente ?? clienteAperto;
@@ -3139,6 +3239,34 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                                   );
                                 })()}
                                 <span className="ml-auto inline-flex items-center gap-2">
+                                  {!ricevute && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void copiaSollecito();
+                                        }}
+                                        title={t("ft.solTip")}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[12px] hover:bg-muted"
+                                      >
+                                        <Copy className="h-3.5 w-3.5" />
+                                        {t("ft.solCopia")}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          emailSollecito();
+                                        }}
+                                        title={t("ft.solTip")}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[12px] hover:bg-muted"
+                                      >
+                                        <Mail className="h-3.5 w-3.5" />
+                                        {t("ft.solEmail")}
+                                      </button>
+                                    </>
+                                  )}
                                   {estrattoCliente.nNonAttribuiti > 0 && (
                                     <button
                                       type="button"
