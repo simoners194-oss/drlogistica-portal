@@ -4415,6 +4415,40 @@ export async function setClassificazione(
   logSp("info", "fatture.classifica", `${doc.numero}: classificazione aggiornata (manuale)`);
 }
 
+/** Quando i dati fatture sono stati toccati l'ultima volta (import dei
+ *  report/XML o correzioni): il massimo lastModifiedDateTime della lista.
+ *  Query leggerissima (1 elemento); se l'ordinamento non è supportato si
+ *  ripiega sugli ultimi creati, e in ultima istanza si risponde null. */
+export async function ultimoAggiornamentoFatture(
+  direzione: DirezioneFattura,
+): Promise<string | null> {
+  const cfg = await discoverSharePoint();
+  const { listId } = fattureListPer(cfg, direzione);
+  if (!listId) return null;
+  const base = `/sites/${cfg.siteId}/lists/${listId}/items`;
+  try {
+    const res = await gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `${base}?$orderby=lastModifiedDateTime desc&$top=1`,
+    );
+    const v = (res.value[0] as { lastModifiedDateTime?: string } | undefined)?.lastModifiedDateTime;
+    if (v) return v;
+  } catch {
+    /* ordinamento non supportato: si prova con gli ultimi creati */
+  }
+  try {
+    const res = await gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `${base}?$orderby=id desc&$top=50`,
+    );
+    const date = res.value
+      .map((it) => (it as { lastModifiedDateTime?: string }).lastModifiedDateTime ?? "")
+      .filter(Boolean)
+      .sort();
+    return date[date.length - 1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export interface ImportFattureResult {
   ricevute: number;
   importate: number;

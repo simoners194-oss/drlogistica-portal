@@ -79,6 +79,7 @@ import {
   importTermini,
   deleteTermine,
   copiaTerminiSuFornitori,
+  ultimoAggiornamentoFatture,
   fetchRegoleFatture,
   createRegolaFattura,
   deleteRegolaFattura,
@@ -848,6 +849,15 @@ export const spApplicaRegolaFinanza = createServerFn({ method: "POST" })
   });
 
 // --- Finanza → Fatture emesse, termini, abbinamenti (solo direttore) --------
+
+export const spGetAggiornamentoFatture = createServerFn({ method: "GET" })
+  .inputValidator((input?: { direzione?: string }) => ({
+    direzione: (input?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+  }))
+  .handler(async ({ data }): Promise<{ aggiornatoAl: string | null }> => {
+    await assertDirettore(await currentUser());
+    return { aggiornatoAl: await ultimoAggiornamentoFatture(data.direzione) };
+  });
 
 export const spGetFatture = createServerFn({ method: "GET" })
   .inputValidator((input?: { direzione?: string }) => ({

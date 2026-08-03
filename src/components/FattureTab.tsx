@@ -74,6 +74,7 @@ import {
   spSetIncassoManuale,
   spTrovaFattureSenzaCliente,
   spImportTermini,
+  spGetAggiornamentoFatture,
   spGetRegoleFatture,
   spSetClassificazione,
   spEliminaFatture,
@@ -418,6 +419,16 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   }, [conStato, anniF]);
 
   const classAuto = useMemo(() => classificazioneAuto(fattureRic ?? []), [fattureRic]);
+
+  // Ultimo aggiornamento dei dati Aruba (ultima scrittura sulla lista della
+  // direzione corrente): la data che il direttore vuole vedere in pagina.
+  const [aggiornatoAl, setAggiornatoAl] = useState<string | null>(null);
+  useEffect(() => {
+    setAggiornatoAl(null);
+    spGetAggiornamentoFatture({ data: { direzione: dir } })
+      .then((r) => setAggiornatoAl((r as { aggiornatoAl: string | null }).aggiornatoAl))
+      .catch(() => setAggiornatoAl(null));
+  }, [dir]);
 
   // Regole di classificazione impostate nella tab Regole di Finanza.
   const [regoleFatture, setRegoleFatture] = useState<RegolaFattura[]>([]);
@@ -2122,6 +2133,23 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
             onChange={setClientiSel}
             className="w-56"
           />
+          {aggiornatoAl && (
+            <div
+              className="self-center text-[11px] text-muted-foreground whitespace-nowrap"
+              title={t("ft.aggTip")}
+            >
+              {t("ft.aggiornatoAl")}{" "}
+              <b>
+                {new Date(aggiornatoAl).toLocaleString("it-IT", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </b>
+            </div>
+          )}
           <div className="flex-1 min-w-44">
             <label className="text-xs text-muted-foreground">{t("ft.cerca")}</label>
             <input
