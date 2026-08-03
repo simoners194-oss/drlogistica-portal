@@ -38,6 +38,7 @@ import {
   meseCompetenza,
   classificazioneAuto,
   risolviClassificazione,
+  risolviClassificazioneTutte,
   type RegolaFattura,
   aggregaIncassiAruba,
   type MovimentoAruba,
@@ -423,8 +424,14 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       .catch(() => setRegoleFatture([]));
   }, []);
 
-  // Risoluzione a catena: manuale → regola → proposta dallo storico.
-  const classificaDi = (f: FatturaRaw) => risolviClassificazione(f, regoleFatture, classAuto);
+  // Risoluzione a catena (manuale → regola → storico) calcolata UNA VOLTA
+  // per tutto l'archivio: le celle e i filtri leggono dalla mappa.
+  const classMap = useMemo(
+    () => risolviClassificazioneTutte(fattureRic ?? [], regoleFatture, classAuto),
+    [fattureRic, regoleFatture, classAuto],
+  );
+  const classificaDi = (f: FatturaRaw) =>
+    classMap.get(f.nomeFile) ?? risolviClassificazione(f, regoleFatture, classAuto);
 
   // --- Filtri di intestazione (stile Excel) ---------------------------------
   // Ogni colonna dell'elenco ha il suo imbuto: spunte sui VALORI DISTINTI,

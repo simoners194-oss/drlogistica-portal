@@ -519,6 +519,52 @@ export function risolviClassificazione(
   return { mese, tipologia: "", clienteRif: "", fonte: "" };
 }
 
+/** Risoluzione IN BLOCCO per tutto l'archivio: una passata sola, con le
+ *  chiavi canoniche (regex costose) calcolate una volta per regola e una per
+ *  fattura. La versione cella-per-cella rifaceva tutto a ogni render e con
+ *  3.000+ passive si sentiva. */
+export function risolviClassificazioneTutte(
+  fatture: readonly FatturaRaw[],
+  regole: readonly RegolaFattura[],
+  auto: ReadonlyMap<string, { tipologia?: string; clienteRif?: string }>,
+): Map<string, ClassificazioneRisolta> {
+  const regoleKey = regole
+    .map((r) => ({ r, key: clienteGroupKey(r.fornitore) }))
+    .filter((x) => x.key);
+  const out = new Map<string, ClassificazioneRisolta>();
+  for (const f of fatture) {
+    const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza);
+    if (f.tipologiaCosto || f.clienteRif) {
+      out.set(f.nomeFile, {
+        mese,
+        tipologia: f.tipologiaCosto ?? "",
+        clienteRif: f.clienteRif ?? "",
+        fonte: "manuale",
+      });
+      continue;
+    }
+    const chiave = clienteGroupKey(f.cliente) || f.cliente;
+    const regola = regoleKey.find((x) => chiave === x.key || chiave.includes(x.key))?.r;
+    if (regola && (regola.tipologia || regola.clienteRif)) {
+      out.set(f.nomeFile, {
+        mese,
+        tipologia: regola.tipologia ?? "",
+        clienteRif: regola.clienteRif ?? "",
+        fonte: "regola",
+      });
+      continue;
+    }
+    const proposta = auto.get(chiave);
+    out.set(f.nomeFile, {
+      mese,
+      tipologia: proposta?.tipologia ?? "",
+      clienteRif: proposta?.clienteRif ?? "",
+      fonte: proposta && (proposta.tipologia || proposta.clienteRif) ? "auto" : "",
+    });
+  }
+  return out;
+}
+
 // --- Import del foglio contratti del direttore -------------------------------
 // "CLIENTI_FORNITORI check contratti.xlsx": colonna "GG pagamento" = giorni
 // contrattuali VERIFICATI per cliente. Righe senza valore = default 30 a
