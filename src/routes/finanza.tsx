@@ -1104,7 +1104,11 @@ function FinanzaPage() {
             {ebSaldoInfo && (
               <div className="ml-auto rounded-xl border border-border bg-secondary/40 px-4 py-2 text-right">
                 <div className="text-[11px] text-muted-foreground">
-                  {t("fin.ebSaldoAttuale")}
+                  {/* BPM via PSD2 espone SOLO il saldo contabile (verificato
+                      sul campo, 01/08): il titolo lo dice senza ambiguità.
+                      Se un giorno la banca esponesse anche il disponibile,
+                      la riga sotto comparirebbe da sola. */}
+                  {t("fin.saldoContabileTitolo")}
                   {ebSaldoInfo.riferimento && ` · ${fmtData(ebSaldoInfo.riferimento)}`}
                 </div>
                 <div
@@ -1112,18 +1116,12 @@ function FinanzaPage() {
                 >
                   {fmtImporto(ebSaldoInfo.saldo)} {ebSaldoInfo.divisa}
                 </div>
-                {/* I due saldi del conto, come sull'home banking: contabile
-                    (in grande) e disponibile. */}
-                <div className="text-[11px] text-muted-foreground">
-                  {t("fin.saldoContabile")}
-                  {ebSaldoInfo.disponibile != null && (
-                    <>
-                      {" · "}
-                      {t("fin.saldoDisponibile")}:{" "}
-                      <b className="tabular-nums">{fmtImporto(ebSaldoInfo.disponibile)}</b>
-                    </>
-                  )}
-                </div>
+                {ebSaldoInfo.disponibile != null && (
+                  <div className="text-[11px] text-muted-foreground">
+                    {t("fin.saldoDisponibile")}:{" "}
+                    <b className="tabular-nums">{fmtImporto(ebSaldoInfo.disponibile)}</b>
+                  </div>
+                )}
               </div>
             )}
           </div>
