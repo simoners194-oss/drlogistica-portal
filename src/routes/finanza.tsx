@@ -18,6 +18,7 @@ import {
   History,
   Trash2,
   Pencil,
+  Users,
   GraduationCap,
   Wand2,
   Receipt,
@@ -30,6 +31,7 @@ import {
 import { FattureTab } from "@/components/FattureTab";
 import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
 import { MultiSelect } from "@/components/MultiSelect";
+import { ResocontoTab } from "@/components/ResocontoTab";
 import { useLang } from "@/lib/i18n";
 import { readSession, type SessionUser } from "@/lib/session";
 import { isSupervisoreGlobale } from "@/lib/richieste-logic";
@@ -142,7 +144,8 @@ const CHUNK = 100;
 // Righe per pagina nella tabella movimenti.
 const RIGHE_PAGINA = 500;
 
-type Tab = "movimenti" | "overview" | "attive" | "passive" | "anomalie" | "storico" | "regole";
+type Tab =
+  "movimenti" | "overview" | "resoconto" | "attive" | "passive" | "anomalie" | "storico" | "regole";
 
 interface SheetInfo {
   name: string;
@@ -991,6 +994,7 @@ function FinanzaPage() {
         <div className="inline-flex flex-wrap rounded-xl border border-border bg-card p-1 text-sm shadow-[var(--shadow-card)]">
           {tabBtn("movimenti", <Table2 className="h-4 w-4" />, t("fin.tabMovimenti"))}
           {tabBtn("overview", <TrendingUp className="h-4 w-4" />, t("fin.tabOverview"))}
+          {tabBtn("resoconto", <Users className="h-4 w-4" />, t("fin.tabResoconto"))}
           {tabBtn("attive", <Receipt className="h-4 w-4" />, t("fin.tabAttive"))}
           {tabBtn("passive", <ReceiptText className="h-4 w-4" />, t("fin.tabPassive"))}
           {tabBtn(
@@ -1017,6 +1021,9 @@ function FinanzaPage() {
           />
         )}
       </div>
+
+      {/* ------------------------------- Resoconto ------------------------- */}
+      {tab === "resoconto" && <ResocontoTab />}
 
       {/* ------------------------------- Movimenti ------------------------- */}
       {tab === "movimenti" && (
