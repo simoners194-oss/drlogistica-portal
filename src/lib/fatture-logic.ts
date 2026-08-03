@@ -92,6 +92,9 @@ export interface TerminePagamento {
   cliente: string;
   giorni: number;
   descrizione?: string;
+  /** "Emessa" = termini del CLIENTE (quanto ci paga), "Ricevuta" = termini
+   *  del FORNITORE (quando paghiamo noi). Vuoto = Emessa (compatibilità). */
+  direzione?: DirezioneFattura;
 }
 
 export interface AbbinamentoIncasso {
@@ -350,15 +353,22 @@ export function collegaNoteCredito(
 
 /** Giorni di pagamento per un cliente (match per chiave canonica; la riga
  *  senza descrizione è quella generica). */
-export function giorniPerCliente(cliente: string, termini: readonly TerminePagamento[]): number {
+export function giorniPerCliente(
+  cliente: string,
+  termini: readonly TerminePagamento[],
+  direzione: DirezioneFattura = "Emessa",
+): number {
   const key = clienteGroupKey(cliente);
-  let match = termini.filter((t) => clienteGroupKey(t.cliente) === key && t.giorni > 0);
+  // Termini DIREZIONALI: IMILE cliente paga a 30, IMILE fornitore va pagato
+  // a 60 — due righe distinte. Le righe senza direzione valgono come Emessa.
+  const perDirezione = termini.filter((t) => (t.direzione ?? "Emessa") === direzione);
+  let match = perDirezione.filter((t) => clienteGroupKey(t.cliente) === key && t.giorni > 0);
   if (!match.length) {
     // Il foglio contratti usa nomi BREVI ("IMILE" per "IMILE ITALY SRL"):
     // vale il termine il cui nome e' interamente contenuto nel nome del
     // cliente; a parita', vince il piu' specifico (piu' parole).
     const parole = new Set(key.split(" ").filter(Boolean));
-    match = termini
+    match = perDirezione
       .filter((t) => {
         if (t.giorni <= 0) return false;
         const tk = clienteGroupKey(t.cliente).split(" ").filter(Boolean);
@@ -667,10 +677,10 @@ export function computeStatoFattura(
   // ora") vale ancora la scadenza dichiarata nell'XML, quando c'e'.
   const scadenza =
     f.direzione === "Emessa"
-      ? scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini))
+      ? scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini, "Emessa"))
       : f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza)
         ? f.scadenza
-        : scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini));
+        : scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini, "Ricevuta"));
   // Le note di credito non si "incassano" e le scartate/rifiutate dallo SdI
   // non sono crediti: entrambe fuori dal computo di residui e ritardi.
   if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) {

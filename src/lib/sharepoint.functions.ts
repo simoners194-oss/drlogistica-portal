@@ -78,6 +78,7 @@ import {
   trovaFattureSenzaCliente,
   importTermini,
   deleteTermine,
+  copiaTerminiSuFornitori,
   fetchRegoleFatture,
   createRegolaFattura,
   deleteRegolaFattura,
@@ -1005,13 +1006,17 @@ export const spEliminaFatture = createServerFn({ method: "POST" })
 
 // Termini di pagamento dal foglio contratti (upsert per cliente).
 export const spImportTermini = createServerFn({ method: "POST" })
-  .inputValidator((input: { rows: { cliente: string; giorni: number }[] }) => {
+  .inputValidator((input: { rows: { cliente: string; giorni: number; direzione?: string }[] }) => {
     if (!Array.isArray(input?.rows) || input.rows.length === 0)
       throw new Error("Nessun termine da importare");
     if (input.rows.length > 200) throw new Error("Blocco troppo grande (max 200)");
     return {
       rows: input.rows
-        .map((r) => ({ cliente: String(r?.cliente ?? "").trim(), giorni: Number(r?.giorni) }))
+        .map((r) => ({
+          cliente: String(r?.cliente ?? "").trim(),
+          giorni: Number(r?.giorni),
+          direzione: (r?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+        }))
         .filter((r) => r.cliente && Number.isFinite(r.giorni) && r.giorni > 0),
     };
   })
@@ -1021,16 +1026,25 @@ export const spImportTermini = createServerFn({ method: "POST" })
   });
 
 export const spDeleteTermine = createServerFn({ method: "POST" })
-  .inputValidator((input: { cliente: string }) => {
+  .inputValidator((input: { cliente: string; direzione?: string }) => {
     const cliente = String(input?.cliente ?? "").trim();
     if (!cliente) throw new Error("Cliente non indicato");
-    return { cliente };
+    return {
+      cliente,
+      direzione: (input?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+    };
   })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     await assertDirettore(await currentUser());
-    await deleteTermine(data.cliente);
+    await deleteTermine(data.cliente, data.direzione);
     return { ok: true };
   });
+
+// Tasto del direttore: copia i termini dei clienti sui fornitori omonimi.
+export const spCopiaTerminiSuFornitori = createServerFn({ method: "POST" }).handler(async () => {
+  await assertDirettore(await currentUser());
+  return copiaTerminiSuFornitori();
+});
 
 // Regole di classificazione delle passive + classificazione manuale.
 export const spGetRegoleFatture = createServerFn({ method: "GET" }).handler(async () => {

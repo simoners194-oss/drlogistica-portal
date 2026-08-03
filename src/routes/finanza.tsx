@@ -54,6 +54,7 @@ import {
   spGetTerminiPagamento,
   spImportTermini,
   spDeleteTermine,
+  spCopiaTerminiSuFornitori,
   spGetRegoleFatture,
   spCreateRegolaFattura,
   spDeleteRegolaFattura,
@@ -267,7 +268,7 @@ function FinanzaPage() {
       .catch(() => setRegole([]));
     // Termini d'incasso per cliente: vivono nella stessa tab.
     spGetTerminiPagamento()
-      .then((l) => setTermini(l as { cliente: string; giorni: number }[]))
+      .then((l) => setTermini(l as TermineRiga[]))
       .catch(() => setTermini([]));
     // Regole di classificazione delle fatture passive.
     spGetRegoleFatture()
@@ -334,10 +335,14 @@ function FinanzaPage() {
   };
 
   // --- Termini d'incasso (giorni di pagamento per cliente) ------------------
-  const [termini, setTermini] = useState<{ cliente: string; giorni: number }[] | null>(null);
+  type TermineRiga = { cliente: string; giorni: number; direzione?: "Emessa" | "Ricevuta" };
+  const [termini, setTermini] = useState<TermineRiga[] | null>(null);
   const [tCliente, setTCliente] = useState("");
   const [tGiorni, setTGiorni] = useState("");
   const [tBusy, setTBusy] = useState(false);
+  // Termini DIREZIONALI: scheda Clienti (quanto ci pagano) e Fornitori
+  // (quando paghiamo noi, ritardo sui NOSTRI pagamenti — default 30gg).
+  const [tDirezione, setTDirezione] = useState<"Emessa" | "Ricevuta">("Emessa");
 
   const salvaTermine = async () => {
     const giorni = Number(tGiorni);
@@ -347,7 +352,9 @@ function FinanzaPage() {
     }
     setTBusy(true);
     try {
-      await spImportTermini({ data: { rows: [{ cliente: tCliente.trim(), giorni }] } });
+      await spImportTermini({
+        data: { rows: [{ cliente: tCliente.trim(), giorni, direzione: tDirezione }] },
+      });
       setTCliente("");
       setTGiorni("");
       loadRegole();
@@ -361,12 +368,32 @@ function FinanzaPage() {
     }
   };
 
+  const copiaTerminiFornitori = async () => {
+    if (!window.confirm(t("fin.termCopiaConfirm"))) return;
+    setTBusy(true);
+    try {
+      const r = (await spCopiaTerminiSuFornitori()) as { copiati: number; esistenti: number };
+      loadRegole();
+      toast.success(`${r.copiati} ${t("fin.termCopiati")}`);
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTBusy(false);
+    }
+  };
+
   const eliminaTermine = async (cliente: string) => {
     if (!window.confirm(`${t("fin.termDeleteConfirm")} ${cliente}?`)) return;
     setTBusy(true);
     try {
-      await spDeleteTermine({ data: { cliente } });
-      setTermini((prev) => (prev ? prev.filter((x) => x.cliente !== cliente) : prev));
+      await spDeleteTermine({ data: { cliente, direzione: tDirezione } });
+      setTermini((prev) =>
+        prev
+          ? prev.filter((x) => !(x.cliente === cliente && (x.direzione ?? "Emessa") === tDirezione))
+          : prev,
+      );
       toast.success(t("fin.termEliminato"));
     } catch (err) {
       toast.error(t("common.error"), {
@@ -1870,6 +1897,36 @@ function FinanzaPage() {
               )}
             </div>
             <p className="text-xs text-muted-foreground mb-4">{t("fin.termDesc")}</p>
+            {/* Direzione: clienti (ci pagano) o fornitori (paghiamo noi). */}
+            <div className="mb-3 flex flex-wrap items-center gap-1.5">
+              {(
+                [
+                  ["Emessa", t("fin.termClientiTab")],
+                  ["Ricevuta", t("fin.termFornitoriTab")],
+                ] as const
+              ).map(([dir2, label]) => (
+                <button
+                  key={dir2}
+                  type="button"
+                  onClick={() => setTDirezione(dir2)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    tDirezione === dir2
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background text-foreground hover:bg-muted"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                disabled={tBusy}
+                onClick={() => void copiaTerminiFornitori()}
+                className="ml-auto rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+              >
+                {t("fin.termCopiaBtn")}
+              </button>
+            </div>
             <div className="flex flex-wrap items-end gap-3 mb-4">
               <div className="flex-1 min-w-56">
                 <label className="text-xs text-muted-foreground">{t("fin.cliente")}</label>
@@ -1907,6 +1964,7 @@ function FinanzaPage() {
             ) : (
               <ul className="divide-y divide-border/60">
                 {[...termini]
+                  .filter((x) => (x.direzione ?? "Emessa") === tDirezione)
                   .sort((a, b) => a.cliente.localeCompare(b.cliente))
                   .map((x) => (
                     <li key={x.cliente} className="flex items-center gap-3 py-1.5 text-sm">

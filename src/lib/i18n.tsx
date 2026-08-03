@@ -597,6 +597,12 @@ const en = {
   "fin.rfEliminata": "Rule removed",
   "fin.rfDeleteConfirm": "Remove this classification rule?",
   "fin.rfEmpty": "No rules yet: unclassified invoices fall back to history-based proposals.",
+  "fin.termClientiTab": "Clients (they pay us)",
+  "fin.termFornitoriTab": "Suppliers (we pay)",
+  "fin.termCopiaBtn": "Copy client terms to suppliers",
+  "fin.termCopiaConfirm":
+    "For every client term without a supplier counterpart, create the supplier row with the same days (same name). Existing supplier terms are not touched. Proceed?",
+  "fin.termCopiati": "terms copied to suppliers",
   "fin.termTitle": "Collection terms per client",
   "fin.termDesc":
     "Contractual payment days per client: due dates and overdue counting for issued invoices start from here. Clients not listed default to 30 days. You can also load the contracts sheet from the Invoices import.",
@@ -1546,6 +1552,12 @@ const it: Record<DictKey, string> = {
   "fin.rfEliminata": "Regola eliminata",
   "fin.rfDeleteConfirm": "Eliminare questa regola di classificazione?",
   "fin.rfEmpty": "Nessuna regola: le fatture non classificate usano le proposte dallo storico.",
+  "fin.termClientiTab": "Clienti (ci pagano)",
+  "fin.termFornitoriTab": "Fornitori (paghiamo noi)",
+  "fin.termCopiaBtn": "Copia termini clienti → fornitori",
+  "fin.termCopiaConfirm":
+    "Per ogni termine cliente senza equivalente lato fornitori, crea la riga fornitore con gli stessi giorni (stesso nome). I termini fornitore già presenti non si toccano. Procedere?",
+  "fin.termCopiati": "termini copiati sui fornitori",
   "fin.termTitle": "Termini d'incasso per cliente",
   "fin.termDesc":
     "Giorni di pagamento contrattuali per cliente: scadenze e conteggio del ritardo delle fatture attive partono da qui. Chi non è in elenco vale 30 giorni. In alternativa si carica il foglio contratti dall'import della tab Fatture.",

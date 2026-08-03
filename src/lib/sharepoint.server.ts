@@ -300,6 +300,7 @@ export const SP_DISPLAY = {
     Cliente: "Cliente",
     Giorni: "Giorni",
     Descrizione: "Descrizione",
+    Direzione: "Direzione",
   },
   // Abbinamenti fattura ↔ movimento bancario (n:n con importo allocato).
   // Chiavi NATURALI (nome file + chiave movimento): sopravvivono a
@@ -4207,7 +4208,7 @@ export async function eliminaFatture(
 /** Import dei TERMINI DI PAGAMENTO dal foglio contratti del direttore:
  *  upsert per cliente (chiave canonica), i giorni si aggiornano al cambio. */
 export async function importTermini(
-  rows: readonly { cliente: string; giorni: number }[],
+  rows: readonly { cliente: string; giorni: number; direzione?: DirezioneFattura }[],
 ): Promise<{ nuovi: number; aggiornati: number; invariati: number }> {
   const cfg = await discoverSharePoint();
   if (!cfg.listTermini)
@@ -4220,11 +4221,16 @@ export async function importTermini(
     id: String(it.id),
     cliente: F.Cliente ? String((it.fields ?? {})[F.Cliente] ?? "").trim() : "",
     giorni: F.Giorni ? (numOrUndef((it.fields ?? {})[F.Giorni]) ?? 0) : 0,
+    direzione:
+      F.Direzione && String((it.fields ?? {})[F.Direzione] ?? "").trim() === "Ricevuta"
+        ? "Ricevuta"
+        : "Emessa",
   }));
   const out = { nuovi: 0, aggiornati: 0, invariati: 0 };
   for (const r of rows) {
+    const dir = r.direzione ?? "Emessa";
     const key = clienteGroupKey(r.cliente);
-    const prev = esistenti.find((e) => clienteGroupKey(e.cliente) === key);
+    const prev = esistenti.find((e) => e.direzione === dir && clienteGroupKey(e.cliente) === key);
     if (prev) {
       if (prev.giorni === r.giorni) {
         out.invariati++;
@@ -4239,6 +4245,7 @@ export async function importTermini(
       const fields: Record<string, unknown> = { Title: r.cliente };
       if (F.Cliente) fields[F.Cliente] = r.cliente;
       if (F.Giorni) fields[F.Giorni] = r.giorni;
+      if (F.Direzione) fields[F.Direzione] = dir;
       await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listTermini}/items`, {
         method: "POST",
         body: JSON.stringify({ fields }),
@@ -4254,8 +4261,35 @@ export async function importTermini(
   return out;
 }
 
+/** Copia i termini dei CLIENTI sui FORNITORI omonimi (tasto del direttore):
+ *  per ogni termine lato attive senza equivalente lato passive, crea la riga
+ *  fornitore con gli stessi giorni. Idempotente: chi esiste non si tocca. */
+export async function copiaTerminiSuFornitori(): Promise<{ copiati: number; esistenti: number }> {
+  const tutti = await fetchTerminiPagamento();
+  const passiveKeys = new Set(
+    tutti.filter((t) => t.direzione === "Ricevuta").map((t) => clienteGroupKey(t.cliente)),
+  );
+  const daCopiare = tutti.filter(
+    (t) => (t.direzione ?? "Emessa") === "Emessa" && !passiveKeys.has(clienteGroupKey(t.cliente)),
+  );
+  if (daCopiare.length) {
+    await importTermini(
+      daCopiare.map((t) => ({ cliente: t.cliente, giorni: t.giorni, direzione: "Ricevuta" })),
+    );
+  }
+  logSp(
+    "info",
+    "termini.copia",
+    `Termini copiati sui fornitori: ${daCopiare.length} (già presenti: ${passiveKeys.size})`,
+  );
+  return { copiati: daCopiare.length, esistenti: passiveKeys.size };
+}
+
 /** Elimina il termine di pagamento di un cliente (match per chiave canonica). */
-export async function deleteTermine(cliente: string): Promise<void> {
+export async function deleteTermine(
+  cliente: string,
+  direzione: DirezioneFattura = "Emessa",
+): Promise<void> {
   const cfg = await discoverSharePoint();
   if (!cfg.listTermini)
     throw new Error('Lista "TerminiPagamento" assente su SharePoint: crearla e fare Riscopri.');
@@ -4264,9 +4298,16 @@ export async function deleteTermine(cliente: string): Promise<void> {
     `/sites/${cfg.siteId}/lists/${cfg.listTermini}/items?expand=fields&$top=999`,
   );
   const key = clienteGroupKey(cliente);
-  const item = res.value.find(
-    (it) => clienteGroupKey(F.Cliente ? String((it.fields ?? {})[F.Cliente] ?? "") : "") === key,
-  );
+  // Direzionale: la riga cliente e quella fornitore dello stesso nome sono
+  // due termini diversi, si elimina solo quello richiesto.
+  const item = res.value.find((it) => {
+    const f = it.fields ?? {};
+    const dirRiga =
+      F.Direzione && String(f[F.Direzione] ?? "").trim() === "Ricevuta" ? "Ricevuta" : "Emessa";
+    return (
+      dirRiga === direzione && clienteGroupKey(F.Cliente ? String(f[F.Cliente] ?? "") : "") === key
+    );
+  });
   if (!item) throw new Error(`Termine non trovato per: ${cliente}`);
   const del = await gatewayFetch(`/sites/${cfg.siteId}/lists/${cfg.listTermini}/items/${item.id}`, {
     method: "DELETE",
@@ -4509,6 +4550,10 @@ export async function fetchTerminiPagamento(): Promise<TerminePagamento[]> {
         cliente: F.Cliente ? String(f[F.Cliente] ?? "").trim() : "",
         giorni: F.Giorni ? (numOrUndef(f[F.Giorni]) ?? 0) : 0,
         descrizione: F.Descrizione ? String(f[F.Descrizione] ?? "").trim() || undefined : undefined,
+        direzione:
+          F.Direzione && String(f[F.Direzione] ?? "").trim() === "Ricevuta"
+            ? ("Ricevuta" as const)
+            : ("Emessa" as const),
       };
     })
     .filter((t) => t.cliente && t.giorni > 0);
