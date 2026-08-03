@@ -138,8 +138,15 @@ export function canonicalCliente(nome: string): string {
  *  parole, così si accorpano "panizza roberto"/"roberto panizza" e
  *  "kuwait petroleum italy"/"kuwait petroleum italia spa". Il nome mostrato
  *  resta quello registrato (variante più frequente del gruppo). */
+// Cache della chiave canonica: la funzione è pura ma piena di regex, e viene
+// chiamata decine di migliaia di volte per render (stati, specchietti,
+// classificazioni), quasi sempre sugli stessi nomi: si calcola una volta.
+const groupKeyCache = new Map<string, string>();
+
 export function clienteGroupKey(nome: string): string {
-  return canonicalCliente(nome)
+  const cached = groupKeyCache.get(nome);
+  if (cached !== undefined) return cached;
+  const out = canonicalCliente(nome)
     .replace(/\bitaly\b/g, "italia")
     .replace(/\b(?:srls?|spa|snc|sas|sa|scarl|scpa)\b/g, " ")
     .replace(/[^a-z0-9àèéìòù]+/g, " ")
@@ -147,6 +154,9 @@ export function clienteGroupKey(nome: string): string {
     .filter(Boolean)
     .sort()
     .join(" ");
+  if (groupKeyCache.size > 20000) groupKeyCache.clear(); // tetto di sicurezza
+  groupKeyCache.set(nome, out);
+  return out;
 }
 
 // --- Regole apprese (lista SharePoint RegoleFinanza) ------------------------
