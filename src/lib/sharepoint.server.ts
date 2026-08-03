@@ -301,6 +301,7 @@ export const SP_DISPLAY = {
     Giorni: "Giorni",
     Descrizione: "Descrizione",
     Direzione: "Direzione",
+    Email: "Email",
   },
   // Abbinamenti fattura ↔ movimento bancario (n:n con importo allocato).
   // Chiavi NATURALI (nome file + chiave movimento): sopravvivono a
@@ -4208,7 +4209,12 @@ export async function eliminaFatture(
 /** Import dei TERMINI DI PAGAMENTO dal foglio contratti del direttore:
  *  upsert per cliente (chiave canonica), i giorni si aggiornano al cambio. */
 export async function importTermini(
-  rows: readonly { cliente: string; giorni: number; direzione?: DirezioneFattura }[],
+  rows: readonly {
+    cliente: string;
+    giorni: number;
+    direzione?: DirezioneFattura;
+    email?: string;
+  }[],
 ): Promise<{ nuovi: number; aggiornati: number; invariati: number }> {
   const cfg = await discoverSharePoint();
   if (!cfg.listTermini)
@@ -4221,6 +4227,7 @@ export async function importTermini(
     id: String(it.id),
     cliente: F.Cliente ? String((it.fields ?? {})[F.Cliente] ?? "").trim() : "",
     giorni: F.Giorni ? (numOrUndef((it.fields ?? {})[F.Giorni]) ?? 0) : 0,
+    email: F.Email ? String((it.fields ?? {})[F.Email] ?? "").trim() : "",
     direzione:
       F.Direzione && String((it.fields ?? {})[F.Direzione] ?? "").trim() === "Ricevuta"
         ? "Ricevuta"
@@ -4232,13 +4239,18 @@ export async function importTermini(
     const key = clienteGroupKey(r.cliente);
     const prev = esistenti.find((e) => e.direzione === dir && clienteGroupKey(e.cliente) === key);
     if (prev) {
-      if (prev.giorni === r.giorni) {
+      // Si aggiorna cio' che cambia: giorni e/o email (l'email arriva solo
+      // dal form del pannello, mai dal foglio contratti).
+      const patch: Record<string, unknown> = {};
+      if (prev.giorni !== r.giorni) patch[F.Giorni ?? "Giorni"] = r.giorni;
+      if (F.Email && r.email !== undefined && r.email !== prev.email) patch[F.Email] = r.email;
+      if (!Object.keys(patch).length) {
         out.invariati++;
         continue;
       }
       await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listTermini}/items/${prev.id}/fields`, {
         method: "PATCH",
-        body: JSON.stringify({ [F.Giorni ?? "Giorni"]: r.giorni }),
+        body: JSON.stringify(patch),
       });
       out.aggiornati++;
     } else {
@@ -4246,6 +4258,7 @@ export async function importTermini(
       if (F.Cliente) fields[F.Cliente] = r.cliente;
       if (F.Giorni) fields[F.Giorni] = r.giorni;
       if (F.Direzione) fields[F.Direzione] = dir;
+      if (F.Email && r.email) fields[F.Email] = r.email;
       await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listTermini}/items`, {
         method: "POST",
         body: JSON.stringify({ fields }),
@@ -4554,6 +4567,7 @@ export async function fetchTerminiPagamento(): Promise<TerminePagamento[]> {
           F.Direzione && String(f[F.Direzione] ?? "").trim() === "Ricevuta"
             ? ("Ricevuta" as const)
             : ("Emessa" as const),
+        email: F.Email ? String(f[F.Email] ?? "").trim() || undefined : undefined,
       };
     })
     .filter((t) => t.cliente && t.giorni > 0);

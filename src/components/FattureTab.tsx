@@ -983,6 +983,65 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
 
   // Estratto conto del cliente in CSV: fatture e movimenti nello stesso file,
   // distinti dalla colonna Tipo, così la quadratura si rifà in Excel.
+  // --- Modifica IN GRIGLIA (stile Excel) delle classificazioni --------------
+  // Doppio click sulla cella -> input al volo; Invio o click fuori salva,
+  // Esc annulla. Il click semplice sulla riga continua ad aprire il
+  // dettaglio (che resta: serve per regole, NC e abbinamenti).
+  const [cellaEdit, setCellaEdit] = useState<{
+    file: string;
+    campo: "mese" | "tip" | "cli";
+  } | null>(null);
+  const [cellaVal, setCellaVal] = useState("");
+
+  const salvaCella = async (f: FatturaRaw) => {
+    if (!cellaEdit) return;
+    const { campo } = cellaEdit;
+    const valore = cellaVal.trim();
+    setCellaEdit(null);
+    const attuale =
+      campo === "mese"
+        ? (f.meseCompetenza ?? "")
+        : campo === "tip"
+          ? (f.tipologiaCosto ?? "")
+          : (f.clienteRif ?? "");
+    if (valore === attuale) return;
+    try {
+      await spSetClassificazione({
+        data: {
+          nomeFile: f.nomeFile,
+          direzione: dir,
+          ...(campo === "mese"
+            ? { meseCompetenza: valore }
+            : campo === "tip"
+              ? { tipologiaCosto: valore }
+              : { clienteRif: valore }),
+        },
+      });
+      // Aggiornamento OTTIMISTICO: una cella non ricarica 3.300 righe.
+      const aggiorna = (l: SpFattura[] | null) =>
+        l
+          ? l.map((r) =>
+              r.nomeFile === f.nomeFile
+                ? {
+                    ...r,
+                    ...(campo === "mese"
+                      ? { meseCompetenza: valore || undefined }
+                      : campo === "tip"
+                        ? { tipologiaCosto: valore || undefined }
+                        : { clienteRif: valore || undefined }),
+                  }
+                : r,
+            )
+          : l;
+      (dir === "Emessa" ? setFattureEm : setFattureRic)(aggiorna);
+      toast.success(t("ft.classSalvata"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
   // --- Sollecito di pagamento (solo attive) ---------------------------------
   // Testo formale con le fatture SCADUTE del cliente aperto, più gli importi
   // da scalare (nostre NC non collegate e loro fatture verso di noi ancora
@@ -1077,7 +1136,16 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       return;
     }
     const oggetto = `Sollecito di pagamento - fatture scadute (DR Logistica S.r.l.)`;
-    window.location.href = `mailto:?subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(sol.corpo)}`;
+    // Destinatario dall'anagrafica termini (email del cliente, se impostata
+    // nel pannello Regole): l'email parte già indirizzata.
+    const dest =
+      termini.find(
+        (x) =>
+          (x.direzione ?? "Emessa") === "Emessa" &&
+          (clienteGroupKey(x.cliente) || x.cliente) === clienteAperto &&
+          x.email,
+      )?.email ?? "";
+    window.location.href = `mailto:${encodeURIComponent(dest)}?subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(sol.corpo)}`;
   };
 
   const esportaEstratto = () => {
@@ -2567,23 +2635,69 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                               : cl.fonte === "auto"
                                 ? t("ft.classFonteAuto")
                                 : undefined;
+                          // Cella modificabile: doppio click apre l'input,
+                          // prefillato col valore risolto (confermare una
+                          // proposta = doppio click + Invio).
+                          const cella = (
+                            campo: "mese" | "tip" | "cli",
+                            mostrato: string,
+                            classi: string,
+                            prefill: string,
+                          ) => {
+                            const inEdit =
+                              cellaEdit?.file === x.f.nomeFile && cellaEdit.campo === campo;
+                            return (
+                              <td
+                                className={`py-1 pr-2 ${classi}`}
+                                title={inEdit ? undefined : (tipTitle ?? t("ft.cellaTip"))}
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  setCellaEdit({ file: x.f.nomeFile, campo });
+                                  setCellaVal(prefill);
+                                }}
+                                onClick={(e) => {
+                                  if (inEdit) e.stopPropagation();
+                                }}
+                              >
+                                {inEdit ? (
+                                  <input
+                                    autoFocus
+                                    list={campo === "tip" ? "tipologie-note" : undefined}
+                                    value={cellaVal}
+                                    onChange={(e) => setCellaVal(e.target.value)}
+                                    onBlur={() => void salvaCella(x.f)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") void salvaCella(x.f);
+                                      if (e.key === "Escape") setCellaEdit(null);
+                                    }}
+                                    className="w-full min-w-24 rounded border border-primary bg-background px-1 py-0.5 text-[12px] text-foreground"
+                                  />
+                                ) : (
+                                  mostrato
+                                )}
+                              </td>
+                            );
+                          };
                           return (
                             <>
-                              <td className="py-1 pr-2 whitespace-nowrap tabular-nums text-muted-foreground">
-                                {cl.mese}
-                              </td>
-                              <td
-                                className={`py-1 pr-2 max-w-40 truncate ${stile}`}
-                                title={tipTitle ?? cl.tipologia}
-                              >
-                                {cl.tipologia}
-                              </td>
-                              <td
-                                className={`py-1 pr-2 whitespace-nowrap ${stile}`}
-                                title={tipTitle}
-                              >
-                                {cl.clienteRif}
-                              </td>
+                              {cella(
+                                "mese",
+                                cl.mese,
+                                "whitespace-nowrap tabular-nums text-muted-foreground",
+                                x.f.meseCompetenza ?? cl.mese,
+                              )}
+                              {cella(
+                                "tip",
+                                cl.tipologia,
+                                `max-w-40 truncate ${stile}`,
+                                cl.tipologia,
+                              )}
+                              {cella(
+                                "cli",
+                                cl.clienteRif,
+                                `whitespace-nowrap ${stile}`,
+                                cl.clienteRif,
+                              )}
                             </>
                           );
                         })()}

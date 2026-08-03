@@ -1006,20 +1006,25 @@ export const spEliminaFatture = createServerFn({ method: "POST" })
 
 // Termini di pagamento dal foglio contratti (upsert per cliente).
 export const spImportTermini = createServerFn({ method: "POST" })
-  .inputValidator((input: { rows: { cliente: string; giorni: number; direzione?: string }[] }) => {
-    if (!Array.isArray(input?.rows) || input.rows.length === 0)
-      throw new Error("Nessun termine da importare");
-    if (input.rows.length > 200) throw new Error("Blocco troppo grande (max 200)");
-    return {
-      rows: input.rows
-        .map((r) => ({
-          cliente: String(r?.cliente ?? "").trim(),
-          giorni: Number(r?.giorni),
-          direzione: (r?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
-        }))
-        .filter((r) => r.cliente && Number.isFinite(r.giorni) && r.giorni > 0),
-    };
-  })
+  .inputValidator(
+    (input: {
+      rows: { cliente: string; giorni: number; direzione?: string; email?: string }[];
+    }) => {
+      if (!Array.isArray(input?.rows) || input.rows.length === 0)
+        throw new Error("Nessun termine da importare");
+      if (input.rows.length > 200) throw new Error("Blocco troppo grande (max 200)");
+      return {
+        rows: input.rows
+          .map((r) => ({
+            cliente: String(r?.cliente ?? "").trim(),
+            giorni: Number(r?.giorni),
+            direzione: (r?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+            email: r?.email === undefined ? undefined : String(r.email).trim().slice(0, 120),
+          }))
+          .filter((r) => r.cliente && Number.isFinite(r.giorni) && r.giorni > 0),
+      };
+    },
+  )
   .handler(async ({ data }) => {
     await assertDirettore(await currentUser());
     return importTermini(data.rows);

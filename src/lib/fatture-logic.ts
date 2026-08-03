@@ -95,6 +95,8 @@ export interface TerminePagamento {
   /** "Emessa" = termini del CLIENTE (quanto ci paga), "Ricevuta" = termini
    *  del FORNITORE (quando paghiamo noi). Vuoto = Emessa (compatibilità). */
   direzione?: DirezioneFattura;
+  /** Email amministrativa della controparte: destinatario dei solleciti. */
+  email?: string;
 }
 
 export interface AbbinamentoIncasso {
@@ -413,6 +415,9 @@ export function meseCompetenza(dataDocumento: string, dichiarato?: string): stri
   const meseDoc = Number(dataDocumento.slice(5, 7));
   const giorno = Number(dataDocumento.slice(8, 10));
   if (!annoDoc || !meseDoc) return "";
+  // Formato diretto "2026-06" (quello mostrato in griglia): vale così com'è.
+  const diretto = (dichiarato ?? "").trim();
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(diretto)) return diretto;
   const testo = normalizeTesto(dichiarato ?? "");
   if (testo) {
     // tollerante ai refusi: basta il prefisso di 4 lettere ("giun", "lugl").

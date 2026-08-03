@@ -338,10 +338,16 @@ function FinanzaPage() {
   };
 
   // --- Termini d'incasso (giorni di pagamento per cliente) ------------------
-  type TermineRiga = { cliente: string; giorni: number; direzione?: "Emessa" | "Ricevuta" };
+  type TermineRiga = {
+    cliente: string;
+    giorni: number;
+    direzione?: "Emessa" | "Ricevuta";
+    email?: string;
+  };
   const [termini, setTermini] = useState<TermineRiga[] | null>(null);
   const [tCliente, setTCliente] = useState("");
   const [tGiorni, setTGiorni] = useState("");
+  const [tEmail, setTEmail] = useState("");
   const [tBusy, setTBusy] = useState(false);
   // Termini DIREZIONALI: scheda Clienti (quanto ci pagano) e Fornitori
   // (quando paghiamo noi, ritardo sui NOSTRI pagamenti — default 30gg).
@@ -356,10 +362,13 @@ function FinanzaPage() {
     setTBusy(true);
     try {
       await spImportTermini({
-        data: { rows: [{ cliente: tCliente.trim(), giorni, direzione: tDirezione }] },
+        data: {
+          rows: [{ cliente: tCliente.trim(), giorni, direzione: tDirezione, email: tEmail.trim() }],
+        },
       });
       setTCliente("");
       setTGiorni("");
+      setTEmail("");
       loadRegole();
       toast.success(t("fin.termSalvato"));
     } catch (err) {
@@ -1955,6 +1964,16 @@ function FinanzaPage() {
                   className={inputCls}
                 />
               </div>
+              <div className="flex-1 min-w-56">
+                <label className="text-xs text-muted-foreground">{t("fin.termEmail")}</label>
+                <input
+                  type="email"
+                  value={tEmail}
+                  onChange={(e) => setTEmail(e.target.value)}
+                  placeholder={t("fin.termEmailPh")}
+                  className={inputCls}
+                />
+              </div>
               <button
                 type="button"
                 disabled={tBusy}
@@ -1975,7 +1994,12 @@ function FinanzaPage() {
                   .sort((a, b) => a.cliente.localeCompare(b.cliente))
                   .map((x) => (
                     <li key={x.cliente} className="flex items-center gap-3 py-1.5 text-sm">
-                      <span className="flex-1 truncate">{x.cliente}</span>
+                      <span className="flex-1 truncate">
+                        {x.cliente}
+                        {x.email && (
+                          <span className="ml-2 text-xs text-muted-foreground">{x.email}</span>
+                        )}
+                      </span>
                       <b className="tabular-nums">
                         {x.giorni} {t("fin.termGg")}
                       </b>
@@ -1984,6 +2008,7 @@ function FinanzaPage() {
                         onClick={() => {
                           setTCliente(x.cliente);
                           setTGiorni(String(x.giorni));
+                          setTEmail(x.email ?? "");
                         }}
                         className="rounded-md p-1 text-muted-foreground hover:text-foreground"
                         title={t("common.edit")}
