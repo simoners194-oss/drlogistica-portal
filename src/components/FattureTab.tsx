@@ -227,7 +227,27 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
             .length
         : 0;
     if (nAzzeramenti > 0) {
-      const completo = window.confirm(`${nAzzeramenti} ${t("ft.movAzzeraConfirm")}`);
+      // Domanda in italiano corrente, col periodo del file in chiaro: la
+      // versione precedente era tecnicamente esatta e umanamente illeggibile.
+      const dateRate = mov
+        .map((m) => m.data)
+        .filter(Boolean)
+        .sort();
+      const periodo =
+        dateRate.length > 0
+          ? `${fmtData(dateRate[0])} – ${fmtData(dateRate[dateRate.length - 1])}`
+          : "?";
+      const completo = window.confirm(
+        [
+          `${t("ft.movAzz1")} ${periodo}.`,
+          "",
+          `${nAzzeramenti} ${t("ft.movAzz2")}`,
+          "",
+          `OK — ${t("ft.movAzz3")}`,
+          "",
+          `ANNULLA — ${t("ft.movAzz4")}`,
+        ].join("\n"),
+      );
       if (!completo) {
         daFare.Emessa = daFare.Emessa.filter((r) => !(r.rate === 0 && r.incassato === 0));
         daFare.Ricevuta = daFare.Ricevuta.filter((r) => !(r.rate === 0 && r.incassato === 0));

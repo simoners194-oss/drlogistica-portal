@@ -778,8 +778,13 @@ const en = {
   "ft.ncCompensata": "settled",
   "ft.ncDaCompensare": "to settle",
   "ft.annullataNCTip": "Credit notes cover the whole amount: nothing left to collect.",
-  "ft.movAzzeraConfirm":
-    "invoices have a recorded collection dated INSIDE the period covered by this file, but no instalment in the file: the file itself contradicts them. OK = reset them to zero (the file is complete for its period). Cancel = only apply the instalments present, reset nothing.",
+  "ft.movAzz1": "This file covers the period",
+  "ft.movAzz2":
+    "invoices in the archive are recorded as collected in this period, but they do NOT appear in the file.",
+  "ft.movAzz3":
+    "press OK only if you downloaded the COMPLETE report for this period (no date filters): those collections will be reset here too.",
+  "ft.movAzz4":
+    "press CANCEL if the file is partial or you are not sure: only the invoices present in the file get updated, nothing is deleted.",
   "ft.movProgress": "Applying collections — block",
   "ft.movTimeout": "The server did not respond within 5 minutes",
   "ft.movRipresa":
@@ -1761,8 +1766,13 @@ const it: Record<DictKey, string> = {
   "ft.ncDaCompensare": "da compensare",
   "ft.annullataNCTip":
     "Le note di credito coprono l'intero importo: non c'è più nulla da incassare.",
-  "ft.movAzzeraConfirm":
-    "fatture hanno un incasso registrato con data DENTRO il periodo coperto da questo file, ma nel file non hanno nessuna rata: è il file stesso a smentirle. OK = azzerale (il file è completo per il suo periodo). Annulla = applica solo le rate presenti, senza azzerare nulla.",
+  "ft.movAzz1": "Questo file copre il periodo",
+  "ft.movAzz2":
+    "fatture in archivio risultano incassate in questo periodo, ma nel file NON compaiono.",
+  "ft.movAzz3":
+    "premi OK solo se hai scaricato il report COMPLETO di questo periodo (senza filtri di data): quegli incassi verranno azzerati anche qui.",
+  "ft.movAzz4":
+    "premi ANNULLA se il file è parziale o non sei sicuro: si aggiornano solo le fatture presenti nel file e non si cancella nulla.",
   "ft.movProgress": "Applico gli incassi — blocco",
   "ft.movTimeout": "Il server non ha risposto entro 5 minuti",
   "ft.movRipresa":
