@@ -221,11 +221,16 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     // rata su una fattura del 2025 per marcare "coperto" l'anno intero: senza
     // questa domanda, un file parziale azzera l'archivio (successo davvero:
     // 53 fatture iMile azzerate da un estratto di pochi giorni).
-    const nAzzeramenti =
-      daFare.Emessa.length + daFare.Ricevuta.length
-        ? [...daFare.Emessa, ...daFare.Ricevuta].filter((r) => r.rate === 0 && r.incassato === 0)
-            .length
-        : 0;
+    // GUARDIA ESTESA: non solo gli AZZERAMENTI (fattura sparita dal file),
+    // ma ogni RIDUZIONE rispetto all'archivio — un export TRONCATO contiene
+    // le rate solo in parte e riscriverebbe somme piu' basse senza che
+    // nessuno se ne accorga (successo: import "dal 2023" troncato, 743mila
+    // di incassi iMile ridotti in silenzio).
+    const eRiduzione = (r: { nomeFile: string; incassato: number }) => {
+      const prev = perFile.get(r.nomeFile);
+      return prev != null && r.incassato < (prev.incassatoAruba ?? 0) - 0.005;
+    };
+    const nAzzeramenti = [...daFare.Emessa, ...daFare.Ricevuta].filter(eRiduzione).length;
     if (nAzzeramenti > 0) {
       // Domanda in italiano corrente, col periodo del file in chiaro: la
       // versione precedente era tecnicamente esatta e umanamente illeggibile.
@@ -249,8 +254,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         ].join("\n"),
       );
       if (!completo) {
-        daFare.Emessa = daFare.Emessa.filter((r) => !(r.rate === 0 && r.incassato === 0));
-        daFare.Ricevuta = daFare.Ricevuta.filter((r) => !(r.rate === 0 && r.incassato === 0));
+        // ANNULLA: si applicano solo aumenti e conferme, mai riduzioni.
+        daFare.Emessa = daFare.Emessa.filter((r) => !eRiduzione(r));
+        daFare.Ricevuta = daFare.Ricevuta.filter((r) => !eRiduzione(r));
       }
     }
     const invariate = mappa.size - daFare.Emessa.length - daFare.Ricevuta.length;

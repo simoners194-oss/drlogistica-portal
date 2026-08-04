@@ -780,7 +780,7 @@ const en = {
   "ft.annullataNCTip": "Credit notes cover the whole amount: nothing left to collect.",
   "ft.movAzz1": "This file covers the period",
   "ft.movAzz2":
-    "invoices in the archive are recorded as collected in this period, but they do NOT appear in the file.",
+    "invoices in the archive are recorded as collected for MORE than this file says (they appear only partially, or not at all).",
   "ft.movAzz3":
     "press OK only if you downloaded the COMPLETE report for this period (no date filters): those collections will be reset here too.",
   "ft.movAzz4":
@@ -1768,9 +1768,9 @@ const it: Record<DictKey, string> = {
     "Le note di credito coprono l'intero importo: non c'è più nulla da incassare.",
   "ft.movAzz1": "Questo file copre il periodo",
   "ft.movAzz2":
-    "fatture in archivio risultano incassate in questo periodo, ma nel file NON compaiono.",
+    "fatture in archivio risultano incassate per PIÙ di quanto dice questo file (compaiono solo in parte, o per niente).",
   "ft.movAzz3":
-    "premi OK solo se hai scaricato il report COMPLETO di questo periodo (senza filtri di data): quegli incassi verranno azzerati anche qui.",
+    "premi OK solo se hai scaricato il report COMPLETO di questo periodo (senza filtri di data e non troncato): quegli incassi verranno ridotti o azzerati anche qui.",
   "ft.movAzz4":
     "premi ANNULLA se il file è parziale o non sei sicuro: si aggiornano solo le fatture presenti nel file e non si cancella nulla.",
   "ft.movProgress": "Applico gli incassi — blocco",
