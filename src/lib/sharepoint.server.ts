@@ -3565,12 +3565,21 @@ export interface MovimentiFilter {
   soloDaVerificare?: boolean;
 }
 
+// Solo le colonne che la mappatura usa davvero: expand=fields senza select
+// trascina TUTTI i campi di sistema di ogni item, e su liste da migliaia di
+// righe il payload (e il tempo di apertura pagina) raddoppia o triplica.
+function soloColonne(F: Record<string, string | undefined>): string {
+  const nomi = new Set<string>(["Title"]);
+  for (const v of Object.values(F)) if (v) nomi.add(v);
+  return `expand=fields(select=${[...nomi].join(",")})`;
+}
+
 export async function fetchMovimenti(filter: MovimentiFilter = {}): Promise<SpMovimento[]> {
   const started = Date.now();
   const cfg = await discoverSharePoint();
   if (!cfg.listMovimenti) return [];
   const items = await fetchMovimentiPages(
-    `/sites/${cfg.siteId}/lists/${cfg.listMovimenti}/items?expand=fields&$top=999`,
+    `/sites/${cfg.siteId}/lists/${cfg.listMovimenti}/items?${soloColonne(cfg.movimentiFields)}&$top=999`,
   );
   let out = items.map((it) => mapMovimento(cfg, it));
   // Progressivo cronologico sull'INTERO archivio, PRIMA dei filtri (così il
@@ -4139,7 +4148,7 @@ export async function fetchFatture(direzione: DirezioneFattura = "Emessa"): Prom
   const { listId, fields } = fattureListPer(cfg, direzione);
   if (!listId) return [];
   const items = await fetchMovimentiPages(
-    `/sites/${cfg.siteId}/lists/${listId}/items?expand=fields&$top=999`,
+    `/sites/${cfg.siteId}/lists/${listId}/items?${soloColonne(fields)}&$top=999`,
   );
   const out = items.map((it) => mapFattura(fields, it, direzione));
   out.sort((a, b) => b.dataDocumento.localeCompare(a.dataDocumento));

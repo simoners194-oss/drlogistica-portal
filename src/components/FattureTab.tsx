@@ -82,6 +82,29 @@ import {
 import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
 import type { ArubaProbeResult } from "@/lib/aruba.server";
 
+// Cache di sessione per l'apertura istantanea della pagina: l'elenco fatture
+// e i movimenti pesano megabyte e arrivano da SharePoint in molte pagine —
+// alla riapertura si parte dall'ultimo snapshot e la rete corregge dopo.
+const FT_CACHE_PREFISSO = "dr:ft:v1:";
+function leggiCacheFt<T>(k: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(FT_CACHE_PREFISSO + k);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+function scriviCacheFt(k: string, v: unknown): void {
+  try {
+    const raw = JSON.stringify(v);
+    // Oltre ~3,5 MB si rischia la quota di sessionStorage: meglio nessuna
+    // cache che un'eccezione a ogni caricamento.
+    if (raw.length < 3_500_000) sessionStorage.setItem(FT_CACHE_PREFISSO + k, raw);
+  } catch {
+    /* quota piena: si riapre alla vecchia maniera */
+  }
+}
+
 const inputCls =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
@@ -320,17 +343,39 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   };
 
   const load = () => {
+    // APERTURA ISTANTANEA: si mostra subito l'ultimo snapshot della sessione
+    // (se c'è), la rete aggiorna e riscrive la cache in background. La cache
+    // muore con la scheda del browser: niente dati vecchi tra un giorno e
+    // l'altro, solo riaperture rapide nella stessa sessione di lavoro.
+    if (fattureEm == null) {
+      const c = leggiCacheFt<SpFattura[]>("em");
+      if (c) setFattureEm(c);
+    }
+    if (fattureRic == null) {
+      const c = leggiCacheFt<SpFattura[]>("ric");
+      if (c) setFattureRic(c);
+    }
+    if (movimenti == null) {
+      const c = leggiCacheFt<SpMovimento[]>("mov");
+      if (c) setMovimenti(c);
+    }
     spGetFatture({ data: { direzione: "Emessa" } })
-      .then((l) => setFattureEm(l as SpFattura[]))
+      .then((l) => {
+        setFattureEm(l as SpFattura[]);
+        scriviCacheFt("em", l);
+      })
       .catch((err) => {
-        setFattureEm([]);
+        setFattureEm((prev) => prev ?? []);
         toast.error(t("ft.errLoad"), {
           description: err instanceof Error ? err.message : String(err),
         });
       });
     spGetFatture({ data: { direzione: "Ricevuta" } })
-      .then((l) => setFattureRic(l as SpFattura[]))
-      .catch(() => setFattureRic([]));
+      .then((l) => {
+        setFattureRic(l as SpFattura[]);
+        scriviCacheFt("ric", l);
+      })
+      .catch(() => setFattureRic((prev) => prev ?? []));
     spGetTerminiPagamento()
       .then((l) => setTermini(l as TerminePagamento[]))
       .catch(() => setTermini([]));
@@ -338,8 +383,11 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       .then((l) => setAbbinamenti(l as AbbinamentoIncasso[]))
       .catch(() => setAbbinamenti([]));
     spGetMovimenti({ data: {} })
-      .then((l) => setMovimenti(l as SpMovimento[]))
-      .catch(() => setMovimenti([]));
+      .then((l) => {
+        setMovimenti(l as SpMovimento[]);
+        scriviCacheFt("mov", l);
+      })
+      .catch(() => setMovimenti((prev) => prev ?? []));
     spGetArubaStato()
       .then((s) => setAruba(s as ArubaStato))
       .catch(() => setAruba(null));
