@@ -153,6 +153,9 @@ export function ResocontoTab() {
       estratto: Math.round(estratto * 100) / 100,
       incassatoAtt: Math.round(incassatoAtt * 100) / 100,
       pagatoPas: Math.round(pagatoPas * 100) / 100,
+      // Il "netto fatture" del direttore: incassato attive meno pagato
+      // passive — è il numero da confrontare con l'estratto conto.
+      netto: Math.round((incassatoAtt - pagatoPas) * 100) / 100,
       differenza,
       nMov: movSel.length,
       ok: Math.abs(differenza) <= 1,
@@ -319,7 +322,10 @@ export function ResocontoTab() {
                 {quadro.ok ? "OK" : fmtImporto(quadro.differenza) + " €"}
               </span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-4">
+            {/* Layout chiesto dal direttore: in alto il confronto secco
+                (estratto · netto fatture · differenza), sotto il dettaglio
+                attive/passive che compone il netto. */}
+            <div className="grid gap-3 sm:grid-cols-3">
               <div>
                 <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
                   {t("rt.estratto")}
@@ -331,18 +337,10 @@ export function ResocontoTab() {
               </div>
               <div>
                 <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  {t("rt.attive")}
+                  {t("rt.netto")}
                 </div>
                 <div className="mt-0.5 text-xl font-semibold tabular-nums text-foreground">
-                  {fmtImporto(quadro.incassatoAtt)} €
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  {t("rt.passive")}
-                </div>
-                <div className="mt-0.5 text-xl font-semibold tabular-nums text-foreground">
-                  {fmtImporto(quadro.pagatoPas)} €
+                  {fmtImporto(quadro.netto)} €
                 </div>
               </div>
               <div>
@@ -356,6 +354,20 @@ export function ResocontoTab() {
                 >
                   {fmtImporto(quadro.differenza)} €
                 </div>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-x-8 gap-y-1 border-t border-border/60 pt-2 text-sm">
+              <div>
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  {t("rt.attive")}
+                </span>{" "}
+                <b className="tabular-nums text-foreground">{fmtImporto(quadro.incassatoAtt)} €</b>
+              </div>
+              <div>
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  {t("rt.passive")}
+                </span>{" "}
+                <b className="tabular-nums text-foreground">{fmtImporto(quadro.pagatoPas)} €</b>
               </div>
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">{t("rt.nota")}</p>

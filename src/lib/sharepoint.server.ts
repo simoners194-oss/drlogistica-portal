@@ -2193,6 +2193,10 @@ export interface ResocontoGiornoRiga {
   eventi: SpTimbratura[];
   anomalie: TipoAnomalia[];
   senzaTimbrature: boolean;
+  /** Il giorno è coperto da una malattia comunicata (o approvata). */
+  malattia: boolean;
+  /** Il giorno è coperto da ferie approvate. */
+  ferie: boolean;
 }
 
 export async function resocontoGiorno(
@@ -2206,10 +2210,24 @@ export async function resocontoGiorno(
   prevStart.setDate(prevStart.getDate() - 1);
   const nextEnd = new Date(`${dataISO}T23:59:59.999`);
   nextEnd.setDate(nextEnd.getDate() + 1);
-  const [tims, dips] = await Promise.all([
+  const [tims, dips, richieste] = await Promise.all([
     fetchTimbratureDaISO(prevStart.toISOString()),
     fetchDipendenti(),
+    // Le assenze del giorno (malattia comunicata, ferie approvate): senza
+    // questa vista il "Nessuna timbratura" nasconde chi e' regolarmente
+    // assente e chi invece manca senza spiegazione.
+    fetchRichieste().catch(() => [] as SpRichiesta[]),
   ]);
+  const inMalattia = new Set<string>();
+  const inFerie = new Set<string>();
+  for (const r of richieste) {
+    const di = r.dataInizio.slice(0, 10);
+    const df = (r.dataFine || r.dataInizio).slice(0, 10);
+    if (!(di <= dataISO && dataISO <= df)) continue;
+    if (r.tipo === "Malattia" && (r.stato === "Comunicata" || r.stato === "Approvata"))
+      inMalattia.add(r.richiedenteId);
+    else if (r.tipo === "Ferie" && r.stato === "Approvata") inFerie.add(r.richiedenteId);
+  }
   const finestra = tims.filter((t) => t.dataOra <= nextEnd.toISOString());
   const perDipFinestra = new Map<string, SpTimbratura[]>();
   for (const t of finestra) {
@@ -2244,6 +2262,8 @@ export async function resocontoGiorno(
         .filter((a) => a.giorno === dataISO)
         .map((a) => a.tipo),
       senzaTimbrature: eventi.length === 0,
+      malattia: inMalattia.has(d.id),
+      ferie: inFerie.has(d.id),
     });
   }
   out.sort((a, b) => a.sede.localeCompare(b.sede) || a.nomeCompleto.localeCompare(b.nomeCompleto));

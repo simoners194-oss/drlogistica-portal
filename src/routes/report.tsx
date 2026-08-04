@@ -120,8 +120,11 @@ function RendicontoPage() {
   const [vista, setVista] = useState<"rendiconto" | "ferie">("rendiconto");
   // Granularità del periodo: mese solare, settimana fiscale (dell'anno) o
   // settimana del mese (lun-dom, riparte da week1 ogni mese).
-  const [periodoModo, setPeriodoModo] = useState<"mese" | "fiscal" | "mensile">("mese");
+  const [periodoModo, setPeriodoModo] = useState<"mese" | "fiscal" | "mensile" | "giorno">("mese");
   const [weekNum, setWeekNum] = useState(1);
+  // Giorno singolo (richiesta del direttore): riusa il motore a intervallo
+  // con from = to = giorno scelto.
+  const [giornoSel, setGiornoSel] = useState(() => ymdLocal(new Date()));
   const [saldo, setSaldo] = useState<SaldoFerieRiga[] | null>(null);
   const [saldoLoading, setSaldoLoading] = useState(false);
 
@@ -143,6 +146,7 @@ function RendicontoPage() {
 
   // Intervallo effettivo del periodo selezionato (per le viste settimanali).
   const rangeSettimana = useMemo(() => {
+    if (periodoModo === "giorno") return giornoSel ? { from: giornoSel, to: giornoSel } : null;
     const anno = Number(periodo.slice(0, 4));
     const mese = Number(periodo.slice(5, 7));
     if (!anno || !mese) return null;
@@ -155,7 +159,7 @@ function RendicontoPage() {
       return { from: ymdLocal(lun), to: ymdLocal(addDays(lun, 6)) };
     }
     return null;
-  }, [periodo, periodoModo, weekNum]);
+  }, [periodo, periodoModo, weekNum, giornoSel]);
 
   useEffect(() => {
     if (!canView) return;
@@ -275,27 +279,41 @@ function RendicontoPage() {
                 className={`${inputCls} mt-1`}
                 value={periodoModo}
                 onChange={(e) => {
-                  setPeriodoModo(e.target.value as "mese" | "fiscal" | "mensile");
+                  setPeriodoModo(e.target.value as "mese" | "fiscal" | "mensile" | "giorno");
                   setWeekNum(1);
                 }}
               >
                 <option value="mese">{t("rep.periodMonth")}</option>
                 <option value="fiscal">{t("rep.periodFiscal")}</option>
                 <option value="mensile">{t("rep.periodMonthWeek")}</option>
+                <option value="giorno">{t("rep.periodDay")}</option>
               </select>
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                {periodoModo === "fiscal" ? t("rep.yearFromMonth") : t("rep.month")}
+                {periodoModo === "giorno"
+                  ? t("rep.periodDay")
+                  : periodoModo === "fiscal"
+                    ? t("rep.yearFromMonth")
+                    : t("rep.month")}
               </label>
-              <input
-                type="month"
-                className={`${inputCls} mt-1`}
-                value={periodo}
-                onChange={(e) => setPeriodo(e.target.value)}
-              />
+              {periodoModo === "giorno" ? (
+                <input
+                  type="date"
+                  className={`${inputCls} mt-1`}
+                  value={giornoSel}
+                  onChange={(e) => setGiornoSel(e.target.value)}
+                />
+              ) : (
+                <input
+                  type="month"
+                  className={`${inputCls} mt-1`}
+                  value={periodo}
+                  onChange={(e) => setPeriodo(e.target.value)}
+                />
+              )}
             </div>
-            {periodoModo !== "mese" && (
+            {(periodoModo === "fiscal" || periodoModo === "mensile") && (
               <div>
                 <label className="text-xs uppercase tracking-wider text-muted-foreground">
                   {periodoModo === "fiscal" ? t("rep.fiscalWeekN") : t("rep.monthWeekN")}

@@ -712,7 +712,19 @@ function GestioneTimbraturePage() {
                           {r.nomeCompleto}
                         </span>
                         <span className="text-[12px] text-muted-foreground">{r.sede}</span>
-                        {r.senzaTimbrature && (
+                        {r.malattia && (
+                          <span className="rounded-full bg-status-break/15 px-2 py-0.5 text-[11px] font-medium text-status-break">
+                            {t("gt.malattiaBadge")}
+                          </span>
+                        )}
+                        {r.ferie && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                            {t("gt.ferieBadge")}
+                          </span>
+                        )}
+                        {/* "Nessuna timbratura" resta solo se l'assenza NON è
+                            già spiegata da malattia o ferie. */}
+                        {r.senzaTimbrature && !r.malattia && !r.ferie && (
                           <span className="rounded-full bg-status-absent/15 px-2 py-0.5 text-[11px] font-medium text-status-absent">
                             {t("gt.noEntriesBadge")}
                           </span>

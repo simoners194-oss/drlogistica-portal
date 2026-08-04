@@ -335,6 +335,7 @@ const en = {
   "rep.periodMonth": "Month",
   "rep.periodFiscal": "Fiscal week (year)",
   "rep.periodMonthWeek": "Week of the month",
+  "rep.periodDay": "Single day",
   "rep.yearFromMonth": "Year (from month)",
   "rep.month": "Month",
   "rep.fiscalWeekN": "Fiscal week (1-53)",
@@ -519,6 +520,8 @@ const en = {
   "gt.dayDesc":
     "Pick a site and a date to see ALL employees with their recorded entries — including who has none (an empty day is not flagged by automatic anomalies: judge it here). Delete a wrong entry and add the correct ones: the employee's buttons re-enable automatically.",
   "gt.noEntriesBadge": "No entries",
+  "gt.malattiaBadge": "Sick leave",
+  "gt.ferieBadge": "On holiday",
   "gt.code": "Employee code",
   "gt.dayLoad": "Load",
   "gt.dayLoadErr": "Could not load the day's entries",
@@ -571,7 +574,7 @@ const en = {
   "fin.ebProvaBtn": "Test connection",
   "fin.ebProvaOk": "Application recognized",
   "fin.ebModifica": "Edit app",
-  "fin.ebSaldoAttuale": "Current balance",
+  "fin.ebSaldoAttuale": "Booked balance",
   "fin.ebSaldoCacheVuota":
     "No balance stored yet: it will be fetched with the next synchronization (the bank caps daily PSD2 accesses, so the balance is read only while syncing).",
   "fin.ebCronTitle": "Scheduled synchronisation",
@@ -592,6 +595,7 @@ const en = {
   "rt.attive": "Active invoices (collected)",
   "rt.passive": "Passive invoices (paid)",
   "rt.differenza": "Difference",
+  "rt.netto": "Net invoices",
   "rt.nota":
     "Statement = every movement attributed to the selected counterparties (both directions). OK when statement − collected + paid ≈ 0: what invoicing records matches what moved on the account. With no filters the check is company-wide.",
   "rt.fasce": "Overdue ranges",
@@ -1327,6 +1331,7 @@ const it: Record<DictKey, string> = {
   "rep.periodMonth": "Mese",
   "rep.periodFiscal": "Settimana fiscale (anno)",
   "rep.periodMonthWeek": "Settimana del mese",
+  "rep.periodDay": "Giorno singolo",
   "rep.yearFromMonth": "Anno (dal mese)",
   "rep.month": "Mese",
   "rep.fiscalWeekN": "Week fiscale (1-53)",
@@ -1507,6 +1512,8 @@ const it: Record<DictKey, string> = {
   "gt.dayDesc":
     "Scegli sede e data per vedere TUTTI i dipendenti con le loro timbrature — compresi quelli che non hanno timbrato nulla (il giorno vuoto non è tra le anomalie automatiche: si giudica qui). Elimina la timbratura sbagliata e inserisci quelle corrette: i pulsanti del dipendente si riabilitano da soli.",
   "gt.noEntriesBadge": "Nessuna timbratura",
+  "gt.malattiaBadge": "Malattia",
+  "gt.ferieBadge": "Ferie",
   "gt.code": "Codice dipendente",
   "gt.dayLoad": "Carica",
   "gt.dayLoadErr": "Impossibile caricare le timbrature del giorno",
@@ -1557,7 +1564,7 @@ const it: Record<DictKey, string> = {
   "fin.ebProvaBtn": "Prova collegamento",
   "fin.ebProvaOk": "Applicazione riconosciuta",
   "fin.ebModifica": "Modifica app",
-  "fin.ebSaldoAttuale": "Saldo attuale",
+  "fin.ebSaldoAttuale": "Saldo contabile",
   "fin.ebSaldoCacheVuota":
     "Saldo non ancora memorizzato: arriverà con la prossima sincronizzazione (la banca limita gli accessi PSD2 giornalieri, quindi il saldo si legge solo durante il sync).",
   "fin.ebCronTitle": "Sincronizzazione programmata",
@@ -1579,6 +1586,7 @@ const it: Record<DictKey, string> = {
   "rt.attive": "Fatture attive (incassato)",
   "rt.passive": "Fatture passive (pagato)",
   "rt.differenza": "Differenza",
+  "rt.netto": "Netto fatture",
   "rt.nota":
     "Estratto conto = tutti i movimenti attribuiti alle controparti selezionate (entrambe le direzioni). OK quando estratto − incassato + pagato ≈ 0: quello che la fatturazione registra coincide con quello che si è mosso sul conto. Senza filtri il controllo è su tutta l'azienda.",
   "rt.fasce": "Fasce di ritardo",

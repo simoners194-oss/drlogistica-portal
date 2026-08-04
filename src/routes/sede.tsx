@@ -42,6 +42,9 @@ function SedePage() {
     return ymd(d);
   });
   const [ore, setOre] = useState<RendicontoRiga[] | null>(null);
+  // Filtro sede: ha senso solo per chi vede TUTTE le sedi (operatore/admin);
+  // per il preposto il server restituisce già solo la sua.
+  const [sedeF, setSedeF] = useState("tutte");
 
   const abilitato =
     session != null &&
@@ -89,7 +92,21 @@ function SedePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abilitato, tab, data, from, to]);
 
-  const totaleOre = useMemo(() => (ore ?? []).reduce((s, r) => s + r.oreLavorate, 0), [ore]);
+  const righeVis = useMemo(
+    () => (righe ?? []).filter((r) => sedeF === "tutte" || r.sede === sedeF),
+    [righe, sedeF],
+  );
+  const oreVis = useMemo(
+    () => (ore ?? []).filter((r) => sedeF === "tutte" || r.sede === sedeF),
+    [ore, sedeF],
+  );
+  const sediViste = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of righe ?? []) if (r.sede) set.add(r.sede);
+    for (const r of ore ?? []) if (r.sede) set.add(r.sede);
+    return [...set].sort();
+  }, [righe, ore]);
+  const totaleOre = useMemo(() => oreVis.reduce((s, r) => s + r.oreLavorate, 0), [oreVis]);
 
   if (session && !abilitato) {
     return (
@@ -133,24 +150,43 @@ function SedePage() {
 
       {tab === "giorno" ? (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-          <div className="mb-4 w-48">
-            <label className="text-xs text-muted-foreground">{t("sede.data")}</label>
-            <input
-              type="date"
-              value={data}
-              onChange={(e) => setData(e.target.value)}
-              className={inputCls}
-            />
+          <div className="mb-4 flex flex-wrap items-end gap-3">
+            <div className="w-48">
+              <label className="text-xs text-muted-foreground">{t("sede.data")}</label>
+              <input
+                type="date"
+                value={data}
+                onChange={(e) => setData(e.target.value)}
+                className={inputCls}
+              />
+            </div>
+            {sede === "tutte" && (
+              <div className="w-48">
+                <label className="text-xs text-muted-foreground">{t("common.site")}</label>
+                <select
+                  value={sedeF}
+                  onChange={(e) => setSedeF(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="tutte">{t("common.allF")}</option>
+                  {sediViste.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           {righe == null ? (
             <div className="py-8 text-center">
               <Loader2 className="h-5 w-5 animate-spin inline-block text-muted-foreground" />
             </div>
-          ) : righe.length === 0 ? (
+          ) : righeVis.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">{t("sede.vuoto")}</p>
           ) : (
             <ul className="space-y-2">
-              {righe.map((r) => (
+              {righeVis.map((r) => (
                 <li key={r.dipendenteId} className="rounded-xl border border-border p-3">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground min-w-48">
@@ -158,7 +194,17 @@ function SedePage() {
                       {r.nomeCompleto}
                       <span className="text-xs text-muted-foreground">{r.codice}</span>
                     </span>
-                    {r.senzaTimbrature ? (
+                    {r.malattia && (
+                      <span className="rounded-full bg-status-break/15 px-2 py-0.5 text-[11px] font-medium text-status-break">
+                        {t("gt.malattiaBadge")}
+                      </span>
+                    )}
+                    {r.ferie && (
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                        {t("gt.ferieBadge")}
+                      </span>
+                    )}
+                    {r.senzaTimbrature && !r.malattia && !r.ferie ? (
                       <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
                         {t("sede.nessuna")}
                       </span>
@@ -209,6 +255,23 @@ function SedePage() {
                 className={inputCls}
               />
             </div>
+            {sede === "tutte" && (
+              <div className="w-44">
+                <label className="text-xs text-muted-foreground">{t("common.site")}</label>
+                <select
+                  value={sedeF}
+                  onChange={(e) => setSedeF(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="tutte">{t("common.allF")}</option>
+                  {sediViste.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="ml-auto rounded-xl border border-border bg-secondary/40 px-4 py-2 text-right">
               <div className="text-[11px] text-muted-foreground">{t("sede.totaleOre")}</div>
               <div className="text-lg font-semibold tabular-nums text-foreground">
@@ -220,7 +283,7 @@ function SedePage() {
             <div className="py-8 text-center">
               <Loader2 className="h-5 w-5 animate-spin inline-block text-muted-foreground" />
             </div>
-          ) : ore.length === 0 ? (
+          ) : oreVis.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">{t("sede.vuoto")}</p>
           ) : (
             <div className="overflow-x-auto">
@@ -234,7 +297,7 @@ function SedePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {ore.map((r) => (
+                  {oreVis.map((r) => (
                     <tr key={r.dipendenteId} className="border-b border-border/50">
                       <td className="py-1.5 pr-3">{r.nomeCompleto}</td>
                       <td className="py-1.5 pr-3 text-right tabular-nums">
