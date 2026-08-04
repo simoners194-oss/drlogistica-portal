@@ -85,7 +85,7 @@ import type { ArubaProbeResult } from "@/lib/aruba.server";
 // Cache di sessione per l'apertura istantanea della pagina: l'elenco fatture
 // e i movimenti pesano megabyte e arrivano da SharePoint in molte pagine —
 // alla riapertura si parte dall'ultimo snapshot e la rete corregge dopo.
-const FT_CACHE_PREFISSO = "dr:ft:v1:";
+const FT_CACHE_PREFISSO = "dr:ft:v2:";
 function leggiCacheFt<T>(k: string): T | null {
   try {
     const raw = sessionStorage.getItem(FT_CACHE_PREFISSO + k);

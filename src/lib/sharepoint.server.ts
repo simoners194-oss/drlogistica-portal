@@ -294,6 +294,9 @@ export const SP_DISPLAY = {
     // Somma delle rate incassate registrate su Aruba (report movimenti):
     // è il dato che quantifica gli incassi parziali. OPZIONALE.
     IncassatoAruba: "IncassatoAruba",
+    // Oggetto della fattura (descrizioni righe XML, concatenate): serve alle
+    // regole sui termini per parola chiave. OPZIONALE (più righe di testo).
+    Oggetto: "Oggetto",
   },
   // Termini di pagamento per cliente (giorni). Gestita dal direttore. OPZIONALE.
   terminiPagamento: {
@@ -302,6 +305,9 @@ export const SP_DISPLAY = {
     Descrizione: "Descrizione",
     Direzione: "Direzione",
     Email: "Email",
+    // Parole chiave sull'oggetto fattura (es. "locazione, affitto"):
+    // il termine vale solo per le fatture che le contengono. OPZIONALE.
+    Oggetto: "Oggetto",
   },
   // Abbinamenti fattura ↔ movimento bancario (n:n con importo allocato).
   // Chiavi NATURALI (nome file + chiave movimento): sopravvivono a
@@ -4134,6 +4140,7 @@ function mapFattura(
     meseCompetenza: F.MeseCompetenza ? String(f[F.MeseCompetenza] ?? "") || undefined : undefined,
     tipologiaCosto: F.TipologiaCosto ? String(f[F.TipologiaCosto] ?? "") || undefined : undefined,
     clienteRif: F.ClienteRif ? String(f[F.ClienteRif] ?? "") || undefined : undefined,
+    oggetto: F.Oggetto ? String(f[F.Oggetto] ?? "") || undefined : undefined,
     incassatoAruba: F.IncassatoAruba ? numOrUndef(f[F.IncassatoAruba]) : undefined,
     dataIncasso: (() => {
       const d = F.DataIncasso ? iso(f[F.DataIncasso]) : "";
@@ -4243,6 +4250,7 @@ export async function importTermini(
     giorni: number;
     direzione?: DirezioneFattura;
     email?: string;
+    oggetto?: string;
   }[],
 ): Promise<{ nuovi: number; aggiornati: number; invariati: number }> {
   const cfg = await discoverSharePoint();
@@ -4257,6 +4265,7 @@ export async function importTermini(
     cliente: F.Cliente ? String((it.fields ?? {})[F.Cliente] ?? "").trim() : "",
     giorni: F.Giorni ? (numOrUndef((it.fields ?? {})[F.Giorni]) ?? 0) : 0,
     email: F.Email ? String((it.fields ?? {})[F.Email] ?? "").trim() : "",
+    oggetto: F.Oggetto ? String((it.fields ?? {})[F.Oggetto] ?? "").trim() : "",
     direzione:
       F.Direzione && String((it.fields ?? {})[F.Direzione] ?? "").trim() === "Ricevuta"
         ? "Ricevuta"
@@ -4266,7 +4275,15 @@ export async function importTermini(
   for (const r of rows) {
     const dir = r.direzione ?? "Emessa";
     const key = clienteGroupKey(r.cliente);
-    const prev = esistenti.find((e) => e.direzione === dir && clienteGroupKey(e.cliente) === key);
+    // L'oggetto fa parte della CHIAVE: "IMILE generico" e "IMILE locazione"
+    // sono due termini distinti che convivono.
+    const ogg = (r.oggetto ?? "").trim().toLowerCase();
+    const prev = esistenti.find(
+      (e) =>
+        e.direzione === dir &&
+        clienteGroupKey(e.cliente) === key &&
+        e.oggetto.toLowerCase() === ogg,
+    );
     if (prev) {
       // Si aggiorna cio' che cambia: giorni e/o email (l'email arriva solo
       // dal form del pannello, mai dal foglio contratti).
@@ -4288,6 +4305,7 @@ export async function importTermini(
       if (F.Giorni) fields[F.Giorni] = r.giorni;
       if (F.Direzione) fields[F.Direzione] = dir;
       if (F.Email && r.email) fields[F.Email] = r.email;
+      if (F.Oggetto && r.oggetto) fields[F.Oggetto] = r.oggetto.trim();
       await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listTermini}/items`, {
         method: "POST",
         body: JSON.stringify({ fields }),
@@ -4316,7 +4334,12 @@ export async function copiaTerminiSuFornitori(): Promise<{ copiati: number; esis
   );
   if (daCopiare.length) {
     await importTermini(
-      daCopiare.map((t) => ({ cliente: t.cliente, giorni: t.giorni, direzione: "Ricevuta" })),
+      daCopiare.map((t) => ({
+        cliente: t.cliente,
+        giorni: t.giorni,
+        direzione: "Ricevuta" as const,
+        oggetto: t.oggetto,
+      })),
     );
   }
   logSp(
@@ -4331,6 +4354,7 @@ export async function copiaTerminiSuFornitori(): Promise<{ copiati: number; esis
 export async function deleteTermine(
   cliente: string,
   direzione: DirezioneFattura = "Emessa",
+  oggetto?: string,
 ): Promise<void> {
   const cfg = await discoverSharePoint();
   if (!cfg.listTermini)
@@ -4342,12 +4366,20 @@ export async function deleteTermine(
   const key = clienteGroupKey(cliente);
   // Direzionale: la riga cliente e quella fornitore dello stesso nome sono
   // due termini diversi, si elimina solo quello richiesto.
+  const oggAtteso = (oggetto ?? "").trim().toLowerCase();
   const item = res.value.find((it) => {
     const f = it.fields ?? {};
     const dirRiga =
       F.Direzione && String(f[F.Direzione] ?? "").trim() === "Ricevuta" ? "Ricevuta" : "Emessa";
+    const oggRiga = F.Oggetto
+      ? String(f[F.Oggetto] ?? "")
+          .trim()
+          .toLowerCase()
+      : "";
     return (
-      dirRiga === direzione && clienteGroupKey(F.Cliente ? String(f[F.Cliente] ?? "") : "") === key
+      dirRiga === direzione &&
+      clienteGroupKey(F.Cliente ? String(f[F.Cliente] ?? "") : "") === key &&
+      oggRiga === oggAtteso
     );
   });
   if (!item) throw new Error(`Termine non trovato per: ${cliente}`);
@@ -4545,6 +4577,8 @@ export async function importFatture(
         patch[F.TipologiaCosto] = r.tipologiaCosto;
       if (F.ClienteRif && r.clienteRif && r.clienteRif !== (prev.clienteRif ?? ""))
         patch[F.ClienteRif] = r.clienteRif;
+      if (F.Oggetto && r.oggetto && r.oggetto !== (prev.oggetto ?? ""))
+        patch[F.Oggetto] = r.oggetto;
       if (F.DataIncasso && r.dataIncasso && r.dataIncasso !== (prev.dataIncasso ?? ""))
         patch[F.DataIncasso] = `${r.dataIncasso}T00:00:00Z`;
       if (Object.keys(patch).length) {
@@ -4582,6 +4616,7 @@ export async function importFatture(
     if (F.MeseCompetenza && r.meseCompetenza) fields[F.MeseCompetenza] = r.meseCompetenza;
     if (F.TipologiaCosto && r.tipologiaCosto) fields[F.TipologiaCosto] = r.tipologiaCosto;
     if (F.ClienteRif && r.clienteRif) fields[F.ClienteRif] = r.clienteRif;
+    if (F.Oggetto && r.oggetto) fields[F.Oggetto] = r.oggetto;
     ops.push(async () => {
       await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
         method: "POST",
@@ -4619,21 +4654,27 @@ export async function fetchTerminiPagamento(): Promise<TerminePagamento[]> {
       `/sites/${cfg.siteId}/lists/${cfg.listTermini}/items?expand=fields&$top=999`,
     ),
   );
-  return res.value
-    .map((it) => {
-      const f = it.fields ?? {};
-      return {
-        cliente: F.Cliente ? String(f[F.Cliente] ?? "").trim() : "",
-        giorni: F.Giorni ? (numOrUndef(f[F.Giorni]) ?? 0) : 0,
-        descrizione: F.Descrizione ? String(f[F.Descrizione] ?? "").trim() || undefined : undefined,
-        direzione:
-          F.Direzione && String(f[F.Direzione] ?? "").trim() === "Ricevuta"
-            ? ("Ricevuta" as const)
-            : ("Emessa" as const),
-        email: F.Email ? String(f[F.Email] ?? "").trim() || undefined : undefined,
-      };
-    })
-    .filter((t) => t.cliente && t.giorni > 0);
+  return (
+    res.value
+      .map((it) => {
+        const f = it.fields ?? {};
+        return {
+          cliente: F.Cliente ? String(f[F.Cliente] ?? "").trim() : "",
+          giorni: F.Giorni ? (numOrUndef(f[F.Giorni]) ?? 0) : 0,
+          descrizione: F.Descrizione
+            ? String(f[F.Descrizione] ?? "").trim() || undefined
+            : undefined,
+          direzione:
+            F.Direzione && String(f[F.Direzione] ?? "").trim() === "Ricevuta"
+              ? ("Ricevuta" as const)
+              : ("Emessa" as const),
+          email: F.Email ? String(f[F.Email] ?? "").trim() || undefined : undefined,
+          oggetto: F.Oggetto ? String(f[F.Oggetto] ?? "").trim() || undefined : undefined,
+        };
+      })
+      // 0 giorni (a vista) e' valido solo con parole chiave sull'oggetto.
+      .filter((t) => t.cliente && (t.giorni > 0 || (t.giorni >= 0 && t.oggetto)))
+  );
 }
 
 function requireAbbinamentiList(cfg: SpDiscovered): string {

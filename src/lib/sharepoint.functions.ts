@@ -903,6 +903,7 @@ export const spImportFatture = createServerFn({ method: "POST" })
         meseCompetenza: r.meseCompetenza ? String(r.meseCompetenza).slice(0, 40) : undefined,
         tipologiaCosto: r.tipologiaCosto ? String(r.tipologiaCosto).slice(0, 120) : undefined,
         clienteRif: r.clienteRif ? String(r.clienteRif).slice(0, 80) : undefined,
+        oggetto: r.oggetto ? String(r.oggetto).slice(0, 500) : undefined,
       };
     });
     return { rows, direzione };
@@ -1018,7 +1019,13 @@ export const spEliminaFatture = createServerFn({ method: "POST" })
 export const spImportTermini = createServerFn({ method: "POST" })
   .inputValidator(
     (input: {
-      rows: { cliente: string; giorni: number; direzione?: string; email?: string }[];
+      rows: {
+        cliente: string;
+        giorni: number;
+        direzione?: string;
+        email?: string;
+        oggetto?: string;
+      }[];
     }) => {
       if (!Array.isArray(input?.rows) || input.rows.length === 0)
         throw new Error("Nessun termine da importare");
@@ -1030,8 +1037,15 @@ export const spImportTermini = createServerFn({ method: "POST" })
             giorni: Number(r?.giorni),
             direzione: (r?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
             email: r?.email === undefined ? undefined : String(r.email).trim().slice(0, 120),
+            oggetto: r?.oggetto ? String(r.oggetto).trim().slice(0, 120) : undefined,
           }))
-          .filter((r) => r.cliente && Number.isFinite(r.giorni) && r.giorni > 0),
+          // 0 giorni (a vista) e' ammesso solo per le regole con parola chiave.
+          .filter(
+            (r) =>
+              r.cliente &&
+              Number.isFinite(r.giorni) &&
+              (r.giorni > 0 || (r.giorni === 0 && !!r.oggetto)),
+          ),
       };
     },
   )
@@ -1041,17 +1055,18 @@ export const spImportTermini = createServerFn({ method: "POST" })
   });
 
 export const spDeleteTermine = createServerFn({ method: "POST" })
-  .inputValidator((input: { cliente: string; direzione?: string }) => {
+  .inputValidator((input: { cliente: string; direzione?: string; oggetto?: string }) => {
     const cliente = String(input?.cliente ?? "").trim();
     if (!cliente) throw new Error("Cliente non indicato");
     return {
       cliente,
       direzione: (input?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
+      oggetto: input?.oggetto ? String(input.oggetto).trim().slice(0, 120) : undefined,
     };
   })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     await assertDirettore(await currentUser());
-    await deleteTermine(data.cliente, data.direzione);
+    await deleteTermine(data.cliente, data.direzione, data.oggetto);
     return { ok: true };
   });
 

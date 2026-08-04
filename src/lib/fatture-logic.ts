@@ -60,6 +60,10 @@ export interface FatturaRaw {
    *  dichiarato nell'XML in DatiGenerali/DatiFattureCollegate/IdDocumento.
    *  Serve ad abbattere il credito della fattura collegata. */
   rettificaNumero?: string;
+  /** OGGETTO della fattura: le descrizioni delle righe XML, concatenate.
+   *  Attiva le regole sui termini di pagamento per parola chiave
+   *  (es. IMILE + "locazione" -> pagamento a vista). */
+  oggetto?: string;
 }
 
 export type IncassoAruba = "Incassata" | "Non incassata" | "Non gestita" | "";
@@ -97,6 +101,11 @@ export interface TerminePagamento {
   direzione?: DirezioneFattura;
   /** Email amministrativa della controparte: destinatario dei solleciti. */
   email?: string;
+  /** Parole chiave sull'OGGETTO fattura (separate da virgola): il termine
+   *  vale solo per le fatture il cui oggetto ne contiene una, e vince sul
+   *  termine generico della stessa controparte. Con le parole chiave anche
+   *  0 giorni e' valido (pagamento a vista). */
+  oggetto?: string;
 }
 
 export interface AbbinamentoIncasso {
@@ -359,12 +368,17 @@ export function giorniPerCliente(
   cliente: string,
   termini: readonly TerminePagamento[],
   direzione: DirezioneFattura = "Emessa",
+  /** Oggetto della fattura: attiva i termini con parole chiave. */
+  oggettoFattura?: string,
 ): number {
   const key = clienteGroupKey(cliente);
   // Termini DIREZIONALI: IMILE cliente paga a 30, IMILE fornitore va pagato
   // a 60 — due righe distinte. Le righe senza direzione valgono come Emessa.
   const perDirezione = termini.filter((t) => (t.direzione ?? "Emessa") === direzione);
-  let match = perDirezione.filter((t) => clienteGroupKey(t.cliente) === key && t.giorni > 0);
+  // "0 giorni" (a vista) e' un valore legittimo SOLO per le regole con
+  // parola chiave: nel foglio contratti 0 significa "non impostato".
+  const valido = (t: TerminePagamento) => t.giorni > 0 || (t.giorni >= 0 && !!t.oggetto?.trim());
+  let match = perDirezione.filter((t) => clienteGroupKey(t.cliente) === key && valido(t));
   if (!match.length) {
     // Il foglio contratti usa nomi BREVI ("IMILE" per "IMILE ITALY SRL"):
     // vale il termine il cui nome e' interamente contenuto nel nome del
@@ -372,7 +386,7 @@ export function giorniPerCliente(
     const parole = new Set(key.split(" ").filter(Boolean));
     match = perDirezione
       .filter((t) => {
-        if (t.giorni <= 0) return false;
+        if (!valido(t)) return false;
         const tk = clienteGroupKey(t.cliente).split(" ").filter(Boolean);
         return tk.length > 0 && tk.every((x) => parole.has(x));
       })
@@ -383,8 +397,24 @@ export function giorniPerCliente(
       );
   }
   if (!match.length) return TERMINI_DEFAULT_GIORNI;
-  const generico = match.find((t) => !t.descrizione?.trim());
-  return (generico ?? match[0]).giorni;
+  // REGOLE PER OGGETTO: un termine con parole chiave (es. "locazione,
+  // affitto") vale solo se una compare nell'oggetto della fattura; quando
+  // scatta, vince sul termine generico della stessa controparte.
+  const ogg = normalizeTesto(oggettoFattura ?? "");
+  if (ogg) {
+    const conChiave = match.find((t) =>
+      (t.oggetto ?? "")
+        .split(/[,;|]/)
+        .map((k) => normalizeTesto(k))
+        .filter(Boolean)
+        .some((k) => ogg.includes(k)),
+    );
+    if (conChiave) return conChiave.giorni;
+  }
+  const generici = match.filter((t) => !t.oggetto?.trim() && t.giorni > 0);
+  if (!generici.length) return TERMINI_DEFAULT_GIORNI;
+  const generico = generici.find((t) => !t.descrizione?.trim());
+  return (generico ?? generici[0]).giorni;
 }
 
 // --- Mese di competenza ------------------------------------------------------
@@ -682,10 +712,13 @@ export function computeStatoFattura(
   // ora") vale ancora la scadenza dichiarata nell'XML, quando c'e'.
   const scadenza =
     f.direzione === "Emessa"
-      ? scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini, "Emessa"))
+      ? scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini, "Emessa", f.oggetto))
       : f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza)
         ? f.scadenza
-        : scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini, "Ricevuta"));
+        : scadenzaFattura(
+            f.dataDocumento,
+            giorniPerCliente(f.cliente, termini, "Ricevuta", f.oggetto),
+          );
   // Le note di credito non si "incassano" e le scartate/rifiutate dallo SdI
   // non sono crediti: entrambe fuori dal computo di residui e ritardi.
   if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) {
@@ -1285,7 +1318,15 @@ export function parseFatturaPA(
     // positivi (il segno sta nel tipo documento), l'export xlsx negativi. Qui
     // si uniforma al segno negativo, così la lettura è coerente ovunque.
     const segno = td === "TD04" ? -1 : 1;
+    // OGGETTO: le descrizioni delle righe, concatenate — alimenta le regole
+    // sui termini per parola chiave e da' il colpo d'occhio sul contenuto.
+    const oggetto = figliDi(body, "DatiBeniServizi/DettaglioLinee")
+      .map((l) => testoDi(l, "Descrizione").trim())
+      .filter(Boolean)
+      .join(" · ")
+      .slice(0, 480);
     rows.push({
+      oggetto: oggetto || undefined,
       nomeFile: idx === 0 ? nomeFile : `${nomeFile}#${idx + 1}`,
       numero: testoDi(doc, "Numero"),
       idSdi: "",

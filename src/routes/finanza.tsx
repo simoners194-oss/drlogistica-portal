@@ -343,11 +343,15 @@ function FinanzaPage() {
     giorni: number;
     direzione?: "Emessa" | "Ricevuta";
     email?: string;
+    oggetto?: string;
   };
   const [termini, setTermini] = useState<TermineRiga[] | null>(null);
   const [tCliente, setTCliente] = useState("");
   const [tGiorni, setTGiorni] = useState("");
   const [tEmail, setTEmail] = useState("");
+  // Parole chiave sull'oggetto fattura: rendono il termine una REGOLA
+  // (es. IMILE + "locazione, affitto" -> 0 giorni, a vista).
+  const [tOggetto, setTOggetto] = useState("");
   const [tBusy, setTBusy] = useState(false);
   // Termini DIREZIONALI: scheda Clienti (quanto ci pagano) e Fornitori
   // (quando paghiamo noi, ritardo sui NOSTRI pagamenti — default 30gg).
@@ -355,7 +359,10 @@ function FinanzaPage() {
 
   const salvaTermine = async () => {
     const giorni = Number(tGiorni);
-    if (!tCliente.trim() || !Number.isFinite(giorni) || giorni <= 0) {
+    const oggetto = tOggetto.trim();
+    // 0 giorni (pagamento a vista) e' valido solo insieme a una parola
+    // chiave sull'oggetto: da solo sarebbe un termine senza senso.
+    if (!tCliente.trim() || !Number.isFinite(giorni) || giorni < 0 || (giorni === 0 && !oggetto)) {
       toast.error(t("fin.termInvalido"));
       return;
     }
@@ -363,12 +370,21 @@ function FinanzaPage() {
     try {
       await spImportTermini({
         data: {
-          rows: [{ cliente: tCliente.trim(), giorni, direzione: tDirezione, email: tEmail.trim() }],
+          rows: [
+            {
+              cliente: tCliente.trim(),
+              giorni,
+              direzione: tDirezione,
+              email: tEmail.trim(),
+              oggetto: oggetto || undefined,
+            },
+          ],
         },
       });
       setTCliente("");
       setTGiorni("");
       setTEmail("");
+      setTOggetto("");
       loadRegole();
       toast.success(t("fin.termSalvato"));
     } catch (err) {
@@ -396,11 +412,11 @@ function FinanzaPage() {
     }
   };
 
-  const eliminaTermine = async (cliente: string) => {
+  const eliminaTermine = async (cliente: string, oggetto?: string) => {
     if (!window.confirm(`${t("fin.termDeleteConfirm")} ${cliente}?`)) return;
     setTBusy(true);
     try {
-      await spDeleteTermine({ data: { cliente, direzione: tDirezione } });
+      await spDeleteTermine({ data: { cliente, direzione: tDirezione, oggetto } });
       setTermini((prev) =>
         prev
           ? prev.filter((x) => !(x.cliente === cliente && (x.direzione ?? "Emessa") === tDirezione))
@@ -1963,6 +1979,15 @@ function FinanzaPage() {
                 />
               </div>
               <div className="flex-1 min-w-56">
+                <label className="text-xs text-muted-foreground">{t("fin.termOggetto")}</label>
+                <input
+                  value={tOggetto}
+                  onChange={(e) => setTOggetto(e.target.value)}
+                  placeholder={t("fin.termOggettoPh")}
+                  className={inputCls}
+                />
+              </div>
+              <div className="flex-1 min-w-56">
                 <label className="text-xs text-muted-foreground">{t("fin.termEmail")}</label>
                 <input
                   type="email"
@@ -1991,9 +2016,17 @@ function FinanzaPage() {
                   .filter((x) => (x.direzione ?? "Emessa") === tDirezione)
                   .sort((a, b) => a.cliente.localeCompare(b.cliente))
                   .map((x) => (
-                    <li key={x.cliente} className="flex items-center gap-3 py-1.5 text-sm">
+                    <li
+                      key={`${x.cliente}|${x.oggetto ?? ""}`}
+                      className="flex items-center gap-3 py-1.5 text-sm"
+                    >
                       <span className="flex-1 truncate">
                         {x.cliente}
+                        {x.oggetto && (
+                          <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+                            {x.oggetto}
+                          </span>
+                        )}
                         {x.email && (
                           <span className="ml-2 text-xs text-muted-foreground">{x.email}</span>
                         )}
@@ -2007,6 +2040,7 @@ function FinanzaPage() {
                           setTCliente(x.cliente);
                           setTGiorni(String(x.giorni));
                           setTEmail(x.email ?? "");
+                          setTOggetto(x.oggetto ?? "");
                         }}
                         className="rounded-md p-1 text-muted-foreground hover:text-foreground"
                         title={t("common.edit")}
@@ -2016,7 +2050,7 @@ function FinanzaPage() {
                       <button
                         type="button"
                         disabled={tBusy}
-                        onClick={() => void eliminaTermine(x.cliente)}
+                        onClick={() => void eliminaTermine(x.cliente, x.oggetto)}
                         className="rounded-md p-1 text-muted-foreground hover:text-status-absent"
                         title={t("common.delete")}
                       >
