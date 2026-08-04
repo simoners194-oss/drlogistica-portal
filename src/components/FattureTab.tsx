@@ -1589,7 +1589,12 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       let scartate = 0;
       let terminiCaricati = false;
       // Report MOVIMENTI di Aruba: rate incassate per fattura (i parziali).
-      const movAruba: MovimentoAruba[] = [];
+      // Un array PER FILE: se due file selezionati insieme si sovrappongono
+      // (es. l'export "dal 2023" piu' l'annuale 2023), la stessa rata
+      // comparirebbe due volte e l'incassato RADDOPPIEREBBE. La fusione sotto
+      // tiene, per ogni rata identica, il numero massimo di occorrenze visto
+      // in UN file — mai la somma tra file.
+      const movArubaPerFile: MovimentoAruba[][] = [];
       const decoder = new TextDecoder("utf-8");
       const daXml = (testo: string, nome: string) => {
         const res = parseFatturaPA(testo, nome);
@@ -1618,7 +1623,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
             }) as unknown[][];
             const mov = parseMovimentiArubaMatrice(matrix);
             if (mov) {
-              movAruba.push(...mov);
+              movArubaPerFile.push(mov);
               trovato = true;
               break;
             }
@@ -1652,6 +1657,27 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           if (!trovato) scartate++;
         } else {
           scartate++;
+        }
+      }
+      // Fusione anti-doppioni tra file: due rate IDENTICHE nello stesso file
+      // sono legittime (due tranche uguali lo stesso giorno) e si tengono;
+      // la stessa rata ripetuta in file DIVERSI e' la stessa rata, una volta.
+      const movAruba: MovimentoAruba[] = [];
+      if (movArubaPerFile.length > 0) {
+        const gia = new Map<string, number>();
+        for (const fileMov of movArubaPerFile) {
+          const nelFile = new Map<string, number>();
+          for (const m of fileMov) {
+            const k = [m.data, m.flusso, m.numeroFattura, m.dataFattura, m.importo, m.cliente].join(
+              "|",
+            );
+            const n = (nelFile.get(k) ?? 0) + 1;
+            nelFile.set(k, n);
+            if (n > (gia.get(k) ?? 0)) {
+              gia.set(k, n);
+              movAruba.push(m);
+            }
+          }
         }
       }
       // Solo report movimenti: si applicano subito gli incassi alle fatture
