@@ -2674,6 +2674,18 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                         className={`py-1 pr-2 text-right whitespace-nowrap ${isNotaCredito(x.f.tipoDocumento) ? "text-status-absent" : ""}`}
                       >
                         {fmtImporto(x.f.totale)}
+                        {/* Quando il DOVUTO e' il netto a pagare (ritenute,
+                            bolli: netto dichiarato diverso dal totale), lo si
+                            mostra sotto il totale — e' il numero su cui girano
+                            residuo, scadenza e ritardo, e prima era invisibile
+                            (caso Nolvex 123: totale 1.774,90, da pagare 879,95). */}
+                        {x.f.direzione === "Ricevuta" &&
+                          x.f.netto > 0 &&
+                          Math.abs(x.f.netto - x.f.totale) > 0.01 && (
+                            <div className="text-[11px] font-medium text-primary whitespace-nowrap">
+                              {t("ft.daPagare")} {fmtImporto(x.f.netto)}
+                            </div>
+                          )}
                         {noteCredito.has(x.f.nomeFile) && (
                           <div
                             className="text-[11px] text-muted-foreground"
