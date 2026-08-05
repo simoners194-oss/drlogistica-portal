@@ -750,6 +750,9 @@ const en = {
   "fin.regolaApplicaEsistenti": "Also apply to transactions already in the archive",
   "fin.regolaCrea": "Save rule",
   "fin.regolaCreata": "Rule saved — it will apply to every future import",
+  "fin.regolaRipristinoConfirm":
+    "Also restore the transactions this rule had modified?\n\nOK — they go back to the automatic classification (other rules still apply; manual fixes on those rows will need to be redone).\n\nCancel — only the rule is deleted, the transactions stay as they are.",
+  "fin.regolaRipristinati": "transactions restored",
   "fin.regolaApplicati": "existing transactions updated",
   "fin.regolaApplying": "Applying…",
   "fin.regoleElencoTitle": "Active rules",
@@ -1746,6 +1749,9 @@ const it: Record<DictKey, string> = {
   "fin.regolaApplicaEsistenti": "Applica anche ai movimenti già in archivio",
   "fin.regolaCrea": "Salva regola",
   "fin.regolaCreata": "Regola salvata — varrà per ogni import futuro",
+  "fin.regolaRipristinoConfirm":
+    "Ripristinare anche i movimenti che questa regola aveva modificato?\n\nOK — tornano alla classificazione automatica (le altre regole restano valide; le correzioni fatte a mano su quelle righe andranno rifatte).\n\nANNULLA — si elimina solo la regola, i movimenti restano come sono.",
+  "fin.regolaRipristinati": "movimenti ripristinati",
   "fin.regolaApplicati": "movimenti esistenti aggiornati",
   "fin.regolaApplying": "Applicazione…",
   "fin.regoleElencoTitle": "Regole attive",

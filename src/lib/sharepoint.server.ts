@@ -4071,6 +4071,66 @@ export async function applicaRegolaAiMovimenti(
   return { aggiornati, rimanenti };
 }
 
+/** ANNULLA gli effetti di una regola già eliminata: i movimenti che la
+ *  regola avrebbe toccato vengono RICLASSIFICATI DA ZERO dai dati grezzi
+ *  (causale+descrizione, che l'import non altera mai) più le regole
+ *  superstiti. Così "Pietro Ruzza" rinominato per sbaglio torna Pietro
+ *  Ruzza. Le sanature manuali su quelle righe vanno rifatte (il ripristino
+ *  non può distinguerle dagli effetti della regola). Un blocco per
+ *  chiamata: il client ripete finché rimanenti = 0. */
+export async function annullaRegolaAiMovimenti(
+  regola: RegolaFinanza,
+): Promise<{ aggiornati: number; rimanenti: number }> {
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const F = cfg.movimentiFields;
+  const [all, regoleRestanti] = await Promise.all([fetchMovimenti(), fetchRegoleFinanza()]);
+  const target: { id: string; tipologia: string; cliente: string; daVerificare: boolean }[] = [];
+  for (const m of all) {
+    // Stato "vergine" dai soli dati grezzi, senza alcuna regola.
+    const vergine = { ...classificaMovimento(m), descrizione: m.descrizione };
+    // Interessano solo le righe che la regola eliminata AVREBBE toccato.
+    if (!matchRegola(vergine, regola)) continue;
+    const dopo = applicaRegole(vergine, regoleRestanti);
+    if (
+      dopo.tipologia !== m.tipologia ||
+      dopo.cliente !== m.cliente ||
+      dopo.daVerificare !== m.daVerificare
+    )
+      target.push({
+        id: m.id,
+        tipologia: dopo.tipologia,
+        cliente: dopo.cliente,
+        daVerificare: dopo.daVerificare,
+      });
+  }
+  const batch = target.slice(0, APPLICA_MAX_PER_CALL);
+  let aggiornati = 0;
+  const BATCH = 4;
+  for (let i = 0; i < batch.length; i += BATCH) {
+    const esiti = await Promise.allSettled(
+      batch.slice(i, i + BATCH).map((m) => {
+        const fields: Record<string, unknown> = {};
+        if (F.Tipologia) fields[F.Tipologia] = m.tipologia;
+        if (F.Cliente) fields[F.Cliente] = m.cliente;
+        if (F.DaVerificare) fields[F.DaVerificare] = m.daVerificare;
+        return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${m.id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify(fields),
+        });
+      }),
+    );
+    aggiornati += esiti.filter((e) => e.status === "fulfilled").length;
+  }
+  const rimanenti = target.length - aggiornati;
+  logSp(
+    "info",
+    "annulla.regola",
+    `Ripristino regola "${regola.pattern}": ${aggiornati} movimenti riclassificati, ${rimanenti} rimanenti`,
+  );
+  return { aggiornati, rimanenti };
+}
+
 // ---------------------------------------------------------------------------
 // Finanza → Fatture emesse + termini di pagamento + abbinamenti incassi
 // ---------------------------------------------------------------------------

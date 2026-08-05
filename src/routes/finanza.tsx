@@ -63,6 +63,7 @@ import {
   spCreateRegolaFinanza,
   spDeleteRegolaFinanza,
   spApplicaRegolaFinanza,
+  spAnnullaRegolaFinanza,
   spEbStato,
   spEbSaldo,
   spEbSincronizza,
@@ -757,10 +758,35 @@ function FinanzaPage() {
   const eliminaRegola = async (r: RegolaFinanza) => {
     if (!r.id) return;
     if (!window.confirm(t("fin.regolaDeleteConfirm"))) return;
+    // Secondo bivio: OK = anche i movimenti modificati dalla regola tornano
+    // alla classificazione automatica; ANNULLA = si elimina solo la regola.
+    const ripristina = window.confirm(t("fin.regolaRipristinoConfirm"));
     try {
       await spDeleteRegolaFinanza({ data: { regolaId: r.id } });
       setRegole((prev) => (prev ?? []).filter((x) => x.id !== r.id));
-      toast.success(t("fin.regolaDeleted"));
+      let ripristinati = 0;
+      if (ripristina) {
+        const payload = {
+          pattern: r.pattern,
+          campo: r.campo,
+          modo: r.modo,
+          tipologia: r.tipologia,
+          cliente: r.cliente,
+        };
+        for (;;) {
+          const esito = (await spAnnullaRegolaFinanza({ data: payload })) as {
+            aggiornati: number;
+            rimanenti: number;
+          };
+          ripristinati += esito.aggiornati;
+          if (esito.rimanenti <= 0 || esito.aggiornati === 0) break;
+        }
+        loadMovimenti(anni);
+        loadAnomalie();
+      }
+      toast.success(t("fin.regolaDeleted"), {
+        description: ripristina ? `${ripristinati} ${t("fin.regolaRipristinati")}` : undefined,
+      });
     } catch (err) {
       toast.error(t("common.error"), {
         description: err instanceof Error ? err.message : String(err),
@@ -1759,18 +1785,26 @@ function FinanzaPage() {
               )}
               <div>
                 <label className="text-xs text-muted-foreground">{t("fin.regolaTipologia")}</label>
-                <select
+                {/* Campo LIBERO con suggerimenti: si può digitare una
+                    tipologia nuova (es. "Consulenza notarile") e nasce con
+                    la regola — vuoto = non cambiare. */}
+                <input
+                  list="tipologie-regola"
                   value={rTipologia}
                   onChange={(e) => setRTipologia(e.target.value)}
+                  placeholder={t("fin.regolaTipNoChange")}
                   className={inputCls}
-                >
-                  <option value="">{t("fin.regolaTipNoChange")}</option>
-                  {TIPOLOGIE_MOVIMENTO.map((tp) => (
-                    <option key={tp} value={tp}>
-                      {tp}
-                    </option>
+                />
+                <datalist id="tipologie-regola">
+                  {[
+                    ...new Set([
+                      ...TIPOLOGIE_MOVIMENTO,
+                      ...(movimenti ?? []).map((m) => m.tipologia).filter(Boolean),
+                    ]),
+                  ].map((tp) => (
+                    <option key={tp} value={tp} />
                   ))}
-                </select>
+                </datalist>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">

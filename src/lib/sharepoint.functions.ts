@@ -68,6 +68,7 @@ import {
   createRegolaFinanza,
   deleteRegolaFinanza,
   applicaRegolaAiMovimenti,
+  annullaRegolaAiMovimenti,
   type RegolaFinanza,
   fetchFatture,
   importFatture,
@@ -846,6 +847,15 @@ export const spApplicaRegolaFinanza = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ aggiornati: number; rimanenti: number }> => {
     await assertDirettore(await currentUser());
     return applicaRegolaAiMovimenti(data);
+  });
+
+// Ripristina i movimenti toccati da una regola GIÀ eliminata: si passa la
+// definizione della regola (non l'id) e si ripete finché rimanenti=0.
+export const spAnnullaRegolaFinanza = createServerFn({ method: "POST" })
+  .inputValidator(validateRegola)
+  .handler(async ({ data }): Promise<{ aggiornati: number; rimanenti: number }> => {
+    await assertDirettore(await currentUser());
+    return annullaRegolaAiMovimenti(data);
   });
 
 // --- Finanza → Fatture emesse, termini, abbinamenti (solo direttore) --------
