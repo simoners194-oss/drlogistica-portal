@@ -357,6 +357,34 @@ export function collegaNoteCredito(
       out.set(target.nomeFile, riga);
     }
   }
+  // AUTO-AGGANCIO degli STORNI (caso Univex del direttore): molte NC di
+  // storno NON dichiarano la fattura rettificata nell'XML e resterebbero
+  // slegate, lasciando la fattura piena nei ritardi. Se per una NC senza
+  // riferimento esiste UNA SOLA fattura della stessa controparte con lo
+  // stesso identico importo, non piu' recente della NC e non gia' coperta,
+  // il collegamento e' inequivocabile e si fa da solo. In caso di ambiguita'
+  // (due fatture gemelle) non si tocca niente: resta il collegamento manuale.
+  const perImporto = new Map<string, FatturaRaw[]>();
+  for (const f of perChiave.values()) {
+    const k = `${f.direzione}|${clienteGroupKey(f.cliente)}|${Math.abs(f.totale).toFixed(2)}`;
+    const l = perImporto.get(k) ?? [];
+    l.push(f);
+    perImporto.set(k, l);
+  }
+  for (const nc of fatture) {
+    if (!isNotaCredito(nc.tipoDocumento) || nc.rettificaNumero || esclusi.has(nc.nomeFile))
+      continue;
+    const candidati = (
+      perImporto.get(
+        `${nc.direzione}|${clienteGroupKey(nc.cliente)}|${Math.abs(nc.totale).toFixed(2)}`,
+      ) ?? []
+    ).filter((f) => f.dataDocumento <= nc.dataDocumento && !out.has(f.nomeFile));
+    if (candidati.length !== 1) continue;
+    out.set(candidati[0].nomeFile, {
+      importo: Math.round(Math.abs(nc.totale) * 100) / 100,
+      numeri: [nc.numero],
+    });
+  }
   return out;
 }
 

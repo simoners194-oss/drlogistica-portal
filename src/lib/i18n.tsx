@@ -596,6 +596,8 @@ const en = {
   "rt.passive": "Passive invoices (paid)",
   "rt.differenza": "Difference",
   "rt.netto": "Net invoices",
+  "rt.nessunoOpz": "None",
+  "rt.estrattoAuto": "Follows Client/Supplier",
   "rt.nota":
     "Statement = every movement attributed to the selected counterparties (both directions). OK when statement − collected + paid ≈ 0: what invoicing records matches what moved on the account. With no filters the check is company-wide.",
   "rt.fasce": "Overdue ranges",
@@ -1589,6 +1591,8 @@ const it: Record<DictKey, string> = {
   "rt.passive": "Fatture passive (pagato)",
   "rt.differenza": "Differenza",
   "rt.netto": "Netto fatture",
+  "rt.nessunoOpz": "Nessuno",
+  "rt.estrattoAuto": "Segue Cliente/Fornitore",
   "rt.nota":
     "Estratto conto = tutti i movimenti attribuiti alle controparti selezionate (entrambe le direzioni). OK quando estratto − incassato + pagato ≈ 0: quello che la fatturazione registra coincide con quello che si è mosso sul conto. Senza filtri il controllo è su tutta l'azienda.",
   "rt.fasce": "Fasce di ritardo",

@@ -42,6 +42,11 @@ const FASCE: { label: string; da: number; a: number | null }[] = [
   { label: "oltre 3 mesi", da: 91, a: null },
 ];
 
+// "Nessuno" nei filtri: esclude un lato intero del confronto. Serve quando
+// una controparte è SOLO fornitore (o solo cliente): senza, il lato "Tutte"
+// trascina dentro l'intera azienda e si confrontano mele con pere.
+const NESSUNO = "__nessuno__";
+
 export function ResocontoTab() {
   const { t } = useLang();
   const [fattureEm, setFattureEm] = useState<SpFattura[] | null>(null);
@@ -50,6 +55,9 @@ export function ResocontoTab() {
   const [termini, setTermini] = useState<TerminePagamento[]>([]);
   const [clientiSel, setClientiSel] = useState<string[]>([]);
   const [fornitoriSel, setFornitoriSel] = useState<string[]>([]);
+  // Filtro esplicito sull'ESTRATTO CONTO: vuoto = "automatico" (segue
+  // Cliente/Fornitore come sempre); una selezione lo scavalca.
+  const [estrattoSel, setEstrattoSel] = useState<string[]>([]);
   const [fasceSel, setFasceSel] = useState<number[]>([]); // indici in FASCE
 
   useEffect(() => {
@@ -113,6 +121,26 @@ export function ResocontoTab() {
   };
   const opzioniClienti = useMemo(() => opzioni(attive), [attive]);
   const opzioniFornitori = useMemo(() => opzioni(passive), [passive]);
+  // Controparti viste in BANCA (per il filtro estratto conto), per volumi.
+  const opzioniEstratto = useMemo(() => {
+    const somme = new Map<string, { nome: string; tot: number }>();
+    for (const m of movimenti ?? []) {
+      if (!m.cliente) continue;
+      const k = clienteGroupKey(m.cliente) || m.cliente;
+      const v2 = somme.get(k) ?? { nome: m.cliente, tot: 0 };
+      v2.tot += Math.abs(m.importo);
+      somme.set(k, v2);
+    }
+    return [...somme.entries()]
+      .sort((a, b) => b[1].tot - a[1].tot)
+      .map(([k, v2]) => ({ v: k, label: v2.nome }));
+  }, [movimenti]);
+  // Scelta con "Nessuno" esclusivo: selezionarlo azzera il resto, scegliere
+  // una controparte lo toglie.
+  const scegliCon = (imposta: (v: string[]) => void, prima: string[]) => (nuovi: string[]) => {
+    if (nuovi.includes(NESSUNO) && !prima.includes(NESSUNO)) imposta([NESSUNO]);
+    else imposta(nuovi.filter((x) => x !== NESSUNO));
+  };
 
   // Incassato/pagato con la semantica dell'export (quella dei pivot): le NC
   // compensate pesano in negativo, le fatture al valore registrato.
@@ -131,20 +159,39 @@ export function ResocontoTab() {
 
   // --- Riconciliazione: Estratto conto vs Attive vs Passive -----------------
   const quadro = useMemo(() => {
-    const attSel = attive.filter((x) => inSelezione(x.f.cliente, clientiSel));
-    const pasSel = passive.filter((x) => inSelezione(x.f.cliente, fornitoriSel));
-    const chiavi = new Set([
-      ...(clientiSel.length ? clientiSel : opzioniClienti.map((o) => o.v)),
-      ...(fornitoriSel.length ? fornitoriSel : []),
-    ]);
-    // Con nessun filtro il quadro è GLOBALE: tutti i movimenti con
-    // controparte, tutte le fatture.
-    const tuttoSelezionato = clientiSel.length === 0 && fornitoriSel.length === 0;
-    const movSel = (movimenti ?? []).filter((m) => {
-      if (!m.cliente) return false;
-      const k = clienteGroupKey(m.cliente) || m.cliente;
-      return tuttoSelezionato ? true : chiavi.has(k);
-    });
+    const cliNessuno = clientiSel.includes(NESSUNO);
+    const forNessuno = fornitoriSel.includes(NESSUNO);
+    const ecNessuno = estrattoSel.includes(NESSUNO);
+    const cliSel = clientiSel.filter((x) => x !== NESSUNO);
+    const forSel = fornitoriSel.filter((x) => x !== NESSUNO);
+    const ecSel = estrattoSel.filter((x) => x !== NESSUNO);
+    const attSel = cliNessuno ? [] : attive.filter((x) => inSelezione(x.f.cliente, cliSel));
+    const pasSel = forNessuno ? [] : passive.filter((x) => inSelezione(x.f.cliente, forSel));
+    const movTutti = movimenti ?? [];
+    let movSel: typeof movTutti;
+    if (ecNessuno) {
+      movSel = [];
+    } else if (ecSel.length) {
+      // Filtro estratto ESPLICITO: vince su tutto il resto.
+      const chiavi = new Set(ecSel);
+      movSel = movTutti.filter(
+        (m) => m.cliente && chiavi.has(clienteGroupKey(m.cliente) || m.cliente),
+      );
+    } else {
+      // Automatico: l'estratto segue Cliente/Fornitore. Con nessun filtro il
+      // quadro è GLOBALE: tutti i movimenti con controparte, tutte le fatture.
+      const chiavi = new Set([
+        ...(cliNessuno ? [] : cliSel.length ? cliSel : opzioniClienti.map((o) => o.v)),
+        ...(forNessuno ? [] : forSel),
+      ]);
+      const tuttoSelezionato =
+        !cliNessuno && !forNessuno && cliSel.length === 0 && forSel.length === 0;
+      movSel = movTutti.filter((m) => {
+        if (!m.cliente) return false;
+        const k = clienteGroupKey(m.cliente) || m.cliente;
+        return tuttoSelezionato ? true : chiavi.has(k);
+      });
+    }
     const estratto = movSel.reduce((s, m) => s + m.importo, 0);
     const incassatoAtt = attSel.reduce((s, x) => s + incassatoDi(x), 0);
     const pagatoPas = pasSel.reduce((s, x) => s + incassatoDi(x), 0);
@@ -161,7 +208,7 @@ export function ResocontoTab() {
       ok: Math.abs(differenza) <= 1,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attive, passive, movimenti, clientiSel, fornitoriSel, opzioniClienti]);
+  }, [attive, passive, movimenti, clientiSel, fornitoriSel, estrattoSel, opzioniClienti]);
 
   // --- Ritardi (da incassare e da pagare), con fasce -------------------------
   const inFascia = (gg: number) => {
@@ -183,12 +230,24 @@ export function ResocontoTab() {
       )
       .sort((a, b) => b.s.giorniRitardo - a.s.giorniRitardo);
   const ritardiAtt = useMemo(
-    () => ritardi(attive, clientiSel),
+    () =>
+      clientiSel.includes(NESSUNO)
+        ? []
+        : ritardi(
+            attive,
+            clientiSel.filter((x) => x !== NESSUNO),
+          ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [attive, clientiSel, fasceSel],
   );
   const ritardiPas = useMemo(
-    () => ritardi(passive, fornitoriSel),
+    () =>
+      fornitoriSel.includes(NESSUNO)
+        ? []
+        : ritardi(
+            passive,
+            fornitoriSel.filter((x) => x !== NESSUNO),
+          ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [passive, fornitoriSel, fasceSel],
   );
@@ -249,18 +308,27 @@ export function ResocontoTab() {
             label={t("fin.cliente")}
             tuttiLabel={t("common.allF")}
             selLabel={t("fin.msSel")}
-            opzioni={opzioniClienti}
+            opzioni={[{ v: NESSUNO, label: t("rt.nessunoOpz") }, ...opzioniClienti]}
             valori={clientiSel}
-            onChange={setClientiSel}
+            onChange={scegliCon(setClientiSel, clientiSel)}
             className="w-64"
           />
           <MultiSelect
             label={t("ft.fornitore")}
             tuttiLabel={t("common.allF")}
             selLabel={t("fin.msSel")}
-            opzioni={opzioniFornitori}
+            opzioni={[{ v: NESSUNO, label: t("rt.nessunoOpz") }, ...opzioniFornitori]}
             valori={fornitoriSel}
-            onChange={setFornitoriSel}
+            onChange={scegliCon(setFornitoriSel, fornitoriSel)}
+            className="w-64"
+          />
+          <MultiSelect
+            label={t("rt.estratto")}
+            tuttiLabel={t("rt.estrattoAuto")}
+            selLabel={t("fin.msSel")}
+            opzioni={[{ v: NESSUNO, label: t("rt.nessunoOpz") }, ...opzioniEstratto]}
+            valori={estrattoSel}
+            onChange={scegliCon(setEstrattoSel, estrattoSel)}
             className="w-64"
           />
           {/* Fasce di ritardo: giorni e settimane, multi-selezione. */}
