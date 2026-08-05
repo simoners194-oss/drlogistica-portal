@@ -378,9 +378,9 @@ function RichiestePage() {
                         <span className="font-semibold text-foreground">
                           {r.tipo ? tVal("tipoR", r.tipo) : "—"}
                         </span>
-                        {r.codiceRichiedente && (
+                        {(r.nomeRichiedente || r.codiceRichiedente) && (
                           <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                            {r.codiceRichiedente}
+                            {[r.nomeRichiedente, r.codiceRichiedente].filter(Boolean).join(" · ")}
                           </span>
                         )}
                         {r.modalita && (

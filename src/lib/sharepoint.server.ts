@@ -2517,6 +2517,8 @@ export interface SpRichiesta {
   title: string;
   richiedenteId: string;
   codiceRichiedente: string;
+  /** Nome e cognome del richiedente (dal roster, per la coda approvatore). */
+  nomeRichiedente?: string;
   sedeRichiedente: string;
   tipo: string;
   modalita?: string;
@@ -2650,6 +2652,15 @@ export async function fetchRichieste(filter: RichiesteFilter = {}): Promise<SpRi
   if (filter.richiedenteId) out = out.filter((r) => r.richiedenteId === filter.richiedenteId);
   if (filter.stato) out = out.filter((r) => r.stato === filter.stato);
   out.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  // NOME accanto al codice: chi approva non deve sapere a memoria che
+  // DR012 e' Rossi. Best-effort: se il roster non risponde restano i codici.
+  try {
+    const dips = await fetchDipendenti();
+    const perId = new Map(dips.map((d) => [d.id, d.nomeCompleto || `${d.nome} ${d.cognome}`]));
+    for (const r of out) r.nomeRichiedente = perId.get(r.richiedenteId);
+  } catch {
+    /* solo codici */
+  }
   return out;
 }
 
