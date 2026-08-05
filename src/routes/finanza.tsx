@@ -131,6 +131,18 @@ function csvNum(n: number): string {
 }
 // "IMP-2026-07-22T15:30:12" → "22/07/2026 15:30" (gruppo legacy → etichetta;
 // i lotti "SYNC-…" arrivano dal collegamento banca e sono marcati "API").
+// Stralcio della descrizione attorno al testo cercato: fa capire PERCHÉ una
+// riga senza cliente corrisponde alla ricerca (la descrizione non è in
+// tabella — "romano" pescava le utenze di Fiano Romano e sembrava un bug).
+function stralcioDescr(descrizione: string, cerca: string): string {
+  const q = cerca.trim().toLowerCase();
+  const i = descrizione.toLowerCase().indexOf(q);
+  if (i < 0) return descrizione.slice(0, 40);
+  const da = Math.max(0, i - 15);
+  const a = Math.min(descrizione.length, i + q.length + 25);
+  return `${da > 0 ? "…" : ""}${descrizione.slice(da, a)}${a < descrizione.length ? "…" : ""}`;
+}
+
 function fmtImportId(id: string, legacyLabel: string): string {
   if (!id) return legacyLabel;
   const m = id.match(/^(IMP|SYNC)-(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/);
@@ -1311,7 +1323,25 @@ function FinanzaPage() {
                           <AlertTriangle className="h-3.5 w-3.5 inline-block ml-1 text-status-absent" />
                         )}
                       </td>
-                      <td className="py-1.5 pr-3">{m.cliente || "—"}</td>
+                      <td className="py-1.5 pr-3">
+                        {m.cliente || "—"}
+                        {/* La ricerca guarda anche la DESCRIZIONE (che in
+                            tabella non c'è): quando è l'unico punto in cui
+                            il testo cercato compare, se ne mostra uno
+                            stralcio — sennò la riga sembra un falso
+                            positivo (successo con "romano" → utenze di
+                            Fiano Romano). */}
+                        {cercaF.trim() &&
+                          !m.cliente.toLowerCase().includes(cercaF.trim().toLowerCase()) &&
+                          m.descrizione.toLowerCase().includes(cercaF.trim().toLowerCase()) && (
+                            <span
+                              className="ml-1 text-[11px] italic text-muted-foreground"
+                              title={m.descrizione}
+                            >
+                              «{stralcioDescr(m.descrizione, cercaF)}»
+                            </span>
+                          )}
+                      </td>
                       <td className="py-1.5 pr-3 text-muted-foreground">{m.nrFattura || "—"}</td>
                       <td className="py-1.5 pr-3 text-muted-foreground">{m.note || "—"}</td>
                       <td className="py-1.5 text-right">
