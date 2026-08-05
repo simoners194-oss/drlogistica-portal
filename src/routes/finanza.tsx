@@ -1085,7 +1085,7 @@ function FinanzaPage() {
               className="w-40"
             />
             <MultiSelect
-              label={t("fin.cliente")}
+              label={t("fin.cliForn")}
               tuttiLabel={t("common.allF")}
               selLabel={t("fin.msSel")}
               opzioni={clientiTop}
@@ -1290,7 +1290,7 @@ function FinanzaPage() {
                     <th className="py-2 pr-3 text-right">{t("common.amount")}</th>
                     {ebSaldoInfo && <th className="py-2 pr-3 text-right">{t("fin.saldo")}</th>}
                     <th className="py-2 pr-3">{t("common.type")}</th>
-                    <th className="py-2 pr-3">{t("fin.cliente")}</th>
+                    <th className="py-2 pr-3">{t("fin.cliForn")}</th>
                     <th className="py-2 pr-3">{t("fin.nrFattura")}</th>
                     <th className="py-2 pr-3">{t("fin.note")}</th>
                     <th className="py-2" />
@@ -1464,7 +1464,7 @@ function FinanzaPage() {
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
                     <th className="py-2 pr-3">
-                      {ovMode === "incassi" ? t("fin.cliente") : t("fin.controparte")}
+                      {ovMode === "incassi" ? t("fin.cliForn") : t("fin.controparte")}
                     </th>
                     {overview.colonne.map((c) => (
                       <th key={c} className="py-2 px-2 text-right">

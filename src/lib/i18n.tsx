@@ -685,6 +685,7 @@ const en = {
   "fin.ovIncassi": "Collections",
   "fin.ovSpese": "Expenses",
   "fin.controparte": "Counterparty / Type",
+  "fin.cliForn": "Client/Supplier",
   "fin.allYears": "All years",
   "fin.anomalieTitle": "Anomalies to review",
   "fin.anomalieDesc":
@@ -1680,6 +1681,7 @@ const it: Record<DictKey, string> = {
   "fin.ovIncassi": "Incassi",
   "fin.ovSpese": "Spese",
   "fin.controparte": "Controparte / Tipologia",
+  "fin.cliForn": "Cliente/Fornitore",
   "fin.allYears": "Tutti gli anni",
   "fin.anomalieTitle": "Anomalie da sanare",
   "fin.anomalieDesc":
