@@ -266,6 +266,14 @@ export const SP_DISPLAY = {
   gruppiControparti: {
     Membri: "Membri",
   },
+  // Anomalie timbrature SCARTATE a mano (soprattutto le informative):
+  // Title = chiave "dipendenteId|giorno|tipo". OPZIONALE.
+  anomalieScartate: {
+    Dipendente: "Dipendente",
+    Giorno: "Giorno",
+    Tipo: "Tipo",
+    ScartataDa: "ScartataDa",
+  },
   // Fatture (sezione Finanza → Fatture). Title = NOME FILE SdI (chiave
   // univoca, mai il numero). Stesso schema per le DUE liste: FattureEmesse e
   // FattureRicevute (Cliente = controparte: cliente o fornitore). Alimentate
@@ -414,6 +422,7 @@ const LIST_NAMES = {
   regoleFinanza: ["RegoleFinanza", "RegolaFinanza", "RegoleBanca"],
   regoleFatture: ["RegoleFatture", "RegoleClassificazione", "RegoleFatturePassive"],
   gruppiControparti: ["GruppiControparti", "Gruppi", "GruppiMadre"],
+  anomalieScartate: ["AnomalieScartate", "AnomalieIgnorate"],
   fatture: ["FattureEmesse", "FatturaEmessa", "Fatture"],
   fattureRicevute: ["FattureRicevute", "FatturaRicevuta"],
   terminiPagamento: ["TerminiPagamento", "TerminiDiPagamento", "TerminePagamento"],
@@ -528,6 +537,8 @@ export interface SpDiscovered {
   regoleFattureFields: Record<string, string>;
   listGruppiControparti: string | null;
   gruppiContropartiFields: Record<string, string>;
+  listAnomalieScartate: string | null;
+  anomalieScartateFields: Record<string, string>;
   listFatture: string | null;
   listFattureName: string | null;
   fattureFields: Record<string, string>;
@@ -885,6 +896,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const reg = await softList(LIST_NAMES.regoleFinanza, SP_DISPLAY.regoleFinanza);
   const regFat = await softList(LIST_NAMES.regoleFatture, SP_DISPLAY.regoleFatture);
   const gruppiCp = await softList(LIST_NAMES.gruppiControparti, SP_DISPLAY.gruppiControparti);
+  const anomSc = await softList(LIST_NAMES.anomalieScartate, SP_DISPLAY.anomalieScartate);
   const fat = await softList(LIST_NAMES.fatture, SP_DISPLAY.fatture);
   const fatR = await softList(LIST_NAMES.fattureRicevute, SP_DISPLAY.fatture);
   const trm = await softList(LIST_NAMES.terminiPagamento, SP_DISPLAY.terminiPagamento);
@@ -950,6 +962,8 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     regoleFattureFields: regFat.fields,
     listGruppiControparti: gruppiCp.id,
     gruppiContropartiFields: gruppiCp.fields,
+    listAnomalieScartate: anomSc.id,
+    anomalieScartateFields: anomSc.fields,
     listFatture: fat.id,
     listFattureName: fat.name,
     fattureFields: fat.fields,
@@ -1707,15 +1721,59 @@ export interface AnomaliaItem {
   tipo: TipoAnomalia;
 }
 
+const chiaveAnomalia = (dip: string, giorno: string, tipo: string) => `${dip}|${giorno}|${tipo}`;
+
+/** Chiavi delle anomalie scartate a mano: chi guarda l'elenco puo' dire
+ *  "questa la conosco, non mostrarmela piu'" (tipico per le informative). */
+export async function fetchAnomalieScartate(): Promise<Set<string>> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listAnomalieScartate) return new Set();
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listAnomalieScartate}/items?expand=fields(select=Title)&$top=999`,
+    ),
+  );
+  return new Set(res.value.map((it) => String((it.fields ?? {})["Title"] ?? "").trim()));
+}
+
+export async function scartaAnomalia(
+  dipendenteId: string,
+  giorno: string,
+  tipo: string,
+  scartataDa: string,
+): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listAnomalieScartate)
+    throw new Error(
+      'Lista "AnomalieScartate" assente su SharePoint: crearla (colonne Dipendente, Giorno, Tipo, ScartataDa — testo) e fare Riscopri.',
+    );
+  const chiave = chiaveAnomalia(dipendenteId, giorno, tipo);
+  // Idempotente: se e' gia' stata scartata non si duplica.
+  const gia = await fetchAnomalieScartate();
+  if (gia.has(chiave)) return;
+  const F = cfg.anomalieScartateFields;
+  const fields: Record<string, unknown> = { Title: chiave };
+  if (F.Dipendente) fields[F.Dipendente] = dipendenteId;
+  if (F.Giorno) fields[F.Giorno] = giorno;
+  if (F.Tipo) fields[F.Tipo] = tipo;
+  if (F.ScartataDa) fields[F.ScartataDa] = scartataDa;
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listAnomalieScartate}/items`, {
+    method: "POST",
+    body: JSON.stringify({ fields }),
+  });
+  logSp("info", "anomalie.scarta", `Anomalia scartata: ${chiave} (${scartataDa})`);
+}
+
 export async function computeAnomalie(giorni = 14): Promise<AnomaliaItem[]> {
   const started = Date.now();
   // Finestra: dagli ultimi `giorni` fino a IERI (oggi è in corso → escluso).
   const from = new Date();
   from.setHours(0, 0, 0, 0);
   from.setDate(from.getDate() - giorni);
-  const [tims, dips] = await Promise.all([
+  const [tims, dips, scartate] = await Promise.all([
     fetchTimbratureDaISO(from.toISOString()),
     fetchDipendenti(),
+    fetchAnomalieScartate().catch(() => new Set<string>()),
   ]);
   const byId = new Map(dips.map((d) => [d.id, d]));
 
@@ -1736,6 +1794,7 @@ export async function computeAnomalie(giorni = 14): Promise<AnomaliaItem[]> {
     const ore = dip?.oreSettimanali ?? null;
     const rilevaPausa = !(ore != null && ore <= 16);
     for (const a of anomalieDaStream(eventi, { rilevaPausa })) {
+      if (scartate.has(chiaveAnomalia(dipId, a.giorno, a.tipo))) continue;
       out.push({
         dipendenteId: dipId,
         nomeCompleto: dip ? dip.nomeCompleto || `${dip.nome} ${dip.cognome}` : `#${dipId}`,
@@ -1771,9 +1830,10 @@ export async function fetchTimbratureManuali(giorni = 30): Promise<TimbraturaMan
   const from = new Date();
   from.setHours(0, 0, 0, 0);
   from.setDate(from.getDate() - giorni);
-  const [tims, dips] = await Promise.all([
+  const [tims, dips, scartate] = await Promise.all([
     fetchTimbratureDaISO(from.toISOString()),
     fetchDipendenti(),
+    fetchAnomalieScartate().catch(() => new Set<string>()),
   ]);
   const byId = new Map(dips.map((d) => [d.id, d]));
   return tims
@@ -2228,13 +2288,14 @@ export async function resocontoGiorno(
   prevStart.setDate(prevStart.getDate() - 1);
   const nextEnd = new Date(`${dataISO}T23:59:59.999`);
   nextEnd.setDate(nextEnd.getDate() + 1);
-  const [tims, dips, richieste] = await Promise.all([
+  const [tims, dips, richieste, anomalieScartateSet] = await Promise.all([
     fetchTimbratureDaISO(prevStart.toISOString()),
     fetchDipendenti(),
     // Le assenze del giorno (malattia comunicata, ferie approvate): senza
     // questa vista il "Nessuna timbratura" nasconde chi e' regolarmente
     // assente e chi invece manca senza spiegazione.
     fetchRichieste().catch(() => [] as SpRichiesta[]),
+    fetchAnomalieScartate().catch(() => new Set<string>()),
   ]);
   const inMalattia = new Set<string>();
   const inFerie = new Set<string>();
@@ -2277,7 +2338,11 @@ export async function resocontoGiorno(
         stream.map((e) => ({ evento: e.evento, ora: e.dataOra })),
         { rilevaPausa },
       )
-        .filter((a) => a.giorno === dataISO)
+        .filter(
+          (a) =>
+            a.giorno === dataISO &&
+            !anomalieScartateSet.has(chiaveAnomalia(d.id, a.giorno, a.tipo)),
+        )
         .map((a) => a.tipo),
       senzaTimbrature: eventi.length === 0,
       malattia: inMalattia.has(d.id),

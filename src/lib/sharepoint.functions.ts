@@ -72,6 +72,7 @@ import {
   fetchGruppiControparti,
   createGruppoControparti,
   deleteGruppoControparti,
+  scartaAnomalia,
   type RegolaFinanza,
   fetchFatture,
   importFatture,
@@ -1541,6 +1542,32 @@ export const spGetAnomalie = createServerFn({ method: "GET" })
     const me = await currentUser();
     assertCap(me.operatore || isAdmin(me));
     return computeAnomalie(data.giorni);
+  });
+
+// Scarta un'anomalia (stessa platea di chi le vede): sparisce dall'elenco e
+// dai badge del resoconto. Per ripristinarla si elimina la riga dalla lista
+// SharePoint AnomalieScartate.
+export const spScartaAnomalia = createServerFn({ method: "POST" })
+  .inputValidator((input: { dipendenteId: string; giorno: string; tipo: string }) => {
+    const dip = String(input?.dipendenteId ?? "").trim();
+    const giorno = String(input?.giorno ?? "").trim();
+    const tipo = String(input?.tipo ?? "")
+      .trim()
+      .slice(0, 60);
+    if (!dip || !tipo || !/^\d{4}-\d{2}-\d{2}$/.test(giorno))
+      throw new Error("Anomalia non valida");
+    return { dipendenteId: dip, giorno, tipo };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    const me = await currentUser();
+    assertCap(me.operatore || isAdmin(me));
+    await scartaAnomalia(
+      data.dipendenteId,
+      data.giorno,
+      data.tipo,
+      `${me.nome} ${me.cognome}`.trim(),
+    );
+    return { ok: true };
   });
 
 export const spGetTimbratureManuali = createServerFn({ method: "GET" })

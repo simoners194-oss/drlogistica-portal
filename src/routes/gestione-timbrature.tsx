@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import {
+  EyeOff,
   AlertTriangle,
   CalendarSearch,
   ClipboardList,
@@ -20,6 +21,7 @@ import {
   spCronTurniToken,
   spGetDipendenti,
   spGetAnomalie,
+  spScartaAnomalia,
   spCreateTimbraturaManuale,
   spCreateTurnoManuale,
   spGetResocontoGiorno,
@@ -600,16 +602,48 @@ function GestioneTimbraturePage() {
                       {tVal("anomalia", a.tipo)}
                     </div>
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="shrink-0"
-                    onClick={() => correggi(a)}
-                  >
-                    <PenLine className="h-4 w-4" />
-                    {t("gt.fix")}
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button type="button" size="sm" variant="ghost" onClick={() => correggi(a)}>
+                      <PenLine className="h-4 w-4" />
+                      {t("gt.fix")}
+                    </Button>
+                    {/* SCARTA: "vista, non e' un problema" — sparisce da
+                        elenco e badge (utile per le informative). Ripristino:
+                        riga da eliminare nella lista AnomalieScartate. */}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-muted-foreground"
+                      onClick={() => {
+                        void spScartaAnomalia({
+                          data: { dipendenteId: a.dipendenteId, giorno: a.data, tipo: a.tipo },
+                        })
+                          .then(() => {
+                            setAnomalie(
+                              (prev) =>
+                                prev?.filter(
+                                  (x) =>
+                                    !(
+                                      x.dipendenteId === a.dipendenteId &&
+                                      x.data === a.data &&
+                                      x.tipo === a.tipo
+                                    ),
+                                ) ?? prev,
+                            );
+                            toast.success(t("gt.scartataOk"));
+                          })
+                          .catch((err) =>
+                            toast.error(t("common.error"), {
+                              description: err instanceof Error ? err.message : String(err),
+                            }),
+                          );
+                      }}
+                    >
+                      <EyeOff className="h-4 w-4" />
+                      {t("gt.scarta")}
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
