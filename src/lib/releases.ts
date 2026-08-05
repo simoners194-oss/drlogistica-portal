@@ -36,6 +36,56 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.9.0",
+    date: "2026-08-05",
+    codename: "Resoconto e regole di pagamento",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Resoconto per controparte",
+        description:
+          "Nuova scheda in Finanza che confronta l'estratto conto con il netto delle fatture (incassato attive meno pagato passive) per una o più controparti, con esito verde quando i conti tornano. Filtri per cliente, fornitore ed estratto conto, opzione «Nessuno» per escludere un lato del confronto e ritardi in evidenza nelle due direzioni, con fasce di anzianità.",
+      },
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Termini di pagamento con regole per oggetto",
+        description:
+          "I giorni di pagamento possono ora dipendere dall'oggetto della fattura: ad esempio, per lo stesso fornitore, le fatture di locazione a vista e tutte le altre coi termini ordinari. Le regole si impostano dal pannello Termini con parole chiave.",
+      },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Storni riconosciuti automaticamente",
+        description:
+          "Una nota di credito che non dichiara la fattura rettificata viene ora agganciata da sola quando l'importo corrisponde esattamente a una sola fattura della stessa controparte: la fattura stornata esce dai ritardi senza interventi manuali.",
+      },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Fatture più rapide e filtri con ricerca",
+        description:
+          "L'apertura della pagina Fatture è molto più veloce e tutti i menu a tendina dei filtri hanno un campo di ricerca con completamento. La ricerca dei movimenti mostra il motivo per cui una riga corrisponde, anche quando il testo è nella descrizione.",
+      },
+      {
+        tag: "improvement",
+        audience: "gestione",
+        title: "Assenze visibili nel resoconto del giorno",
+        description:
+          "Il resoconto giornaliero delle timbrature segnala con un'etichetta chi è in malattia o in ferie: l'assenza spiegata non compare più come «nessuna timbratura».",
+      },
+      {
+        tag: "improvement",
+        audience: "gestione",
+        title: "Rendiconto per giorno singolo e filtro sede",
+        description:
+          "Il rendiconto può essere consultato anche per un giorno preciso, e la vista di sede permette a chi supervisiona più sedi di filtrarle una alla volta.",
+      },
+    ],
+  },
+  {
     version: "1.8.0",
     date: "2026-07-28",
     codename: "Scadenzario e riconciliazione",
