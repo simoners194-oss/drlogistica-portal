@@ -337,13 +337,13 @@ function estraiClienteCarta(descLower: string): { cliente: string; incerto: bool
 // Cattura sequenze tipo "ft 163/26", "fpr82/26", "fatt. n. 180", "ft.n.116fp",
 // "nr. 341-371/25". Best-effort: si salva il testo trovato, non si interpreta.
 const RE_FATTURA =
-  /(?:\b(?:ft|fpr|fatt(?:ura|ure)?|n\.?c\.?)\b[\s.]*(?:n(?:r)?[\s.°]*)?|\bnr[\s.]+)([0-9][0-9a-z\/.,+\- ]{0,30})/g;
+  /(?:\b(?:ft|fpr|fatt(?:ura|ure)?|n\.?c\.?)\b[\s.]*(?:n(?:r)?[\s.°]*)?|\bnr[\s.]+)([0-9][0-9a-z/.,+\- ]{0,30})/g;
 
 export function estraiNrFattura(descrizione: string): string {
   const found: string[] = [];
   const lower = normalizeTesto(descrizione);
   for (const m of lower.matchAll(RE_FATTURA)) {
-    const ref = m[1].replace(/[\s.,\-]+$/g, "").trim();
+    const ref = m[1].replace(/[\s.,-]+$/g, "").trim();
     if (ref && !found.includes(ref)) found.push(ref);
     if (found.length >= 4) break;
   }
@@ -461,7 +461,7 @@ export function cellToIsoDate(v: unknown): string | null {
   const s = String(v ?? "").trim();
   let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  m = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);
+  m = s.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})/);
   if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   return null;
 }
