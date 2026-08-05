@@ -333,10 +333,17 @@ export function isSupervisoreGlobale(codice: string): boolean {
 
 // Un autorizzatore (identificato dal suo Codice) è competente sulla richiesta di
 // quella sede? Confronto case-insensitive sul codice.
+// GEMELLI di DR000: stessi poteri sulla stessa platea (tutte le sedi non
+// storiche) — coda E decisione. Quando gli autorizzatori diventeranno tanti,
+// questo elenco andra' sostituito da una tabella sede→autorizzatori su
+// SharePoint (proposta gia' in backlog).
+const GEMELLI_DR000 = new Set(["DR000", "DR108"]);
+
 export function supervisionaSede(codiceAutorizzatore: string, sedeRichiedente: string): boolean {
-  return (
-    (codiceAutorizzatore ?? "").trim().toUpperCase() === codiceSupervisoreDiSede(sedeRichiedente)
-  );
+  const codice = (codiceAutorizzatore ?? "").trim().toUpperCase();
+  const atteso = codiceSupervisoreDiSede(sedeRichiedente);
+  if (atteso === "DR000") return GEMELLI_DR000.has(codice);
+  return codice === atteso;
 }
 
 // Sede "storica" (Fiano Romano / San Giuliano)? Usato dal Procurement: le
