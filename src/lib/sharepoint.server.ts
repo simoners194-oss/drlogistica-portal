@@ -4705,6 +4705,19 @@ export async function importFatture(
         patch[F.ClienteRif] = r.clienteRif;
       if (F.Oggetto && r.oggetto && r.oggetto !== (prev.oggetto ?? ""))
         patch[F.Oggetto] = r.oggetto;
+      // NETTO A PAGARE: si aggiorna SOLO quando la fonte lo conosce davvero,
+      // cioe' quando dichiara un netto positivo e DIVERSO dal totale (XML con
+      // ritenute/bolli). I file che non lo sanno (report, xlsx) portano
+      // netto = totale e non devono sovrascrivere un netto buono. Caso
+      // reale: FR 123 gia' in archivio con netto=totale, l'XML ricaricato
+      // non lo correggeva e il dovuto restava sbagliato.
+      if (
+        F.NettoAPagare &&
+        r.netto > 0 &&
+        Math.abs(r.netto - r.totale) > 0.005 &&
+        Math.abs(r.netto - (prev.netto ?? 0)) > 0.005
+      )
+        patch[F.NettoAPagare] = r.netto;
       if (F.DataIncasso && r.dataIncasso && r.dataIncasso !== (prev.dataIncasso ?? ""))
         patch[F.DataIncasso] = `${r.dataIncasso}T00:00:00Z`;
       if (Object.keys(patch).length) {
