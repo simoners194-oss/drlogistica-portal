@@ -1464,7 +1464,7 @@ function FinanzaPage() {
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
                     <th className="py-2 pr-3">
-                      {ovMode === "incassi" ? t("fin.cliForn") : t("fin.controparte")}
+                      {ovMode === "incassi" ? t("fin.cliente") : t("fin.controparte")}
                     </th>
                     {overview.colonne.map((c) => (
                       <th key={c} className="py-2 px-2 text-right">
@@ -1568,7 +1568,7 @@ function FinanzaPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-muted-foreground">{t("fin.cliente")}</label>
+                        <label className="text-xs text-muted-foreground">{t("fin.cliForn")}</label>
                         <input
                           value={editCliente}
                           onChange={(e) => setEditCliente(e.target.value)}
