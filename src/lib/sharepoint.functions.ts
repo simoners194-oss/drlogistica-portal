@@ -69,6 +69,9 @@ import {
   deleteRegolaFinanza,
   applicaRegolaAiMovimenti,
   annullaRegolaAiMovimenti,
+  fetchGruppiControparti,
+  createGruppoControparti,
+  deleteGruppoControparti,
   type RegolaFinanza,
   fetchFatture,
   importFatture,
@@ -852,6 +855,40 @@ export const spApplicaRegolaFinanza = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ aggiornati: number; rimanenti: number }> => {
     await assertDirettore(await currentUser());
     return applicaRegolaAiMovimenti(data);
+  });
+
+// Gruppi "madre" di controparti per il Resoconto (solo direttore).
+export const spGetGruppiControparti = createServerFn({ method: "GET" }).handler(async () => {
+  await assertDirettore(await currentUser());
+  return fetchGruppiControparti();
+});
+
+export const spCreateGruppoControparti = createServerFn({ method: "POST" })
+  .inputValidator((input: { nome: string; membri: string }) => {
+    const nome = String(input?.nome ?? "")
+      .trim()
+      .slice(0, 80);
+    const membri = String(input?.membri ?? "")
+      .trim()
+      .slice(0, 500);
+    if (!nome || !membri) throw new Error("Servono nome del gruppo e membri");
+    return { nome, membri };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await createGruppoControparti(data.nome, data.membri);
+    return { ok: true };
+  });
+
+export const spDeleteGruppoControparti = createServerFn({ method: "POST" })
+  .inputValidator((input: { id: string }) => {
+    if (!input?.id) throw new Error("id mancante");
+    return { id: String(input.id) };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await deleteGruppoControparti(data.id);
+    return { ok: true };
   });
 
 // Ripristina i movimenti toccati da una regola GIÀ eliminata: si passa la

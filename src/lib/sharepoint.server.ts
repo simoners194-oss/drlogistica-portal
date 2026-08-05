@@ -260,6 +260,12 @@ export const SP_DISPLAY = {
     Tipologia: "Tipologia",
     ClienteRif: "ClienteRif",
   },
+  // Gruppi "madre" per il Resoconto: un nome che raggruppa piu' controparti
+  // (es. UNIVEX = Univex, Univex Freight, Nolvex). Membri = testi separati
+  // da virgola, riconosciuti per nome contenuto. OPZIONALE.
+  gruppiControparti: {
+    Membri: "Membri",
+  },
   // Fatture (sezione Finanza → Fatture). Title = NOME FILE SdI (chiave
   // univoca, mai il numero). Stesso schema per le DUE liste: FattureEmesse e
   // FattureRicevute (Cliente = controparte: cliente o fornitore). Alimentate
@@ -407,6 +413,7 @@ const LIST_NAMES = {
   movimenti: ["MovimentiBancari", "MovimentoBancario", "Movimenti"],
   regoleFinanza: ["RegoleFinanza", "RegolaFinanza", "RegoleBanca"],
   regoleFatture: ["RegoleFatture", "RegoleClassificazione", "RegoleFatturePassive"],
+  gruppiControparti: ["GruppiControparti", "Gruppi", "GruppiMadre"],
   fatture: ["FattureEmesse", "FatturaEmessa", "Fatture"],
   fattureRicevute: ["FattureRicevute", "FatturaRicevuta"],
   terminiPagamento: ["TerminiPagamento", "TerminiDiPagamento", "TerminePagamento"],
@@ -519,6 +526,8 @@ export interface SpDiscovered {
   regoleFinanzaMissing: string[];
   listRegoleFatture: string | null;
   regoleFattureFields: Record<string, string>;
+  listGruppiControparti: string | null;
+  gruppiContropartiFields: Record<string, string>;
   listFatture: string | null;
   listFattureName: string | null;
   fattureFields: Record<string, string>;
@@ -875,6 +884,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const mov = await softList(LIST_NAMES.movimenti, SP_DISPLAY.movimenti);
   const reg = await softList(LIST_NAMES.regoleFinanza, SP_DISPLAY.regoleFinanza);
   const regFat = await softList(LIST_NAMES.regoleFatture, SP_DISPLAY.regoleFatture);
+  const gruppiCp = await softList(LIST_NAMES.gruppiControparti, SP_DISPLAY.gruppiControparti);
   const fat = await softList(LIST_NAMES.fatture, SP_DISPLAY.fatture);
   const fatR = await softList(LIST_NAMES.fattureRicevute, SP_DISPLAY.fatture);
   const trm = await softList(LIST_NAMES.terminiPagamento, SP_DISPLAY.terminiPagamento);
@@ -938,6 +948,8 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     regoleFinanzaMissing: reg.missing,
     listRegoleFatture: regFat.id,
     regoleFattureFields: regFat.fields,
+    listGruppiControparti: gruppiCp.id,
+    gruppiContropartiFields: gruppiCp.fields,
     listFatture: fat.id,
     listFattureName: fat.name,
     fattureFields: fat.fields,
@@ -4448,6 +4460,60 @@ export async function deleteTermine(
   });
   if (!del.ok && del.status !== 204) throw new Error(`DELETE termine → HTTP ${del.status}`);
   logSp("info", "termini.delete", `Termine eliminato: ${cliente}`);
+}
+
+// --- Gruppi "madre" di controparti (lista GruppiControparti) ----------------
+
+export interface GruppoControparti {
+  id: string;
+  nome: string;
+  /** Nomi (o pezzi di nome) separati da virgola: match per nome contenuto. */
+  membri: string;
+}
+
+export async function fetchGruppiControparti(): Promise<GruppoControparti[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listGruppiControparti) return [];
+  const F = cfg.gruppiContropartiFields;
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listGruppiControparti}/items?expand=fields&$top=999`,
+    ),
+  );
+  return res.value
+    .map((it) => ({
+      id: String(it.id),
+      nome: String((it.fields ?? {})["Title"] ?? "").trim(),
+      membri: F.Membri ? String((it.fields ?? {})[F.Membri] ?? "").trim() : "",
+    }))
+    .filter((g) => g.nome && g.membri);
+}
+
+export async function createGruppoControparti(nome: string, membri: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listGruppiControparti)
+    throw new Error(
+      'Lista "GruppiControparti" assente su SharePoint: crearla (colonna "Membri", testo) e fare Riscopri.',
+    );
+  const F = cfg.gruppiContropartiFields;
+  const fields: Record<string, unknown> = { Title: nome };
+  if (F.Membri) fields[F.Membri] = membri;
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listGruppiControparti}/items`, {
+    method: "POST",
+    body: JSON.stringify({ fields }),
+  });
+  logSp("info", "gruppi.create", `Gruppo controparti: ${nome} = ${membri}`);
+}
+
+export async function deleteGruppoControparti(id: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listGruppiControparti) throw new Error('Lista "GruppiControparti" assente.');
+  const del = await gatewayFetch(
+    `/sites/${cfg.siteId}/lists/${cfg.listGruppiControparti}/items/${id}`,
+    { method: "DELETE" },
+  );
+  if (!del.ok && del.status !== 204) throw new Error(`DELETE gruppo → HTTP ${del.status}`);
+  logSp("info", "gruppi.delete", `Gruppo controparti eliminato: #${id}`);
 }
 
 // --- Regole di classificazione passive (lista RegoleFatture) ----------------

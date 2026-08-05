@@ -598,6 +598,11 @@ const en = {
   "rt.netto": "Net invoices",
   "rt.nessunoOpz": "None",
   "rt.estrattoAuto": "Follows Client/Supplier",
+  "rt.gruppiBtn": "Groups",
+  "rt.gruppiDesc":
+    "A group gathers several counterparties under one filter entry (shown with ≡). Members: name fragments separated by commas — e.g. univex, nolvex matches every company containing them.",
+  "rt.gruppiNomePh": "Group name (e.g. UNIVEX)",
+  "rt.gruppiMembriPh": "Members, comma separated (e.g. univex, nolvex)",
   "rt.nota":
     "Statement = every movement attributed to the selected counterparties (both directions). OK when statement − collected + paid ≈ 0: what invoicing records matches what moved on the account. With no filters the check is company-wide.",
   "rt.fasce": "Overdue ranges",
@@ -1608,6 +1613,11 @@ const it: Record<DictKey, string> = {
   "rt.netto": "Netto fatture",
   "rt.nessunoOpz": "Nessuno",
   "rt.estrattoAuto": "Segue Cliente/Fornitore",
+  "rt.gruppiBtn": "Gruppi",
+  "rt.gruppiDesc":
+    "Un gruppo raccoglie più controparti sotto un'unica voce dei filtri (contrassegnata con ≡). Membri: pezzi di nome separati da virgola — es. univex, nolvex prende tutte le società che li contengono.",
+  "rt.gruppiNomePh": "Nome del gruppo (es. UNIVEX)",
+  "rt.gruppiMembriPh": "Membri separati da virgola (es. univex, nolvex)",
   "rt.nota":
     "Estratto conto = tutti i movimenti attribuiti alle controparti selezionate (entrambe le direzioni). OK quando estratto − incassato + pagato ≈ 0: quello che la fatturazione registra coincide con quello che si è mosso sul conto. Senza filtri il controllo è su tutta l'azienda.",
   "rt.fasce": "Fasce di ritardo",

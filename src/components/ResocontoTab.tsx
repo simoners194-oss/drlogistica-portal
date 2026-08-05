@@ -6,7 +6,7 @@
 // pagare) filtrabile per fasce di giorni/settimane, con le fatture in vista.
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { MultiSelect } from "@/components/MultiSelect";
 import {
@@ -19,8 +19,15 @@ import {
   type TerminePagamento,
 } from "@/lib/fatture-logic";
 import { clienteGroupKey } from "@/lib/finanza-logic";
-import { spGetFatture, spGetMovimenti, spGetTerminiPagamento } from "@/lib/sharepoint.functions";
-import type { SpFattura, SpMovimento } from "@/lib/sharepoint.server";
+import {
+  spGetFatture,
+  spGetMovimenti,
+  spGetTerminiPagamento,
+  spGetGruppiControparti,
+  spCreateGruppoControparti,
+  spDeleteGruppoControparti,
+} from "@/lib/sharepoint.functions";
+import type { SpFattura, SpMovimento, GruppoControparti } from "@/lib/sharepoint.server";
 
 function fmtImporto(n: number): string {
   return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -58,6 +65,13 @@ export function ResocontoTab() {
   // Filtro esplicito sull'ESTRATTO CONTO: vuoto = "automatico" (segue
   // Cliente/Fornitore come sempre); una selezione lo scavalca.
   const [estrattoSel, setEstrattoSel] = useState<string[]>([]);
+  // Gruppi "madre" (es. UNIVEX = univex, nolvex): voci aggiuntive nei filtri
+  // che si espandono in tutte le controparti i cui nomi contengono i membri.
+  const [gruppi, setGruppi] = useState<GruppoControparti[] | null>(null);
+  const [showGruppi, setShowGruppi] = useState(false);
+  const [gNome, setGNome] = useState("");
+  const [gMembri, setGMembri] = useState("");
+  const [gBusy, setGBusy] = useState(false);
   const [fasceSel, setFasceSel] = useState<number[]>([]); // indici in FASCE
 
   useEffect(() => {
@@ -78,6 +92,9 @@ export function ResocontoTab() {
     spGetTerminiPagamento()
       .then((l) => setTermini(l as TerminePagamento[]))
       .catch(() => setTermini([]));
+    spGetGruppiControparti()
+      .then((l) => setGruppi(l as GruppoControparti[]))
+      .catch(() => setGruppi([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -135,6 +152,26 @@ export function ResocontoTab() {
       .sort((a, b) => b[1].tot - a[1].tot)
       .map(([k, v2]) => ({ v: k, label: v2.nome }));
   }, [movimenti]);
+  // Un gruppo selezionato ("grp:<id>") si espande nelle chiavi delle opzioni
+  // i cui nomi contengono uno dei membri (match per nome contenuto).
+  const espandiGruppi = (sel: string[], opzioniDi: { v: string }[]): string[] => {
+    const out = new Set<string>();
+    for (const v of sel) {
+      if (!v.startsWith("grp:")) {
+        out.add(v);
+        continue;
+      }
+      const g = (gruppi ?? []).find((x) => `grp:${x.id}` === v);
+      if (!g) continue;
+      const token = g.membri
+        .split(/[,;|]/)
+        .map((x) => clienteGroupKey(x) || x.trim().toLowerCase())
+        .filter(Boolean);
+      for (const o of opzioniDi) if (token.some((tk) => o.v.includes(tk))) out.add(o.v);
+    }
+    return [...out];
+  };
+  const opzioniGruppo = (gruppi ?? []).map((g) => ({ v: `grp:${g.id}`, label: `≡ ${g.nome}` }));
   // Scelta con "Nessuno" esclusivo: selezionarlo azzera il resto, scegliere
   // una controparte lo toglie.
   const scegliCon = (imposta: (v: string[]) => void, prima: string[]) => (nuovi: string[]) => {
@@ -162,9 +199,18 @@ export function ResocontoTab() {
     const cliNessuno = clientiSel.includes(NESSUNO);
     const forNessuno = fornitoriSel.includes(NESSUNO);
     const ecNessuno = estrattoSel.includes(NESSUNO);
-    const cliSel = clientiSel.filter((x) => x !== NESSUNO);
-    const forSel = fornitoriSel.filter((x) => x !== NESSUNO);
-    const ecSel = estrattoSel.filter((x) => x !== NESSUNO);
+    const cliSel = espandiGruppi(
+      clientiSel.filter((x) => x !== NESSUNO),
+      opzioniClienti,
+    );
+    const forSel = espandiGruppi(
+      fornitoriSel.filter((x) => x !== NESSUNO),
+      opzioniFornitori,
+    );
+    const ecSel = espandiGruppi(
+      estrattoSel.filter((x) => x !== NESSUNO),
+      opzioniEstratto,
+    );
     const attSel = cliNessuno ? [] : attive.filter((x) => inSelezione(x.f.cliente, cliSel));
     const pasSel = forNessuno ? [] : passive.filter((x) => inSelezione(x.f.cliente, forSel));
     const movTutti = movimenti ?? [];
@@ -207,8 +253,9 @@ export function ResocontoTab() {
       nMov: movSel.length,
       ok: Math.abs(differenza) <= 1,
     };
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attive, passive, movimenti, clientiSel, fornitoriSel, estrattoSel, opzioniClienti]);
+  }, [attive, passive, movimenti, clientiSel, fornitoriSel, estrattoSel, opzioniClienti, gruppi]);
 
   // --- Ritardi (da incassare e da pagare), con fasce -------------------------
   const inFascia = (gg: number) => {
@@ -235,7 +282,10 @@ export function ResocontoTab() {
         ? []
         : ritardi(
             attive,
-            clientiSel.filter((x) => x !== NESSUNO),
+            espandiGruppi(
+              clientiSel.filter((x) => x !== NESSUNO),
+              opzioniClienti,
+            ),
           ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [attive, clientiSel, fasceSel],
@@ -246,7 +296,10 @@ export function ResocontoTab() {
         ? []
         : ritardi(
             passive,
-            fornitoriSel.filter((x) => x !== NESSUNO),
+            espandiGruppi(
+              fornitoriSel.filter((x) => x !== NESSUNO),
+              opzioniFornitori,
+            ),
           ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [passive, fornitoriSel, fasceSel],
@@ -308,7 +361,11 @@ export function ResocontoTab() {
             label={t("fin.cliente")}
             tuttiLabel={t("common.allF")}
             selLabel={t("fin.msSel")}
-            opzioni={[{ v: NESSUNO, label: t("rt.nessunoOpz") }, ...opzioniClienti]}
+            opzioni={[
+              { v: NESSUNO, label: t("rt.nessunoOpz") },
+              ...opzioniGruppo,
+              ...opzioniClienti,
+            ]}
             valori={clientiSel}
             onChange={scegliCon(setClientiSel, clientiSel)}
             className="w-64"
@@ -317,7 +374,11 @@ export function ResocontoTab() {
             label={t("ft.fornitore")}
             tuttiLabel={t("common.allF")}
             selLabel={t("fin.msSel")}
-            opzioni={[{ v: NESSUNO, label: t("rt.nessunoOpz") }, ...opzioniFornitori]}
+            opzioni={[
+              { v: NESSUNO, label: t("rt.nessunoOpz") },
+              ...opzioniGruppo,
+              ...opzioniFornitori,
+            ]}
             valori={fornitoriSel}
             onChange={scegliCon(setFornitoriSel, fornitoriSel)}
             className="w-64"
@@ -326,11 +387,22 @@ export function ResocontoTab() {
             label={t("rt.estratto")}
             tuttiLabel={t("rt.estrattoAuto")}
             selLabel={t("fin.msSel")}
-            opzioni={[{ v: NESSUNO, label: t("rt.nessunoOpz") }, ...opzioniEstratto]}
+            opzioni={[
+              { v: NESSUNO, label: t("rt.nessunoOpz") },
+              ...opzioniGruppo,
+              ...opzioniEstratto,
+            ]}
             valori={estrattoSel}
             onChange={scegliCon(setEstrattoSel, estrattoSel)}
             className="w-64"
           />
+          <button
+            type="button"
+            onClick={() => setShowGruppi((x) => !x)}
+            className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+          >
+            {t("rt.gruppiBtn")}
+          </button>
           {/* Fasce di ritardo: giorni e settimane, multi-selezione. */}
           <div>
             <label className="text-xs text-muted-foreground">{t("rt.fasce")}</label>
@@ -356,6 +428,74 @@ export function ResocontoTab() {
             </div>
           </div>
         </div>
+        {showGruppi && (
+          <div className="mt-3 rounded-xl border border-border p-3">
+            <p className="text-xs text-muted-foreground mb-2">{t("rt.gruppiDesc")}</p>
+            <div className="flex flex-wrap items-end gap-2 mb-2">
+              <input
+                value={gNome}
+                onChange={(e) => setGNome(e.target.value)}
+                placeholder={t("rt.gruppiNomePh")}
+                className="w-48 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              />
+              <input
+                value={gMembri}
+                onChange={(e) => setGMembri(e.target.value)}
+                placeholder={t("rt.gruppiMembriPh")}
+                className="flex-1 min-w-64 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                disabled={gBusy || !gNome.trim() || !gMembri.trim()}
+                onClick={() => {
+                  setGBusy(true);
+                  spCreateGruppoControparti({
+                    data: { nome: gNome.trim(), membri: gMembri.trim() },
+                  })
+                    .then(() => spGetGruppiControparti())
+                    .then((l) => {
+                      setGruppi(l as GruppoControparti[]);
+                      setGNome("");
+                      setGMembri("");
+                    })
+                    .catch((err) =>
+                      toast.error(t("common.error"), {
+                        description: err instanceof Error ? err.message : String(err),
+                      }),
+                    )
+                    .finally(() => setGBusy(false));
+                }}
+                className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+              >
+                {t("common.save")}
+              </button>
+            </div>
+            {(gruppi ?? []).map((g) => (
+              <div key={g.id} className="flex items-center gap-2 py-1 text-sm">
+                <b>{g.nome}</b>
+                <span className="flex-1 truncate text-muted-foreground">{g.membri}</span>
+                <button
+                  type="button"
+                  disabled={gBusy}
+                  onClick={() => {
+                    setGBusy(true);
+                    spDeleteGruppoControparti({ data: { id: g.id } })
+                      .then(() => setGruppi((prev) => (prev ?? []).filter((x) => x.id !== g.id)))
+                      .catch((err) =>
+                        toast.error(t("common.error"), {
+                          description: err instanceof Error ? err.message : String(err),
+                        }),
+                      )
+                      .finally(() => setGBusy(false));
+                  }}
+                  className="rounded-md p-1 text-muted-foreground hover:text-status-absent"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {loading ? (
