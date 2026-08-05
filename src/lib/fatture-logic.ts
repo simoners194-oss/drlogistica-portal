@@ -789,8 +789,12 @@ export function computeStatoFattura(
   // bolli a carico, ecc.), quello che si paga davvero e' il netto — casi
   // reali: fatture ricevute 138 e 123. Le attive restano sul totale (la
   // semantica certificata con iMile non si tocca).
+  // Solo netto MINORE del totale: e' il caso affidabile (ritenute, bolli).
+  // Un netto MAGGIORE (successo con Nolvex 138: dichiarato 2.154,95 su un
+  // documento da 878,95) e' un regolamento cumulativo del fornitore, non il
+  // dovuto di questa fattura — si resta sul totale.
   const dovuto =
-    f.direzione === "Ricevuta" && f.netto > 0 && Math.abs(f.netto - f.totale) > TOLLERANZA_SALDO
+    f.direzione === "Ricevuta" && f.netto > 0 && f.netto < f.totale - TOLLERANZA_SALDO
       ? f.netto
       : f.totale;
   // Base del credito: dovuto al netto delle note di credito collegate.

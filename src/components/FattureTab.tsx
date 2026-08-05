@@ -567,7 +567,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           fmtImporto(
             x.f.direzione === "Ricevuta" &&
               x.f.netto > 0 &&
-              Math.abs(x.f.netto - x.f.totale) > 0.01
+              x.f.netto < x.f.totale - 0.01
               ? x.f.netto
               : x.f.totale,
           ),
@@ -2695,13 +2695,13 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                         {fmtImporto(
                           x.f.direzione === "Ricevuta" &&
                             x.f.netto > 0 &&
-                            Math.abs(x.f.netto - x.f.totale) > 0.01
+                            x.f.netto < x.f.totale - 0.01
                             ? x.f.netto
                             : x.f.totale,
                         )}
                         {x.f.direzione === "Ricevuta" &&
                           x.f.netto > 0 &&
-                          Math.abs(x.f.netto - x.f.totale) > 0.01 && (
+                          x.f.netto < x.f.totale - 0.01 && (
                             <div className="text-[11px] font-medium text-primary whitespace-nowrap">
                               {t("ft.totDoc")} {fmtImporto(x.f.totale)}
                             </div>
