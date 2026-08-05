@@ -231,7 +231,10 @@ function FinanzaPage() {
   // Regole apprese
   const [regole, setRegole] = useState<RegolaFinanza[] | null>(null);
   const [rPattern, setRPattern] = useState("");
-  const [rCampo, setRCampo] = useState<"cliente" | "descrizione">("cliente");
+  const [rCampo, setRCampo] = useState<"cliente" | "descrizione" | "entrambi">("cliente");
+  // Regola in modifica: si precompila il form e al salvataggio la vecchia
+  // viene sostituita (elimina + ricrea).
+  const [rEditId, setREditId] = useState<string | null>(null);
   const [rModo, setRModo] = useState<"esatto" | "contiene">("esatto");
   const [rTipologia, setRTipologia] = useState("");
   const [rCliente, setRCliente] = useState("");
@@ -719,6 +722,7 @@ function FinanzaPage() {
         tipologia: rTipologia.trim() || undefined,
         cliente: rCliente.trim() || undefined,
       };
+      if (rEditId) await spDeleteRegolaFinanza({ data: { regolaId: rEditId } });
       await spCreateRegolaFinanza({ data: payload });
       let applicati = 0;
       if (rApplica) {
@@ -740,6 +744,7 @@ function FinanzaPage() {
       setRPattern("");
       setRTipologia("");
       setRCliente("");
+      setREditId(null);
       loadRegole();
       if (rApplica) {
         loadMovimenti(anni);
@@ -1581,17 +1586,22 @@ function FinanzaPage() {
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <div>
                         <label className="text-xs text-muted-foreground">{t("common.type")}</label>
-                        <select
+                        <input
+                          list="tipologie-sanatura"
                           value={editTip}
                           onChange={(e) => setEditTip(e.target.value)}
                           className={inputCls}
-                        >
-                          {TIPOLOGIE_MOVIMENTO.map((tp) => (
-                            <option key={tp} value={tp}>
-                              {tp}
-                            </option>
+                        />
+                        <datalist id="tipologie-sanatura">
+                          {[
+                            ...new Set([
+                              ...TIPOLOGIE_MOVIMENTO,
+                              ...(movimenti ?? []).map((x) => x.tipologia).filter(Boolean),
+                            ]),
+                          ].map((tp) => (
+                            <option key={tp} value={tp} />
                           ))}
-                        </select>
+                        </datalist>
                       </div>
                       <div>
                         <label className="text-xs text-muted-foreground">{t("fin.cliForn")}</label>
@@ -1763,14 +1773,17 @@ function FinanzaPage() {
                 <label className="text-xs text-muted-foreground">{t("fin.regolaCampo")}</label>
                 <select
                   value={rCampo}
-                  onChange={(e) => setRCampo(e.target.value as "cliente" | "descrizione")}
+                  onChange={(e) =>
+                    setRCampo(e.target.value as "cliente" | "descrizione" | "entrambi")
+                  }
                   className={inputCls}
                 >
                   <option value="cliente">{t("fin.campoCliente")}</option>
                   <option value="descrizione">{t("fin.campoDescrizione")}</option>
+                  <option value="entrambi">{t("fin.campoEntrambi")}</option>
                 </select>
               </div>
-              {rCampo === "cliente" && (
+              {rCampo !== "descrizione" && (
                 <div>
                   <label className="text-xs text-muted-foreground">{t("fin.regolaModo")}</label>
                   <select
@@ -1840,7 +1853,8 @@ function FinanzaPage() {
                 </>
               ) : (
                 <>
-                  <GraduationCap className="h-4 w-4" /> {t("fin.regolaCrea")}
+                  <GraduationCap className="h-4 w-4" />{" "}
+                  {rEditId ? t("fin.regolaAggiorna") : t("fin.regolaCrea")}
                 </>
               )}
             </button>
@@ -1862,27 +1876,50 @@ function FinanzaPage() {
               <ul className="divide-y divide-border/60">
                 {regole.map((r) => (
                   <li key={r.id} className="py-2.5 flex items-center gap-3 text-sm">
+                    {/* Frase per esteso, come la leggerebbe una persona:
+                        "Se il nome contiene «amazon» → tipologia … · nome …" */}
                     <span className="flex-1 min-w-0">
-                      <span className="font-medium text-foreground">{r.pattern}</span>{" "}
-                      <span className="text-xs text-muted-foreground">
-                        (
+                      {t("fin.regolaFraseSe")}{" "}
+                      <span className="text-muted-foreground">
                         {r.campo === "descrizione"
-                          ? t("fin.campoDescrizione")
-                          : `${t("fin.campoCliente")} · ${r.modo === "contiene" ? t("fin.modoContiene") : t("fin.modoEsatto")}`}
-                        )
-                      </span>
-                      <span className="text-muted-foreground"> → </span>
+                          ? t("fin.regolaFraseDescr")
+                          : r.campo === "entrambi"
+                            ? t("fin.regolaFraseEntrambi")
+                            : t("fin.regolaFraseNome")}{" "}
+                        {r.campo !== "descrizione" && r.modo === "esatto"
+                          ? t("fin.regolaFraseUguale")
+                          : t("fin.regolaFraseContiene")}
+                      </span>{" "}
+                      <span className="font-medium text-foreground">«{r.pattern}»</span>
+                      <span className="text-muted-foreground"> {t("fin.regolaFraseAllora")} </span>
                       {r.tipologia && (
                         <span className="text-xs rounded-full bg-primary/10 text-primary px-2 py-0.5 mr-1">
-                          {r.tipologia}
+                          {t("fin.regolaFraseTip")} {r.tipologia}
                         </span>
                       )}
                       {r.cliente && (
                         <span className="text-xs rounded-full bg-muted px-2 py-0.5">
-                          {r.cliente}
+                          {t("fin.regolaFraseNomeNuovo")} {r.cliente}
                         </span>
                       )}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRPattern(r.pattern);
+                        setRCampo(r.campo);
+                        setRModo(r.modo);
+                        setRTipologia(r.tipologia ?? "");
+                        setRCliente(r.cliente ?? "");
+                        setRApplica(true);
+                        setREditId(r.id ?? null);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      title={t("common.edit")}
+                      className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => void eliminaRegola(r)}

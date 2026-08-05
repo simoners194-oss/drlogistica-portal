@@ -169,8 +169,8 @@ export interface RegolaFinanza {
   id?: string;
   /** Testo da riconoscere (cliente o parola nella descrizione). */
   pattern: string;
-  /** Dove cercare il pattern. */
-  campo: "cliente" | "descrizione";
+  /** Dove cercare il pattern ("entrambi" = nome O descrizione). */
+  campo: "cliente" | "descrizione" | "entrambi";
   /** "esatto" = stesso cliente (chiave canonica); "contiene" = sottostringa. */
   modo: "esatto" | "contiene";
   /** Tipologia da assegnare al match (vuota = non cambiare). */
@@ -185,16 +185,19 @@ export function matchRegola(
 ): boolean {
   const pattern = (r.pattern ?? "").trim();
   if (!pattern) return false;
-  if (r.campo === "descrizione") {
-    return normalizeTesto(mov.descrizione).includes(normalizeTesto(pattern));
-  }
+  const inDescrizione = normalizeTesto(mov.descrizione).includes(normalizeTesto(pattern));
+  if (r.campo === "descrizione") return inDescrizione;
   const key = clienteGroupKey(mov.cliente);
-  if (!key) return false;
-  if (r.modo === "esatto") return key === clienteGroupKey(pattern);
-  return (
-    key.includes(normalizeTesto(pattern)) ||
-    canonicalCliente(mov.cliente).includes(normalizeTesto(pattern))
-  );
+  const inCliente = key
+    ? r.modo === "esatto"
+      ? key === clienteGroupKey(pattern)
+      : key.includes(normalizeTesto(pattern)) ||
+        canonicalCliente(mov.cliente).includes(normalizeTesto(pattern))
+    : false;
+  // "entrambi": basta che il testo compaia nel nome O nella descrizione —
+  // una regola sola intercetta tutti e due i casi.
+  if (r.campo === "entrambi") return inCliente || inDescrizione;
+  return inCliente;
 }
 
 /** Applica la PRIMA regola che combacia (precedenza: cliente-esatto,
@@ -205,7 +208,7 @@ export function applicaRegole<
 >(mov: T, regole: readonly RegolaFinanza[]): T {
   if (!regole.length) return mov;
   const priorita = (r: RegolaFinanza) =>
-    r.campo === "cliente" ? (r.modo === "esatto" ? 0 : 1) : 2;
+    r.campo === "cliente" ? (r.modo === "esatto" ? 0 : 1) : r.campo === "entrambi" ? 2 : 3;
   const ordinate = [...regole].sort((a, b) => priorita(a) - priorita(b));
   const r = ordinate.find((x) => matchRegola(mov, x));
   if (!r) return mov;

@@ -784,8 +784,17 @@ export function computeStatoFattura(
     };
   }
 
-  // Base del credito: totale al netto delle note di credito collegate.
-  const base = Math.max(0, Math.round((f.totale - notaCredito) * 100) / 100);
+  // DOVUTO: di norma il totale documento. Sulle PASSIVE, quando la fattura
+  // dichiara un "netto a pagare" positivo e DIVERSO dal totale (ritenute,
+  // bolli a carico, ecc.), quello che si paga davvero e' il netto — casi
+  // reali: fatture ricevute 138 e 123. Le attive restano sul totale (la
+  // semantica certificata con iMile non si tocca).
+  const dovuto =
+    f.direzione === "Ricevuta" && f.netto > 0 && Math.abs(f.netto - f.totale) > TOLLERANZA_SALDO
+      ? f.netto
+      : f.totale;
+  // Base del credito: dovuto al netto delle note di credito collegate.
+  const base = Math.max(0, Math.round((dovuto - notaCredito) * 100) / 100);
   const residuoBanca = Math.max(0, base - incassato);
   // Stato dagli ABBINAMENTI bancari (riconciliazione): informazione di
   // dettaglio, mostra quanto risulta effettivamente arrivato sul conto.

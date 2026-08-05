@@ -51,7 +51,13 @@ export function MultiSelect<T extends string | number>({
             .join(", ")
         : `${valori.length} ${selLabel}`;
   const q = cerca.trim().toLowerCase();
-  const visibili = q ? opzioni.filter((o) => o.label.toLowerCase().includes(q)) : opzioni;
+  const filtrate = q ? opzioni.filter((o) => o.label.toLowerCase().includes(q)) : opzioni;
+  // Le voci GIA' SPUNTATE salgono in testa: con centinaia di opzioni, quello
+  // che hai scelto deve restare sott'occhio (ordinamento stabile: dentro i
+  // due gruppi l'ordine originale non cambia).
+  const visibili = [...filtrate].sort(
+    (a, b) => Number(valori.includes(b.v)) - Number(valori.includes(a.v)),
+  );
   return (
     <div ref={ref} className={`relative ${className ?? ""}`}>
       <label className="text-xs text-muted-foreground">{label}</label>

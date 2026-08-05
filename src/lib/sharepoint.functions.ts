@@ -808,7 +808,12 @@ function validateRegola(input: Partial<RegolaFinanza>): RegolaFinanza {
     throw new Error("La regola deve impostare tipologia o nome controparte");
   return {
     pattern,
-    campo: input.campo === "descrizione" ? "descrizione" : "cliente",
+    campo:
+      input.campo === "descrizione"
+        ? "descrizione"
+        : input.campo === "entrambi"
+          ? "entrambi"
+          : "cliente",
     modo: input.modo === "contiene" ? "contiene" : "esatto",
     tipologia,
     cliente,
