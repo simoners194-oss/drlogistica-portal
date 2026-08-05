@@ -558,7 +558,20 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         label: ricevute ? t("ft.fornitore") : t("fin.cliente"),
         get: (x) => x.f.cliente,
       },
-      { key: "totale", label: t("common.total"), get: (x) => fmtImporto(x.f.totale) },
+      {
+        key: "totale",
+        label: t("common.total"),
+        // Stesso valore mostrato in cella: il dovuto (netto sulle passive
+        // quando differisce), cosi' filtro e ricerca combaciano con l'occhio.
+        get: (x) =>
+          fmtImporto(
+            x.f.direzione === "Ricevuta" &&
+              x.f.netto > 0 &&
+              Math.abs(x.f.netto - x.f.totale) > 0.01
+              ? x.f.netto
+              : x.f.totale,
+          ),
+      },
       {
         key: "incassato",
         label: ricevute ? t("ft.pagato") : t("ft.incassato"),
@@ -2673,17 +2686,24 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                       <td
                         className={`py-1 pr-2 text-right whitespace-nowrap ${isNotaCredito(x.f.tipoDocumento) ? "text-status-absent" : ""}`}
                       >
-                        {fmtImporto(x.f.totale)}
-                        {/* Quando il DOVUTO e' il netto a pagare (ritenute,
-                            bolli: netto dichiarato diverso dal totale), lo si
-                            mostra sotto il totale — e' il numero su cui girano
-                            residuo, scadenza e ritardo, e prima era invisibile
-                            (caso Nolvex 123: totale 1.774,90, da pagare 879,95). */}
+                        {/* Il numero GRANDE e' quello che si paga davvero: sulle
+                            passive con netto dichiarato diverso dal totale
+                            (ritenute, bolli) e' il netto — cosi' le somme a
+                            colpo d'occhio tornano. Il totale documento resta
+                            leggibile sotto, in blu (caso Nolvex 123:
+                            da pagare 879,95, documento 1.774,90). */}
+                        {fmtImporto(
+                          x.f.direzione === "Ricevuta" &&
+                            x.f.netto > 0 &&
+                            Math.abs(x.f.netto - x.f.totale) > 0.01
+                            ? x.f.netto
+                            : x.f.totale,
+                        )}
                         {x.f.direzione === "Ricevuta" &&
                           x.f.netto > 0 &&
                           Math.abs(x.f.netto - x.f.totale) > 0.01 && (
                             <div className="text-[11px] font-medium text-primary whitespace-nowrap">
-                              {t("ft.daPagare")} {fmtImporto(x.f.netto)}
+                              {t("ft.totDoc")} {fmtImporto(x.f.totale)}
                             </div>
                           )}
                         {noteCredito.has(x.f.nomeFile) && (
