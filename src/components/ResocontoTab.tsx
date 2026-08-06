@@ -424,7 +424,12 @@ export function ResocontoTab() {
 
   const loading = fattureEm == null || fattureRic == null || movimenti == null;
 
-  const cardRitardi = (titolo: string, righe: typeof attive, vuoto: string, conSollecito = false) => (
+  const cardRitardi = (
+    titolo: string,
+    righe: typeof attive,
+    vuoto: string,
+    conSollecito = false,
+  ) => (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
       <div className="flex items-baseline gap-3 mb-2">
         <span className="text-sm font-semibold text-foreground">{titolo}</span>
@@ -622,7 +627,9 @@ export function ResocontoTab() {
                     g.cfg.f.length
                       ? `${t("ft.fornitore")}: ${nomiDi(g.cfg.f, opzioniFornitori)}`
                       : "",
-                    g.cfg.e.length ? `${t("rt.estratto")}: ${nomiDi(g.cfg.e, opzioniEstratto)}` : "",
+                    g.cfg.e.length
+                      ? `${t("rt.estratto")}: ${nomiDi(g.cfg.e, opzioniEstratto)}`
+                      : "",
                   ]
                     .filter(Boolean)
                     .join(" · ");
