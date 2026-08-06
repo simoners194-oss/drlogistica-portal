@@ -210,9 +210,16 @@ export const STATO_COLOR: Record<StatoTimbratura, string> = {
   "non-timbrato": "bg-status-absent",
 };
 
+// SEMPRE in ORA ITALIANA (Europe/Rome), qualunque sia il fuso del telefono:
+// le timbrature vivono in UTC e un dispositivo col fuso sbagliato mostrava
+// 11:53 dove il gestionale (giustamente) leggeva 13:53.
 export function formatOra(iso?: string) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Rome",
+  });
 }
 
 export function labelTipo(t: Timbratura["tipo"]) {

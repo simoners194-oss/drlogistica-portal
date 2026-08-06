@@ -42,7 +42,13 @@ function fmtData(iso?: string): string {
 }
 function fmtDataOra(iso: string): string {
   const d = fmtData(iso);
-  const t = iso.slice(11, 16);
+  // Solo data (niente orario nel testo) → nessuna ora da mostrare.
+  if (iso.length <= 10) return d;
+  const t = new Date(iso).toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Rome",
+  });
   return t ? `${d} ${t}` : d;
 }
 // La sede è già il suo nome reale: nessuna mappatura id→nome.

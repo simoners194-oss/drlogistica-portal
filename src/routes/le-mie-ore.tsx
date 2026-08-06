@@ -15,6 +15,7 @@ import {
 import type { SpTimbratura, SpCorrezione } from "@/lib/sharepoint.server";
 import { orePerGiornoDaTurni } from "@/lib/rendiconto-logic";
 import { useLang } from "@/lib/i18n";
+import { formatOra } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/le-mie-ore")({
   head: () => ({ meta: [{ title: "Le mie ore — DR Portal" }] }),
@@ -119,7 +120,7 @@ function LeMieOrePage() {
     setGiornoCorr(giorno);
     // Precompila con gli orari attuali: si correggono, non si riscrivono.
     setOrari(
-      eventi.map((e) => `${ETICHETTA[e.evento]} ${e.dataOra.slice(11, 16)}`).join(", ") ||
+      eventi.map((e) => `${ETICHETTA[e.evento]} ${formatOra(e.dataOra)}`).join(", ") ||
         "entrata 08:00, uscita 17:00",
     );
     setMotivo("");
@@ -202,7 +203,7 @@ function LeMieOrePage() {
                         title={e.origine === "Manuale" ? t("mie.manuale") : undefined}
                       >
                         <Clock className="h-3 w-3" />
-                        {t(`evento.${e.evento}`)} {e.dataOra.slice(11, 16)}
+                        {t(`evento.${e.evento}`)} {formatOra(e.dataOra)}
                         {e.origine === "Manuale" ? " (M)" : ""}
                       </span>
                     ))}

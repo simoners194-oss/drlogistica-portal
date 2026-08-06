@@ -45,8 +45,13 @@ const inputCls =
 function fmtDataOra(iso?: string): string {
   if (!iso) return "—";
   const [y, m, g] = iso.slice(0, 10).split("-");
-  const t = iso.slice(11, 16);
   const d = y && m && g ? `${g}/${m}/${y}` : iso;
+  if (iso.length <= 10) return d;
+  const t = new Date(iso).toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Rome",
+  });
   return t ? `${d} ${t}` : d;
 }
 function fileToDataUrl(file: File): Promise<string> {

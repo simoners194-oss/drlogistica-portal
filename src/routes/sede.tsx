@@ -12,6 +12,7 @@ import { spGetSedeGiorno, spGetSedeOre } from "@/lib/sharepoint.functions";
 import type { ResocontoGiornoRiga, RendicontoRiga } from "@/lib/sharepoint.server";
 import { lunediDellaSettimana, ymd } from "@/lib/rendiconto-logic";
 import { useLang } from "@/lib/i18n";
+import { formatOra } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/sede")({
   head: () => ({ meta: [{ title: "La mia sede — DR Portal" }] }),
@@ -215,7 +216,7 @@ function SedePage() {
                             key={e.id}
                             className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
                           >
-                            {t(`evento.${e.evento}`)} {e.dataOra.slice(11, 16)}
+                            {t(`evento.${e.evento}`)} {formatOra(e.dataOra)}
                           </span>
                         ))}
                       </span>
