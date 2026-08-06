@@ -271,7 +271,9 @@ export const SP_DISPLAY = {
   anomalieScartate: {
     Dipendente: "Dipendente",
     Giorno: "Giorno",
-    Tipo: "Tipo",
+    // "Tipo" e' un nome RISERVATO da SharePoint (colonna di sistema
+    // dell'icona file): la colonna si chiama TipoAnomalia.
+    Tipo: "TipoAnomalia",
     ScartataDa: "ScartataDa",
   },
   // Fatture (sezione Finanza → Fatture). Title = NOME FILE SdI (chiave
@@ -1745,7 +1747,7 @@ export async function scartaAnomalia(
   const cfg = await discoverSharePoint();
   if (!cfg.listAnomalieScartate)
     throw new Error(
-      'Lista "AnomalieScartate" assente su SharePoint: crearla (colonne Dipendente, Giorno, Tipo, ScartataDa — testo) e fare Riscopri.',
+      'Lista "AnomalieScartate" assente su SharePoint: crearla (colonne Dipendente, Giorno, TipoAnomalia, ScartataDa — testo) e fare Riscopri.',
     );
   const chiave = chiaveAnomalia(dipendenteId, giorno, tipo);
   // Idempotente: se e' gia' stata scartata non si duplica.
