@@ -565,9 +565,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         // quando differisce), cosi' filtro e ricerca combaciano con l'occhio.
         get: (x) =>
           fmtImporto(
-            x.f.direzione === "Ricevuta" &&
-              x.f.netto > 0 &&
-              x.f.netto < x.f.totale - 0.01
+            x.f.direzione === "Ricevuta" && x.f.netto > 0 && x.f.netto < x.f.totale - 0.01
               ? x.f.netto
               : x.f.totale,
           ),
@@ -581,6 +579,11 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         key: "scadenza",
         label: t("ft.scadenza"),
         get: (x) => (x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)),
+      },
+      {
+        key: "ritardo",
+        label: t("ft.ritardoGg"),
+        get: (x) => (x.s.giorniRitardo > 0 ? String(x.s.giorniRitardo) : ""),
       },
       { key: "fatturazione", label: t("ft.colFatturazione"), get: testoStatoF },
       {
@@ -2722,6 +2725,11 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                         className={`py-1.5 pr-3 whitespace-nowrap ${x.s.inRitardo ? "text-status-absent font-medium" : "text-muted-foreground"}`}
                       >
                         {x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)}
+                      </td>
+                      <td
+                        className={`py-1.5 pr-3 text-right tabular-nums whitespace-nowrap ${x.s.giorniRitardo > 0 ? "text-status-absent font-medium" : "text-muted-foreground"}`}
+                      >
+                        {x.s.giorniRitardo > 0 ? x.s.giorniRitardo : "—"}
                       </td>
                       {/* Le due letture, affiancate: nessuna prevale. */}
                       <td className="py-1 pr-2 whitespace-nowrap">

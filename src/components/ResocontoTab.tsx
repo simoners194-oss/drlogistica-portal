@@ -70,7 +70,6 @@ export function ResocontoTab() {
   const [gruppi, setGruppi] = useState<GruppoControparti[] | null>(null);
   const [showGruppi, setShowGruppi] = useState(false);
   const [gNome, setGNome] = useState("");
-  const [gMembri, setGMembri] = useState("");
   const [gBusy, setGBusy] = useState(false);
   const [fasceSel, setFasceSel] = useState<number[]>([]); // indici in FASCE
 
@@ -171,7 +170,25 @@ export function ResocontoTab() {
     }
     return [...out];
   };
-  const opzioniGruppo = (gruppi ?? []).map((g) => ({ v: `grp:${g.id}`, label: `≡ ${g.nome}` }));
+  // VISTE SALVATE: la fotografia dei tre filtri, con un nome. Membri (sulla
+  // lista GruppiControparti) contiene il JSON {"c":[...],"f":[...],"e":[...]}.
+  type VistaCfg = { c: string[]; f: string[]; e: string[] };
+  const parseVista = (membri: string): VistaCfg | null => {
+    try {
+      const j = JSON.parse(membri) as Partial<VistaCfg>;
+      if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+      return {
+        c: Array.isArray(j.c) ? j.c : [],
+        f: Array.isArray(j.f) ? j.f : [],
+        e: Array.isArray(j.e) ? j.e : [],
+      };
+    } catch {
+      return null;
+    }
+  };
+  const viste = (gruppi ?? [])
+    .map((g) => ({ id: g.id, nome: g.nome, cfg: parseVista(g.membri) }))
+    .filter((x): x is { id: string; nome: string; cfg: VistaCfg } => x.cfg != null);
   // Scelta con "Nessuno" esclusivo: selezionarlo azzera il resto, scegliere
   // una controparte lo toglie.
   const scegliCon = (imposta: (v: string[]) => void, prima: string[]) => (nuovi: string[]) => {
@@ -361,11 +378,7 @@ export function ResocontoTab() {
             label={t("fin.cliente")}
             tuttiLabel={t("common.allF")}
             selLabel={t("fin.msSel")}
-            opzioni={[
-              { v: NESSUNO, label: t("rt.nessunoOpz") },
-              ...opzioniGruppo,
-              ...opzioniClienti,
-            ]}
+            opzioni={[{ v: NESSUNO, label: t("rt.nessunoOpz") }, ...opzioniClienti]}
             valori={clientiSel}
             onChange={scegliCon(setClientiSel, clientiSel)}
             className="w-64"
@@ -374,11 +387,7 @@ export function ResocontoTab() {
             label={t("ft.fornitore")}
             tuttiLabel={t("common.allF")}
             selLabel={t("fin.msSel")}
-            opzioni={[
-              { v: NESSUNO, label: t("rt.nessunoOpz") },
-              ...opzioniGruppo,
-              ...opzioniFornitori,
-            ]}
+            opzioni={[{ v: NESSUNO, label: t("rt.nessunoOpz") }, ...opzioniFornitori]}
             valori={fornitoriSel}
             onChange={scegliCon(setFornitoriSel, fornitoriSel)}
             className="w-64"
@@ -387,11 +396,7 @@ export function ResocontoTab() {
             label={t("rt.estratto")}
             tuttiLabel={t("rt.estrattoAuto")}
             selLabel={t("fin.msSel")}
-            opzioni={[
-              { v: NESSUNO, label: t("rt.nessunoOpz") },
-              ...opzioniGruppo,
-              ...opzioniEstratto,
-            ]}
+            opzioni={[{ v: NESSUNO, label: t("rt.nessunoOpz") }, ...opzioniEstratto]}
             valori={estrattoSel}
             onChange={scegliCon(setEstrattoSel, estrattoSel)}
             className="w-64"
@@ -436,27 +441,28 @@ export function ResocontoTab() {
                 value={gNome}
                 onChange={(e) => setGNome(e.target.value)}
                 placeholder={t("rt.gruppiNomePh")}
-                className="w-48 rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              />
-              <input
-                value={gMembri}
-                onChange={(e) => setGMembri(e.target.value)}
-                placeholder={t("rt.gruppiMembriPh")}
-                className="flex-1 min-w-64 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                className="w-64 rounded-lg border border-border bg-background px-3 py-2 text-sm"
               />
               <button
                 type="button"
-                disabled={gBusy || !gNome.trim() || !gMembri.trim()}
+                disabled={
+                  gBusy ||
+                  !gNome.trim() ||
+                  (clientiSel.length === 0 && fornitoriSel.length === 0 && estrattoSel.length === 0)
+                }
                 onClick={() => {
                   setGBusy(true);
+                  // Si salva la FOTOGRAFIA dei tre filtri correnti.
                   spCreateGruppoControparti({
-                    data: { nome: gNome.trim(), membri: gMembri.trim() },
+                    data: {
+                      nome: gNome.trim(),
+                      membri: JSON.stringify({ c: clientiSel, f: fornitoriSel, e: estrattoSel }),
+                    },
                   })
                     .then(() => spGetGruppiControparti())
                     .then((l) => {
                       setGruppi(l as GruppoControparti[]);
                       setGNome("");
-                      setGMembri("");
                     })
                     .catch((err) =>
                       toast.error(t("common.error"), {
@@ -470,10 +476,30 @@ export function ResocontoTab() {
                 {t("common.save")}
               </button>
             </div>
-            {(gruppi ?? []).map((g) => (
+            {viste.map((g) => (
               <div key={g.id} className="flex items-center gap-2 py-1 text-sm">
-                <b>{g.nome}</b>
-                <span className="flex-1 truncate text-muted-foreground">{g.membri}</span>
+                {/* Click sul nome = applica la vista: i tre filtri tornano
+                    esattamente com'erano al salvataggio. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientiSel(g.cfg.c);
+                    setFornitoriSel(g.cfg.f);
+                    setEstrattoSel(g.cfg.e);
+                  }}
+                  className="rounded-lg border border-border px-2.5 py-1 text-sm font-medium hover:bg-muted"
+                >
+                  {g.nome}
+                </button>
+                <span className="flex-1 truncate text-xs text-muted-foreground">
+                  {[
+                    g.cfg.c.length ? `${t("fin.cliente")}: ${g.cfg.c.length}` : "",
+                    g.cfg.f.length ? `${t("ft.fornitore")}: ${g.cfg.f.length}` : "",
+                    g.cfg.e.length ? `${t("rt.estratto")}: ${g.cfg.e.length}` : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
                 <button
                   type="button"
                   disabled={gBusy}
