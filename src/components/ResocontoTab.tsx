@@ -394,8 +394,7 @@ export function ResocontoTab() {
     r.push("");
     r.push("Cordiali saluti");
     r.push("DR Logistica S.r.l.");
-    return r.join("
-");
+    return r.join("\r\n");
   };
   const copiaSollecitoPer = async (chiave: string) => {
     const corpo = testoSollecitoPer(chiave);
