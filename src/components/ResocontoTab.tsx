@@ -189,6 +189,14 @@ export function ResocontoTab() {
   const viste = (gruppi ?? [])
     .map((g) => ({ id: g.id, nome: g.nome, cfg: parseVista(g.membri) }))
     .filter((x): x is { id: string; nome: string; cfg: VistaCfg } => x.cfg != null);
+  // Nel riepilogo della vista si mostrano i NOMI, non i conteggi: le chiavi
+  // salvate si traducono in etichette con le stesse opzioni delle tendine.
+  const nomiDi = (chiavi: string[], opzioniDi: { v: string; label: string }[]): string =>
+    chiavi
+      .map((k) =>
+        k === NESSUNO ? t("rt.nessunoOpz") : (opzioniDi.find((o) => o.v === k)?.label ?? k),
+      )
+      .join(", ");
   // Scelta con "Nessuno" esclusivo: selezionarlo azzera il resto, scegliere
   // una controparte lo toglie.
   const scegliCon = (imposta: (v: string[]) => void, prima: string[]) => (nuovi: string[]) => {
@@ -491,15 +499,22 @@ export function ResocontoTab() {
                 >
                   {g.nome}
                 </button>
-                <span className="flex-1 truncate text-xs text-muted-foreground">
-                  {[
-                    g.cfg.c.length ? `${t("fin.cliente")}: ${g.cfg.c.length}` : "",
-                    g.cfg.f.length ? `${t("ft.fornitore")}: ${g.cfg.f.length}` : "",
-                    g.cfg.e.length ? `${t("rt.estratto")}: ${g.cfg.e.length}` : "",
+                {(() => {
+                  const testo = [
+                    g.cfg.c.length ? `${t("fin.cliente")}: ${nomiDi(g.cfg.c, opzioniClienti)}` : "",
+                    g.cfg.f.length
+                      ? `${t("ft.fornitore")}: ${nomiDi(g.cfg.f, opzioniFornitori)}`
+                      : "",
+                    g.cfg.e.length ? `${t("rt.estratto")}: ${nomiDi(g.cfg.e, opzioniEstratto)}` : "",
                   ]
                     .filter(Boolean)
-                    .join(" · ")}
-                </span>
+                    .join(" · ");
+                  return (
+                    <span className="flex-1 truncate text-xs text-muted-foreground" title={testo}>
+                      {testo}
+                    </span>
+                  );
+                })()}
                 <button
                   type="button"
                   disabled={gBusy}
