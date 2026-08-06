@@ -6,7 +6,7 @@
 // pagare) filtrabile per fasce di giorni/settimane, con le fatture in vista.
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, AlertTriangle, Loader2, Trash2 } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Loader2, Trash2, Copy, Mail } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { MultiSelect } from "@/components/MultiSelect";
 import {
@@ -330,9 +330,102 @@ export function ResocontoTab() {
     [passive, fornitoriSel, fasceSel],
   );
 
+  // SOLLECITO per cliente, anche da qui: stesso testo della pagina Fatture
+  // (approvato dal direttore) — scadute, NC e loro fatture da scalare.
+  const testoSollecitoPer = (chiave: string) => {
+    const del = attive.filter((x) => (clienteGroupKey(x.f.cliente) || x.f.cliente) === chiave);
+    const nome = del[0]?.f.cliente ?? chiave;
+    const scadute = del
+      .filter(
+        (x) =>
+          !isNotaCredito(x.f.tipoDocumento) &&
+          x.s.inRitardo &&
+          x.s.residuo > 1 &&
+          (x.s.statoIncassi != null || x.s.statoFatturazione != null),
+      )
+      .sort((a, b) => a.s.scadenza.localeCompare(b.s.scadenza));
+    if (!scadute.length) return null;
+    const ncAperte = del.filter(
+      (x) =>
+        isNotaCredito(x.f.tipoDocumento) &&
+        !x.f.rettificaNumero &&
+        x.s.statoIncassi !== "Pagata" &&
+        x.s.statoFatturazione !== "Pagata",
+    );
+    const loroAperte = (fattureRic ?? []).filter(
+      (f) =>
+        (clienteGroupKey(f.cliente) || f.cliente) === chiave &&
+        !isNotaCredito(f.tipoDocumento) &&
+        f.totale > 0 &&
+        parseIncassoAruba(f.incassoAruba) !== "Incassata",
+    );
+    const totale = scadute.reduce((s2, x) => s2 + x.s.residuo, 0);
+    const daScalare =
+      ncAperte.reduce((s2, x) => s2 + Math.abs(x.f.totale), 0) +
+      loroAperte.reduce((s2, f) => s2 + f.totale, 0);
+    const r: string[] = [];
+    r.push(`Spett.le ${nome},`);
+    r.push("");
+    r.push(
+      "dal riscontro dei nostri registri contabili risultano ad oggi le seguenti fatture scadute e non ancora saldate:",
+    );
+    r.push("");
+    for (const x of scadute)
+      r.push(
+        `- ${x.f.numero} del ${fmtData(x.f.dataDocumento)}, scadenza ${fmtData(x.s.scadenza)}, residuo € ${fmtImporto(x.s.residuo)} (${x.s.giorniRitardo} giorni di ritardo)`,
+      );
+    r.push("");
+    r.push(`Totale scaduto: € ${fmtImporto(totale)}`);
+    if (daScalare > 1) {
+      r.push("");
+      r.push("Da portare eventualmente in compensazione:");
+      for (const x of ncAperte)
+        r.push(`- ns. nota di credito ${x.f.numero}: € ${fmtImporto(Math.abs(x.f.totale))}`);
+      for (const f of loroAperte)
+        r.push(`- vs. fattura ${f.numero} nei nostri confronti: € ${fmtImporto(f.totale)}`);
+      r.push(`Saldo netto richiesto: € ${fmtImporto(Math.max(0, totale - daScalare))}`);
+    }
+    r.push("");
+    r.push(
+      "Vi preghiamo di provvedere al saldo entro 7 giorni dal ricevimento della presente, ovvero di segnalarci eventuali pagamenti già disposti o discordanze riscontrate.",
+    );
+    r.push("");
+    r.push("Restiamo a disposizione per ogni chiarimento.");
+    r.push("");
+    r.push("Cordiali saluti");
+    r.push("DR Logistica S.r.l.");
+    return r.join("
+");
+  };
+  const copiaSollecitoPer = async (chiave: string) => {
+    const corpo = testoSollecitoPer(chiave);
+    if (!corpo) {
+      toast(t("ft.solNessuna"));
+      return;
+    }
+    await navigator.clipboard.writeText(corpo);
+    toast.success(t("ft.solCopiato"));
+  };
+  const emailSollecitoPer = (chiave: string) => {
+    const corpo = testoSollecitoPer(chiave);
+    if (!corpo) {
+      toast(t("ft.solNessuna"));
+      return;
+    }
+    const dest =
+      termini.find(
+        (x) =>
+          (x.direzione ?? "Emessa") === "Emessa" &&
+          (clienteGroupKey(x.cliente) || x.cliente) === chiave &&
+          x.email,
+      )?.email ?? "";
+    const oggetto = "Sollecito di pagamento - fatture scadute (DR Logistica S.r.l.)";
+    window.location.href = `mailto:${encodeURIComponent(dest)}?subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(corpo)}`;
+  };
+
   const loading = fattureEm == null || fattureRic == null || movimenti == null;
 
-  const cardRitardi = (titolo: string, righe: typeof attive, vuoto: string) => (
+  const cardRitardi = (titolo: string, righe: typeof attive, vuoto: string, conSollecito = false) => (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
       <div className="flex items-baseline gap-3 mb-2">
         <span className="text-sm font-semibold text-foreground">{titolo}</span>
@@ -352,6 +445,7 @@ export function ResocontoTab() {
                 <th className="py-1 pr-2">{t("ft.scadenza")}</th>
                 <th className="py-1 pr-2 text-right">{t("rt.gg")}</th>
                 <th className="py-1 pr-2 text-right">{t("ft.residuo")}</th>
+                {conSollecito && <th className="py-1" />}
               </tr>
             </thead>
             <tbody>
@@ -368,6 +462,30 @@ export function ResocontoTab() {
                   <td className="py-0.5 pr-2 text-right tabular-nums font-medium">
                     {fmtImporto(x.s.residuo)}
                   </td>
+                  {conSollecito && (
+                    <td className="py-0.5 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void copiaSollecitoPer(clienteGroupKey(x.f.cliente) || x.f.cliente)
+                        }
+                        title={t("ft.solCopia")}
+                        className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          emailSollecitoPer(clienteGroupKey(x.f.cliente) || x.f.cliente)
+                        }
+                        title={t("ft.solEmail")}
+                        className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                      >
+                        <Mail className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -624,7 +742,7 @@ export function ResocontoTab() {
 
           {/* I ritardi, nelle due direzioni, con le fatture in chiaro. */}
           <div className="grid gap-4 lg:grid-cols-2">
-            {cardRitardi(t("rt.ritardiIncassare"), ritardiAtt, t("rt.nessunoIncassare"))}
+            {cardRitardi(t("rt.ritardiIncassare"), ritardiAtt, t("rt.nessunoIncassare"), true)}
             {cardRitardi(t("rt.ritardiPagare"), ritardiPas, t("rt.nessunoPagare"))}
           </div>
         </>
