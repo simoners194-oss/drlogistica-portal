@@ -193,10 +193,14 @@ export function matchRegola(
 ): boolean {
   // PATTERN MULTIPLI: "aereo, treno, dirigibile" = basta che UNO dei
   // termini corrisponda (separatori virgola e punto e virgola).
+  // Termini sotto le 3 lettere IGNORATI nel modo "contiene": "in" o "ba"
+  // sono contenuti ovunque e una regola cosi' classifica mezzo archivio
+  // (successo: regola pasti troppo larga riclassificava di tutto).
+  const minLen = r.modo === "contiene" || r.campo !== "cliente" ? 3 : 1;
   const termini = (r.pattern ?? "")
     .split(/[,;]/)
     .map((x) => x.trim())
-    .filter(Boolean);
+    .filter((x) => x.length >= minLen);
   if (!termini.length) return false;
   return termini.some((pattern) => {
     const inDescrizione = normalizeTesto(mov.descrizione).includes(normalizeTesto(pattern));

@@ -41,6 +41,7 @@ import {
   clienteGroupKey,
   LEGACY_IMPORT_ID,
   TIPOLOGIE_MOVIMENTO,
+  matchRegola,
   type MovimentoParsed,
   type ParseFileResult,
   type RegolaFinanza,
@@ -744,6 +745,14 @@ function FinanzaPage() {
         cliente: rCliente.trim() || undefined,
       };
       if (rEditId) await spDeleteRegolaFinanza({ data: { regolaId: rEditId } });
+      // PARACADUTE: prima di salvare si mostra QUANTI movimenti verrebbero
+      // toccati — una regola troppo larga si riconosce dal numero.
+      const colpiti = (movimenti ?? []).filter((m) => matchRegola(m, payload)).length;
+      if (!window.confirm(`${t("fin.regolaImpatto1")} ${colpiti} ${t("fin.regolaImpatto2")}`)) {
+        setRBusy(false);
+        setRProgress(0);
+        return;
+      }
       await spCreateRegolaFinanza({ data: payload });
       let applicati = 0;
       if (rApplica) {

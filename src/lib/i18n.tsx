@@ -787,6 +787,9 @@ const en = {
   "fin.contoPh": "e.g. Qonto",
   "fin.contoAssegna": "Assign",
   "fin.contoAssegnato": "Account assigned to the whole batch.",
+  "fin.regolaImpatto1": "This rule currently matches",
+  "fin.regolaImpatto2":
+    "transactions in the archive. Save it? (Terms shorter than 3 letters are ignored in 'contains' mode.)",
   "fin.regDipConfirm":
     "Outgoing transfers whose counterparty matches an employee name (even truncated or reversed) become 'Pagamento Salario' with the clean roster name. Apply to the whole archive?",
   "fin.regolaApplicati": "existing transactions updated",
@@ -1823,6 +1826,9 @@ const it: Record<DictKey, string> = {
   "fin.contoPh": "es. Qonto",
   "fin.contoAssegna": "Assegna",
   "fin.contoAssegnato": "Conto assegnato a tutto il lotto.",
+  "fin.regolaImpatto1": "Questa regola oggi corrisponde a",
+  "fin.regolaImpatto2":
+    "movimenti in archivio. Salvarla? (I termini sotto le 3 lettere vengono ignorati nel modo «basta che lo contenga».)",
   "fin.regDipConfirm":
     "I bonifici in uscita verso nomi che combaciano con un dipendente (anche troncati o invertiti) diventano 'Pagamento Salario' col nome pulito del roster. Applicare a tutto l'archivio?",
   "fin.regolaApplicati": "movimenti esistenti aggiornati",
