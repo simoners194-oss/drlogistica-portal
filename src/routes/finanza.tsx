@@ -239,6 +239,8 @@ function FinanzaPage() {
   const [rTipologia, setRTipologia] = useState("");
   const [rCliente, setRCliente] = useState("");
   const [rSottocat, setRSottocat] = useState("");
+  const [rAllocPri, setRAllocPri] = useState("");
+  const [rAllocSec, setRAllocSec] = useState("");
   const [rApplica, setRApplica] = useState(true);
   const [rBusy, setRBusy] = useState(false);
   const [rProgress, setRProgress] = useState(0);
@@ -248,6 +250,8 @@ function FinanzaPage() {
   const [editTip, setEditTip] = useState("");
   const [editCliente, setEditCliente] = useState("");
   const [editSott, setEditSott] = useState("");
+  const [editAllocPri, setEditAllocPri] = useState("");
+  const [editAllocSec, setEditAllocSec] = useState("");
   const [editNrFatt, setEditNrFatt] = useState("");
   const [editNote, setEditNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -709,6 +713,8 @@ function FinanzaPage() {
     setRModo("esatto");
     setRTipologia(m.tipologia || "");
     setRSottocat(m.sottocategoria || "");
+    setRAllocPri(m.allocPrimaria || "");
+    setRAllocSec(m.allocSecondaria || "");
     setRCliente("");
     setRApplica(true);
     setTab("regole");
@@ -724,6 +730,8 @@ function FinanzaPage() {
         modo: rModo,
         tipologia: rTipologia.trim() || undefined,
         sottocategoria: rSottocat.trim() || undefined,
+        allocPrimaria: rAllocPri.trim() || undefined,
+        allocSecondaria: rAllocSec.trim() || undefined,
         cliente: rCliente.trim() || undefined,
       };
       if (rEditId) await spDeleteRegolaFinanza({ data: { regolaId: rEditId } });
@@ -748,6 +756,8 @@ function FinanzaPage() {
       setRPattern("");
       setRTipologia("");
       setRSottocat("");
+      setRAllocPri("");
+      setRAllocSec("");
       setRCliente("");
       setREditId(null);
       loadRegole();
@@ -809,6 +819,8 @@ function FinanzaPage() {
     setEditId(m.id);
     setEditTip(m.tipologia || "Altro");
     setEditSott(m.sottocategoria || "");
+    setEditAllocPri(m.allocPrimaria || "");
+    setEditAllocSec(m.allocSecondaria || "");
     setEditCliente(m.cliente);
     setEditNrFatt(m.nrFattura);
     setEditNote(m.note);
@@ -822,6 +834,8 @@ function FinanzaPage() {
           movimentoId: editId,
           tipologia: editTip,
           sottocategoria: editSott.trim(),
+          allocPrimaria: editAllocPri.trim(),
+          allocSecondaria: editAllocSec.trim(),
           cliente: editCliente.trim(),
           nrFattura: editNrFatt.trim(),
           note: editNote.trim(),
@@ -1363,6 +1377,11 @@ function FinanzaPage() {
                             · {m.sottocategoria}
                           </span>
                         )}
+                        {(m.allocPrimaria || m.allocSecondaria) && (
+                          <div className="text-[11px] text-muted-foreground">
+                            {[m.allocPrimaria, m.allocSecondaria].filter(Boolean).join(" / ")}
+                          </div>
+                        )}
                         {m.daVerificare && (
                           <AlertTriangle className="h-3.5 w-3.5 inline-block ml-1 text-status-absent" />
                         )}
@@ -1626,6 +1645,24 @@ function FinanzaPage() {
                         />
                       </div>
                       <div>
+                        <label className="text-xs text-muted-foreground">{t("fin.allocPri")}</label>
+                        <input
+                          list="alloc-primarie"
+                          value={editAllocPri}
+                          onChange={(e) => setEditAllocPri(e.target.value)}
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">{t("fin.allocSec")}</label>
+                        <input
+                          list="alloc-secondarie"
+                          value={editAllocSec}
+                          onChange={(e) => setEditAllocSec(e.target.value)}
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
                         <label className="text-xs text-muted-foreground">{t("fin.cliForn")}</label>
                         <input
                           value={editCliente}
@@ -1866,6 +1903,50 @@ function FinanzaPage() {
                 </datalist>
               </div>
               <div>
+                <label className="text-xs text-muted-foreground">{t("fin.regolaAllocPri")}</label>
+                <input
+                  list="alloc-primarie"
+                  value={rAllocPri}
+                  onChange={(e) => setRAllocPri(e.target.value)}
+                  placeholder={t("fin.regolaTipNoChange")}
+                  className={inputCls}
+                />
+                <datalist id="alloc-primarie">
+                  {[
+                    ...new Set([
+                      "Costi generali",
+                      "Appalto",
+                      ...(movimenti ?? []).map((m) => m.allocPrimaria).filter(Boolean),
+                    ]),
+                  ].map((a) => (
+                    <option key={a} value={a} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">{t("fin.regolaAllocSec")}</label>
+                <input
+                  list="alloc-secondarie"
+                  value={rAllocSec}
+                  onChange={(e) => setRAllocSec(e.target.value)}
+                  placeholder={t("fin.regolaTipNoChange")}
+                  className={inputCls}
+                />
+                <datalist id="alloc-secondarie">
+                  {[
+                    ...new Set([
+                      "Ufficio Fiano Romano",
+                      "Ufficio Milano",
+                      "iMile",
+                      "Postadoc Hub",
+                      ...(movimenti ?? []).map((m) => m.allocSecondaria).filter(Boolean),
+                    ]),
+                  ].map((a) => (
+                    <option key={a} value={a} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
                 <label className="text-xs text-muted-foreground">
                   {t("fin.regolaClienteNuovo")}
                 </label>
@@ -1948,6 +2029,11 @@ function FinanzaPage() {
                           {t("fin.regolaFraseSottocat")} {r.sottocategoria}
                         </span>
                       )}
+                      {(r.allocPrimaria || r.allocSecondaria) && (
+                        <span className="text-xs rounded-full bg-muted px-2 py-0.5 mr-1">
+                          {[r.allocPrimaria, r.allocSecondaria].filter(Boolean).join(" / ")}
+                        </span>
+                      )}
                       {r.cliente && (
                         <span className="text-xs rounded-full bg-muted px-2 py-0.5">
                           {t("fin.regolaFraseNomeNuovo")} {r.cliente}
@@ -1962,6 +2048,8 @@ function FinanzaPage() {
                         setRModo(r.modo);
                         setRTipologia(r.tipologia ?? "");
                         setRSottocat(r.sottocategoria ?? "");
+                        setRAllocPri(r.allocPrimaria ?? "");
+                        setRAllocSec(r.allocSecondaria ?? "");
                         setRCliente(r.cliente ?? "");
                         setRApplica(true);
                         setREditId(r.id ?? null);
