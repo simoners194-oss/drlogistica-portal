@@ -245,6 +245,59 @@ export function applicaRegole<
   };
 }
 
+// --- Regola unica DIPENDENTI -------------------------------------------------
+// "Tutti i dipendenti = Pagamento Salario con UNA regola": il nome della
+// controparte si confronta col ROSTER a pezzi (token), in ordine libero
+// (cognome-nome o nome-cognome) e con tolleranza ai TRONCAMENTI (prefisso
+// comune >= 4 caratteri). Niente percentuale sui caratteri: "Mario Rossi" e
+// "Dario Rossi" si somigliano al 90% ma sono persone diverse — qui servono
+// ALMENO DUE pezzi di nome che tornano, e vince il candidato migliore solo
+// se non ci sono pari merito (ambiguita' = nessun match).
+export function matchDipendenteNome(testo: string, nomiRoster: readonly string[]): string | null {
+  const token = (x: string) =>
+    normalizeTesto(x)
+      .split(" ")
+      .map((y) => y.replace(/[^a-z0-9]/gi, ""))
+      .filter((y) => y.length >= 2);
+  const t = token(testo);
+  if (t.length < 2) return null;
+  const combacia = (a: string, b: string) => {
+    if (a === b) return true;
+    const min = Math.min(a.length, b.length);
+    if (min < 4) return false;
+    return a.startsWith(b.slice(0, min)) && b.startsWith(a.slice(0, min));
+  };
+  let migliore: { nome: string; score: number } | null = null;
+  let pari = false;
+  for (const nome of nomiRoster) {
+    const dt = token(nome);
+    if (dt.length < 2) continue;
+    let hit = 0;
+    for (const dtk of dt) if (t.some((ttk) => combacia(ttk, dtk))) hit++;
+    const score = hit / dt.length;
+    if (hit < 2 || score < 0.66) continue;
+    if (!migliore || score > migliore.score) {
+      migliore = { nome, score };
+      pari = false;
+    } else if (score === migliore.score && nome !== migliore.nome) {
+      pari = true;
+    }
+  }
+  return migliore && !pari ? migliore.nome : null;
+}
+
+/** Applica la regola dipendenti a un movimento classificato: solo USCITE e
+ *  solo se la tipologia non e' gia' qualcosa di piu' specifico. */
+export function applicaRegolaDipendenti<
+  T extends { cliente: string; tipologia: string; daVerificare: boolean },
+>(mov: T, importo: number, nomiRoster: readonly string[]): T {
+  if (importo >= 0 || nomiRoster.length === 0) return mov;
+  if (!["Bonifico uscita", "Altro", "Pagamento Salario"].includes(mov.tipologia)) return mov;
+  const nome = matchDipendenteNome(mov.cliente, nomiRoster);
+  if (!nome) return mov;
+  return { ...mov, tipologia: "Pagamento Salario", cliente: nome, daVerificare: false };
+}
+
 // --- Persona fisica vs azienda ----------------------------------------------
 // Un bonifico in uscita verso una persona fisica è (per prassi aziendale) un
 // pagamento di salario. Euristica: 2-4 parole solo alfabetiche, nessun

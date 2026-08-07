@@ -50,6 +50,8 @@ import { sedeTimbra } from "./mock-data";
 import {
   chiaveMovimento,
   classificaMovimento,
+  applicaRegolaDipendenti,
+  matchDipendenteNome,
   applicaRegole,
   matchRegola,
   LEGACY_IMPORT_ID,
@@ -3685,6 +3687,16 @@ function soloColonne(F: Record<string, string | undefined>): string {
   return `expand=fields(select=${[...nomi].join(",")})`;
 }
 
+/** Nomi completi del roster per la regola dipendenti (best-effort). */
+async function nomiDipendenti(): Promise<string[]> {
+  try {
+    const dips = await fetchDipendenti();
+    return dips.map((d) => (d.nomeCompleto || `${d.nome} ${d.cognome}`).trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchMovimenti(filter: MovimentiFilter = {}): Promise<SpMovimento[]> {
   const started = Date.now();
   const cfg = await discoverSharePoint();
@@ -3755,6 +3767,7 @@ export async function importMovimenti(
   // aver già fatto lo stesso lavoro per l'anteprima, ma la verità è del server.
   // Le regole apprese si applicano DOPO la classificazione automatica.
   const regole = await fetchRegoleFinanza().catch(() => [] as RegolaFinanza[]);
+  const nomiRoster = await nomiDipendenti();
   const daScrivere: { fields: Record<string, unknown>; chiave: string }[] = [];
   for (const r of rows) {
     const chiave = chiaveMovimento(r, r.occ);
@@ -3763,15 +3776,19 @@ export async function importMovimenti(
       continue;
     }
     esistenti.add(chiave); // dedup anche dentro il blocco
-    const c = applicaRegole(
-      {
-        ...classificaMovimento(r),
-        descrizione: r.descrizione,
-        sottocategoria: "",
-        allocPrimaria: "",
-        allocSecondaria: "",
-      },
-      regole,
+    const c = applicaRegolaDipendenti(
+      applicaRegole(
+        {
+          ...classificaMovimento(r),
+          descrizione: r.descrizione,
+          sottocategoria: "",
+          allocPrimaria: "",
+          allocSecondaria: "",
+        },
+        regole,
+      ),
+      r.importo,
+      nomiRoster,
     );
     if (c.daVerificare) result.anomalie++;
     const fields: Record<string, unknown> = { Title: chiave };
@@ -4220,6 +4237,52 @@ export async function applicaRegolaAiMovimenti(
     "info",
     "applica.regola",
     `Regola "${regola.pattern}": ${aggiornati} movimenti aggiornati, ${rimanenti} rimanenti`,
+  );
+  return { aggiornati, rimanenti };
+}
+
+/** Applica la REGOLA DIPENDENTI all'archivio esistente, un blocco per
+ *  chiamata (il client ripete finché rimanenti = 0). */
+export async function applicaRegolaDipendentiAiMovimenti(): Promise<{
+  aggiornati: number;
+  rimanenti: number;
+}> {
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const F = cfg.movimentiFields;
+  const [all, nomiRoster] = await Promise.all([fetchMovimenti(), nomiDipendenti()]);
+  const target: { id: string; cliente: string }[] = [];
+  for (const m of all) {
+    if (m.importo >= 0) continue;
+    if (!["Bonifico uscita", "Altro", "Pagamento Salario"].includes(m.tipologia)) continue;
+    const nome = matchDipendenteNome(m.cliente, nomiRoster);
+    if (!nome) continue;
+    if (m.tipologia === "Pagamento Salario" && m.cliente === nome && !m.daVerificare) continue;
+    target.push({ id: m.id, cliente: nome });
+  }
+  const batch = target.slice(0, APPLICA_MAX_PER_CALL);
+  let aggiornati = 0;
+  const BATCH = 4;
+  for (let i = 0; i < batch.length; i += BATCH) {
+    const esiti = await Promise.allSettled(
+      batch.slice(i, i + BATCH).map((m) => {
+        const fields: Record<string, unknown> = {};
+        if (F.Tipologia) fields[F.Tipologia] = "Pagamento Salario";
+        if (F.Cliente) fields[F.Cliente] = m.cliente;
+        if (F.DaVerificare) fields[F.DaVerificare] = false;
+        return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${m.id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify(fields),
+        });
+      }),
+    );
+    aggiornati += esiti.filter((e) => e.status === "fulfilled").length;
+  }
+  const rimanenti = target.length - aggiornati;
+  logSp(
+    "info",
+    "regola.dipendenti",
+    `Regola dipendenti: ${aggiornati} movimenti aggiornati, ${rimanenti} rimanenti`,
   );
   return { aggiornati, rimanenti };
 }
@@ -5655,6 +5718,7 @@ export async function ebSincronizza(
   const pagina = await ebTransazioni(cred, contoUid, dal, continuation, psu);
   const esistenti = new Set(await fetchMovimentiChiavi());
   const regole = await fetchRegoleFinanza().catch(() => [] as RegolaFinanza[]);
+  const nomiRoster = await nomiDipendenti();
   const result: EbSyncResult = {
     scritti: 0,
     doppioni: 0,
@@ -5677,15 +5741,19 @@ export async function ebSincronizza(
       continue;
     }
     esistenti.add(m.chiave);
-    const c = applicaRegole(
-      {
-        ...classificaMovimento(m.raw),
-        descrizione: m.raw.descrizione,
-        sottocategoria: "",
-        allocPrimaria: "",
-        allocSecondaria: "",
-      },
-      regole,
+    const c = applicaRegolaDipendenti(
+      applicaRegole(
+        {
+          ...classificaMovimento(m.raw),
+          descrizione: m.raw.descrizione,
+          sottocategoria: "",
+          allocPrimaria: "",
+          allocSecondaria: "",
+        },
+        regole,
+      ),
+      m.raw.importo,
+      nomiRoster,
     );
     const fields: Record<string, unknown> = { Title: m.chiave };
     if (F.DataContabile) fields[F.DataContabile] = `${m.raw.dataContabile}T00:00:00Z`;

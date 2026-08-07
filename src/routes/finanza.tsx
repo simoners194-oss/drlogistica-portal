@@ -63,6 +63,7 @@ import {
   spCreateRegolaFinanza,
   spDeleteRegolaFinanza,
   spApplicaRegolaFinanza,
+  spApplicaRegolaDipendenti,
   spAnnullaRegolaFinanza,
   spEbStato,
   spEbSaldo,
@@ -237,6 +238,7 @@ function FinanzaPage() {
   const [rEditId, setREditId] = useState<string | null>(null);
   // Elenco regole raggruppato per tipologia: si apre un gruppo al tocco.
   const [catAperta, setCatAperta] = useState<string | null>(null);
+  const [dipBusy, setDipBusy] = useState(false);
   const [rModo, setRModo] = useState<"esatto" | "contiene">("esatto");
   const [rTipologia, setRTipologia] = useState("");
   const [rCliente, setRCliente] = useState("");
@@ -2031,8 +2033,46 @@ function FinanzaPage() {
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-            <div className="text-sm font-semibold text-foreground mb-3">
-              {t("fin.regoleElencoTitle")}
+            <div className="mb-3 flex items-center gap-3">
+              <span className="text-sm font-semibold text-foreground">
+                {t("fin.regoleElencoTitle")}
+              </span>
+              {/* REGOLA UNICA DIPENDENTI: bonifici in uscita verso nomi che
+                  combaciano col roster (troncati/invertiti compresi) →
+                  Pagamento Salario col nome pulito. Retroattiva a blocchi. */}
+              <button
+                type="button"
+                disabled={dipBusy}
+                onClick={() => {
+                  if (!window.confirm(t("fin.regDipConfirm"))) return;
+                  setDipBusy(true);
+                  void (async () => {
+                    let tot = 0;
+                    try {
+                      for (;;) {
+                        const r = (await spApplicaRegolaDipendenti()) as {
+                          aggiornati: number;
+                          rimanenti: number;
+                        };
+                        tot += r.aggiornati;
+                        if (r.rimanenti <= 0 || r.aggiornati === 0) break;
+                      }
+                      toast.success(`${tot} ${t("fin.regolaApplicati")}`);
+                      loadMovimenti(anni);
+                      loadAnomalie();
+                    } catch (err) {
+                      toast.error(t("common.error"), {
+                        description: err instanceof Error ? err.message : String(err),
+                      });
+                    } finally {
+                      setDipBusy(false);
+                    }
+                  })();
+                }}
+                className="ml-auto rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+              >
+                {dipBusy ? t("fin.regolaApplying") : t("fin.regDipBtn")}
+              </button>
             </div>
             {regole == null ? (
               <div className="py-6 text-center text-sm text-muted-foreground">

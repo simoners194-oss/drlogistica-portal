@@ -781,6 +781,9 @@ const en = {
   "fin.allocSec": "Secondary allocation",
   "fin.totFiltrato": "Filtered total",
   "fin.regoleAltro": "No type set",
+  "fin.regDipBtn": "Apply employee rule",
+  "fin.regDipConfirm":
+    "Outgoing transfers whose counterparty matches an employee name (even truncated or reversed) become 'Pagamento Salario' with the clean roster name. Apply to the whole archive?",
   "fin.regolaApplicati": "existing transactions updated",
   "fin.regolaApplying": "Applying…",
   "fin.regoleElencoTitle": "Active rules",
@@ -1809,6 +1812,9 @@ const it: Record<DictKey, string> = {
   "fin.allocSec": "Allocazione secondaria",
   "fin.totFiltrato": "Totale selezione",
   "fin.regoleAltro": "Senza tipologia",
+  "fin.regDipBtn": "Applica regola dipendenti",
+  "fin.regDipConfirm":
+    "I bonifici in uscita verso nomi che combaciano con un dipendente (anche troncati o invertiti) diventano 'Pagamento Salario' col nome pulito del roster. Applicare a tutto l'archivio?",
   "fin.regolaApplicati": "movimenti esistenti aggiornati",
   "fin.regolaApplying": "Applicazione…",
   "fin.regoleElencoTitle": "Regole attive",

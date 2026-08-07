@@ -69,6 +69,7 @@ import {
   deleteRegolaFinanza,
   applicaRegolaAiMovimenti,
   annullaRegolaAiMovimenti,
+  applicaRegolaDipendentiAiMovimenti,
   fetchGruppiControparti,
   createGruppoControparti,
   deleteGruppoControparti,
@@ -911,6 +912,14 @@ export const spDeleteGruppoControparti = createServerFn({ method: "POST" })
     await deleteGruppoControparti(data.id);
     return { ok: true };
   });
+
+// Regola unica dipendenti: applicazione retroattiva a blocchi.
+export const spApplicaRegolaDipendenti = createServerFn({ method: "POST" }).handler(
+  async (): Promise<{ aggiornati: number; rimanenti: number }> => {
+    await assertDirettore(await currentUser());
+    return applicaRegolaDipendentiAiMovimenti();
+  },
+);
 
 // Ripristina i movimenti toccati da una regola GIÀ eliminata: si passa la
 // definizione della regola (non l'id) e si ripete finché rimanenti=0.
