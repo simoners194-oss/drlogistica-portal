@@ -250,6 +250,9 @@ export const SP_DISPLAY = {
     DaVerificare: "DaVerificare",
     // Lotto di import (per lo storico e l'annullamento di un import intero).
     ImportId: "ImportId",
+    // Conto di appartenenza (in archivio convivono piu' c/c): "BPM 3681"
+    // per il collegamento bancario, gli altri assegnati per lotto. OPZIONALE.
+    Conto: "Conto",
   },
   // Regole apprese della sezione Finanza (correzioni permanenti del direttore:
   // "questo cliente/pattern → questa tipologia e/o questo nome"). OPZIONALE.
@@ -3610,6 +3613,8 @@ export interface SpMovimento {
   note: string;
   daVerificare: boolean;
   importId: string;
+  /** Conto di appartenenza ("" = non assegnato). */
+  conto: string;
   /** Somma progressiva degli importi in ordine cronologico sull'INTERO
    *  archivio (calcolata a ogni fetch, mai salvata): con il saldo attuale
    *  della banca permette il saldo per riga come sull'estratto conto. */
@@ -3633,6 +3638,7 @@ function mapMovimento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknow
     sottocategoria: F.Sottocategoria ? String(f[F.Sottocategoria] ?? "") : "",
     allocPrimaria: F.AllocPrimaria ? String(f[F.AllocPrimaria] ?? "") : "",
     allocSecondaria: F.AllocSecondaria ? String(f[F.AllocSecondaria] ?? "") : "",
+    conto: F.Conto ? String(f[F.Conto] ?? "") : "",
     cliente: F.Cliente ? String(f[F.Cliente] ?? "") : "",
     nrFattura: F.NrFattura ? String(f[F.NrFattura] ?? "") : "",
     note: F.Note ? String(f[F.Note] ?? "") : "",
@@ -4027,6 +4033,9 @@ export async function updateMovimento(input: UpdateMovimentoInput): Promise<SpMo
 // colonna ImportId formano il gruppo "" (annullabile col valore speciale
 // LEGACY_IMPORT_ID, definito in finanza-logic per essere usabile dal client).
 
+/** Nome del conto alimentato dal collegamento bancario. */
+export const CONTO_BPM = "BPM 3681";
+
 export interface ImportStoricoRiga {
   importId: string; // "" per il gruppo legacy
   movimenti: number;
@@ -4034,6 +4043,8 @@ export interface ImportStoricoRiga {
   dal: string;
   al: string;
   totale: number;
+  /** Conto assegnato al lotto ("" = da assegnare; "misto" se discorde). */
+  conto: string;
 }
 
 export async function fetchImportStorico(): Promise<ImportStoricoRiga[]> {
@@ -4047,7 +4058,9 @@ export async function fetchImportStorico(): Promise<ImportStoricoRiga[]> {
       dal: m.dataContabile,
       al: m.dataContabile,
       totale: 0,
+      conto: m.conto,
     };
+    if (g.movimenti > 0 && g.conto !== m.conto) g.conto = "misto";
     g.movimenti++;
     if (m.daVerificare) g.anomalie++;
     if (m.dataContabile && (!g.dal || m.dataContabile < g.dal)) g.dal = m.dataContabile;
@@ -4057,6 +4070,44 @@ export async function fetchImportStorico(): Promise<ImportStoricoRiga[]> {
   }
   // Più recenti in alto (l'ImportId inizia con un timestamp ISO); legacy in coda.
   return [...gruppi.values()].sort((a, b) => b.importId.localeCompare(a.importId));
+}
+
+/** Assegna il CONTO a tutti i movimenti di un lotto, un blocco per chiamata
+ *  (il client ripete finché rimanenti = 0). importId "" = gruppo legacy. */
+export async function assegnaContoALotto(
+  importId: string,
+  conto: string,
+): Promise<{ aggiornati: number; rimanenti: number }> {
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const F = cfg.movimentiFields;
+  if (!F.Conto)
+    throw new Error(
+      'Colonna "Conto" assente su MovimentiBancari: aggiungerla (testo) e fare Riscopri.',
+    );
+  const all = await fetchMovimenti();
+  const target = all.filter((m) => m.importId === importId && m.conto !== conto);
+  const batch = target.slice(0, APPLICA_MAX_PER_CALL);
+  let aggiornati = 0;
+  const BATCH = 4;
+  for (let i = 0; i < batch.length; i += BATCH) {
+    const esiti = await Promise.allSettled(
+      batch.slice(i, i + BATCH).map((m) =>
+        gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${m.id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify({ [F.Conto as string]: conto }),
+        }),
+      ),
+    );
+    aggiornati += esiti.filter((e) => e.status === "fulfilled").length;
+  }
+  const rimanenti = target.length - aggiornati;
+  logSp(
+    "info",
+    "conto.lotto",
+    `Lotto ${importId || "(legacy)"} -> conto "${conto}": ${aggiornati} aggiornati, ${rimanenti} rimanenti`,
+  );
+  return { aggiornati, rimanenti };
 }
 
 // Cancella (a blocchi) tutti i movimenti di un import. Il client ripete la
@@ -5756,6 +5807,7 @@ export async function ebSincronizza(
       nomiRoster,
     );
     const fields: Record<string, unknown> = { Title: m.chiave };
+    if (F.Conto) fields[F.Conto] = CONTO_BPM;
     if (F.DataContabile) fields[F.DataContabile] = `${m.raw.dataContabile}T00:00:00Z`;
     if (F.DataValuta) fields[F.DataValuta] = `${m.raw.dataValuta}T00:00:00Z`;
     if (F.Importo) fields[F.Importo] = m.raw.importo;

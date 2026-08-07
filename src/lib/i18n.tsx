@@ -782,6 +782,11 @@ const en = {
   "fin.totFiltrato": "Filtered total",
   "fin.regoleAltro": "No type set",
   "fin.regDipBtn": "Apply employee rule",
+  "fin.conto": "Account",
+  "fin.contoNonAssegnato": "— not assigned —",
+  "fin.contoPh": "e.g. Qonto",
+  "fin.contoAssegna": "Assign",
+  "fin.contoAssegnato": "Account assigned to the whole batch.",
   "fin.regDipConfirm":
     "Outgoing transfers whose counterparty matches an employee name (even truncated or reversed) become 'Pagamento Salario' with the clean roster name. Apply to the whole archive?",
   "fin.regolaApplicati": "existing transactions updated",
@@ -1813,6 +1818,11 @@ const it: Record<DictKey, string> = {
   "fin.totFiltrato": "Totale selezione",
   "fin.regoleAltro": "Senza tipologia",
   "fin.regDipBtn": "Applica regola dipendenti",
+  "fin.conto": "Conto",
+  "fin.contoNonAssegnato": "— non assegnato —",
+  "fin.contoPh": "es. Qonto",
+  "fin.contoAssegna": "Assegna",
+  "fin.contoAssegnato": "Conto assegnato a tutto il lotto.",
   "fin.regDipConfirm":
     "I bonifici in uscita verso nomi che combaciano con un dipendente (anche troncati o invertiti) diventano 'Pagamento Salario' col nome pulito del roster. Applicare a tutto l'archivio?",
   "fin.regolaApplicati": "movimenti esistenti aggiornati",

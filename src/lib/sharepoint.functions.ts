@@ -70,6 +70,7 @@ import {
   applicaRegolaAiMovimenti,
   annullaRegolaAiMovimenti,
   applicaRegolaDipendentiAiMovimenti,
+  assegnaContoALotto,
   fetchGruppiControparti,
   createGruppoControparti,
   deleteGruppoControparti,
@@ -911,6 +912,20 @@ export const spDeleteGruppoControparti = createServerFn({ method: "POST" })
     await assertDirettore(await currentUser());
     await deleteGruppoControparti(data.id);
     return { ok: true };
+  });
+
+// Assegna il conto a un lotto dello storico (a blocchi).
+export const spAssegnaContoLotto = createServerFn({ method: "POST" })
+  .inputValidator((input: { importId: string; conto: string }) => {
+    const conto = String(input?.conto ?? "")
+      .trim()
+      .slice(0, 40);
+    if (!conto) throw new Error("Nome del conto mancante");
+    return { importId: String(input?.importId ?? ""), conto };
+  })
+  .handler(async ({ data }): Promise<{ aggiornati: number; rimanenti: number }> => {
+    await assertDirettore(await currentUser());
+    return assegnaContoALotto(data.importId, data.conto);
   });
 
 // Regola unica dipendenti: applicazione retroattiva a blocchi.

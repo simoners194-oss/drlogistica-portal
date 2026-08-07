@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.18.0",
+    date: "2026-08-07",
+    codename: "Un archivio, più conti",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Ogni movimento sa a quale conto appartiene",
+        description:
+          "Nell'archivio convivono più conti correnti: ora i movimenti del collegamento bancario sono etichettati automaticamente, i lotti caricati a mano si assegnano con un click dallo Storico estratti, e nei Movimenti c'è il filtro per conto — così il totale filtrato si confronta con il saldo del conto giusto.",
+      },
+    ],
+  },
+  {
     version: "1.17.0",
     date: "2026-08-07",
     codename: "Regole più potenti",

@@ -64,6 +64,7 @@ import {
   spDeleteRegolaFinanza,
   spApplicaRegolaFinanza,
   spApplicaRegolaDipendenti,
+  spAssegnaContoLotto,
   spAnnullaRegolaFinanza,
   spEbStato,
   spEbSaldo,
@@ -239,6 +240,10 @@ function FinanzaPage() {
   // Elenco regole raggruppato per tipologia: si apre un gruppo al tocco.
   const [catAperta, setCatAperta] = useState<string | null>(null);
   const [dipBusy, setDipBusy] = useState(false);
+  // Filtro conto sui movimenti + assegnazione conto per lotto (storico).
+  const [contoF, setContoF] = useState("");
+  const [contoLotto, setContoLotto] = useState<Record<string, string>>({});
+  const [contoBusy, setContoBusy] = useState<string | null>(null);
   const [rModo, setRModo] = useState<"esatto" | "contiene">("esatto");
   const [rTipologia, setRTipologia] = useState("");
   const [rCliente, setRCliente] = useState("");
@@ -889,6 +894,7 @@ function FinanzaPage() {
       );
     if (tipiF.length) out = out.filter((m) => tipiF.includes(m.tipologia));
     if (mesiF.length) out = out.filter((m) => mesiF.includes(Number(m.dataContabile.slice(5, 7))));
+    if (contoF) out = out.filter((m) => (m.conto || "") === (contoF === "__vuoto__" ? "" : contoF));
     if (cercaF.trim()) {
       // Più termini separati da , o ; = basta che UNO corrisponda (per
       // trovare in un colpo "aereo, treno, dirigibile" e regolarli insieme).
@@ -908,7 +914,7 @@ function FinanzaPage() {
       );
     }
     return out;
-  }, [movimenti, anni, tipiF, mesiF, cercaF, clientiF]);
+  }, [movimenti, anni, tipiF, mesiF, cercaF, clientiF, contoF]);
   // Totale (e spezzato entrate/uscite) di QUELLO CHE SI VEDE coi filtri.
   const totaleFiltrato = useMemo(() => {
     let entrate = 0;
@@ -1172,6 +1178,24 @@ function FinanzaPage() {
               className="w-56"
             />
             <div className="flex-1 min-w-48">
+              <label className="text-xs text-muted-foreground">{t("fin.conto")}</label>
+              <select
+                value={contoF}
+                onChange={(e) => setContoF(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">{t("common.allF")}</option>
+                <option value="__vuoto__">{t("fin.contoNonAssegnato")}</option>
+                {[...new Set((movimenti ?? []).map((m) => m.conto).filter(Boolean))]
+                  .sort()
+                  .map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
               <label className="text-xs text-muted-foreground">{t("fin.search")}</label>
               <input
                 value={cercaF}
@@ -1808,6 +1832,77 @@ function FinanzaPage() {
                     <tr key={r.importId || "legacy"} className="border-b border-border/50">
                       <td className="py-2 pr-3 whitespace-nowrap">
                         {fmtImportId(r.importId, t("fin.legacyImport"))}
+                        {/* CONTO del lotto: badge se assegnato, campo+bottone
+                            per assegnarlo (a blocchi, tutto il lotto). */}
+                        <div className="mt-1 flex items-center gap-1.5">
+                          {r.conto && r.conto !== "misto" ? (
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                              {r.conto}
+                            </span>
+                          ) : (
+                            <>
+                              <input
+                                list="conti-noti"
+                                value={contoLotto[r.importId] ?? ""}
+                                onChange={(e) =>
+                                  setContoLotto((prev) => ({
+                                    ...prev,
+                                    [r.importId]: e.target.value,
+                                  }))
+                                }
+                                placeholder={t("fin.contoPh")}
+                                className="w-32 rounded-md border border-border bg-background px-2 py-1 text-[11px]"
+                              />
+                              <button
+                                type="button"
+                                disabled={
+                                  contoBusy != null || !(contoLotto[r.importId] ?? "").trim()
+                                }
+                                onClick={() => {
+                                  const conto = (contoLotto[r.importId] ?? "").trim();
+                                  setContoBusy(r.importId);
+                                  void (async () => {
+                                    try {
+                                      for (;;) {
+                                        const esito = (await spAssegnaContoLotto({
+                                          data: { importId: r.importId, conto },
+                                        })) as { aggiornati: number; rimanenti: number };
+                                        if (esito.rimanenti <= 0 || esito.aggiornati === 0) break;
+                                      }
+                                      toast.success(t("fin.contoAssegnato"));
+                                      loadStorico();
+                                      loadMovimenti(anni);
+                                    } catch (err) {
+                                      toast.error(t("common.error"), {
+                                        description:
+                                          err instanceof Error ? err.message : String(err),
+                                      });
+                                    } finally {
+                                      setContoBusy(null);
+                                    }
+                                  })();
+                                }}
+                                className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted disabled:opacity-50"
+                              >
+                                {contoBusy === r.importId ? "…" : t("fin.contoAssegna")}
+                              </button>
+                            </>
+                          )}
+                          {r.conto === "misto" && (
+                            <span className="text-[11px] text-status-absent">misto</span>
+                          )}
+                        </div>
+                        <datalist id="conti-noti">
+                          {[
+                            ...new Set([
+                              "BPM 3681",
+                              "Qonto",
+                              ...(movimenti ?? []).map((m) => m.conto).filter(Boolean),
+                            ]),
+                          ].map((c) => (
+                            <option key={c} value={c} />
+                          ))}
+                        </datalist>
                       </td>
                       <td className="py-2 pr-3 whitespace-nowrap text-muted-foreground">
                         {fmtData(r.dal)} → {fmtData(r.al)}
