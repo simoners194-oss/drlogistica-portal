@@ -236,6 +236,8 @@ export const SP_DISPLAY = {
     Causale: "Causale",
     Descrizione: "Descrizione",
     Tipologia: "Tipologia",
+    // Sottocategoria libera (es. Trasferte -> Pernottamento/Pasto/Trasporto).
+    Sottocategoria: "Sottocategoria",
     Cliente: "Cliente",
     NrFattura: "NrFattura",
     Note: "Note",
@@ -250,6 +252,7 @@ export const SP_DISPLAY = {
     CampoMatch: "CampoMatch",
     ModoMatch: "ModoMatch",
     Tipologia: "Tipologia",
+    Sottocategoria: "Sottocategoria",
     ClienteNuovo: "ClienteNuovo",
   },
   // Regole di CLASSIFICAZIONE delle fatture passive (tab Regole): per
@@ -3591,6 +3594,7 @@ export interface SpMovimento {
   causale: string;
   descrizione: string;
   tipologia: string;
+  sottocategoria: string;
   cliente: string;
   nrFattura: string;
   note: string;
@@ -3616,6 +3620,7 @@ function mapMovimento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknow
     causale: F.Causale ? String(f[F.Causale] ?? "") : "",
     descrizione: F.Descrizione ? String(f[F.Descrizione] ?? "") : "",
     tipologia: F.Tipologia ? String(f[F.Tipologia] ?? "") : "",
+    sottocategoria: F.Sottocategoria ? String(f[F.Sottocategoria] ?? "") : "",
     cliente: F.Cliente ? String(f[F.Cliente] ?? "") : "",
     nrFattura: F.NrFattura ? String(f[F.NrFattura] ?? "") : "",
     note: F.Note ? String(f[F.Note] ?? "") : "",
@@ -3748,7 +3753,10 @@ export async function importMovimenti(
       continue;
     }
     esistenti.add(chiave); // dedup anche dentro il blocco
-    const c = applicaRegole({ ...classificaMovimento(r), descrizione: r.descrizione }, regole);
+    const c = applicaRegole(
+      { ...classificaMovimento(r), descrizione: r.descrizione, sottocategoria: "" },
+      regole,
+    );
     if (c.daVerificare) result.anomalie++;
     const fields: Record<string, unknown> = { Title: chiave };
     if (F.DataContabile) fields[F.DataContabile] = `${r.dataContabile}T00:00:00Z`;
@@ -3758,6 +3766,7 @@ export async function importMovimenti(
     if (F.Causale) fields[F.Causale] = r.causale;
     if (F.Descrizione) fields[F.Descrizione] = r.descrizione;
     if (F.Tipologia) fields[F.Tipologia] = c.tipologia;
+    if (F.Sottocategoria && c.sottocategoria) fields[F.Sottocategoria] = c.sottocategoria;
     if (F.Cliente && c.cliente) fields[F.Cliente] = c.cliente;
     if (F.NrFattura && c.nrFattura) fields[F.NrFattura] = c.nrFattura;
     if (F.DaVerificare) fields[F.DaVerificare] = c.daVerificare;
@@ -3933,6 +3942,7 @@ export async function setIncassoManuale(
 export interface UpdateMovimentoInput {
   movimentoId: string;
   tipologia?: string;
+  sottocategoria?: string;
   cliente?: string;
   nrFattura?: string;
   note?: string;
@@ -3947,6 +3957,8 @@ export async function updateMovimento(input: UpdateMovimentoInput): Promise<SpMo
   const F = cfg.movimentiFields;
   const fields: Record<string, unknown> = {};
   if (F.Tipologia && input.tipologia !== undefined) fields[F.Tipologia] = input.tipologia;
+  if (F.Sottocategoria && input.sottocategoria !== undefined)
+    fields[F.Sottocategoria] = input.sottocategoria;
   if (F.Cliente && input.cliente !== undefined) fields[F.Cliente] = input.cliente;
   if (F.NrFattura && input.nrFattura !== undefined) fields[F.NrFattura] = input.nrFattura;
   if (F.Note && input.note !== undefined) fields[F.Note] = input.note;
@@ -4063,9 +4075,12 @@ function mapRegola(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>
   return {
     id: String(it.id),
     pattern: F.Pattern ? String(f[F.Pattern] ?? "") : "",
-    campo: campo === "descrizione" ? "descrizione" : "cliente",
+    campo: campo === "descrizione" ? "descrizione" : campo === "entrambi" ? "entrambi" : "cliente",
     modo: modo === "contiene" ? "contiene" : "esatto",
     tipologia: F.Tipologia ? String(f[F.Tipologia] ?? "").trim() || undefined : undefined,
+    sottocategoria: F.Sottocategoria
+      ? String(f[F.Sottocategoria] ?? "").trim() || undefined
+      : undefined,
     cliente: F.ClienteNuovo ? String(f[F.ClienteNuovo] ?? "").trim() || undefined : undefined,
   };
 }
@@ -4090,6 +4105,8 @@ export async function createRegolaFinanza(input: RegolaFinanza): Promise<RegolaF
     throw new Error("La regola deve cambiare almeno la tipologia o il nome della controparte.");
   const fields: Record<string, unknown> = { Title: input.pattern.trim().slice(0, 120) };
   if (F.Pattern) fields[F.Pattern] = input.pattern.trim();
+  if (F.Sottocategoria && input.sottocategoria?.trim())
+    fields[F.Sottocategoria] = input.sottocategoria.trim();
   if (F.CampoMatch) fields[F.CampoMatch] = input.campo;
   if (F.ModoMatch) fields[F.ModoMatch] = input.modo;
   if (F.Tipologia && input.tipologia?.trim()) fields[F.Tipologia] = input.tipologia.trim();
@@ -4130,9 +4147,11 @@ export async function applicaRegolaAiMovimenti(
   const target = all.filter((m) => {
     if (!matchRegola(m, regola)) return false;
     const cambiaTip = Boolean(regola.tipologia?.trim()) && m.tipologia !== regola.tipologia?.trim();
+    const cambiaSott =
+      Boolean(regola.sottocategoria?.trim()) && m.sottocategoria !== regola.sottocategoria?.trim();
     const cambiaCli = Boolean(regola.cliente?.trim()) && m.cliente !== regola.cliente?.trim();
     const togliFlag = Boolean(regola.tipologia?.trim()) && m.daVerificare;
-    return cambiaTip || cambiaCli || togliFlag;
+    return cambiaTip || cambiaSott || cambiaCli || togliFlag;
   });
   const batch = target.slice(0, APPLICA_MAX_PER_CALL);
   let aggiornati = 0;
@@ -4142,6 +4161,8 @@ export async function applicaRegolaAiMovimenti(
       batch.slice(i, i + BATCH).map((m) => {
         const fields: Record<string, unknown> = {};
         if (F.Tipologia && regola.tipologia?.trim()) fields[F.Tipologia] = regola.tipologia.trim();
+        if (F.Sottocategoria && regola.sottocategoria?.trim())
+          fields[F.Sottocategoria] = regola.sottocategoria.trim();
         if (F.Cliente && regola.cliente?.trim()) fields[F.Cliente] = regola.cliente.trim();
         if (F.DaVerificare && regola.tipologia?.trim()) fields[F.DaVerificare] = false;
         return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${m.id}/fields`, {
@@ -4175,21 +4196,34 @@ export async function annullaRegolaAiMovimenti(
   const listId = requireMovimentiList(cfg);
   const F = cfg.movimentiFields;
   const [all, regoleRestanti] = await Promise.all([fetchMovimenti(), fetchRegoleFinanza()]);
-  const target: { id: string; tipologia: string; cliente: string; daVerificare: boolean }[] = [];
+  const target: {
+    id: string;
+    tipologia: string;
+    sottocategoria: string;
+    cliente: string;
+    daVerificare: boolean;
+  }[] = [];
   for (const m of all) {
     // Stato "vergine" dai soli dati grezzi, senza alcuna regola.
-    const vergine = { ...classificaMovimento(m), descrizione: m.descrizione };
+    const vergine = {
+      ...classificaMovimento(m),
+      descrizione: m.descrizione,
+      sottocategoria: "",
+    };
     // Interessano solo le righe che la regola eliminata AVREBBE toccato.
     if (!matchRegola(vergine, regola)) continue;
     const dopo = applicaRegole(vergine, regoleRestanti);
+    const sottoDopo = dopo.sottocategoria ?? "";
     if (
       dopo.tipologia !== m.tipologia ||
+      sottoDopo !== m.sottocategoria ||
       dopo.cliente !== m.cliente ||
       dopo.daVerificare !== m.daVerificare
     )
       target.push({
         id: m.id,
         tipologia: dopo.tipologia,
+        sottocategoria: sottoDopo,
         cliente: dopo.cliente,
         daVerificare: dopo.daVerificare,
       });
@@ -4202,6 +4236,7 @@ export async function annullaRegolaAiMovimenti(
       batch.slice(i, i + BATCH).map((m) => {
         const fields: Record<string, unknown> = {};
         if (F.Tipologia) fields[F.Tipologia] = m.tipologia;
+        if (F.Sottocategoria) fields[F.Sottocategoria] = m.sottocategoria;
         if (F.Cliente) fields[F.Cliente] = m.cliente;
         if (F.DaVerificare) fields[F.DaVerificare] = m.daVerificare;
         return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${m.id}/fields`, {
@@ -5589,7 +5624,7 @@ export async function ebSincronizza(
     }
     esistenti.add(m.chiave);
     const c = applicaRegole(
-      { ...classificaMovimento(m.raw), descrizione: m.raw.descrizione },
+      { ...classificaMovimento(m.raw), descrizione: m.raw.descrizione, sottocategoria: "" },
       regole,
     );
     const fields: Record<string, unknown> = { Title: m.chiave };
@@ -5600,6 +5635,7 @@ export async function ebSincronizza(
     if (F.Causale) fields[F.Causale] = m.raw.causale;
     if (F.Descrizione) fields[F.Descrizione] = m.raw.descrizione;
     if (F.Tipologia) fields[F.Tipologia] = c.tipologia;
+    if (F.Sottocategoria && c.sottocategoria) fields[F.Sottocategoria] = c.sottocategoria;
     if (F.Cliente && c.cliente) fields[F.Cliente] = c.cliente;
     if (F.NrFattura && c.nrFattura) fields[F.NrFattura] = c.nrFattura;
     if (F.DaVerificare) fields[F.DaVerificare] = c.daVerificare;

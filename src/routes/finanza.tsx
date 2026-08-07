@@ -238,6 +238,7 @@ function FinanzaPage() {
   const [rModo, setRModo] = useState<"esatto" | "contiene">("esatto");
   const [rTipologia, setRTipologia] = useState("");
   const [rCliente, setRCliente] = useState("");
+  const [rSottocat, setRSottocat] = useState("");
   const [rApplica, setRApplica] = useState(true);
   const [rBusy, setRBusy] = useState(false);
   const [rProgress, setRProgress] = useState(0);
@@ -246,6 +247,7 @@ function FinanzaPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editTip, setEditTip] = useState("");
   const [editCliente, setEditCliente] = useState("");
+  const [editSott, setEditSott] = useState("");
   const [editNrFatt, setEditNrFatt] = useState("");
   const [editNote, setEditNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -706,6 +708,7 @@ function FinanzaPage() {
     setRCampo("cliente");
     setRModo("esatto");
     setRTipologia(m.tipologia || "");
+    setRSottocat(m.sottocategoria || "");
     setRCliente("");
     setRApplica(true);
     setTab("regole");
@@ -720,6 +723,7 @@ function FinanzaPage() {
         campo: rCampo,
         modo: rModo,
         tipologia: rTipologia.trim() || undefined,
+        sottocategoria: rSottocat.trim() || undefined,
         cliente: rCliente.trim() || undefined,
       };
       if (rEditId) await spDeleteRegolaFinanza({ data: { regolaId: rEditId } });
@@ -743,6 +747,7 @@ function FinanzaPage() {
       });
       setRPattern("");
       setRTipologia("");
+      setRSottocat("");
       setRCliente("");
       setREditId(null);
       loadRegole();
@@ -803,6 +808,7 @@ function FinanzaPage() {
   const apriEdit = (m: SpMovimento) => {
     setEditId(m.id);
     setEditTip(m.tipologia || "Altro");
+    setEditSott(m.sottocategoria || "");
     setEditCliente(m.cliente);
     setEditNrFatt(m.nrFattura);
     setEditNote(m.note);
@@ -815,6 +821,7 @@ function FinanzaPage() {
         data: {
           movimentoId: editId,
           tipologia: editTip,
+          sottocategoria: editSott.trim(),
           cliente: editCliente.trim(),
           nrFattura: editNrFatt.trim(),
           note: editNote.trim(),
@@ -1350,6 +1357,12 @@ function FinanzaPage() {
                       )}
                       <td className="py-1.5 pr-3">
                         {m.tipologia}
+                        {m.sottocategoria && (
+                          <span className="text-[11px] text-muted-foreground">
+                            {" "}
+                            · {m.sottocategoria}
+                          </span>
+                        )}
                         {m.daVerificare && (
                           <AlertTriangle className="h-3.5 w-3.5 inline-block ml-1 text-status-absent" />
                         )}
@@ -1604,6 +1617,15 @@ function FinanzaPage() {
                         </datalist>
                       </div>
                       <div>
+                        <label className="text-xs text-muted-foreground">{t("fin.sottocat")}</label>
+                        <input
+                          list="sottocategorie-note"
+                          value={editSott}
+                          onChange={(e) => setEditSott(e.target.value)}
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
                         <label className="text-xs text-muted-foreground">{t("fin.cliForn")}</label>
                         <input
                           value={editCliente}
@@ -1820,6 +1842,30 @@ function FinanzaPage() {
                 </datalist>
               </div>
               <div>
+                <label className="text-xs text-muted-foreground">{t("fin.regolaSottocat")}</label>
+                {/* Libera con suggerimenti: le sottocategorie "nascono"
+                    scrivendole (auto-aggiunta chiesta dal direttore). */}
+                <input
+                  list="sottocategorie-note"
+                  value={rSottocat}
+                  onChange={(e) => setRSottocat(e.target.value)}
+                  placeholder={t("fin.regolaTipNoChange")}
+                  className={inputCls}
+                />
+                <datalist id="sottocategorie-note">
+                  {[
+                    ...new Set([
+                      "Pernottamento",
+                      "Pasto",
+                      "Trasporto",
+                      ...(movimenti ?? []).map((m) => m.sottocategoria).filter(Boolean),
+                    ]),
+                  ].map((sc) => (
+                    <option key={sc} value={sc} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
                 <label className="text-xs text-muted-foreground">
                   {t("fin.regolaClienteNuovo")}
                 </label>
@@ -1897,6 +1943,11 @@ function FinanzaPage() {
                           {t("fin.regolaFraseTip")} {r.tipologia}
                         </span>
                       )}
+                      {r.sottocategoria && (
+                        <span className="text-xs rounded-full bg-primary/10 text-primary px-2 py-0.5 mr-1">
+                          {t("fin.regolaFraseSottocat")} {r.sottocategoria}
+                        </span>
+                      )}
                       {r.cliente && (
                         <span className="text-xs rounded-full bg-muted px-2 py-0.5">
                           {t("fin.regolaFraseNomeNuovo")} {r.cliente}
@@ -1910,6 +1961,7 @@ function FinanzaPage() {
                         setRCampo(r.campo);
                         setRModo(r.modo);
                         setRTipologia(r.tipologia ?? "");
+                        setRSottocat(r.sottocategoria ?? "");
                         setRCliente(r.cliente ?? "");
                         setRApplica(true);
                         setREditId(r.id ?? null);

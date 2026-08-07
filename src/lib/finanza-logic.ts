@@ -177,6 +177,8 @@ export interface RegolaFinanza {
   modo: "esatto" | "contiene";
   /** Tipologia da assegnare al match (vuota = non cambiare). */
   tipologia?: string;
+  /** Sottocategoria da assegnare al match (es. Trasferte -> Pernottamento). */
+  sottocategoria?: string;
   /** Nome controparte da assegnare al match (per unificare es. TIM/Telecom). */
   cliente?: string;
 }
@@ -206,7 +208,13 @@ export function matchRegola(
  *  cliente-contiene, descrizione). Una regola che fissa la tipologia rende il
  *  movimento "certo" (via il flag anomalia). */
 export function applicaRegole<
-  T extends { cliente: string; descrizione: string; tipologia: string; daVerificare: boolean },
+  T extends {
+    cliente: string;
+    descrizione: string;
+    tipologia: string;
+    daVerificare: boolean;
+    sottocategoria?: string;
+  },
 >(mov: T, regole: readonly RegolaFinanza[]): T {
   if (!regole.length) return mov;
   const priorita = (r: RegolaFinanza) =>
@@ -217,6 +225,7 @@ export function applicaRegole<
   return {
     ...mov,
     tipologia: r.tipologia?.trim() ? r.tipologia.trim() : mov.tipologia,
+    sottocategoria: r.sottocategoria?.trim() ? r.sottocategoria.trim() : mov.sottocategoria,
     cliente: r.cliente?.trim() ? r.cliente.trim() : mov.cliente,
     daVerificare: r.tipologia?.trim() ? false : mov.daVerificare,
   };

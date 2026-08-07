@@ -789,6 +789,8 @@ export const spUpdateMovimento = createServerFn({ method: "POST" })
     return {
       movimentoId: String(input.movimentoId),
       tipologia: input.tipologia !== undefined ? String(input.tipologia).slice(0, 60) : undefined,
+      sottocategoria:
+        input.sottocategoria !== undefined ? String(input.sottocategoria).slice(0, 60) : undefined,
       cliente: input.cliente !== undefined ? String(input.cliente).slice(0, 120) : undefined,
       nrFattura: input.nrFattura !== undefined ? String(input.nrFattura).slice(0, 160) : undefined,
       note: input.note !== undefined ? String(input.note).slice(0, 500) : undefined,
@@ -807,11 +809,15 @@ function validateRegola(input: Partial<RegolaFinanza>): RegolaFinanza {
     .slice(0, 120);
   if (!pattern) throw new Error("Pattern mancante");
   const tipologia = input.tipologia ? String(input.tipologia).trim().slice(0, 60) : undefined;
+  const sottocategoria = input.sottocategoria
+    ? String(input.sottocategoria).trim().slice(0, 60)
+    : undefined;
   const cliente = input.cliente ? String(input.cliente).trim().slice(0, 120) : undefined;
   if (!tipologia && !cliente)
     throw new Error("La regola deve impostare tipologia o nome controparte");
   return {
     pattern,
+    sottocategoria,
     campo:
       input.campo === "descrizione"
         ? "descrizione"
