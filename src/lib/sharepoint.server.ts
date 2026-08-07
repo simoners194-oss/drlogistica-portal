@@ -3638,7 +3638,13 @@ function mapMovimento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknow
     sottocategoria: F.Sottocategoria ? String(f[F.Sottocategoria] ?? "") : "",
     allocPrimaria: F.AllocPrimaria ? String(f[F.AllocPrimaria] ?? "") : "",
     allocSecondaria: F.AllocSecondaria ? String(f[F.AllocSecondaria] ?? "") : "",
-    conto: F.Conto ? String(f[F.Conto] ?? "") : "",
+    // I movimenti del collegamento bancario si riconoscono dalla chiave
+    // ("EB|<riferimento>"): il conto BPM e' DEDOTTO in lettura, cosi' anche
+    // lo storico gia' importato via API risulta etichettato senza scrivere
+    // nulla (e senza assegnazioni a mano).
+    conto:
+      (F.Conto ? String(f[F.Conto] ?? "") : "") ||
+      (String(f["Title"] ?? "").startsWith("EB|") ? CONTO_BPM : ""),
     cliente: F.Cliente ? String(f[F.Cliente] ?? "") : "",
     nrFattura: F.NrFattura ? String(f[F.NrFattura] ?? "") : "",
     note: F.Note ? String(f[F.Note] ?? "") : "",
