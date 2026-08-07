@@ -791,6 +791,12 @@ export const spUpdateMovimento = createServerFn({ method: "POST" })
       tipologia: input.tipologia !== undefined ? String(input.tipologia).slice(0, 60) : undefined,
       sottocategoria:
         input.sottocategoria !== undefined ? String(input.sottocategoria).slice(0, 60) : undefined,
+      allocPrimaria:
+        input.allocPrimaria !== undefined ? String(input.allocPrimaria).slice(0, 60) : undefined,
+      allocSecondaria:
+        input.allocSecondaria !== undefined
+          ? String(input.allocSecondaria).slice(0, 60)
+          : undefined,
       cliente: input.cliente !== undefined ? String(input.cliente).slice(0, 120) : undefined,
       nrFattura: input.nrFattura !== undefined ? String(input.nrFattura).slice(0, 160) : undefined,
       note: input.note !== undefined ? String(input.note).slice(0, 500) : undefined,
@@ -812,12 +818,20 @@ function validateRegola(input: Partial<RegolaFinanza>): RegolaFinanza {
   const sottocategoria = input.sottocategoria
     ? String(input.sottocategoria).trim().slice(0, 60)
     : undefined;
+  const allocPrimaria = input.allocPrimaria
+    ? String(input.allocPrimaria).trim().slice(0, 60)
+    : undefined;
+  const allocSecondaria = input.allocSecondaria
+    ? String(input.allocSecondaria).trim().slice(0, 60)
+    : undefined;
   const cliente = input.cliente ? String(input.cliente).trim().slice(0, 120) : undefined;
   if (!tipologia && !cliente)
     throw new Error("La regola deve impostare tipologia o nome controparte");
   return {
     pattern,
     sottocategoria,
+    allocPrimaria,
+    allocSecondaria,
     campo:
       input.campo === "descrizione"
         ? "descrizione"

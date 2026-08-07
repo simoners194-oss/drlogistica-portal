@@ -179,6 +179,10 @@ export interface RegolaFinanza {
   tipologia?: string;
   /** Sottocategoria da assegnare al match (es. Trasferte -> Pernottamento). */
   sottocategoria?: string;
+  /** Allocazione primaria da assegnare (Costi generali / Appalto). */
+  allocPrimaria?: string;
+  /** Allocazione secondaria (Ufficio Fiano Romano, iMile, Postadoc Hub...). */
+  allocSecondaria?: string;
   /** Nome controparte da assegnare al match (per unificare es. TIM/Telecom). */
   cliente?: string;
 }
@@ -214,6 +218,8 @@ export function applicaRegole<
     tipologia: string;
     daVerificare: boolean;
     sottocategoria?: string;
+    allocPrimaria?: string;
+    allocSecondaria?: string;
   },
 >(mov: T, regole: readonly RegolaFinanza[]): T {
   if (!regole.length) return mov;
@@ -226,6 +232,8 @@ export function applicaRegole<
     ...mov,
     tipologia: r.tipologia?.trim() ? r.tipologia.trim() : mov.tipologia,
     sottocategoria: r.sottocategoria?.trim() ? r.sottocategoria.trim() : mov.sottocategoria,
+    allocPrimaria: r.allocPrimaria?.trim() ? r.allocPrimaria.trim() : mov.allocPrimaria,
+    allocSecondaria: r.allocSecondaria?.trim() ? r.allocSecondaria.trim() : mov.allocSecondaria,
     cliente: r.cliente?.trim() ? r.cliente.trim() : mov.cliente,
     daVerificare: r.tipologia?.trim() ? false : mov.daVerificare,
   };

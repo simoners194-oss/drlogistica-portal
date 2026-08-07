@@ -238,6 +238,10 @@ export const SP_DISPLAY = {
     Tipologia: "Tipologia",
     // Sottocategoria libera (es. Trasferte -> Pernottamento/Pasto/Trasporto).
     Sottocategoria: "Sottocategoria",
+    // Allocazioni del direttore: primaria (Costi generali/Appalto) e
+    // secondaria (Ufficio Fiano Romano, Ufficio Milano, iMile, Postadoc Hub).
+    AllocPrimaria: "AllocazionePrimaria",
+    AllocSecondaria: "AllocazioneSecondaria",
     Cliente: "Cliente",
     NrFattura: "NrFattura",
     Note: "Note",
@@ -253,6 +257,8 @@ export const SP_DISPLAY = {
     ModoMatch: "ModoMatch",
     Tipologia: "Tipologia",
     Sottocategoria: "Sottocategoria",
+    AllocPrimaria: "AllocazionePrimaria",
+    AllocSecondaria: "AllocazioneSecondaria",
     ClienteNuovo: "ClienteNuovo",
   },
   // Regole di CLASSIFICAZIONE delle fatture passive (tab Regole): per
@@ -3595,6 +3601,8 @@ export interface SpMovimento {
   descrizione: string;
   tipologia: string;
   sottocategoria: string;
+  allocPrimaria: string;
+  allocSecondaria: string;
   cliente: string;
   nrFattura: string;
   note: string;
@@ -3621,6 +3629,8 @@ function mapMovimento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknow
     descrizione: F.Descrizione ? String(f[F.Descrizione] ?? "") : "",
     tipologia: F.Tipologia ? String(f[F.Tipologia] ?? "") : "",
     sottocategoria: F.Sottocategoria ? String(f[F.Sottocategoria] ?? "") : "",
+    allocPrimaria: F.AllocPrimaria ? String(f[F.AllocPrimaria] ?? "") : "",
+    allocSecondaria: F.AllocSecondaria ? String(f[F.AllocSecondaria] ?? "") : "",
     cliente: F.Cliente ? String(f[F.Cliente] ?? "") : "",
     nrFattura: F.NrFattura ? String(f[F.NrFattura] ?? "") : "",
     note: F.Note ? String(f[F.Note] ?? "") : "",
@@ -3754,7 +3764,13 @@ export async function importMovimenti(
     }
     esistenti.add(chiave); // dedup anche dentro il blocco
     const c = applicaRegole(
-      { ...classificaMovimento(r), descrizione: r.descrizione, sottocategoria: "" },
+      {
+        ...classificaMovimento(r),
+        descrizione: r.descrizione,
+        sottocategoria: "",
+        allocPrimaria: "",
+        allocSecondaria: "",
+      },
       regole,
     );
     if (c.daVerificare) result.anomalie++;
@@ -3767,6 +3783,8 @@ export async function importMovimenti(
     if (F.Descrizione) fields[F.Descrizione] = r.descrizione;
     if (F.Tipologia) fields[F.Tipologia] = c.tipologia;
     if (F.Sottocategoria && c.sottocategoria) fields[F.Sottocategoria] = c.sottocategoria;
+    if (F.AllocPrimaria && c.allocPrimaria) fields[F.AllocPrimaria] = c.allocPrimaria;
+    if (F.AllocSecondaria && c.allocSecondaria) fields[F.AllocSecondaria] = c.allocSecondaria;
     if (F.Cliente && c.cliente) fields[F.Cliente] = c.cliente;
     if (F.NrFattura && c.nrFattura) fields[F.NrFattura] = c.nrFattura;
     if (F.DaVerificare) fields[F.DaVerificare] = c.daVerificare;
@@ -3943,6 +3961,8 @@ export interface UpdateMovimentoInput {
   movimentoId: string;
   tipologia?: string;
   sottocategoria?: string;
+  allocPrimaria?: string;
+  allocSecondaria?: string;
   cliente?: string;
   nrFattura?: string;
   note?: string;
@@ -3959,6 +3979,10 @@ export async function updateMovimento(input: UpdateMovimentoInput): Promise<SpMo
   if (F.Tipologia && input.tipologia !== undefined) fields[F.Tipologia] = input.tipologia;
   if (F.Sottocategoria && input.sottocategoria !== undefined)
     fields[F.Sottocategoria] = input.sottocategoria;
+  if (F.AllocPrimaria && input.allocPrimaria !== undefined)
+    fields[F.AllocPrimaria] = input.allocPrimaria;
+  if (F.AllocSecondaria && input.allocSecondaria !== undefined)
+    fields[F.AllocSecondaria] = input.allocSecondaria;
   if (F.Cliente && input.cliente !== undefined) fields[F.Cliente] = input.cliente;
   if (F.NrFattura && input.nrFattura !== undefined) fields[F.NrFattura] = input.nrFattura;
   if (F.Note && input.note !== undefined) fields[F.Note] = input.note;
@@ -4081,6 +4105,12 @@ function mapRegola(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>
     sottocategoria: F.Sottocategoria
       ? String(f[F.Sottocategoria] ?? "").trim() || undefined
       : undefined,
+    allocPrimaria: F.AllocPrimaria
+      ? String(f[F.AllocPrimaria] ?? "").trim() || undefined
+      : undefined,
+    allocSecondaria: F.AllocSecondaria
+      ? String(f[F.AllocSecondaria] ?? "").trim() || undefined
+      : undefined,
     cliente: F.ClienteNuovo ? String(f[F.ClienteNuovo] ?? "").trim() || undefined : undefined,
   };
 }
@@ -4107,6 +4137,10 @@ export async function createRegolaFinanza(input: RegolaFinanza): Promise<RegolaF
   if (F.Pattern) fields[F.Pattern] = input.pattern.trim();
   if (F.Sottocategoria && input.sottocategoria?.trim())
     fields[F.Sottocategoria] = input.sottocategoria.trim();
+  if (F.AllocPrimaria && input.allocPrimaria?.trim())
+    fields[F.AllocPrimaria] = input.allocPrimaria.trim();
+  if (F.AllocSecondaria && input.allocSecondaria?.trim())
+    fields[F.AllocSecondaria] = input.allocSecondaria.trim();
   if (F.CampoMatch) fields[F.CampoMatch] = input.campo;
   if (F.ModoMatch) fields[F.ModoMatch] = input.modo;
   if (F.Tipologia && input.tipologia?.trim()) fields[F.Tipologia] = input.tipologia.trim();
@@ -4149,9 +4183,13 @@ export async function applicaRegolaAiMovimenti(
     const cambiaTip = Boolean(regola.tipologia?.trim()) && m.tipologia !== regola.tipologia?.trim();
     const cambiaSott =
       Boolean(regola.sottocategoria?.trim()) && m.sottocategoria !== regola.sottocategoria?.trim();
+    const cambiaAlloc =
+      (Boolean(regola.allocPrimaria?.trim()) && m.allocPrimaria !== regola.allocPrimaria?.trim()) ||
+      (Boolean(regola.allocSecondaria?.trim()) &&
+        m.allocSecondaria !== regola.allocSecondaria?.trim());
     const cambiaCli = Boolean(regola.cliente?.trim()) && m.cliente !== regola.cliente?.trim();
     const togliFlag = Boolean(regola.tipologia?.trim()) && m.daVerificare;
-    return cambiaTip || cambiaSott || cambiaCli || togliFlag;
+    return cambiaTip || cambiaSott || cambiaAlloc || cambiaCli || togliFlag;
   });
   const batch = target.slice(0, APPLICA_MAX_PER_CALL);
   let aggiornati = 0;
@@ -4163,6 +4201,10 @@ export async function applicaRegolaAiMovimenti(
         if (F.Tipologia && regola.tipologia?.trim()) fields[F.Tipologia] = regola.tipologia.trim();
         if (F.Sottocategoria && regola.sottocategoria?.trim())
           fields[F.Sottocategoria] = regola.sottocategoria.trim();
+        if (F.AllocPrimaria && regola.allocPrimaria?.trim())
+          fields[F.AllocPrimaria] = regola.allocPrimaria.trim();
+        if (F.AllocSecondaria && regola.allocSecondaria?.trim())
+          fields[F.AllocSecondaria] = regola.allocSecondaria.trim();
         if (F.Cliente && regola.cliente?.trim()) fields[F.Cliente] = regola.cliente.trim();
         if (F.DaVerificare && regola.tipologia?.trim()) fields[F.DaVerificare] = false;
         return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${m.id}/fields`, {
@@ -4200,6 +4242,8 @@ export async function annullaRegolaAiMovimenti(
     id: string;
     tipologia: string;
     sottocategoria: string;
+    allocPrimaria: string;
+    allocSecondaria: string;
     cliente: string;
     daVerificare: boolean;
   }[] = [];
@@ -4209,14 +4253,20 @@ export async function annullaRegolaAiMovimenti(
       ...classificaMovimento(m),
       descrizione: m.descrizione,
       sottocategoria: "",
+      allocPrimaria: "",
+      allocSecondaria: "",
     };
     // Interessano solo le righe che la regola eliminata AVREBBE toccato.
     if (!matchRegola(vergine, regola)) continue;
     const dopo = applicaRegole(vergine, regoleRestanti);
     const sottoDopo = dopo.sottocategoria ?? "";
+    const priDopo = dopo.allocPrimaria ?? "";
+    const secDopo = dopo.allocSecondaria ?? "";
     if (
       dopo.tipologia !== m.tipologia ||
       sottoDopo !== m.sottocategoria ||
+      priDopo !== m.allocPrimaria ||
+      secDopo !== m.allocSecondaria ||
       dopo.cliente !== m.cliente ||
       dopo.daVerificare !== m.daVerificare
     )
@@ -4224,6 +4274,8 @@ export async function annullaRegolaAiMovimenti(
         id: m.id,
         tipologia: dopo.tipologia,
         sottocategoria: sottoDopo,
+        allocPrimaria: priDopo,
+        allocSecondaria: secDopo,
         cliente: dopo.cliente,
         daVerificare: dopo.daVerificare,
       });
@@ -4237,6 +4289,8 @@ export async function annullaRegolaAiMovimenti(
         const fields: Record<string, unknown> = {};
         if (F.Tipologia) fields[F.Tipologia] = m.tipologia;
         if (F.Sottocategoria) fields[F.Sottocategoria] = m.sottocategoria;
+        if (F.AllocPrimaria) fields[F.AllocPrimaria] = m.allocPrimaria;
+        if (F.AllocSecondaria) fields[F.AllocSecondaria] = m.allocSecondaria;
         if (F.Cliente) fields[F.Cliente] = m.cliente;
         if (F.DaVerificare) fields[F.DaVerificare] = m.daVerificare;
         return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${m.id}/fields`, {
@@ -5624,7 +5678,13 @@ export async function ebSincronizza(
     }
     esistenti.add(m.chiave);
     const c = applicaRegole(
-      { ...classificaMovimento(m.raw), descrizione: m.raw.descrizione, sottocategoria: "" },
+      {
+        ...classificaMovimento(m.raw),
+        descrizione: m.raw.descrizione,
+        sottocategoria: "",
+        allocPrimaria: "",
+        allocSecondaria: "",
+      },
       regole,
     );
     const fields: Record<string, unknown> = { Title: m.chiave };
@@ -5636,6 +5696,8 @@ export async function ebSincronizza(
     if (F.Descrizione) fields[F.Descrizione] = m.raw.descrizione;
     if (F.Tipologia) fields[F.Tipologia] = c.tipologia;
     if (F.Sottocategoria && c.sottocategoria) fields[F.Sottocategoria] = c.sottocategoria;
+    if (F.AllocPrimaria && c.allocPrimaria) fields[F.AllocPrimaria] = c.allocPrimaria;
+    if (F.AllocSecondaria && c.allocSecondaria) fields[F.AllocSecondaria] = c.allocSecondaria;
     if (F.Cliente && c.cliente) fields[F.Cliente] = c.cliente;
     if (F.NrFattura && c.nrFattura) fields[F.NrFattura] = c.nrFattura;
     if (F.DaVerificare) fields[F.DaVerificare] = c.daVerificare;
