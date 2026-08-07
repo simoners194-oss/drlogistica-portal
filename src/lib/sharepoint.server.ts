@@ -53,6 +53,7 @@ import {
   applicaRegolaDipendenti,
   matchDipendenteNome,
   type DipendenteRoster,
+  normalizeTesto,
   applicaRegole,
   matchRegola,
   LEGACY_IMPORT_ID,
@@ -1296,6 +1297,102 @@ function normKey(s: string): string {
     out += invisible ? " " : ch;
   }
   return out.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+export interface ImportAppaltiResult {
+  dryRun: boolean;
+  aggiornati: number;
+  creati: number;
+  invariati: number;
+  ambigui: string[];
+  anteprima: string[];
+}
+
+/** Assegna l'APPALTO ai dipendenti da un elenco "nome completo → appalto".
+ *  Aggancio a token in ordine libero; chi non esiste riceve una scheda
+ *  MINIMA (nome/cognome/appalto, senza Codice/PIN). Max ~60 righe per
+ *  chiamata: il client spezza. */
+export async function importAppaltiDipendenti(
+  rows: readonly { nome: string; appalto: string }[],
+  dryRun: boolean,
+): Promise<ImportAppaltiResult> {
+  const cfg = await discoverSharePoint();
+  const F = cfg.dipendentiFields;
+  if (!F.Appalto)
+    throw new Error(
+      'Colonna "Appalto" assente sulla lista Dipendenti: crearla (testo) e Riscopri.',
+    );
+  const items = await fetchMovimentiPages(
+    `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items?expand=fields&$top=999`,
+  );
+  const tok = (x: string) =>
+    normalizeTesto(x)
+      .replace(/[^a-z0-9 ]/gi, " ")
+      .split(/\s+/)
+      .filter((y: string) => y.length >= 2)
+      .sort()
+      .join(" ");
+  const perChiave = new Map<string, GraphListItem<Record<string, unknown>> | "AMBIGUO">();
+  for (const it of items) {
+    const f = it.fields ?? {};
+    const k = tok(`${F.Nome ? f[F.Nome] : ""} ${F.Cognome ? f[F.Cognome] : ""}`);
+    if (!k) continue;
+    perChiave.set(k, perChiave.has(k) ? "AMBIGUO" : it);
+  }
+  const out: ImportAppaltiResult = {
+    dryRun,
+    aggiornati: 0,
+    creati: 0,
+    invariati: 0,
+    ambigui: [],
+    anteprima: [],
+  };
+  for (const r of rows) {
+    const hit = perChiave.get(tok(r.nome));
+    if (hit === "AMBIGUO") {
+      out.ambigui.push(r.nome);
+      continue;
+    }
+    if (hit) {
+      const attuale = String((hit.fields ?? {})[F.Appalto] ?? "").trim();
+      if (attuale === r.appalto) {
+        out.invariati++;
+        continue;
+      }
+      out.anteprima.push(`✏️ ${r.nome} → ${r.appalto}${attuale ? ` (era: ${attuale})` : ""}`);
+      if (!dryRun)
+        await gatewayJson(
+          `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items/${hit.id}/fields`,
+          { method: "PATCH", body: JSON.stringify({ [F.Appalto]: r.appalto }) },
+        );
+      out.aggiornati++;
+    } else {
+      const parti = r.nome.trim().split(/\s+/);
+      const nome = parti[0] ?? "";
+      const cognome = parti.slice(1).join(" ") || nome;
+      out.anteprima.push(`➕ NUOVA scheda: ${nome} / ${cognome} → ${r.appalto}`);
+      if (!dryRun) {
+        const fields: Record<string, unknown> = {};
+        if (F.Nome) fields[F.Nome] = nome;
+        if (F.Cognome) fields[F.Cognome] = cognome;
+        if (F.NomeCompleto) fields[F.NomeCompleto] = r.nome.trim();
+        fields[F.Appalto] = r.appalto;
+        if (F.Attivo) fields[F.Attivo] = true;
+        if (F.Visibile) fields[F.Visibile] = true;
+        await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items`, {
+          method: "POST",
+          body: JSON.stringify({ fields }),
+        });
+      }
+      out.creati++;
+    }
+  }
+  logSp(
+    "info",
+    "appalti.import",
+    `Appalti${dryRun ? " (anteprima)" : ""}: ${out.aggiornati} aggiornati, ${out.creati} creati, ${out.invariati} invariati, ${out.ambigui.length} ambigui`,
+  );
+  return out;
 }
 
 export async function importDipendenti(

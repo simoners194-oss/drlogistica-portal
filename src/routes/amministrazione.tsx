@@ -23,7 +23,7 @@ import {
   type IntegrationStatus,
 } from "@/lib/data-service";
 import type { SpSelfTestResult, SpHealth, ImportDipendentiResult } from "@/lib/sharepoint.server";
-import { spImportDipendenti, spProtectPins } from "@/lib/sharepoint.functions";
+import { spImportDipendenti, spImportAppalti, spProtectPins } from "@/lib/sharepoint.functions";
 import { BancaPsd2Panel } from "@/components/BancaPsd2Panel";
 import { toast } from "sonner";
 import { readSession } from "@/lib/session";
