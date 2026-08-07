@@ -36,6 +36,86 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.17.0",
+    date: "2026-08-07",
+    codename: "Regole più potenti",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Riconoscimento automatico degli stipendi",
+        description:
+          "I bonifici in uscita verso i dipendenti vengono classificati da soli come Pagamento Salario, con il nome corretto dall'anagrafica — anche quando la banca lo riporta troncato o invertito. Un pulsante applica la regola a tutto l'archivio.",
+      },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Regole raggruppate e ricerca multipla",
+        description:
+          "L'elenco delle regole è raggruppato per tipologia e si apre al tocco. La ricerca dei movimenti e le regole accettano più termini separati da virgola, e sopra l'elenco compare il totale di ciò che è filtrato, con entrate e uscite separate. Le voci scritte a mano nelle regole restano tra i suggerimenti.",
+      },
+    ],
+  },
+  {
+    version: "1.15.0",
+    date: "2026-08-06",
+    codename: "Classificazione estesa",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Sottocategoria e allocazioni sui movimenti",
+        description:
+          "Ogni movimento può avere una sottocategoria (es. Pernottamento, Pasto, Trasporto) e due allocazioni: primaria (Costi generali / Appalto) e secondaria (per ufficio o commessa). Si impostano dalle regole o correggendo il singolo movimento; scrivendo un valore nuovo, la voce nasce senza configurazioni.",
+      },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Il dovuto delle fatture passive è il netto a pagare",
+        description:
+          "Quando una fattura ricevuta dichiara un netto a pagare diverso dal totale (ritenute, bolli), l'importo in evidenza è quello da pagare davvero, con il totale documento riportato sotto. Scadenze e ritardi seguono lo stesso criterio.",
+      },
+    ],
+  },
+  {
+    version: "1.13.5",
+    date: "2026-08-05",
+    codename: "Resoconto su misura",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Viste salvate nel Resoconto",
+        description:
+          "La configurazione dei filtri (clienti, fornitori, estratto conto) si salva con un nome e si richiama con un click. Aggiunte l'opzione «Nessuno» per escludere un lato del confronto, il filtro diretto sull'estratto conto e il sollecito direttamente dagli specchietti dei ritardi.",
+      },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Storni riconosciuti e ritardo in colonna",
+        description:
+          "Le note di credito di storno senza riferimento si agganciano da sole alla fattura di pari importo della stessa controparte. Negli elenchi delle fatture c'è la colonna «Ritardo [gg]», filtrabile come le altre.",
+      },
+      {
+        tag: "improvement",
+        audience: "gestione",
+        title: "Anomalie scartabili e richieste con nome",
+        description:
+          "Le anomalie delle timbrature — in particolare le informative — si possono scartare dopo la verifica, e restano tracciate. Nella coda delle richieste compare nome e cognome accanto al codice.",
+      },
+      {
+        tag: "fix",
+        audience: "tutti",
+        title: "Orari sempre in ora italiana",
+        description:
+          "Tutti gli orari mostrati dal portale sono nel fuso italiano, qualunque sia l'impostazione del telefono: l'ora delle timbrature coincide ora in ogni schermata.",
+      },
+    ],
+  },
+  {
     version: "1.9.0",
     date: "2026-08-05",
     codename: "Resoconto e regole di pagamento",
