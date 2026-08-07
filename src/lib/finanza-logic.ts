@@ -290,16 +290,49 @@ export function matchDipendenteNome(testo: string, nomiRoster: readonly string[]
   return migliore && !pari ? migliore.nome : null;
 }
 
+export interface DipendenteRoster {
+  nome: string;
+  /** Appalto/commessa di assegnazione (colonna Appalto su Dipendenti):
+   *  diventa l'allocazione secondaria del salario. */
+  appalto?: string;
+}
+
 /** Applica la regola dipendenti a un movimento classificato: solo USCITE e
- *  solo se la tipologia non e' gia' qualcosa di piu' specifico. */
+ *  solo se la tipologia non e' gia' qualcosa di piu' specifico. Se il
+ *  dipendente ha l'APPALTO in anagrafica, il salario riceve anche le
+ *  allocazioni (senza mai sovrascrivere valori gia' presenti): secondaria =
+ *  appalto; primaria = "Appalto", oppure "Costi generali" se l'appalto
+ *  inizia per "Ufficio". */
 export function applicaRegolaDipendenti<
-  T extends { cliente: string; tipologia: string; daVerificare: boolean },
->(mov: T, importo: number, nomiRoster: readonly string[]): T {
-  if (importo >= 0 || nomiRoster.length === 0) return mov;
+  T extends {
+    cliente: string;
+    tipologia: string;
+    daVerificare: boolean;
+    allocPrimaria?: string;
+    allocSecondaria?: string;
+  },
+>(mov: T, importo: number, roster: readonly DipendenteRoster[]): T {
+  if (importo >= 0 || roster.length === 0) return mov;
   if (!["Bonifico uscita", "Altro", "Pagamento Salario"].includes(mov.tipologia)) return mov;
-  const nome = matchDipendenteNome(mov.cliente, nomiRoster);
+  const nome = matchDipendenteNome(
+    mov.cliente,
+    roster.map((r) => r.nome),
+  );
   if (!nome) return mov;
-  return { ...mov, tipologia: "Pagamento Salario", cliente: nome, daVerificare: false };
+  const appalto = (roster.find((r) => r.nome === nome)?.appalto ?? "").trim();
+  const primaria = appalto
+    ? appalto.toLowerCase().startsWith("ufficio")
+      ? "Costi generali"
+      : "Appalto"
+    : "";
+  return {
+    ...mov,
+    tipologia: "Pagamento Salario",
+    cliente: nome,
+    daVerificare: false,
+    allocSecondaria: mov.allocSecondaria?.trim() ? mov.allocSecondaria : appalto,
+    allocPrimaria: mov.allocPrimaria?.trim() ? mov.allocPrimaria : primaria,
+  };
 }
 
 // --- Persona fisica vs azienda ----------------------------------------------

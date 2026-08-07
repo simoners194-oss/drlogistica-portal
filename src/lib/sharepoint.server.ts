@@ -52,6 +52,7 @@ import {
   classificaMovimento,
   applicaRegolaDipendenti,
   matchDipendenteNome,
+  type DipendenteRoster,
   applicaRegole,
   matchRegola,
   LEGACY_IMPORT_ID,
@@ -121,6 +122,9 @@ export const SP_DISPLAY = {
     Operatore: "Operatore",
     Preposto: "Preposto",
     OreSettimanali: "OreSettimanali",
+    // Appalto/commessa di assegnazione: alimenta le allocazioni dei salari
+    // (regola dipendenti in Finanza). OPZIONALE.
+    Appalto: "Appalto",
     Inquadramento: "Inquadramento",
     GiorniFerieAnnui: "GiorniFerieAnnui",
     OrePermessiAnnui: "OrePermessiAnnui",
@@ -1104,6 +1108,8 @@ export interface SpDipendente {
   // dei dipendenti della PROPRIA sede. Non corregge e non approva nulla.
   // Colonna SharePoint OPZIONALE: assente/vuota → false.
   preposto: boolean;
+  /** Appalto/commessa di assegnazione ("" = non impostato). */
+  appalto: string;
   // Ore contrattuali settimanali (full-time e part-time). null se non impostate.
   // Usate da rilevazione anomalie e rendiconto.
   oreSettimanali: number | null;
@@ -1171,6 +1177,7 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
         autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
         operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
         preposto: parseSpBool(F.Preposto ? f[F.Preposto] : undefined, false),
+        appalto: F.Appalto ? String(f[F.Appalto] ?? "").trim() : "",
         oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
         inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
         giorniFerieAnnui: parseSpNumber(
@@ -1603,6 +1610,7 @@ export async function loginByCodicePin(
     autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
     operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
     preposto: parseSpBool(F.Preposto ? f[F.Preposto] : undefined, false),
+    appalto: F.Appalto ? String(f[F.Appalto] ?? "").trim() : "",
     oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
     inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
     giorniFerieAnnui: parseSpNumber(F.GiorniFerieAnnui ? f[F.GiorniFerieAnnui] : undefined, null),
@@ -3699,11 +3707,16 @@ function soloColonne(F: Record<string, string | undefined>): string {
   return `expand=fields(select=${[...nomi].join(",")})`;
 }
 
-/** Nomi completi del roster per la regola dipendenti (best-effort). */
-async function nomiDipendenti(): Promise<string[]> {
+/** Roster (nome + appalto) per la regola dipendenti (best-effort). */
+async function nomiDipendenti(): Promise<DipendenteRoster[]> {
   try {
     const dips = await fetchDipendenti();
-    return dips.map((d) => (d.nomeCompleto || `${d.nome} ${d.cognome}`).trim()).filter(Boolean);
+    return dips
+      .map((d) => ({
+        nome: (d.nomeCompleto || `${d.nome} ${d.cognome}`).trim(),
+        appalto: d.appalto,
+      }))
+      .filter((d) => Boolean(d.nome));
   } catch {
     return [];
   }
@@ -4322,14 +4335,39 @@ export async function applicaRegolaDipendentiAiMovimenti(): Promise<{
   const listId = requireMovimentiList(cfg);
   const F = cfg.movimentiFields;
   const [all, nomiRoster] = await Promise.all([fetchMovimenti(), nomiDipendenti()]);
-  const target: { id: string; cliente: string }[] = [];
+  const target: { id: string; cliente: string; primaria: string; secondaria: string }[] = [];
   for (const m of all) {
     if (m.importo >= 0) continue;
     if (!["Bonifico uscita", "Altro", "Pagamento Salario"].includes(m.tipologia)) continue;
-    const nome = matchDipendenteNome(m.cliente, nomiRoster);
+    const nome = matchDipendenteNome(
+      m.cliente,
+      nomiRoster.map((r) => r.nome),
+    );
     if (!nome) continue;
-    if (m.tipologia === "Pagamento Salario" && m.cliente === nome && !m.daVerificare) continue;
-    target.push({ id: m.id, cliente: nome });
+    const appalto = (nomiRoster.find((r) => r.nome === nome)?.appalto ?? "").trim();
+    const primaria = appalto
+      ? appalto.toLowerCase().startsWith("ufficio")
+        ? "Costi generali"
+        : "Appalto"
+      : "";
+    // Le allocazioni si scrivono solo se la riga ne e' priva E la colonna
+    // esiste (lezione del ciclo infinito): mai sovrascrivere scelte fatte.
+    const scriviSec = Boolean(F.AllocSecondaria) && appalto && !m.allocSecondaria.trim();
+    const scriviPri = Boolean(F.AllocPrimaria) && primaria && !m.allocPrimaria.trim();
+    if (
+      m.tipologia === "Pagamento Salario" &&
+      m.cliente === nome &&
+      !m.daVerificare &&
+      !scriviSec &&
+      !scriviPri
+    )
+      continue;
+    target.push({
+      id: m.id,
+      cliente: nome,
+      primaria: scriviPri ? primaria : "",
+      secondaria: scriviSec ? appalto : "",
+    });
   }
   const batch = target.slice(0, APPLICA_MAX_PER_CALL);
   let aggiornati = 0;
@@ -4341,6 +4379,8 @@ export async function applicaRegolaDipendentiAiMovimenti(): Promise<{
         if (F.Tipologia) fields[F.Tipologia] = "Pagamento Salario";
         if (F.Cliente) fields[F.Cliente] = m.cliente;
         if (F.DaVerificare) fields[F.DaVerificare] = false;
+        if (F.AllocPrimaria && m.primaria) fields[F.AllocPrimaria] = m.primaria;
+        if (F.AllocSecondaria && m.secondaria) fields[F.AllocSecondaria] = m.secondaria;
         return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${m.id}/fields`, {
           method: "PATCH",
           body: JSON.stringify(fields),

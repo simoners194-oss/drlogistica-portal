@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.19.0",
+    date: "2026-08-07",
+    codename: "Salari sull'appalto giusto",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "I salari finiscono sull'appalto del dipendente",
+        description:
+          "In anagrafica dipendenti c'è il campo Appalto: quando il riconoscimento automatico classifica un salario, assegna anche l'allocazione — secondaria = appalto del dipendente, primaria Appalto o Costi generali (per gli uffici) — senza mai sovrascrivere scelte già fatte. L'export CSV dei movimenti riporta ora anche sottocategoria, allocazioni e conto.",
+      },
+    ],
+  },
+  {
     version: "1.18.0",
     date: "2026-08-07",
     codename: "Un archivio, più conti",
