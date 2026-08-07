@@ -191,21 +191,27 @@ export function matchRegola(
   mov: { cliente: string; descrizione: string },
   r: RegolaFinanza,
 ): boolean {
-  const pattern = (r.pattern ?? "").trim();
-  if (!pattern) return false;
-  const inDescrizione = normalizeTesto(mov.descrizione).includes(normalizeTesto(pattern));
-  if (r.campo === "descrizione") return inDescrizione;
-  const key = clienteGroupKey(mov.cliente);
-  const inCliente = key
-    ? r.modo === "esatto"
-      ? key === clienteGroupKey(pattern)
-      : key.includes(normalizeTesto(pattern)) ||
-        canonicalCliente(mov.cliente).includes(normalizeTesto(pattern))
-    : false;
-  // "entrambi": basta che il testo compaia nel nome O nella descrizione —
-  // una regola sola intercetta tutti e due i casi.
-  if (r.campo === "entrambi") return inCliente || inDescrizione;
-  return inCliente;
+  // PATTERN MULTIPLI: "aereo, treno, dirigibile" = basta che UNO dei
+  // termini corrisponda (separatori virgola e punto e virgola).
+  const termini = (r.pattern ?? "")
+    .split(/[,;]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (!termini.length) return false;
+  return termini.some((pattern) => {
+    const inDescrizione = normalizeTesto(mov.descrizione).includes(normalizeTesto(pattern));
+    if (r.campo === "descrizione") return inDescrizione;
+    const key = clienteGroupKey(mov.cliente);
+    const inCliente = key
+      ? r.modo === "esatto"
+        ? key === clienteGroupKey(pattern)
+        : key.includes(normalizeTesto(pattern)) ||
+          canonicalCliente(mov.cliente).includes(normalizeTesto(pattern))
+      : false;
+    // "entrambi": nel nome O nella descrizione.
+    if (r.campo === "entrambi") return inCliente || inDescrizione;
+    return inCliente;
+  });
 }
 
 /** Applica la PRIMA regola che combacia (precedenza: cliente-esatto,

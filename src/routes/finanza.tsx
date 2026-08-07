@@ -235,6 +235,8 @@ function FinanzaPage() {
   // Regola in modifica: si precompila il form e al salvataggio la vecchia
   // viene sostituita (elimina + ricrea).
   const [rEditId, setREditId] = useState<string | null>(null);
+  // Elenco regole raggruppato per tipologia: si apre un gruppo al tocco.
+  const [catAperta, setCatAperta] = useState<string | null>(null);
   const [rModo, setRModo] = useState<"esatto" | "contiene">("esatto");
   const [rTipologia, setRTipologia] = useState("");
   const [rCliente, setRCliente] = useState("");
@@ -886,17 +888,39 @@ function FinanzaPage() {
     if (tipiF.length) out = out.filter((m) => tipiF.includes(m.tipologia));
     if (mesiF.length) out = out.filter((m) => mesiF.includes(Number(m.dataContabile.slice(5, 7))));
     if (cercaF.trim()) {
-      const q = cercaF.trim().toLowerCase();
-      out = out.filter(
-        (m) =>
-          m.cliente.toLowerCase().includes(q) ||
-          m.descrizione.toLowerCase().includes(q) ||
-          m.nrFattura.toLowerCase().includes(q) ||
-          m.note.toLowerCase().includes(q),
+      // Più termini separati da , o ; = basta che UNO corrisponda (per
+      // trovare in un colpo "aereo, treno, dirigibile" e regolarli insieme).
+      const termini = cercaF
+        .toLowerCase()
+        .split(/[,;]/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      out = out.filter((m) =>
+        termini.some(
+          (q) =>
+            m.cliente.toLowerCase().includes(q) ||
+            m.descrizione.toLowerCase().includes(q) ||
+            m.nrFattura.toLowerCase().includes(q) ||
+            m.note.toLowerCase().includes(q),
+        ),
       );
     }
     return out;
   }, [movimenti, anni, tipiF, mesiF, cercaF, clientiF]);
+  // Totale (e spezzato entrate/uscite) di QUELLO CHE SI VEDE coi filtri.
+  const totaleFiltrato = useMemo(() => {
+    let entrate = 0;
+    let uscite = 0;
+    for (const m of filtrati) {
+      if (m.importo >= 0) entrate += m.importo;
+      else uscite += m.importo;
+    }
+    return {
+      totale: Math.round((entrate + uscite) * 100) / 100,
+      entrate: Math.round(entrate * 100) / 100,
+      uscite: Math.round(uscite * 100) / 100,
+    };
+  }, [filtrati]);
 
   // Pagine da RIGHE_PAGINA sulla tabella movimenti; il cambio di filtri o
   // anno riparte dalla prima (il clamp copre i ricaricamenti che accorciano
@@ -1181,6 +1205,21 @@ function FinanzaPage() {
             >
               <Download className="h-4 w-4" /> {t("common.exportCsv")}
             </button>
+            {/* Il totale del filtrato, sempre sott'occhio (richiesta del
+                direttore): entrate e uscite separate, saldo in grande. */}
+            <div className="rounded-xl border border-border bg-secondary/40 px-4 py-2">
+              <div className="text-[11px] text-muted-foreground">
+                {t("fin.totFiltrato")} · {filtrati.length}
+              </div>
+              <div
+                className={`text-lg font-semibold tabular-nums ${totaleFiltrato.totale >= 0 ? "text-status-present" : "text-status-absent"}`}
+              >
+                {fmtImporto(totaleFiltrato.totale)}
+              </div>
+              <div className="text-[11px] tabular-nums text-muted-foreground">
+                +{fmtImporto(totaleFiltrato.entrate)} / {fmtImporto(totaleFiltrato.uscite)}
+              </div>
+            </div>
             {ebSaldoInfo && (
               <div className="ml-auto rounded-xl border border-border bg-secondary/40 px-4 py-2 text-right">
                 <div className="text-[11px] text-muted-foreground">
@@ -1872,6 +1911,7 @@ function FinanzaPage() {
                     ...new Set([
                       ...TIPOLOGIE_MOVIMENTO,
                       ...(movimenti ?? []).map((m) => m.tipologia).filter(Boolean),
+                      ...(regole ?? []).map((r) => r.tipologia ?? "").filter(Boolean),
                     ]),
                   ].map((tp) => (
                     <option key={tp} value={tp} />
@@ -1896,6 +1936,7 @@ function FinanzaPage() {
                       "Pasto",
                       "Trasporto",
                       ...(movimenti ?? []).map((m) => m.sottocategoria).filter(Boolean),
+                      ...(regole ?? []).map((r) => r.sottocategoria ?? "").filter(Boolean),
                     ]),
                   ].map((sc) => (
                     <option key={sc} value={sc} />
@@ -1917,6 +1958,7 @@ function FinanzaPage() {
                       "Costi generali",
                       "Appalto",
                       ...(movimenti ?? []).map((m) => m.allocPrimaria).filter(Boolean),
+                      ...(regole ?? []).map((r) => r.allocPrimaria ?? "").filter(Boolean),
                     ]),
                   ].map((a) => (
                     <option key={a} value={a} />
@@ -1940,6 +1982,7 @@ function FinanzaPage() {
                       "iMile",
                       "Postadoc Hub",
                       ...(movimenti ?? []).map((m) => m.allocSecondaria).filter(Boolean),
+                      ...(regole ?? []).map((r) => r.allocSecondaria ?? "").filter(Boolean),
                     ]),
                   ].map((a) => (
                     <option key={a} value={a} />
@@ -2000,77 +2043,112 @@ function FinanzaPage() {
                 {t("fin.regoleEmpty")}
               </p>
             ) : (
-              <ul className="divide-y divide-border/60">
-                {regole.map((r) => (
-                  <li key={r.id} className="py-2.5 flex items-center gap-3 text-sm">
-                    {/* Frase per esteso, come la leggerebbe una persona:
+              (() => {
+                const perCat = new Map<string, RegolaFinanza[]>();
+                for (const r of regole) {
+                  const k = r.tipologia?.trim() || t("fin.regoleAltro");
+                  perCat.set(k, [...(perCat.get(k) ?? []), r]);
+                }
+                return [...perCat.entries()]
+                  .sort((a, b) => a[0].localeCompare(b[0]))
+                  .map(([cat, lista]) => (
+                    <div key={cat} className="border-b border-border/60 last:border-0">
+                      <button
+                        type="button"
+                        onClick={() => setCatAperta(catAperta === cat ? null : cat)}
+                        className="flex w-full items-center gap-2 py-2 text-sm font-semibold text-foreground hover:text-primary"
+                      >
+                        <span
+                          className={`transition-transform ${catAperta === cat ? "rotate-90" : ""}`}
+                        >
+                          ▸
+                        </span>
+                        {cat}
+                        <span className="text-xs font-normal text-muted-foreground">
+                          ({lista.length})
+                        </span>
+                      </button>
+                      {catAperta === cat && (
+                        <ul className="divide-y divide-border/40 pl-5">
+                          {lista.map((r) => (
+                            <li key={r.id} className="py-2.5 flex items-center gap-3 text-sm">
+                              {/* Frase per esteso, come la leggerebbe una persona:
                         "Se il nome contiene «amazon» → tipologia … · nome …" */}
-                    <span className="flex-1 min-w-0">
-                      {t("fin.regolaFraseSe")}{" "}
-                      <span className="text-muted-foreground">
-                        {r.campo === "descrizione"
-                          ? t("fin.regolaFraseDescr")
-                          : r.campo === "entrambi"
-                            ? t("fin.regolaFraseEntrambi")
-                            : t("fin.regolaFraseNome")}{" "}
-                        {r.campo !== "descrizione" && r.modo === "esatto"
-                          ? t("fin.regolaFraseUguale")
-                          : t("fin.regolaFraseContiene")}
-                      </span>{" "}
-                      <span className="font-medium text-foreground">«{r.pattern}»</span>
-                      <span className="text-muted-foreground"> {t("fin.regolaFraseAllora")} </span>
-                      {r.tipologia && (
-                        <span className="text-xs rounded-full bg-primary/10 text-primary px-2 py-0.5 mr-1">
-                          {t("fin.regolaFraseTip")} {r.tipologia}
-                        </span>
+                              <span className="flex-1 min-w-0">
+                                {t("fin.regolaFraseSe")}{" "}
+                                <span className="text-muted-foreground">
+                                  {r.campo === "descrizione"
+                                    ? t("fin.regolaFraseDescr")
+                                    : r.campo === "entrambi"
+                                      ? t("fin.regolaFraseEntrambi")
+                                      : t("fin.regolaFraseNome")}{" "}
+                                  {r.campo !== "descrizione" && r.modo === "esatto"
+                                    ? t("fin.regolaFraseUguale")
+                                    : t("fin.regolaFraseContiene")}
+                                </span>{" "}
+                                <span className="font-medium text-foreground">«{r.pattern}»</span>
+                                <span className="text-muted-foreground">
+                                  {" "}
+                                  {t("fin.regolaFraseAllora")}{" "}
+                                </span>
+                                {r.tipologia && (
+                                  <span className="text-xs rounded-full bg-primary/10 text-primary px-2 py-0.5 mr-1">
+                                    {t("fin.regolaFraseTip")} {r.tipologia}
+                                  </span>
+                                )}
+                                {r.sottocategoria && (
+                                  <span className="text-xs rounded-full bg-primary/10 text-primary px-2 py-0.5 mr-1">
+                                    {t("fin.regolaFraseSottocat")} {r.sottocategoria}
+                                  </span>
+                                )}
+                                {(r.allocPrimaria || r.allocSecondaria) && (
+                                  <span className="text-xs rounded-full bg-muted px-2 py-0.5 mr-1">
+                                    {[r.allocPrimaria, r.allocSecondaria]
+                                      .filter(Boolean)
+                                      .join(" / ")}
+                                  </span>
+                                )}
+                                {r.cliente && (
+                                  <span className="text-xs rounded-full bg-muted px-2 py-0.5">
+                                    {t("fin.regolaFraseNomeNuovo")} {r.cliente}
+                                  </span>
+                                )}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRPattern(r.pattern);
+                                  setRCampo(r.campo);
+                                  setRModo(r.modo);
+                                  setRTipologia(r.tipologia ?? "");
+                                  setRSottocat(r.sottocategoria ?? "");
+                                  setRAllocPri(r.allocPrimaria ?? "");
+                                  setRAllocSec(r.allocSecondaria ?? "");
+                                  setRCliente(r.cliente ?? "");
+                                  setRApplica(true);
+                                  setREditId(r.id ?? null);
+                                  window.scrollTo({ top: 0, behavior: "smooth" });
+                                }}
+                                title={t("common.edit")}
+                                className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void eliminaRegola(r)}
+                                title={t("fin.regolaDelete")}
+                                className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-status-absent hover:bg-status-absent/10"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
                       )}
-                      {r.sottocategoria && (
-                        <span className="text-xs rounded-full bg-primary/10 text-primary px-2 py-0.5 mr-1">
-                          {t("fin.regolaFraseSottocat")} {r.sottocategoria}
-                        </span>
-                      )}
-                      {(r.allocPrimaria || r.allocSecondaria) && (
-                        <span className="text-xs rounded-full bg-muted px-2 py-0.5 mr-1">
-                          {[r.allocPrimaria, r.allocSecondaria].filter(Boolean).join(" / ")}
-                        </span>
-                      )}
-                      {r.cliente && (
-                        <span className="text-xs rounded-full bg-muted px-2 py-0.5">
-                          {t("fin.regolaFraseNomeNuovo")} {r.cliente}
-                        </span>
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRPattern(r.pattern);
-                        setRCampo(r.campo);
-                        setRModo(r.modo);
-                        setRTipologia(r.tipologia ?? "");
-                        setRSottocat(r.sottocategoria ?? "");
-                        setRAllocPri(r.allocPrimaria ?? "");
-                        setRAllocSec(r.allocSecondaria ?? "");
-                        setRCliente(r.cliente ?? "");
-                        setRApplica(true);
-                        setREditId(r.id ?? null);
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
-                      title={t("common.edit")}
-                      className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void eliminaRegola(r)}
-                      title={t("fin.regolaDelete")}
-                      className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-status-absent hover:bg-status-absent/10"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                    </div>
+                  ));
+              })()
             )}
           </div>
 
