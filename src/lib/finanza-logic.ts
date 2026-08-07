@@ -60,6 +60,8 @@ export const TIPOLOGIE_MOVIMENTO = [
   "Assicurazioni",
   "Carburante",
   "Consulenze",
+  "Trasferte",
+  "Pranzo/Cena",
   "Prelievo ATM",
   "Carte fidelity",
   "Storno",
