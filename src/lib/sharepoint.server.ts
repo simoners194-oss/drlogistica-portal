@@ -4248,15 +4248,29 @@ export async function applicaRegolaAiMovimenti(
   const all = await fetchMovimenti();
   const target = all.filter((m) => {
     if (!matchRegola(m, regola)) return false;
-    const cambiaTip = Boolean(regola.tipologia?.trim()) && m.tipologia !== regola.tipologia?.trim();
+    // Una differenza CONTA solo se la colonna esiste su SharePoint: senza
+    // questo vincolo una colonna mancante rendeva il lotto "sempre da
+    // aggiornare" e il ciclo riprovava all'infinito (successo con
+    // AllocazionePrimaria assente: contatore a 3597 su poche centinaia).
+    const cambiaTip =
+      Boolean(F.Tipologia) &&
+      Boolean(regola.tipologia?.trim()) &&
+      m.tipologia !== regola.tipologia?.trim();
     const cambiaSott =
-      Boolean(regola.sottocategoria?.trim()) && m.sottocategoria !== regola.sottocategoria?.trim();
+      Boolean(F.Sottocategoria) &&
+      Boolean(regola.sottocategoria?.trim()) &&
+      m.sottocategoria !== regola.sottocategoria?.trim();
     const cambiaAlloc =
-      (Boolean(regola.allocPrimaria?.trim()) && m.allocPrimaria !== regola.allocPrimaria?.trim()) ||
-      (Boolean(regola.allocSecondaria?.trim()) &&
+      (Boolean(F.AllocPrimaria) &&
+        Boolean(regola.allocPrimaria?.trim()) &&
+        m.allocPrimaria !== regola.allocPrimaria?.trim()) ||
+      (Boolean(F.AllocSecondaria) &&
+        Boolean(regola.allocSecondaria?.trim()) &&
         m.allocSecondaria !== regola.allocSecondaria?.trim());
-    const cambiaCli = Boolean(regola.cliente?.trim()) && m.cliente !== regola.cliente?.trim();
-    const togliFlag = Boolean(regola.tipologia?.trim()) && m.daVerificare;
+    const cambiaCli =
+      Boolean(F.Cliente) && Boolean(regola.cliente?.trim()) && m.cliente !== regola.cliente?.trim();
+    const togliFlag =
+      Boolean(F.DaVerificare) && Boolean(regola.tipologia?.trim()) && m.daVerificare;
     return cambiaTip || cambiaSott || cambiaAlloc || cambiaCli || togliFlag;
   });
   const batch = target.slice(0, APPLICA_MAX_PER_CALL);

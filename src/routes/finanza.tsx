@@ -757,6 +757,9 @@ function FinanzaPage() {
       let applicati = 0;
       if (rApplica) {
         // Applicazione retroattiva a blocchi finché il server non ha finito.
+        // Se i RIMANENTI non calano tra un giro e l'altro, qualcosa non si
+        // riesce a scrivere: ci si ferma invece di girare a vuoto.
+        let ultimoRimanenti = Number.POSITIVE_INFINITY;
         for (;;) {
           const r = (await spApplicaRegolaFinanza({ data: payload })) as {
             aggiornati: number;
@@ -766,6 +769,11 @@ function FinanzaPage() {
           setRProgress(applicati);
           if (r.rimanenti <= 0) break;
           if (r.aggiornati === 0) break; // safety: niente progresso
+          if (r.rimanenti >= ultimoRimanenti) {
+            toast.warning(t("fin.regolaLoopStop"));
+            break;
+          }
+          ultimoRimanenti = r.rimanenti;
         }
       }
       toast.success(t("fin.regolaCreata"), {
