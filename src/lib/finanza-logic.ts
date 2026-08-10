@@ -198,8 +198,7 @@ export function matchRegola(
   // (successo: regola pasti troppo larga riclassificava di tutto).
   const minLen = r.modo === "contiene" || r.campo !== "cliente" ? 3 : 1;
   const termini = (r.pattern ?? "")
-    .split(/[,;
-]/)
+    .split(/[,;\n]/)
     .map((x) => x.trim())
     .filter((x) => x.length >= minLen);
   if (!termini.length) return false;
