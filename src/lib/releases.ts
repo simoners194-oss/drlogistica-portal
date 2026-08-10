@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.22.0",
+    date: "2026-08-10",
+    codename: "Mese e servizio anche sulle attive",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Le fatture attive hanno mese di competenza e servizio",
+        description:
+          "Come nel prospetto della direzione, anche l'archivio delle fatture emesse mostra il mese di riferimento e il servizio (appalto) di ogni fattura: colonne filtrabili, modifica col doppio click sulla cella o dal dettaglio, ed export CSV completo. Il mese di competenza \u2014 in entrambe le direzioni \u2014 ora si legge anche dalla causale della fattura (\u201ccompetenze luglio\u201d), prima della regola del giorno 15. Sul Resoconto c'e' la nuova riga con il totale delle attive (incassate, da incassare, di cui in ritardo) e i residui a confronto.",
+      },
+    ],
+  },
+  {
     version: "1.21.0",
     date: "2026-08-10",
     codename: "Menu a cascata",

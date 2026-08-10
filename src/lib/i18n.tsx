@@ -1022,6 +1022,8 @@ const en = {
   "ft.colCompetenza": "Accrual month",
   "ft.colTipologia": "Cost type",
   "ft.colClienteRif": "Ref. client",
+  "ft.colServizio": "Service",
+  "ft.classServizioPh": "Service (e.g. FUEL)",
   "ft.aggiornatoAl": "Aruba data updated:",
   "ft.aggTip":
     "Last write on this archive: most recent import of reports/XML from Aruba or manual correction.",
@@ -2083,6 +2085,8 @@ const it: Record<DictKey, string> = {
   "ft.colCompetenza": "Competenza",
   "ft.colTipologia": "Tipologia",
   "ft.colClienteRif": "Cliente rif",
+  "ft.colServizio": "Servizio",
+  "ft.classServizioPh": "Servizio (es. FUEL)",
   "ft.aggiornatoAl": "Dati Aruba aggiornati al:",
   "ft.aggTip":
     "Ultima scrittura su questo archivio: import più recente dei report/XML da Aruba o correzione manuale.",

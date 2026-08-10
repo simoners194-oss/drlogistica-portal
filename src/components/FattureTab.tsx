@@ -518,8 +518,19 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     () => risolviClassificazioneTutte(fattureRic ?? [], regoleFatture, classAuto),
     [fattureRic, regoleFatture, classAuto],
   );
+  // Le ATTIVE hanno la loro mappa: niente regole-fornitore ne' proposte
+  // dallo storico passivo — vale il dichiarato (o la regola del giorno 15).
+  const classMapEm = useMemo(
+    () => risolviClassificazioneTutte(fattureEm ?? [], [], new Map()),
+    [fattureEm],
+  );
   const classificaDi = (f: FatturaRaw) =>
-    classMap.get(f.nomeFile) ?? risolviClassificazione(f, regoleFatture, classAuto);
+    (f.direzione === "Emessa" ? classMapEm : classMap).get(f.nomeFile) ??
+    risolviClassificazione(
+      f,
+      f.direzione === "Emessa" ? [] : regoleFatture,
+      f.direzione === "Emessa" ? new Map() : classAuto,
+    );
 
   // --- Filtri di intestazione (stile Excel) ---------------------------------
   // Ogni colonna dell'elenco ha il suo imbuto: spunte sui VALORI DISTINTI,
@@ -592,25 +603,25 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         get: testoStatoI,
       },
       { key: "banca", label: t("ft.colBanca"), get: testoStatoB },
+      {
+        key: "competenza",
+        label: t("ft.colCompetenza"),
+        get: (x: (typeof conStato)[number]) => classificaDi(x.f).mese,
+      },
       ...(ricevute
         ? [
-            {
-              key: "competenza",
-              label: t("ft.colCompetenza"),
-              get: (x: (typeof conStato)[number]) => classificaDi(x.f).mese,
-            },
             {
               key: "tipologia",
               label: t("ft.colTipologia"),
               get: (x: (typeof conStato)[number]) => classificaDi(x.f).tipologia || "—",
             },
-            {
-              key: "clienterif",
-              label: t("ft.colClienteRif"),
-              get: (x: (typeof conStato)[number]) => classificaDi(x.f).clienteRif || "—",
-            },
           ]
         : []),
+      {
+        key: "clienterif",
+        label: ricevute ? t("ft.colClienteRif") : t("ft.colServizio"),
+        get: (x: (typeof conStato)[number]) => classificaDi(x.f).clienteRif || "—",
+      },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ricevute, regoleFatture, classAuto, termini, t],
@@ -1903,7 +1914,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         // Classificazione gestionale (solo passive): competenza calcolata
         // (dichiarata se c'e', altrimenti regola del giorno 15), tipologia e
         // cliente di riferimento (dallo storico se non dichiarati).
-        ...(ricevute ? ["Mese competenza", "Tipologia", "Cliente rif", "Class."] : []),
+        ...(ricevute
+          ? ["Mese competenza", "Tipologia", "Cliente rif", "Class."]
+          : ["Mese competenza", "Servizio", "Class."]),
       ],
       filtrate.map(({ f, s }) => {
         // Incassato con la stessa regola della colonna: NC compensata =
@@ -1955,12 +1968,12 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           // Classificazione gestionale (solo passive), stessa larghezza
           // dell'intestazione: competenza sempre calcolata, tipologia e
           // cliente di riferimento manuali o proposti dallo storico.
-          ...(ricevute
-            ? (() => {
-                const cl = classificaDi(f);
-                return [cl.mese, cl.tipologia, cl.clienteRif, cl.fonte];
-              })()
-            : []),
+          ...(() => {
+            const cl = classificaDi(f);
+            return ricevute
+              ? [cl.mese, cl.tipologia, cl.clienteRif, cl.fonte]
+              : [cl.mese, cl.clienteRif, cl.fonte];
+          })(),
         ];
       }),
     );
@@ -2790,89 +2803,89 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                           </span>
                         )}
                       </td>
-                      {ricevute &&
-                        (() => {
-                          const cl = classificaDi(x.f);
-                          const stile =
-                            cl.fonte === "manuale"
-                              ? "text-foreground"
-                              : "text-muted-foreground italic";
-                          const tipTitle =
-                            cl.fonte === "regola"
-                              ? t("ft.classFonteRegola")
-                              : cl.fonte === "auto"
-                                ? t("ft.classFonteAuto")
-                                : undefined;
-                          // Cella modificabile: doppio click apre l'input,
-                          // prefillato col valore risolto (confermare una
-                          // proposta = doppio click + Invio).
-                          const cella = (
-                            campo: "mese" | "tip" | "cli",
-                            mostrato: string,
-                            classi: string,
-                            prefill: string,
-                          ) => {
-                            const inEdit =
-                              cellaEdit?.file === x.f.nomeFile && cellaEdit.campo === campo;
-                            return (
-                              <td
-                                className={`py-1 pr-2 ${classi}`}
-                                title={inEdit ? undefined : (tipTitle ?? t("ft.cellaTip"))}
-                                onDoubleClick={(e) => {
-                                  e.stopPropagation();
-                                  setCellaEdit({ file: x.f.nomeFile, campo });
-                                  setCellaVal(prefill);
-                                }}
-                                onClick={(e) => {
-                                  if (inEdit) e.stopPropagation();
-                                }}
-                              >
-                                {inEdit ? (
-                                  <input
-                                    autoFocus
-                                    list={campo === "tip" ? "tipologie-note" : undefined}
-                                    value={cellaVal}
-                                    onChange={(e) => setCellaVal(e.target.value)}
-                                    onBlur={() => void salvaCella(x.f)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") void salvaCella(x.f);
-                                      if (e.key === "Escape") setCellaEdit(null);
-                                    }}
-                                    className="w-full min-w-24 rounded border border-primary bg-background px-1 py-0.5 text-[12px] text-foreground"
-                                  />
-                                ) : (
-                                  mostrato
-                                )}
-                              </td>
-                            );
-                          };
+                      {(() => {
+                        const cl = classificaDi(x.f);
+                        const stile =
+                          cl.fonte === "manuale"
+                            ? "text-foreground"
+                            : "text-muted-foreground italic";
+                        const tipTitle =
+                          cl.fonte === "regola"
+                            ? t("ft.classFonteRegola")
+                            : cl.fonte === "auto"
+                              ? t("ft.classFonteAuto")
+                              : undefined;
+                        // Cella modificabile: doppio click apre l'input,
+                        // prefillato col valore risolto (confermare una
+                        // proposta = doppio click + Invio).
+                        const cella = (
+                          campo: "mese" | "tip" | "cli",
+                          mostrato: string,
+                          classi: string,
+                          prefill: string,
+                        ) => {
+                          const inEdit =
+                            cellaEdit?.file === x.f.nomeFile && cellaEdit.campo === campo;
                           return (
-                            <>
-                              {cella(
-                                "mese",
-                                cl.mese,
-                                "whitespace-nowrap tabular-nums text-muted-foreground",
-                                x.f.meseCompetenza ?? cl.mese,
+                            <td
+                              className={`py-1 pr-2 ${classi}`}
+                              title={inEdit ? undefined : (tipTitle ?? t("ft.cellaTip"))}
+                              onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                setCellaEdit({ file: x.f.nomeFile, campo });
+                                setCellaVal(prefill);
+                              }}
+                              onClick={(e) => {
+                                if (inEdit) e.stopPropagation();
+                              }}
+                            >
+                              {inEdit ? (
+                                <input
+                                  autoFocus
+                                  list={campo === "tip" ? "tipologie-note" : undefined}
+                                  value={cellaVal}
+                                  onChange={(e) => setCellaVal(e.target.value)}
+                                  onBlur={() => void salvaCella(x.f)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") void salvaCella(x.f);
+                                    if (e.key === "Escape") setCellaEdit(null);
+                                  }}
+                                  className="w-full min-w-24 rounded border border-primary bg-background px-1 py-0.5 text-[12px] text-foreground"
+                                />
+                              ) : (
+                                mostrato
                               )}
-                              {cella(
+                            </td>
+                          );
+                        };
+                        return (
+                          <>
+                            {cella(
+                              "mese",
+                              cl.mese,
+                              "whitespace-nowrap tabular-nums text-muted-foreground",
+                              x.f.meseCompetenza ?? cl.mese,
+                            )}
+                            {ricevute &&
+                              cella(
                                 "tip",
                                 cl.tipologia,
                                 `max-w-40 truncate ${stile}`,
                                 cl.tipologia,
                               )}
-                              {cella(
-                                "cli",
-                                cl.clienteRif,
-                                `whitespace-nowrap ${stile}`,
-                                cl.clienteRif,
-                              )}
-                            </>
-                          );
-                        })()}
+                            {cella(
+                              "cli",
+                              cl.clienteRif,
+                              `whitespace-nowrap ${stile}`,
+                              cl.clienteRif,
+                            )}
+                          </>
+                        );
+                      })()}
                     </tr>,
                     aperta && (
                       <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
-                        <td colSpan={ricevute ? 12 : 9} className="py-3 px-3 bg-muted/20">
+                        <td colSpan={ricevute ? 12 : 11} className="py-3 px-3 bg-muted/20">
                           <div className="text-xs text-muted-foreground mb-2">
                             {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
                             {termini.length
@@ -2931,7 +2944,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                           {/* Classificazione della passiva: competenza,
                               tipologia, cliente di riferimento. Il manuale
                               vince su regole e proposte. */}
-                          {ricevute && (
+                          {
                             <div
                               className="flex flex-wrap items-center gap-2 mb-3 text-[13px]"
                               onClick={(e) => e.stopPropagation()}
@@ -2946,19 +2959,25 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                                 placeholder={t("ft.classMesePh")}
                                 className="w-44 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
                               />
-                              <input
-                                list="tipologie-note"
-                                value={clFile === x.f.nomeFile ? clTip : (x.f.tipologiaCosto ?? "")}
-                                onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
-                                onChange={(e) => setClTip(e.target.value)}
-                                placeholder={t("ft.classPh")}
-                                className="w-64 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
-                              />
+                              {ricevute && (
+                                <input
+                                  list="tipologie-note"
+                                  value={
+                                    clFile === x.f.nomeFile ? clTip : (x.f.tipologiaCosto ?? "")
+                                  }
+                                  onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
+                                  onChange={(e) => setClTip(e.target.value)}
+                                  placeholder={t("ft.classPh")}
+                                  className="w-64 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                                />
+                              )}
                               <input
                                 value={clFile === x.f.nomeFile ? clCli : (x.f.clienteRif ?? "")}
                                 onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
                                 onChange={(e) => setClCli(e.target.value)}
-                                placeholder={t("ft.classCliPh")}
+                                placeholder={
+                                  ricevute ? t("ft.classCliPh") : t("ft.classServizioPh")
+                                }
                                 className="w-36 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
                               />
                               <datalist id="tipologie-note">
@@ -2975,7 +2994,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                                 {clSaving ? "…" : t("common.save")}
                               </button>
                             </div>
-                          )}
+                          }
                           {/* Nota di credito: collegamento alla fattura che
                               rettifica. Quando lo storno è stato fatto dentro
                               Aruba il riferimento non arriva nell'XML, e senza
