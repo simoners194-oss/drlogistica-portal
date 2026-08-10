@@ -266,6 +266,12 @@ export function ResocontoTab() {
     const estratto = movSel.reduce((s, m) => s + m.importo, 0);
     const incassatoAtt = attSel.reduce((s, x) => s + incassatoDi(x), 0);
     const pagatoPas = pasSel.reduce((s, x) => s + incassatoDi(x), 0);
+    // Residui (fatture non ancora incassate/pagate) per la riga dei totali:
+    // il totale attive = incassato + da incassare; il "di cui in ritardo"
+    // guarda le sole scadute.
+    const resAtt = attSel.reduce((s, x) => s + Math.max(0, x.s.residuo), 0);
+    const ritAtt = attSel.reduce((s, x) => s + (x.s.inRitardo ? Math.max(0, x.s.residuo) : 0), 0);
+    const resPas = pasSel.reduce((s, x) => s + Math.max(0, x.s.residuo), 0);
     const differenza = Math.round((estratto - incassatoAtt + pagatoPas) * 100) / 100;
     return {
       estratto: Math.round(estratto * 100) / 100,
@@ -275,6 +281,11 @@ export function ResocontoTab() {
       // passive — è il numero da confrontare con l'estratto conto.
       netto: Math.round((incassatoAtt - pagatoPas) * 100) / 100,
       differenza,
+      totAtt: Math.round((incassatoAtt + resAtt) * 100) / 100,
+      resAtt: Math.round(resAtt * 100) / 100,
+      ritAtt: Math.round(ritAtt * 100) / 100,
+      resPas: Math.round(resPas * 100) / 100,
+      saldoResiduo: Math.round((resAtt - resPas) * 100) / 100,
       nMov: movSel.length,
       ok: Math.abs(differenza) <= 1,
     };
@@ -746,6 +757,49 @@ export function ResocontoTab() {
                   {t("rt.passive")}
                 </span>{" "}
                 <b className="tabular-nums text-foreground">{fmtImporto(quadro.pagatoPas)} €</b>
+              </div>
+            </div>
+            {/* Riga chiesta dalla direzione: totale delle attive con lo
+                spaccato incassate/da incassare (e il ritardo), e a destra i
+                residui delle due direzioni con la differenza. */}
+            <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-8 gap-y-1 border-t border-border/60 pt-2 text-sm">
+              <div>
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  {t("rt.totAttive")}
+                </span>{" "}
+                <b className="tabular-nums text-foreground">{fmtImporto(quadro.totAtt)} €</b>{" "}
+                <span className="text-[11px] text-muted-foreground">
+                  ({t("rt.incassate")} {fmtImporto(quadro.incassatoAtt)} € · {t("rt.nonIncassate")}{" "}
+                  {fmtImporto(quadro.resAtt)} €, {t("rt.diCuiRitardo")} {fmtImporto(quadro.ritAtt)}{" "}
+                  €)
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-x-6 gap-y-1">
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    {t("rt.daIncassare")}
+                  </span>{" "}
+                  <b className="tabular-nums text-foreground">{fmtImporto(quadro.resAtt)} €</b>
+                </div>
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    {t("rt.daPagare")}
+                  </span>{" "}
+                  <b className="tabular-nums text-foreground">{fmtImporto(quadro.resPas)} €</b>
+                </div>
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    {t("rt.differenzaResidui")}
+                  </span>{" "}
+                  <b
+                    className={
+                      "tabular-nums " +
+                      (quadro.saldoResiduo >= 0 ? "text-status-present" : "text-status-absent")
+                    }
+                  >
+                    {fmtImporto(quadro.saldoResiduo)} €
+                  </b>
+                </div>
               </div>
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">{t("rt.nota")}</p>
