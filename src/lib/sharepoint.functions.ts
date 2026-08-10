@@ -69,6 +69,7 @@ import {
   createRegolaFinanza,
   deleteRegolaFinanza,
   applicaRegolaAiMovimenti,
+  updateRegolaFinanza,
   annullaRegolaAiMovimenti,
   applicaRegolaDipendentiAiMovimenti,
   assegnaContoALotto,
@@ -884,6 +885,16 @@ export const spCreateRegolaFinanza = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<RegolaFinanza> => {
     await assertDirettore(await currentUser());
     return createRegolaFinanza(data);
+  });
+
+export const spUpdateRegolaFinanza = createServerFn({ method: "POST" })
+  .inputValidator((input: Partial<RegolaFinanza> & { regolaId: string }) => {
+    if (!input?.regolaId) throw new Error("regolaId mancante");
+    return { regolaId: String(input.regolaId), regola: validateRegola(input) };
+  })
+  .handler(async ({ data }): Promise<RegolaFinanza> => {
+    await assertDirettore(await currentUser());
+    return updateRegolaFinanza(data.regolaId, data.regola);
   });
 
 export const spDeleteRegolaFinanza = createServerFn({ method: "POST" })

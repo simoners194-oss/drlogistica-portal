@@ -4370,6 +4370,56 @@ export async function createRegolaFinanza(input: RegolaFinanza): Promise<RegolaF
   return { ...input, id: String(created.id) };
 }
 
+/** Aggiorna una regola SUL POSTO (PATCH): la modifica non passa mai più da
+ *  cancella-e-ricrea — se qualcosa fallisce, la regola originale resta viva
+ *  (successo il contrario: create fallita dopo la delete, due regole perse). */
+export async function updateRegolaFinanza(
+  id: string,
+  input: RegolaFinanza,
+): Promise<RegolaFinanza> {
+  const cfg = await discoverSharePoint();
+  const listId = requireRegoleList(cfg);
+  const F = cfg.regoleFinanzaFields;
+  if (!input.pattern.trim()) throw new Error("Il pattern della regola è obbligatorio.");
+  if (!input.tipologia?.trim() && !input.cliente?.trim())
+    throw new Error("La regola deve cambiare almeno la tipologia o il nome della controparte.");
+  const MF = cfg.movimentiFields;
+  for (const [valore, colRegole, colMov, nome] of [
+    [input.sottocategoria, F.Sottocategoria, MF.Sottocategoria, "Sottocategoria"],
+    [input.allocPrimaria, F.AllocPrimaria, MF.AllocPrimaria, "AllocazionePrimaria"],
+    [input.allocSecondaria, F.AllocSecondaria, MF.AllocSecondaria, "AllocazioneSecondaria"],
+  ] as const) {
+    if (!valore?.trim()) continue;
+    if (!colRegole)
+      throw new Error(
+        `La regola imposta "${nome}" ma la colonna manca sulla lista RegoleFinanza: crearla (testo) e fare Riscopri.`,
+      );
+    if (!colMov)
+      throw new Error(
+        `La regola imposta "${nome}" ma la colonna manca sulla lista MovimentiBancari: crearla (testo) e fare Riscopri.`,
+      );
+  }
+  // Si scrive TUTTO, comprese le stringhe vuote: svuotare un campo della
+  // regola deve svuotarlo anche su SharePoint.
+  const fields: Record<string, unknown> = { Title: input.pattern.trim().slice(0, 120) };
+  if (F.Pattern) fields[F.Pattern] = input.pattern.trim();
+  if (F.CampoMatch) fields[F.CampoMatch] = input.campo;
+  if (F.ModoMatch) fields[F.ModoMatch] = input.modo;
+  if (F.Tipologia) fields[F.Tipologia] = input.tipologia?.trim() ?? "";
+  if (F.Sottocategoria) fields[F.Sottocategoria] = input.sottocategoria?.trim() ?? "";
+  if (F.AllocPrimaria) fields[F.AllocPrimaria] = input.allocPrimaria?.trim() ?? "";
+  if (F.AllocSecondaria) fields[F.AllocSecondaria] = input.allocSecondaria?.trim() ?? "";
+  if (F.ClienteNuovo) fields[F.ClienteNuovo] = input.cliente?.trim() ?? "";
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${id}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    }),
+  );
+  logSp("info", "update.regola", `Regola finanza "${input.pattern}" aggiornata (#${id})`);
+  return { ...input, id };
+}
+
 export async function deleteRegolaFinanza(id: string): Promise<void> {
   const cfg = await discoverSharePoint();
   const listId = requireRegoleList(cfg);
