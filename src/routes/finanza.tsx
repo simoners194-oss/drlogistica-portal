@@ -1443,6 +1443,7 @@ function FinanzaPage() {
                     <th className="py-2 pr-3">{t("fin.dataValuta")}</th>
                     <th className="py-2 pr-3 text-right">{t("common.amount")}</th>
                     {ebSaldoInfo && <th className="py-2 pr-3 text-right">{t("fin.saldo")}</th>}
+                    <th className="py-2 pr-3">{t("fin.causaleCol")}</th>
                     <th className="py-2 pr-3">{t("common.type")}</th>
                     <th className="py-2 pr-3">{t("fin.cliForn")}</th>
                     <th className="py-2 pr-3">{t("fin.nrFattura")}</th>
@@ -1471,6 +1472,9 @@ function FinanzaPage() {
                           {fmtImporto(saldoDopo(m))}
                         </td>
                       )}
+                      <td className="py-1.5 pr-3 tabular-nums text-muted-foreground">
+                        {m.causale || "—"}
+                      </td>
                       <td className="py-1.5 pr-3">
                         {m.tipologia}
                         {m.sottocategoria && (

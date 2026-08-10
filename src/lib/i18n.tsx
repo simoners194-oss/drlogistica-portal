@@ -785,6 +785,7 @@ const en = {
   "fin.riapplicaBtn": "Re-apply all rules",
   "fin.riapplicaConfirm":
     "Every rule will be re-applied to the whole archive (useful after adding missing columns). Existing values are overwritten by the rules. Proceed?",
+  "fin.causaleCol": "Reason code",
   "fin.conto": "Account",
   "fin.contoNonAssegnato": "— not assigned —",
   "fin.contoPh": "e.g. Qonto",
@@ -1831,6 +1832,7 @@ const it: Record<DictKey, string> = {
   "fin.riapplicaBtn": "Riapplica tutte le regole",
   "fin.riapplicaConfirm":
     "Tutte le regole verranno riapplicate all'intero archivio (utile dopo aver creato colonne mancanti). I valori esistenti vengono riscritti dalle regole. Procedere?",
+  "fin.causaleCol": "Causale",
   "fin.conto": "Conto",
   "fin.contoNonAssegnato": "— non assegnato —",
   "fin.contoPh": "es. Qonto",
