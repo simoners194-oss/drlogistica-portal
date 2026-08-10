@@ -468,7 +468,11 @@ const MESI_NOMI = [
 /** "YYYY-MM" di competenza. `dichiarato` = testo libero dell'amministrazione
  *  ("GIUGNO", "GIUNGO LUGLIO"...): si prende il primo mese riconoscibile,
  *  con l'anno dedotto dalla data fattura (mai nel futuro). */
-export function meseCompetenza(dataDocumento: string, dichiarato?: string): string {
+export function meseCompetenza(
+  dataDocumento: string,
+  dichiarato?: string,
+  oggetto?: string,
+): string {
   const annoDoc = Number(dataDocumento.slice(0, 4));
   const meseDoc = Number(dataDocumento.slice(5, 7));
   const giorno = Number(dataDocumento.slice(8, 10));
@@ -476,8 +480,12 @@ export function meseCompetenza(dataDocumento: string, dichiarato?: string): stri
   // Formato diretto "2026-06" (quello mostrato in griglia): vale così com'è.
   const diretto = (dichiarato ?? "").trim();
   if (/^\d{4}-(0[1-9]|1[0-2])$/.test(diretto)) return diretto;
-  const testo = normalizeTesto(dichiarato ?? "");
-  if (testo) {
+  // Il nome del mese si cerca prima nel campo dichiarato, poi nella
+  // CAUSALE/oggetto della fattura ("competenze luglio", "canone giugno"):
+  // regola chiesta dalla direzione — la causale vince sul giorno-15.
+  for (const fonte of [dichiarato, oggetto]) {
+    const testo = normalizeTesto(fonte ?? "");
+    if (!testo) continue;
     // tollerante ai refusi: basta il prefisso di 4 lettere ("giun", "lugl").
     for (let i = 0; i < 12; i++) {
       const nome = MESI_NOMI[i];
@@ -556,12 +564,12 @@ export interface ClassificazioneRisolta {
 export function risolviClassificazione(
   f: Pick<
     FatturaRaw,
-    "cliente" | "dataDocumento" | "meseCompetenza" | "tipologiaCosto" | "clienteRif"
+    "cliente" | "dataDocumento" | "meseCompetenza" | "tipologiaCosto" | "clienteRif" | "oggetto"
   >,
   regole: readonly RegolaFattura[],
   auto: ReadonlyMap<string, { tipologia?: string; clienteRif?: string }>,
 ): ClassificazioneRisolta {
-  const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza);
+  const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza, f.oggetto);
   if (f.tipologiaCosto || f.clienteRif)
     return {
       mese,
@@ -606,7 +614,7 @@ export function risolviClassificazioneTutte(
     .filter((x) => x.key);
   const out = new Map<string, ClassificazioneRisolta>();
   for (const f of fatture) {
-    const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza);
+    const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza, f.oggetto);
     if (f.tipologiaCosto || f.clienteRif) {
       out.set(f.nomeFile, {
         mese,
