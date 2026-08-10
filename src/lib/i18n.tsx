@@ -782,6 +782,9 @@ const en = {
   "fin.totFiltrato": "Filtered total",
   "fin.regoleAltro": "No type set",
   "fin.regDipBtn": "Apply employee rule",
+  "fin.riapplicaBtn": "Re-apply all rules",
+  "fin.riapplicaConfirm":
+    "Every rule will be re-applied to the whole archive (useful after adding missing columns). Existing values are overwritten by the rules. Proceed?",
   "fin.conto": "Account",
   "fin.contoNonAssegnato": "— not assigned —",
   "fin.contoPh": "e.g. Qonto",
@@ -1823,6 +1826,9 @@ const it: Record<DictKey, string> = {
   "fin.totFiltrato": "Totale selezione",
   "fin.regoleAltro": "Senza tipologia",
   "fin.regDipBtn": "Applica regola dipendenti",
+  "fin.riapplicaBtn": "Riapplica tutte le regole",
+  "fin.riapplicaConfirm":
+    "Tutte le regole verranno riapplicate all'intero archivio (utile dopo aver creato colonne mancanti). I valori esistenti vengono riscritti dalle regole. Procedere?",
   "fin.conto": "Conto",
   "fin.contoNonAssegnato": "— non assegnato —",
   "fin.contoPh": "es. Qonto",

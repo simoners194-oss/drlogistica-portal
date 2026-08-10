@@ -4114,6 +4114,16 @@ export async function updateMovimento(input: UpdateMovimentoInput): Promise<SpMo
   const cfg = await discoverSharePoint();
   const listId = requireMovimentiList(cfg);
   const F = cfg.movimentiFields;
+  for (const [valore, col, nome] of [
+    [input.sottocategoria, F.Sottocategoria, "Sottocategoria"],
+    [input.allocPrimaria, F.AllocPrimaria, "AllocazionePrimaria"],
+    [input.allocSecondaria, F.AllocSecondaria, "AllocazioneSecondaria"],
+  ] as const) {
+    if (valore && !col)
+      throw new Error(
+        `Il campo "${nome}" non si puo' salvare: colonna assente su MovimentiBancari — crearla (testo) e fare Riscopri.`,
+      );
+  }
   const fields: Record<string, unknown> = {};
   if (F.Tipologia && input.tipologia !== undefined) fields[F.Tipologia] = input.tipologia;
   if (F.Sottocategoria && input.sottocategoria !== undefined)
@@ -4315,6 +4325,27 @@ export async function createRegolaFinanza(input: RegolaFinanza): Promise<RegolaF
   const listId = requireRegoleList(cfg);
   const F = cfg.regoleFinanzaFields;
   if (!input.pattern.trim()) throw new Error("Il pattern della regola è obbligatorio.");
+  // FALLIMENTO RUMOROSO: venerdi' una regola con la sottocategoria e' stata
+  // salvata SENZA (colonna assente) e il direttore ha perso ore di lavoro
+  // senza alcun avviso. Se un campo impostato non ha la colonna, ci si
+  // ferma QUI con l'istruzione esatta.
+  const MF = cfg.movimentiFields;
+  const controlli: [string | undefined, string | undefined, string | undefined, string][] = [
+    [input.sottocategoria, F.Sottocategoria, MF.Sottocategoria, "Sottocategoria"],
+    [input.allocPrimaria, F.AllocPrimaria, MF.AllocPrimaria, "AllocazionePrimaria"],
+    [input.allocSecondaria, F.AllocSecondaria, MF.AllocSecondaria, "AllocazioneSecondaria"],
+  ];
+  for (const [valore, colRegole, colMov, nome] of controlli) {
+    if (!valore?.trim()) continue;
+    if (!colRegole)
+      throw new Error(
+        `La regola imposta "${nome}" ma la colonna manca sulla lista RegoleFinanza: crearla (testo) e fare Riscopri.`,
+      );
+    if (!colMov)
+      throw new Error(
+        `La regola imposta "${nome}" ma la colonna manca sulla lista MovimentiBancari: crearla (testo) e fare Riscopri.`,
+      );
+  }
   if (!input.tipologia?.trim() && !input.cliente?.trim())
     throw new Error("La regola deve cambiare almeno la tipologia o il nome della controparte.");
   const fields: Record<string, unknown> = { Title: input.pattern.trim().slice(0, 120) };
@@ -4361,6 +4392,16 @@ export async function applicaRegolaAiMovimenti(
   const cfg = await discoverSharePoint();
   const listId = requireMovimentiList(cfg);
   const F = cfg.movimentiFields;
+  for (const [valore, col, nome] of [
+    [regola.sottocategoria, F.Sottocategoria, "Sottocategoria"],
+    [regola.allocPrimaria, F.AllocPrimaria, "AllocazionePrimaria"],
+    [regola.allocSecondaria, F.AllocSecondaria, "AllocazioneSecondaria"],
+  ] as const) {
+    if (valore?.trim() && !col)
+      throw new Error(
+        `La regola imposta "${nome}" ma la colonna manca su MovimentiBancari: crearla (testo) e fare Riscopri.`,
+      );
+  }
   const all = await fetchMovimenti();
   const target = all.filter((m) => {
     if (!matchRegola(m, regola)) return false;

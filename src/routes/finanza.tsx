@@ -2193,6 +2193,59 @@ function FinanzaPage() {
               >
                 {dipBusy ? t("fin.regolaApplying") : t("fin.regDipBtn")}
               </button>
+              {/* RIAPPLICA TUTTE: dopo aver creato colonne mancanti (o dopo
+                  un pasticcio) un click ripassa ogni regola sull'archivio. */}
+              <button
+                type="button"
+                disabled={dipBusy || (regole ?? []).length === 0}
+                onClick={() => {
+                  if (!window.confirm(t("fin.riapplicaConfirm"))) return;
+                  setDipBusy(true);
+                  void (async () => {
+                    let tot = 0;
+                    let errori = 0;
+                    try {
+                      for (const r of regole ?? []) {
+                        const payload = {
+                          pattern: r.pattern,
+                          campo: r.campo,
+                          modo: r.modo,
+                          tipologia: r.tipologia,
+                          sottocategoria: r.sottocategoria,
+                          allocPrimaria: r.allocPrimaria,
+                          allocSecondaria: r.allocSecondaria,
+                          cliente: r.cliente,
+                        };
+                        let ultimoRimanenti = Number.POSITIVE_INFINITY;
+                        try {
+                          for (;;) {
+                            const esito = (await spApplicaRegolaFinanza({ data: payload })) as {
+                              aggiornati: number;
+                              rimanenti: number;
+                            };
+                            tot += esito.aggiornati;
+                            if (esito.rimanenti <= 0 || esito.aggiornati === 0) break;
+                            if (esito.rimanenti >= ultimoRimanenti) break;
+                            ultimoRimanenti = esito.rimanenti;
+                          }
+                        } catch {
+                          errori++;
+                        }
+                      }
+                      toast.success(
+                        `${tot} ${t("fin.regolaApplicati")}${errori ? ` · ${errori} regole con errori` : ""}`,
+                      );
+                      loadMovimenti(anni);
+                      loadAnomalie();
+                    } finally {
+                      setDipBusy(false);
+                    }
+                  })();
+                }}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+              >
+                {t("fin.riapplicaBtn")}
+              </button>
             </div>
             {regole == null ? (
               <div className="py-6 text-center text-sm text-muted-foreground">
