@@ -2006,13 +2006,16 @@ function FinanzaPage() {
             <div className="text-sm font-semibold text-foreground mb-1">{t("fin.regoleTitle")}</div>
             <p className="text-xs text-muted-foreground mb-4">{t("fin.regoleDesc")}</p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
+              <div className="sm:col-span-2">
                 <label className="text-xs text-muted-foreground">{t("fin.regolaPattern")}</label>
-                <input
+                {/* Area di testo: il direttore incolla ELENCHI di nominativi
+                    (virgola, punto e virgola o a capo = termini alternativi). */}
+                <textarea
                   value={rPattern}
                   onChange={(e) => setRPattern(e.target.value)}
                   placeholder={t("fin.regolaPatternPh")}
-                  className={inputCls}
+                  rows={2}
+                  className={`${inputCls} min-h-[42px] resize-y`}
                 />
               </div>
               <div>

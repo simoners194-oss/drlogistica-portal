@@ -839,9 +839,11 @@ export const spUpdateMovimento = createServerFn({ method: "POST" })
 
 // --- Regole apprese Finanza -------------------------------------------------
 function validateRegola(input: Partial<RegolaFinanza>): RegolaFinanza {
+  // Fino a 500 caratteri: il direttore ci mette elenchi di nominativi
+  // separati da virgola. Oltre i 255 serve la colonna Pattern "piu' righe".
   const pattern = String(input?.pattern ?? "")
     .trim()
-    .slice(0, 120);
+    .slice(0, 500);
   if (!pattern) throw new Error("Pattern mancante");
   const tipologia = input.tipologia ? String(input.tipologia).trim().slice(0, 60) : undefined;
   const sottocategoria = input.sottocategoria
