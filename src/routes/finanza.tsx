@@ -148,6 +148,76 @@ function stralcioDescr(descrizione: string, cerca: string): string {
   return `${da > 0 ? "…" : ""}${descrizione.slice(da, a)}${a < descrizione.length ? "…" : ""}`;
 }
 
+// Campo a VOCABOLARIO: menu a discesa con le sole voci gia' usate nelle
+// regole (in ordine alfabetico) + "Nuova voce" che apre il campo libero.
+// Un valore fuori elenco (regola vecchia in modifica) apre direttamente
+// il campo libero, cosi' non si perde niente.
+function CampoVocabolario({
+  label,
+  valore,
+  onChange,
+  opzioni,
+  testoNessuno,
+  testoNuova,
+}: {
+  label: string;
+  valore: string;
+  onChange: (v: string) => void;
+  opzioni: string[];
+  testoNessuno: string;
+  testoNuova: string;
+}) {
+  const [libero, setLibero] = useState(false);
+  const fuoriElenco = valore !== "" && !opzioni.includes(valore);
+  const modoLibero = libero || fuoriElenco;
+  return (
+    <>
+      <label className="text-xs text-muted-foreground">{label}</label>
+      {modoLibero ? (
+        <div className="flex gap-1.5">
+          <input
+            value={valore}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={testoNuova}
+            autoFocus={libero}
+            className={inputCls}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setLibero(false);
+              onChange("");
+            }}
+            title={testoNessuno}
+            className="shrink-0 rounded-lg border border-border px-2 text-xs hover:bg-muted"
+          >
+            ↩
+          </button>
+        </div>
+      ) : (
+        <select
+          value={valore}
+          onChange={(e) => {
+            if (e.target.value === "__nuova__") {
+              setLibero(true);
+              onChange("");
+            } else onChange(e.target.value);
+          }}
+          className={inputCls}
+        >
+          <option value="">{testoNessuno}</option>
+          {opzioni.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+          <option value="__nuova__">{testoNuova}</option>
+        </select>
+      )}
+    </>
+  );
+}
+
 function fmtImportId(id: string, legacyLabel: string): string {
   if (!id) return legacyLabel;
   const m = id.match(/^(IMP|SYNC)-(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/);
@@ -252,6 +322,28 @@ function FinanzaPage() {
   const [rSottocat, setRSottocat] = useState("");
   const [rAllocPri, setRAllocPri] = useState("");
   const [rAllocSec, setRAllocSec] = useState("");
+  // Vocabolario dalle regole apprese, A CASCATA: scelta la tipologia, le
+  // sottocategorie si restringono a quelle usate con lei (idem le
+  // allocazioni); se il filtro svuota l'elenco, si mostra tutto.
+  const vocab = useMemo(() => {
+    const rs = regole ?? [];
+    const uniq = (xs: (string | undefined)[]) =>
+      [...new Set(xs.filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b));
+    const perTip = rTipologia.trim()
+      ? rs.filter((r) => (r.tipologia ?? "") === rTipologia.trim())
+      : rs;
+    const perPri = rAllocPri.trim()
+      ? rs.filter((r) => (r.allocPrimaria ?? "") === rAllocPri.trim())
+      : rs;
+    const sotto = uniq(perTip.map((r) => r.sottocategoria));
+    const sec = uniq(perPri.map((r) => r.allocSecondaria));
+    return {
+      tipologie: uniq(rs.map((r) => r.tipologia)),
+      sottocat: sotto.length ? sotto : uniq(rs.map((r) => r.sottocategoria)),
+      allocPri: uniq(rs.map((r) => r.allocPrimaria)),
+      allocSec: sec.length ? sec : uniq(rs.map((r) => r.allocSecondaria)),
+    };
+  }, [regole, rTipologia, rAllocPri]);
   const [rApplica, setRApplica] = useState(true);
   const [rBusy, setRBusy] = useState(false);
   const [rProgress, setRProgress] = useState(0);
@@ -2194,77 +2286,44 @@ function FinanzaPage() {
                 </div>
               )}
               <div>
-                <label className="text-xs text-muted-foreground">{t("fin.regolaTipologia")}</label>
-                {/* Campo LIBERO con suggerimenti: si può digitare una
-                    tipologia nuova (es. "Consulenza notarile") e nasce con
-                    la regola — vuoto = non cambiare. */}
-                <input
-                  list="tipologie-regola"
-                  value={rTipologia}
-                  onChange={(e) => setRTipologia(e.target.value)}
-                  placeholder={t("fin.regolaTipNoChange")}
-                  className={inputCls}
+                <CampoVocabolario
+                  label={t("fin.regolaTipologia")}
+                  valore={rTipologia}
+                  onChange={setRTipologia}
+                  opzioni={vocab.tipologie}
+                  testoNessuno={t("fin.regolaTipNoChange")}
+                  testoNuova={t("fin.vocNuova")}
                 />
-                <datalist id="tipologie-regola">
-                  {[...new Set((regole ?? []).map((r) => r.tipologia ?? "").filter(Boolean))]
-                    .sort((a, b) => a.localeCompare(b))
-                    .map((tp) => (
-                      <option key={tp} value={tp} />
-                    ))}
-                </datalist>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">{t("fin.regolaSottocat")}</label>
-                {/* Libera con suggerimenti: le sottocategorie "nascono"
-                    scrivendole (auto-aggiunta chiesta dal direttore). */}
-                <input
-                  list="sottocategorie-note"
-                  value={rSottocat}
-                  onChange={(e) => setRSottocat(e.target.value)}
-                  placeholder={t("fin.regolaTipNoChange")}
-                  className={inputCls}
+                <CampoVocabolario
+                  label={t("fin.regolaSottocat")}
+                  valore={rSottocat}
+                  onChange={setRSottocat}
+                  opzioni={vocab.sottocat}
+                  testoNessuno={t("fin.regolaTipNoChange")}
+                  testoNuova={t("fin.vocNuova")}
                 />
-                <datalist id="sottocategorie-note">
-                  {[...new Set((regole ?? []).map((r) => r.sottocategoria ?? "").filter(Boolean))]
-                    .sort((a, b) => a.localeCompare(b))
-                    .map((sc) => (
-                      <option key={sc} value={sc} />
-                    ))}
-                </datalist>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">{t("fin.regolaAllocPri")}</label>
-                <input
-                  list="alloc-primarie"
-                  value={rAllocPri}
-                  onChange={(e) => setRAllocPri(e.target.value)}
-                  placeholder={t("fin.regolaTipNoChange")}
-                  className={inputCls}
+                <CampoVocabolario
+                  label={t("fin.regolaAllocPri")}
+                  valore={rAllocPri}
+                  onChange={setRAllocPri}
+                  opzioni={vocab.allocPri}
+                  testoNessuno={t("fin.regolaTipNoChange")}
+                  testoNuova={t("fin.vocNuova")}
                 />
-                <datalist id="alloc-primarie">
-                  {[...new Set((regole ?? []).map((r) => r.allocPrimaria ?? "").filter(Boolean))]
-                    .sort((a, b) => a.localeCompare(b))
-                    .map((a) => (
-                      <option key={a} value={a} />
-                    ))}
-                </datalist>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">{t("fin.regolaAllocSec")}</label>
-                <input
-                  list="alloc-secondarie"
-                  value={rAllocSec}
-                  onChange={(e) => setRAllocSec(e.target.value)}
-                  placeholder={t("fin.regolaTipNoChange")}
-                  className={inputCls}
+                <CampoVocabolario
+                  label={t("fin.regolaAllocSec")}
+                  valore={rAllocSec}
+                  onChange={setRAllocSec}
+                  opzioni={vocab.allocSec}
+                  testoNessuno={t("fin.regolaTipNoChange")}
+                  testoNuova={t("fin.vocNuova")}
                 />
-                <datalist id="alloc-secondarie">
-                  {[...new Set((regole ?? []).map((r) => r.allocSecondaria ?? "").filter(Boolean))]
-                    .sort((a, b) => a.localeCompare(b))
-                    .map((a) => (
-                      <option key={a} value={a} />
-                    ))}
-                </datalist>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">

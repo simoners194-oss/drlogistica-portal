@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.21.0",
+    date: "2026-08-10",
+    codename: "Menu a cascata",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Le regole si compilano scegliendo da menu a discesa",
+        description:
+          "Tipologia, sottocategoria e allocazioni nel modulo delle regole sono ora veri menu a discesa: si aprono con un click e propongono solo le voci gia' usate nelle regole apprese, in ordine alfabetico e a cascata (scelta la tipologia, le sottocategorie si restringono a quelle coerenti). La voce “Nuova voce…” apre il campo libero per aggiungerne una. Sullo specchietto del Resoconto compare inoltre il sottotitolo “Controllo aggiornamento Aruba”.",
+      },
+    ],
+  },
+  {
     version: "1.19.0",
     date: "2026-08-07",
     codename: "Salari sull'appalto giusto",
