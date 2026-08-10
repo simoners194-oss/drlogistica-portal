@@ -64,6 +64,7 @@ import {
   spCreateRegolaFinanza,
   spDeleteRegolaFinanza,
   spApplicaRegolaFinanza,
+  spUpdateRegolaFinanza,
   spApplicaRegolaDipendenti,
   spAssegnaContoLotto,
   spAnnullaRegolaFinanza,
@@ -744,7 +745,6 @@ function FinanzaPage() {
         allocSecondaria: rAllocSec.trim() || undefined,
         cliente: rCliente.trim() || undefined,
       };
-      if (rEditId) await spDeleteRegolaFinanza({ data: { regolaId: rEditId } });
       // PARACADUTE: prima di salvare si mostra QUANTI movimenti verrebbero
       // toccati — una regola troppo larga si riconosce dal numero.
       const colpiti = (movimenti ?? []).filter((m) => matchRegola(m, payload)).length;
@@ -753,7 +753,10 @@ function FinanzaPage() {
         setRProgress(0);
         return;
       }
-      await spCreateRegolaFinanza({ data: payload });
+      // Modifica = aggiornamento SUL POSTO: mai piu' cancella-e-ricrea (una
+      // create fallita dopo la delete ha bruciato due regole del direttore).
+      if (rEditId) await spUpdateRegolaFinanza({ data: { regolaId: rEditId, ...payload } });
+      else await spCreateRegolaFinanza({ data: payload });
       let applicati = 0;
       if (rApplica) {
         // Applicazione retroattiva a blocchi finché il server non ha finito.
