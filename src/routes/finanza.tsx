@@ -1472,8 +1472,18 @@ function FinanzaPage() {
                           {fmtImporto(saldoDopo(m))}
                         </td>
                       )}
-                      <td className="py-1.5 pr-3 tabular-nums text-muted-foreground">
-                        {m.causale || "—"}
+                      <td className="py-1.5 pr-3 max-w-64">
+                        {/* La causale VERA e' il testo del movimento; il
+                            codice ABI (usato dal classificatore) resta
+                            sotto, in piccolo. */}
+                        <div className="truncate text-muted-foreground" title={m.descrizione}>
+                          {m.descrizione || "—"}
+                        </div>
+                        {m.causale && (
+                          <div className="text-[10px] tabular-nums text-muted-foreground/60">
+                            ABI {m.causale}
+                          </div>
+                        )}
                       </td>
                       <td className="py-1.5 pr-3">
                         {m.tipologia}
