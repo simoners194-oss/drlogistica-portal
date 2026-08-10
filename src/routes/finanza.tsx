@@ -1306,9 +1306,11 @@ function FinanzaPage() {
                             ...TIPOLOGIE_MOVIMENTO,
                             ...(movimenti ?? []).map((x) => x.tipologia).filter(Boolean),
                           ]),
-                        ].map((tp) => (
-                          <option key={tp} value={tp} />
-                        ))}
+                        ]
+                          .sort((a, b) => a.localeCompare(b))
+                          .map((tp) => (
+                            <option key={tp} value={tp} />
+                          ))}
                       </datalist>
                     </div>
                     <div>
@@ -1324,9 +1326,11 @@ function FinanzaPage() {
                           ...new Set(
                             (movimenti ?? []).map((x) => x.sottocategoria).filter(Boolean),
                           ),
-                        ].map((sc) => (
-                          <option key={sc} value={sc} />
-                        ))}
+                        ]
+                          .sort((a, b) => a.localeCompare(b))
+                          .map((sc) => (
+                            <option key={sc} value={sc} />
+                          ))}
                       </datalist>
                     </div>
                     <div>
@@ -1344,9 +1348,11 @@ function FinanzaPage() {
                             "Appalto",
                             ...(movimenti ?? []).map((x) => x.allocPrimaria).filter(Boolean),
                           ]),
-                        ].map((a) => (
-                          <option key={a} value={a} />
-                        ))}
+                        ]
+                          .sort((a, b) => a.localeCompare(b))
+                          .map((a) => (
+                            <option key={a} value={a} />
+                          ))}
                       </datalist>
                     </div>
                     <div>
@@ -1362,9 +1368,11 @@ function FinanzaPage() {
                           ...new Set(
                             (movimenti ?? []).map((x) => x.allocSecondaria).filter(Boolean),
                           ),
-                        ].map((a) => (
-                          <option key={a} value={a} />
-                        ))}
+                        ]
+                          .sort((a, b) => a.localeCompare(b))
+                          .map((a) => (
+                            <option key={a} value={a} />
+                          ))}
                       </datalist>
                     </div>
                     <div>
@@ -1884,9 +1892,11 @@ function FinanzaPage() {
                               ...TIPOLOGIE_MOVIMENTO,
                               ...(movimenti ?? []).map((x) => x.tipologia).filter(Boolean),
                             ]),
-                          ].map((tp) => (
-                            <option key={tp} value={tp} />
-                          ))}
+                          ]
+                            .sort((a, b) => a.localeCompare(b))
+                            .map((tp) => (
+                              <option key={tp} value={tp} />
+                            ))}
                         </datalist>
                       </div>
                       <div>
@@ -2196,15 +2206,11 @@ function FinanzaPage() {
                   className={inputCls}
                 />
                 <datalist id="tipologie-regola">
-                  {[
-                    ...new Set([
-                      ...TIPOLOGIE_MOVIMENTO,
-                      ...(movimenti ?? []).map((m) => m.tipologia).filter(Boolean),
-                      ...(regole ?? []).map((r) => r.tipologia ?? "").filter(Boolean),
-                    ]),
-                  ].map((tp) => (
-                    <option key={tp} value={tp} />
-                  ))}
+                  {[...new Set((regole ?? []).map((r) => r.tipologia ?? "").filter(Boolean))]
+                    .sort((a, b) => a.localeCompare(b))
+                    .map((tp) => (
+                      <option key={tp} value={tp} />
+                    ))}
                 </datalist>
               </div>
               <div>
@@ -2219,17 +2225,11 @@ function FinanzaPage() {
                   className={inputCls}
                 />
                 <datalist id="sottocategorie-note">
-                  {[
-                    ...new Set([
-                      "Pernottamento",
-                      "Pasto",
-                      "Trasporto",
-                      ...(movimenti ?? []).map((m) => m.sottocategoria).filter(Boolean),
-                      ...(regole ?? []).map((r) => r.sottocategoria ?? "").filter(Boolean),
-                    ]),
-                  ].map((sc) => (
-                    <option key={sc} value={sc} />
-                  ))}
+                  {[...new Set((regole ?? []).map((r) => r.sottocategoria ?? "").filter(Boolean))]
+                    .sort((a, b) => a.localeCompare(b))
+                    .map((sc) => (
+                      <option key={sc} value={sc} />
+                    ))}
                 </datalist>
               </div>
               <div>
@@ -2242,16 +2242,11 @@ function FinanzaPage() {
                   className={inputCls}
                 />
                 <datalist id="alloc-primarie">
-                  {[
-                    ...new Set([
-                      "Costi generali",
-                      "Appalto",
-                      ...(movimenti ?? []).map((m) => m.allocPrimaria).filter(Boolean),
-                      ...(regole ?? []).map((r) => r.allocPrimaria ?? "").filter(Boolean),
-                    ]),
-                  ].map((a) => (
-                    <option key={a} value={a} />
-                  ))}
+                  {[...new Set((regole ?? []).map((r) => r.allocPrimaria ?? "").filter(Boolean))]
+                    .sort((a, b) => a.localeCompare(b))
+                    .map((a) => (
+                      <option key={a} value={a} />
+                    ))}
                 </datalist>
               </div>
               <div>
@@ -2264,18 +2259,11 @@ function FinanzaPage() {
                   className={inputCls}
                 />
                 <datalist id="alloc-secondarie">
-                  {[
-                    ...new Set([
-                      "Ufficio Fiano Romano",
-                      "Ufficio Milano",
-                      "iMile",
-                      "Postadoc Hub",
-                      ...(movimenti ?? []).map((m) => m.allocSecondaria).filter(Boolean),
-                      ...(regole ?? []).map((r) => r.allocSecondaria ?? "").filter(Boolean),
-                    ]),
-                  ].map((a) => (
-                    <option key={a} value={a} />
-                  ))}
+                  {[...new Set((regole ?? []).map((r) => r.allocSecondaria ?? "").filter(Boolean))]
+                    .sort((a, b) => a.localeCompare(b))
+                    .map((a) => (
+                      <option key={a} value={a} />
+                    ))}
                 </datalist>
               </div>
               <div>
