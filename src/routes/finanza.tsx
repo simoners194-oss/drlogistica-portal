@@ -747,8 +747,17 @@ function FinanzaPage() {
       };
       // PARACADUTE: prima di salvare si mostra QUANTI movimenti verrebbero
       // toccati — una regola troppo larga si riconosce dal numero.
-      const colpiti = (movimenti ?? []).filter((m) => matchRegola(m, payload)).length;
-      if (!window.confirm(`${t("fin.regolaImpatto1")} ${colpiti} ${t("fin.regolaImpatto2")}`)) {
+      // Con l'archivio ancora in caricamento il conteggio mentirebbe ("0
+      // movimenti" su una lista vuota): in quel caso lo si dice chiaramente.
+      const conferma =
+        movimenti == null
+          ? window.confirm(t("fin.regolaImpattoND"))
+          : window.confirm(
+              `${t("fin.regolaImpatto1")} ${
+                movimenti.filter((m) => matchRegola(m, payload)).length
+              } ${t("fin.regolaImpatto2")}`,
+            );
+      if (!conferma) {
         setRBusy(false);
         setRProgress(0);
         return;
