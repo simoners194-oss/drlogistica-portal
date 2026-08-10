@@ -786,6 +786,9 @@ const en = {
   "fin.riapplicaConfirm":
     "Every rule will be re-applied to the whole archive (useful after adding missing columns). Existing values are overwritten by the rules. Proceed?",
   "fin.causaleCol": "Reason code",
+  "fin.editMovTip": "Edit this transaction",
+  "fin.editMovTitolo": "Edit transaction",
+  "fin.editMovSvuota": "Clearing a field and saving removes that value from the transaction.",
   "fin.conto": "Account",
   "fin.contoNonAssegnato": "— not assigned —",
   "fin.contoPh": "e.g. Qonto",
@@ -1833,6 +1836,9 @@ const it: Record<DictKey, string> = {
   "fin.riapplicaConfirm":
     "Tutte le regole verranno riapplicate all'intero archivio (utile dopo aver creato colonne mancanti). I valori esistenti vengono riscritti dalle regole. Procedere?",
   "fin.causaleCol": "Causale",
+  "fin.editMovTip": "Correggi questo movimento",
+  "fin.editMovTitolo": "Correggi movimento",
+  "fin.editMovSvuota": "Svuotare un campo e salvare cancella quel valore dal movimento.",
   "fin.conto": "Conto",
   "fin.contoNonAssegnato": "— non assegnato —",
   "fin.contoPh": "es. Qonto",

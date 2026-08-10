@@ -1283,6 +1283,136 @@ function FinanzaPage() {
                 +{fmtImporto(totaleFiltrato.entrate)} / {fmtImporto(totaleFiltrato.uscite)}
               </div>
             </div>
+            {/* CORREZIONE del singolo movimento (matita): stessi campi della
+                sanatura — svuotare un campo e salvare = cancellare il valore. */}
+            {editId != null && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-elegant)]">
+                  <div className="mb-3 text-[15px] font-semibold text-foreground">
+                    {t("fin.editMovTitolo")}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">{t("common.type")}</label>
+                      <input
+                        list="tipologie-mov-edit"
+                        value={editTip}
+                        onChange={(e) => setEditTip(e.target.value)}
+                        className={inputCls}
+                      />
+                      <datalist id="tipologie-mov-edit">
+                        {[
+                          ...new Set([
+                            ...TIPOLOGIE_MOVIMENTO,
+                            ...(movimenti ?? []).map((x) => x.tipologia).filter(Boolean),
+                          ]),
+                        ].map((tp) => (
+                          <option key={tp} value={tp} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">{t("fin.sottocat")}</label>
+                      <input
+                        list="sottocat-mov-edit"
+                        value={editSott}
+                        onChange={(e) => setEditSott(e.target.value)}
+                        className={inputCls}
+                      />
+                      <datalist id="sottocat-mov-edit">
+                        {[
+                          ...new Set(
+                            (movimenti ?? []).map((x) => x.sottocategoria).filter(Boolean),
+                          ),
+                        ].map((sc) => (
+                          <option key={sc} value={sc} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">{t("fin.allocPri")}</label>
+                      <input
+                        list="allocpri-mov-edit"
+                        value={editAllocPri}
+                        onChange={(e) => setEditAllocPri(e.target.value)}
+                        className={inputCls}
+                      />
+                      <datalist id="allocpri-mov-edit">
+                        {[
+                          ...new Set([
+                            "Costi generali",
+                            "Appalto",
+                            ...(movimenti ?? []).map((x) => x.allocPrimaria).filter(Boolean),
+                          ]),
+                        ].map((a) => (
+                          <option key={a} value={a} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">{t("fin.allocSec")}</label>
+                      <input
+                        list="allocsec-mov-edit"
+                        value={editAllocSec}
+                        onChange={(e) => setEditAllocSec(e.target.value)}
+                        className={inputCls}
+                      />
+                      <datalist id="allocsec-mov-edit">
+                        {[
+                          ...new Set(
+                            (movimenti ?? []).map((x) => x.allocSecondaria).filter(Boolean),
+                          ),
+                        ].map((a) => (
+                          <option key={a} value={a} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">{t("fin.cliForn")}</label>
+                      <input
+                        value={editCliente}
+                        onChange={(e) => setEditCliente(e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">{t("fin.nrFattura")}</label>
+                      <input
+                        value={editNrFatt}
+                        onChange={(e) => setEditNrFatt(e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs text-muted-foreground">{t("fin.note")}</label>
+                      <input
+                        value={editNote}
+                        onChange={(e) => setEditNote(e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[11px] text-muted-foreground">{t("fin.editMovSvuota")}</p>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditId(null)}
+                      className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
+                    >
+                      {t("common.cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void salvaEdit()}
+                      className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                    >
+                      {saving ? t("common.loading") : t("common.save")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {ebSaldoInfo && (
               <div className="ml-auto rounded-xl border border-border bg-secondary/40 px-4 py-2 text-right">
                 <div className="text-[11px] text-muted-foreground">
@@ -1523,7 +1653,15 @@ function FinanzaPage() {
                       </td>
                       <td className="py-1.5 pr-3 text-muted-foreground">{m.nrFattura || "—"}</td>
                       <td className="py-1.5 pr-3 text-muted-foreground">{m.note || "—"}</td>
-                      <td className="py-1.5 text-right">
+                      <td className="py-1.5 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => apriEdit(m)}
+                          title={t("fin.editMovTip")}
+                          className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => creaRegolaDa(m)}
