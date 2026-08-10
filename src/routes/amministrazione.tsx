@@ -228,6 +228,8 @@ function AmministrazionePage() {
 
         <ImportDipendentiCard onDone={() => refresh(true)} />
 
+        <ImportAppaltiCard />
+
         <BancaPsd2Panel />
 
         <ProtezionePinCard />
@@ -373,6 +375,132 @@ function HealthCard({
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ImportAppaltiCard() {
+  const [testo, setTesto] = useState("");
+  const [righe, setRighe] = useState<string[]>([]);
+  const [esito, setEsito] = useState("");
+  const [loading, setLoading] = useState<"preview" | "import" | null>(null);
+
+  // Righe "NOME COGNOME<TAB o ;>APPALTO" (incolla diretta da Excel).
+  const parse = () =>
+    testo
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const sep = l.includes("\t") ? "\t" : ";";
+        const i = l.indexOf(sep);
+        return i > 0
+          ? { nome: l.slice(0, i).trim(), appalto: l.slice(i + 1).trim() }
+          : { nome: "", appalto: "" };
+      })
+      .filter((r) => r.nome && r.appalto);
+
+  const run = async (dryRun: boolean) => {
+    const rows = parse();
+    if (!rows.length) {
+      setEsito("Nessuna riga valida: servono righe 'Nome Cognome<TAB>Appalto' (o separate da ;).");
+      return;
+    }
+    setLoading(dryRun ? "preview" : "import");
+    setRighe([]);
+    setEsito("");
+    try {
+      let aggiornati = 0;
+      let creati = 0;
+      let invariati = 0;
+      const ambigui: string[] = [];
+      const anteprima: string[] = [];
+      for (let i = 0; i < rows.length; i += 60) {
+        const r = (await spImportAppalti({
+          data: { rows: rows.slice(i, i + 60), dryRun },
+        })) as {
+          aggiornati: number;
+          creati: number;
+          invariati: number;
+          ambigui: string[];
+          anteprima: string[];
+        };
+        aggiornati += r.aggiornati;
+        creati += r.creati;
+        invariati += r.invariati;
+        ambigui.push(...r.ambigui);
+        anteprima.push(...r.anteprima);
+      }
+      setRighe(anteprima);
+      setEsito(
+        `${dryRun ? "ANTEPRIMA — nessuna scrittura. " : ""}Aggiornati: ${aggiornati} · nuove schede: ${creati} · già a posto: ${invariati}` +
+          (ambigui.length ? ` · ambigui (saltati): ${ambigui.join(", ")}` : ""),
+      );
+    } catch (e) {
+      setEsito(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="space-y-1">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Users className="h-5 w-5 text-primary" />
+          Appalti dipendenti
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Incolla da Excel due colonne: <strong>Nome Cognome</strong> e <strong>Appalto</strong>{" "}
+          (separati da TAB o punto e virgola). I nomi si agganciano anche se scritti in ordine
+          diverso; chi non è in anagrafica riceve una scheda minima senza credenziali. Fai sempre
+          prima l'<strong>Anteprima</strong>.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <textarea
+          value={testo}
+          onChange={(e) => setTesto(e.target.value)}
+          placeholder={"MARIO ROSSI\tZINGALI\nLUCIA VERDI\tUNIVEX MILANO"}
+          spellCheck={false}
+          className="w-full min-h-[120px] resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => run(true)}
+            disabled={loading !== null || testo.trim().length === 0}
+          >
+            {loading === "preview" ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <PlayCircle className="h-4 w-4 mr-2" />
+            )}
+            Anteprima (non scrive)
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => run(false)}
+            disabled={loading !== null || testo.trim().length === 0}
+          >
+            {loading === "import" ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+            )}
+            Applica
+          </Button>
+        </div>
+        {esito && <p className="text-xs text-foreground">{esito}</p>}
+        {righe.length > 0 && (
+          <div className="max-h-48 overflow-auto rounded-lg border border-border p-2 font-mono text-[11px] text-muted-foreground">
+            {righe.map((r, i) => (
+              <div key={i}>{r}</div>
+            ))}
           </div>
         )}
       </CardContent>
