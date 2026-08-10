@@ -684,7 +684,12 @@ export function ResocontoTab() {
               ) : (
                 <AlertTriangle className="h-5 w-5 text-status-absent" />
               )}
-              <span className="text-sm font-semibold text-foreground">{t("rt.titolo")}</span>
+              <span className="text-sm font-semibold text-foreground">
+                {t("rt.titolo")}{" "}
+                <span className="font-normal text-muted-foreground">
+                  ({t("rt.sottotitoloAruba")})
+                </span>
+              </span>
               <span
                 className={`ml-auto rounded-full px-3 py-1 text-sm font-bold ${
                   quadro.ok
