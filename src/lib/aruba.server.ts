@@ -234,6 +234,9 @@ export async function arubaProvaConnessione(): Promise<ArubaProbeResult> {
   // page/size). In caso di errore il messaggio HTTP viene riportato integro
   // (troncato) proprio per correggere rapidamente nomi/formati.
   const raw = await arubaGet("/api/v2/invoices-out", {
+    // senderCountry e' OBBLIGATORIO sulla v2 (HTTP 400 senza): il cedente
+    // siamo noi, quindi Italia.
+    senderCountry: "IT",
     creationStartDate: iso(start),
     creationEndDate: iso(now),
     page: "1",
@@ -265,6 +268,7 @@ export async function arubaSearchInvoicesOut(params: {
   size: number;
 }): Promise<unknown> {
   return arubaGet("/api/v2/invoices-out", {
+    senderCountry: "IT",
     creationStartDate: params.startISO,
     creationEndDate: params.endISO,
     page: String(params.page),
