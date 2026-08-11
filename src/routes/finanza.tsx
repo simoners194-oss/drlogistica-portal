@@ -1280,12 +1280,36 @@ function FinanzaPage() {
     setMovFiltriTh({});
     setMovThAperto(null);
   }, [anni]);
-  type MovColTh = { key: string; label: string; get: (m: SpMovimento) => string };
+  type MovColTh = {
+    key: string;
+    label: string;
+    get: (m: SpMovimento) => string;
+    /** Chiave di ORDINAMENTO della tendina: date in cronologico, importi
+     *  in numerico (senza, l'elenco andrebbe in alfabetico: 01/04, 01/06...). */
+    ord?: (v: string) => string | number;
+  };
+  const ordData = (v: string) => v.split("/").reverse().join("-");
+  const ordImporto = (v: string) => Number(v.replace(/\./g, "").replace(",", ".")) || 0;
   const movColTh = useMemo<MovColTh[]>(
     () => [
-      { key: "data", label: t("fin.dataContabile"), get: (m) => fmtData(m.dataContabile) },
-      { key: "valuta", label: t("fin.dataValuta"), get: (m) => fmtData(m.dataValuta) },
-      { key: "importo", label: t("common.amount"), get: (m) => fmtImporto(m.importo) },
+      {
+        key: "data",
+        label: t("fin.dataContabile"),
+        get: (m) => fmtData(m.dataContabile),
+        ord: ordData,
+      },
+      {
+        key: "valuta",
+        label: t("fin.dataValuta"),
+        get: (m) => fmtData(m.dataValuta),
+        ord: ordData,
+      },
+      {
+        key: "importo",
+        label: t("common.amount"),
+        get: (m) => fmtImporto(m.importo),
+        ord: ordImporto,
+      },
       { key: "causale", label: t("fin.causaleCol"), get: (m) => m.descrizione },
       { key: "tipo", label: t("common.type"), get: (m) => m.tipologia },
       { key: "cliforn", label: t("fin.cliForn"), get: (m) => m.cliente },
@@ -1405,7 +1429,13 @@ function FinanzaPage() {
             }
             const q = movThCerca.trim().toLowerCase();
             const valori = [...conteggi.entries()]
-              .sort((a, b) => a[0].localeCompare(b[0]))
+              .sort((a, b) => {
+                const ka = c.ord ? c.ord(a[0]) : a[0];
+                const kb = c.ord ? c.ord(b[0]) : b[0];
+                return typeof ka === "number" && typeof kb === "number"
+                  ? ka - kb
+                  : String(ka).localeCompare(String(kb));
+              })
               .filter(([v2]) => !q || v2.toLowerCase().includes(q));
             const scelte = sel ?? new Set<string>();
             const setSel = (ns: Set<string>) => setMovFiltriTh({ ...movFiltriTh, [c.key]: ns });

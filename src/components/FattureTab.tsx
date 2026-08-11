@@ -559,11 +559,24 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         : x.s.statoBanca === "Non incassata" && x.s.incassatoBanca === 0
           ? t("ft.nessunAbbinamento")
           : x.s.statoBanca;
-  type ColFiltro = { key: string; label: string; get: (x: (typeof conStato)[number]) => string };
+  type ColFiltro = {
+    key: string;
+    label: string;
+    get: (x: (typeof conStato)[number]) => string;
+    /** Ordinamento della tendina: date in cronologico, importi in numerico. */
+    ord?: (v: string) => string | number;
+  };
+  const ordData = (v: string) => v.split("/").reverse().join("-");
+  const ordImporto = (v: string) => Number(v.replace(/\./g, "").replace(",", ".")) || 0;
   const colonneTh = useMemo<ColFiltro[]>(
     () => [
       { key: "numero", label: t("ft.numero"), get: (x) => x.f.numero },
-      { key: "data", label: t("common.date"), get: (x) => fmtData(x.f.dataDocumento) },
+      {
+        key: "data",
+        label: t("common.date"),
+        get: (x) => fmtData(x.f.dataDocumento),
+        ord: ordData,
+      },
       {
         key: "controparte",
         label: ricevute ? t("ft.fornitore") : t("fin.cliente"),
@@ -590,6 +603,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         key: "scadenza",
         label: t("ft.scadenza"),
         get: (x) => (x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)),
+        ord: ordData,
       },
       {
         key: "ritardo",
@@ -2604,7 +2618,13 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                             }
                             const q = thCerca.trim().toLowerCase();
                             const valori = [...conteggi.entries()]
-                              .sort((a, b) => a[0].localeCompare(b[0]))
+                              .sort((a, b) => {
+                                const ka = c.ord ? c.ord(a[0]) : a[0];
+                                const kb = c.ord ? c.ord(b[0]) : b[0];
+                                return typeof ka === "number" && typeof kb === "number"
+                                  ? ka - kb
+                                  : String(ka).localeCompare(String(kb));
+                              })
                               .filter(([v]) => !q || v.toLowerCase().includes(q));
                             const scelte = sel ?? new Set<string>();
                             const setSel = (ns: Set<string>) =>
