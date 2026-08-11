@@ -404,6 +404,9 @@ export async function arubaProvaDownload(filenameRichiesto?: string): Promise<Ar
             `; inizio: ${xml.slice(0, 100)}`;
         }
         tentativi.push(voce);
+        // Risposta con un file DIVERSO da quello chiesto (match lasco di
+        // Aruba): non e' un successo — si prova anche l'altro canale.
+        if (nota.startsWith("ATTENZIONE")) continue;
         return {
           ok: true,
           messaggio: `Dettaglio trovato (${docType}) per ${filename}.`,
