@@ -225,6 +225,38 @@ function CampoVocabolario({
   );
 }
 
+// Il campo Pattern di una regola regge 240 caratteri (margine sotto il
+// limite di 255 delle colonne testo SharePoint): un elenco piu' lungo si
+// SPEZZA in piu' regole gemelle — il match multi-termine e' un OR, quindi
+// il comportamento e' identico. I termini doppi spariscono.
+const MAX_PATTERN = 240;
+function spezzaPattern(testo: string): string[] {
+  const visti = new Set<string>();
+  const termini: string[] = [];
+  for (const parte of testo.split(/[,;\n]/)) {
+    const termine = parte.trim();
+    if (!termine) continue;
+    const k = termine.toLowerCase();
+    if (!visti.has(k)) {
+      visti.add(k);
+      termini.push(termine);
+    }
+  }
+  const blocchi: string[] = [];
+  let corrente = "";
+  for (const termine of termini) {
+    const candidato = corrente ? `${corrente}, ${termine}` : termine;
+    if (candidato.length > MAX_PATTERN && corrente) {
+      blocchi.push(corrente);
+      corrente = termine;
+    } else {
+      corrente = candidato;
+    }
+  }
+  if (corrente) blocchi.push(corrente);
+  return blocchi.length ? blocchi : [testo.trim().slice(0, MAX_PATTERN)];
+}
+
 function fmtImportId(id: string, legacyLabel: string): string {
   if (!id) return legacyLabel;
   const m = id.match(/^(IMP|SYNC)-(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/);
@@ -392,8 +424,9 @@ function FinanzaPage() {
     try {
       for (const g of daUnire) {
         const keep = g[0];
+        const blocchiUni = spezzaPattern(g.map((r) => r.pattern).join(", "));
         const payload = {
-          pattern: fondi(g.map((r) => r.pattern)),
+          pattern: blocchiUni[0],
           campo: keep.campo,
           modo: keep.modo,
           tipologia: keep.tipologia,
@@ -403,6 +436,8 @@ function FinanzaPage() {
           cliente: keep.cliente,
         };
         await spUpdateRegolaFinanza({ data: { regolaId: keep.id ?? "", ...payload } });
+        for (const blocco of blocchiUni.slice(1))
+          await spCreateRegolaFinanza({ data: { ...payload, pattern: blocco } });
         for (const extra of g.slice(1))
           await spDeleteRegolaFinanza({ data: { regolaId: extra.id ?? "" } });
       }
@@ -1185,8 +1220,10 @@ function FinanzaPage() {
     setRBusy(true);
     setRProgress(0);
     try {
+      // Doppioni via e lista spezzata se oltre il limite del campo.
+      const blocchi = spezzaPattern(rPattern);
       const payload = {
-        pattern: rPattern.trim(),
+        pattern: blocchi[0],
         campo: rCampo,
         modo: rModo,
         tipologia: rTipologia.trim() || undefined,
@@ -1204,7 +1241,9 @@ function FinanzaPage() {
           ? window.confirm(t("fin.regolaImpattoND"))
           : window.confirm(
               `${t("fin.regolaImpatto1")} ${
-                movimenti.filter((m) => matchRegola(m, payload)).length
+                movimenti.filter((m) =>
+                  blocchi.some((blocco) => matchRegola(m, { ...payload, pattern: blocco })),
+                ).length
               } ${t("fin.regolaImpatto2")}`,
             );
       if (!conferma) {
@@ -1216,26 +1255,35 @@ function FinanzaPage() {
       // create fallita dopo la delete ha bruciato due regole del direttore).
       if (rEditId) await spUpdateRegolaFinanza({ data: { regolaId: rEditId, ...payload } });
       else await spCreateRegolaFinanza({ data: payload });
+      // Blocchi oltre il primo: regole gemelle (stessi esiti, altri termini).
+      for (const blocco of blocchi.slice(1))
+        await spCreateRegolaFinanza({ data: { ...payload, pattern: blocco } });
+      if (blocchi.length > 1)
+        toast.info(`${t("fin.regolaSpezzata1")} ${blocchi.length} ${t("fin.regolaSpezzata2")}`);
       let applicati = 0;
       if (rApplica) {
         // Applicazione retroattiva a blocchi finché il server non ha finito.
         // Se i RIMANENTI non calano tra un giro e l'altro, qualcosa non si
         // riesce a scrivere: ci si ferma invece di girare a vuoto.
-        let ultimoRimanenti = Number.POSITIVE_INFINITY;
-        for (;;) {
-          const r = (await spApplicaRegolaFinanza({ data: payload })) as {
-            aggiornati: number;
-            rimanenti: number;
-          };
-          applicati += r.aggiornati;
-          setRProgress(applicati);
-          if (r.rimanenti <= 0) break;
-          if (r.aggiornati === 0) break; // safety: niente progresso
-          if (r.rimanenti >= ultimoRimanenti) {
-            toast.warning(t("fin.regolaLoopStop"));
-            break;
+        for (const blocco of blocchi) {
+          let ultimoRimanenti = Number.POSITIVE_INFINITY;
+          for (;;) {
+            const r = (await spApplicaRegolaFinanza({
+              data: { ...payload, pattern: blocco },
+            })) as {
+              aggiornati: number;
+              rimanenti: number;
+            };
+            applicati += r.aggiornati;
+            setRProgress(applicati);
+            if (r.rimanenti <= 0) break;
+            if (r.aggiornati === 0) break; // safety: niente progresso
+            if (r.rimanenti >= ultimoRimanenti) {
+              toast.warning(t("fin.regolaLoopStop"));
+              break;
+            }
+            ultimoRimanenti = r.rimanenti;
           }
-          ultimoRimanenti = r.rimanenti;
         }
       }
       toast.success(t("fin.regolaCreata"), {
