@@ -505,9 +505,14 @@ async function arubaScaricaXml(docType: "out" | "in", filename: string): Promise
   } catch {
     return null;
   }
-  let xml = new TextDecoder("utf-8").decode(bytes);
-  if (!xml.trimStart().startsWith("<?xml")) {
-    const i0 = xml.indexOf("<?xml");
+  let xml = new TextDecoder("utf-8").decode(bytes).replace(/^﻿/, "");
+  if (!xml.trimStart().startsWith("<")) {
+    // Busta p7m (o payload sporco): si ritaglia dall'inizio dell'XML —
+    // dichiarazione <?xml oppure direttamente il tag FatturaElettronica
+    // (alcuni XML non hanno la dichiarazione), fino al tag di chiusura.
+    const i0xml = xml.indexOf("<?xml");
+    const mTag = /<[A-Za-z0-9]*:?FatturaElettronica[\s>]/.exec(xml);
+    const i0 = i0xml >= 0 ? i0xml : (mTag?.index ?? -1);
     const fine = "FatturaElettronica>";
     const i1 = xml.lastIndexOf(fine);
     if (i0 < 0 || i1 <= i0) return null;
@@ -552,9 +557,22 @@ export async function arubaSyncFatture(giorniIndietro?: number): Promise<ArubaSy
       const nuovi = lotti.filter((l) => !presenti.has(normalizzaNomeFile(l.filename)));
       esito.daScaricare = nuovi.length;
       const righe: FatturaRaw[] = [];
+      // Aruba limita anche i DOWNLOAD (429): passo cadenzato, un solo retry
+      // dopo pausa lunga, e al secondo 429 ci si ferma — i rimanenti al
+      // prossimo giro (la dedup riparte da dove si era arrivati).
+      const attesa = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+      let fermatoPerLimite = false;
       for (const lotto of nuovi.slice(0, SYNC_MAX_DOWNLOAD)) {
         try {
-          const xml = await arubaScaricaXml(docType, lotto.filename);
+          let xml: string | null = null;
+          try {
+            xml = await arubaScaricaXml(docType, lotto.filename);
+          } catch (err) {
+            if (err instanceof ArubaError && err.status === 429) {
+              await attesa(12_000);
+              xml = await arubaScaricaXml(docType, lotto.filename);
+            } else throw err;
+          }
           if (!xml) {
             esito.errori.push(`${lotto.filename}: XML non estraibile`);
             continue;
@@ -564,11 +582,20 @@ export async function arubaSyncFatture(giorniIndietro?: number): Promise<ArubaSy
           // righe coerenti con la lista di destinazione.
           righe.push(...parsed.rows.filter((r) => r.direzione === direzione));
           for (const sc of parsed.scartati) esito.errori.push(`${sc}: non parsato`);
+          await attesa(400);
         } catch (err) {
+          if (err instanceof ArubaError && err.status === 429) {
+            fermatoPerLimite = true;
+            break;
+          }
           esito.errori.push(err instanceof Error ? err.message : String(err));
           if (esito.errori.length > 20) break;
         }
       }
+      if (fermatoPerLimite)
+        esito.errori.push(
+          `Limite richieste Aruba: scaricate ${righe.length} su ${esito.daScaricare} — ripremere Sincronizza tra qualche minuto per il resto.`,
+        );
       for (let i = 0; i < righe.length; i += 100) {
         const res = await importFatture(righe.slice(i, i + 100), direzione);
         esito.importate += res.importate;
