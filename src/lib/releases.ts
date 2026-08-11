@@ -53,7 +53,7 @@ export const RELEASES: readonly Release[] = [
         audience: "direzione",
         title: "Filtri su tutte le voci dei movimenti e nuovi resoconti",
         description:
-          "Nei Movimenti si filtra anche per sottocategoria e per allocazione primaria e secondaria (con la voce \u201c(vuota)\u201d per stanare il non classificato); il totale in alto segue i filtri. Nell'Overview due nuove viste: \u201cPer regole\u201d (tipologia e sottocategoria per mese o anno) e \u201cPer appalto\u201d (le allocazioni per mese o anno).",
+          "Nei Movimenti si filtra anche per sottocategoria e per allocazione primaria e secondaria (con la voce \u201c(vuota)\u201d per stanare il non classificato) e ogni colonna della tabella ha il suo imbuto stile Excel, con spunte sui valori e ricerca; il totale in alto segue i filtri. Nell'Overview due nuove viste: \u201cPer regole\u201d (tipologia e sottocategoria per mese o anno) e \u201cPer appalto\u201d (le allocazioni per mese o anno).",
       },
     ],
   },

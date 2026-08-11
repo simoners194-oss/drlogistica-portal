@@ -19,6 +19,7 @@ import {
   Trash2,
   Pencil,
   Users,
+  Filter,
   GraduationCap,
   Wand2,
   Receipt,
@@ -1270,7 +1271,39 @@ function FinanzaPage() {
       .map(([k, v]) => ({ v: k, label: v.nome }));
   }, [movimenti, anni]);
 
-  const filtrati = useMemo(() => {
+  // Imbuti di colonna sulla tabella movimenti (stile Excel, come su
+  // Fatture): spunte sui valori distinti, a cascata con gli altri filtri.
+  const [movFiltriTh, setMovFiltriTh] = useState<Record<string, Set<string>>>({});
+  const [movThAperto, setMovThAperto] = useState<string | null>(null);
+  const [movThCerca, setMovThCerca] = useState("");
+  useEffect(() => {
+    setMovFiltriTh({});
+    setMovThAperto(null);
+  }, [anni]);
+  type MovColTh = { key: string; label: string; get: (m: SpMovimento) => string };
+  const movColTh = useMemo<MovColTh[]>(
+    () => [
+      { key: "data", label: t("fin.dataContabile"), get: (m) => fmtData(m.dataContabile) },
+      { key: "valuta", label: t("fin.dataValuta"), get: (m) => fmtData(m.dataValuta) },
+      { key: "importo", label: t("common.amount"), get: (m) => fmtImporto(m.importo) },
+      { key: "causale", label: t("fin.causaleCol"), get: (m) => m.descrizione },
+      { key: "tipo", label: t("common.type"), get: (m) => m.tipologia },
+      { key: "cliforn", label: t("fin.cliForn"), get: (m) => m.cliente },
+      { key: "nrfatt", label: t("fin.nrFattura"), get: (m) => m.nrFattura },
+      { key: "note", label: t("fin.note"), get: (m) => m.note },
+    ],
+    [t],
+  );
+  const passaMovTh = (m: SpMovimento, escludi?: string) => {
+    for (const c of movColTh) {
+      if (c.key === escludi) continue;
+      const sel = movFiltriTh[c.key];
+      if (sel && sel.size > 0 && !sel.has(c.get(m))) return false;
+    }
+    return true;
+  };
+
+  const filtratiBase = useMemo(() => {
     let out = movimenti ?? [];
     // Anni: il server ha fornito l'intervallo min-max; qui si rifiniscono le
     // selezioni non contigue. Tipologie e mesi: vuoto = tutti, altrimenti OR.
@@ -1309,6 +1342,11 @@ function FinanzaPage() {
     }
     return out;
   }, [movimenti, anni, tipiF, mesiF, cercaF, clientiF, contoF, sottF, allocPriF, allocSecF]);
+  const filtrati = useMemo(
+    () => filtratiBase.filter((m) => passaMovTh(m)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtratiBase, movFiltriTh],
+  );
   // Totale (e spezzato entrate/uscite) di QUELLO CHE SI VEDE coi filtri.
   const totaleFiltrato = useMemo(() => {
     let entrate = 0;
@@ -1329,10 +1367,114 @@ function FinanzaPage() {
   // la lista, es. dopo una sincronizzazione).
   useEffect(() => {
     setPaginaMov(1);
-  }, [tipiF, mesiF, cercaF, anni, clientiF, sottF, allocPriF, allocSecF]);
+  }, [tipiF, mesiF, cercaF, anni, clientiF, sottF, allocPriF, allocSecF, movFiltriTh]);
   const pagineMovTot = Math.max(1, Math.ceil(filtrati.length / RIGHE_PAGINA));
   const pagMov = Math.min(paginaMov, pagineMovTot);
   const inizioMov = (pagMov - 1) * RIGHE_PAGINA;
+
+  const thFiltroMov = (c: MovColTh, extra = "") => {
+    const sel = movFiltriTh[c.key];
+    const attivo = (sel?.size ?? 0) > 0;
+    const aperto = movThAperto === c.key;
+    return (
+      <th key={c.key} className={`py-2 pr-3 whitespace-nowrap relative ${extra}`}>
+        <span className="inline-flex items-center gap-1">
+          {c.label}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMovThAperto(aperto ? null : c.key);
+              setMovThCerca("");
+            }}
+            className={attivo ? "text-primary" : "text-muted-foreground/50 hover:text-foreground"}
+            title={t("ft.thFiltra")}
+          >
+            <Filter className="h-3 w-3" fill={attivo ? "currentColor" : "none"} />
+          </button>
+        </span>
+        {aperto &&
+          (() => {
+            // Valori distinti a CASCATA: contano tutti i filtri attivi
+            // tranne quello di questa colonna.
+            const base = filtratiBase.filter((m) => passaMovTh(m, c.key));
+            const conteggi = new Map<string, number>();
+            for (const m of base) {
+              const v2 = c.get(m);
+              conteggi.set(v2, (conteggi.get(v2) ?? 0) + 1);
+            }
+            const q = movThCerca.trim().toLowerCase();
+            const valori = [...conteggi.entries()]
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .filter(([v2]) => !q || v2.toLowerCase().includes(q));
+            const scelte = sel ?? new Set<string>();
+            const setSel = (ns: Set<string>) => setMovFiltriTh({ ...movFiltriTh, [c.key]: ns });
+            return (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setMovThAperto(null)} />
+                <div
+                  className="absolute left-0 top-full z-40 mt-1 w-64 rounded-lg border border-border bg-card p-2 shadow-[var(--shadow-elegant)] font-normal"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    autoFocus
+                    value={movThCerca}
+                    onChange={(e) => setMovThCerca(e.target.value)}
+                    placeholder={t("ft.cerca")}
+                    className="mb-1.5 w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                  />
+                  <div className="mb-1.5 flex gap-3 text-[11px]">
+                    <button
+                      type="button"
+                      className="underline underline-offset-2"
+                      onClick={() => setSel(new Set())}
+                    >
+                      {t("ft.thTutti")}
+                    </button>
+                    <button
+                      type="button"
+                      className="underline underline-offset-2"
+                      onClick={() => setSel(new Set(valori.map(([v2]) => v2)))}
+                    >
+                      {t("ft.thSoloVisibili")}
+                    </button>
+                  </div>
+                  <div className="max-h-60 overflow-auto">
+                    {valori.slice(0, 500).map(([v2, cnt]) => (
+                      <label
+                        key={v2 || "__vuoto__"}
+                        className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs text-foreground hover:bg-muted"
+                      >
+                        <input
+                          type="checkbox"
+                          className="accent-primary"
+                          checked={scelte.size === 0 || scelte.has(v2)}
+                          onChange={() => {
+                            const ns = new Set(
+                              scelte.size === 0 ? [...conteggi.keys()] : [...scelte],
+                            );
+                            if (ns.has(v2)) ns.delete(v2);
+                            else ns.add(v2);
+                            setSel(ns.size === conteggi.size ? new Set() : ns);
+                          }}
+                        />
+                        <span className="flex-1 truncate">{v2 || t("ft.thVuoto")}</span>
+                        <span className="text-muted-foreground tabular-nums">{cnt}</span>
+                      </label>
+                    ))}
+                    {valori.length > 500 && (
+                      <p className="px-1 py-0.5 text-[10px] text-muted-foreground">
+                        +{valori.length - 500}…
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+      </th>
+    );
+  };
 
   const tipologiePresenti = useMemo(() => {
     const set = new Set((movimenti ?? []).map((m) => m.tipologia).filter(Boolean));
@@ -2083,16 +2225,19 @@ function FinanzaPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
+                  {/* Ogni colonna ha il suo imbuto (l'ordine dei th deve
+                      combaciare con le celle del corpo). Il Saldo e' un
+                      progressivo calcolato: niente filtro. */}
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                    <th className="py-2 pr-3">{t("fin.dataContabile")}</th>
-                    <th className="py-2 pr-3">{t("fin.dataValuta")}</th>
-                    <th className="py-2 pr-3 text-right">{t("common.amount")}</th>
+                    {thFiltroMov(movColTh[0])}
+                    {thFiltroMov(movColTh[1])}
+                    {thFiltroMov(movColTh[2], "text-right")}
                     {ebSaldoInfo && <th className="py-2 pr-3 text-right">{t("fin.saldo")}</th>}
-                    <th className="py-2 pr-3">{t("fin.causaleCol")}</th>
-                    <th className="py-2 pr-3">{t("common.type")}</th>
-                    <th className="py-2 pr-3">{t("fin.cliForn")}</th>
-                    <th className="py-2 pr-3">{t("fin.nrFattura")}</th>
-                    <th className="py-2 pr-3">{t("fin.note")}</th>
+                    {thFiltroMov(movColTh[3])}
+                    {thFiltroMov(movColTh[4])}
+                    {thFiltroMov(movColTh[5])}
+                    {thFiltroMov(movColTh[6])}
+                    {thFiltroMov(movColTh[7])}
                     <th className="py-2" />
                   </tr>
                 </thead>
