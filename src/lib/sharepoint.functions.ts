@@ -37,6 +37,7 @@ import {
   importDipendenti,
   importAppaltiDipendenti,
   fetchDettagliDistinte,
+  nomiDipendenti,
   importDistinta,
   type DettaglioDistinta,
   type RigaDistintaImport,
@@ -499,6 +500,13 @@ export const spGetDettagliDistinte = createServerFn({ method: "GET" }).handler(
     return fetchDettagliDistinte();
   },
 );
+
+// Roster nomi+appalto per lo spaccato delle distinte (solo direzione:
+// serve al modal dei beneficiari per aggregare i salari per appalto).
+export const spGetRosterDipendenti = createServerFn({ method: "GET" }).handler(async () => {
+  await assertDirettore(await currentUser());
+  return nomiDipendenti();
+});
 
 export const spImportDistinta = createServerFn({ method: "POST" })
   .inputValidator((input: { rows: RigaDistintaImport[] }) => {

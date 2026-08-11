@@ -36,6 +36,28 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.24.0",
+    date: "2026-08-11",
+    codename: "I costi trovano il loro appalto",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Le distinte stipendi si leggono per appalto",
+        description:
+          "Nel dettaglio di un pagamento cumulativo, sotto l'elenco dei beneficiari, compare il riepilogo per appalto: ogni nome viene riconosciuto in anagrafica dipendenti e il suo importo finisce sull'appalto di assegnazione \u2014 con il conteggio dei non riconosciuti in chiaro. Il costo del personale del mese si legge cos\u00ec gi\u00e0 allocato.",
+      },
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Filtri su tutte le voci dei movimenti e nuovi resoconti",
+        description:
+          "Nei Movimenti si filtra anche per sottocategoria e per allocazione primaria e secondaria (con la voce \u201c(vuota)\u201d per stanare il non classificato); il totale in alto segue i filtri. Nell'Overview due nuove viste: \u201cPer regole\u201d (tipologia e sottocategoria per mese o anno) e \u201cPer appalto\u201d (le allocazioni per mese o anno).",
+      },
+    ],
+  },
+  {
     version: "1.23.0",
     date: "2026-08-11",
     codename: "Dentro i pagamenti cumulativi",

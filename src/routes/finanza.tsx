@@ -42,6 +42,8 @@ import {
   LEGACY_IMPORT_ID,
   TIPOLOGIE_MOVIMENTO,
   matchRegola,
+  matchDipendenteNome,
+  type DipendenteRoster,
   type MovimentoParsed,
   type ParseFileResult,
   type RegolaFinanza,
@@ -53,6 +55,7 @@ import {
   spUpdateMovimento,
   spGetImportStorico,
   spGetDettagliDistinte,
+  spGetRosterDipendenti,
   spImportDistinta,
   spAnnullaImport,
   spGetRegoleFinanza,
@@ -271,6 +274,7 @@ function FinanzaPage() {
   const [storico, setStorico] = useState<ImportStoricoRiga[] | null>(null);
   // Distinte / esiti pagamenti: dettaglio dei pagamenti cumulativi.
   const [distinte, setDistinte] = useState<DettaglioDistinta[] | null>(null);
+  const [rosterDip, setRosterDip] = useState<DipendenteRoster[] | null>(null);
   const [distPreview, setDistPreview] = useState<
     | {
         idPagamento: string;
@@ -300,8 +304,11 @@ function FinanzaPage() {
   const [paginaMov, setPaginaMov] = useState(1); // pagine da RIGHE_PAGINA
 
   // Overview: incassi o spese (+ filtro tipologia, utile solo per le spese)
-  const [ovMode, setOvMode] = useState<"incassi" | "spese">("incassi");
+  const [ovMode, setOvMode] = useState<"incassi" | "spese" | "regole" | "appalti">("incassi");
   const [ovTipF, setOvTipF] = useState("tutte");
+  const [sottF, setSottF] = useState<string[]>([]);
+  const [allocPriF, setAllocPriF] = useState<string[]>([]);
+  const [allocSecF, setAllocSecF] = useState<string[]>([]);
 
   // Import estratto conto (pannello a scomparsa dentro la tab Movimenti:
   // "Importa" da solo era ambiguo dopo l'arrivo delle Fatture).
@@ -412,6 +419,9 @@ function FinanzaPage() {
     spGetDettagliDistinte()
       .then((l) => setDistinte(l as DettaglioDistinta[]))
       .catch(() => setDistinte([]));
+    spGetRosterDipendenti()
+      .then((l) => setRosterDip(l as DipendenteRoster[]))
+      .catch(() => setRosterDip([]));
   }, []);
 
   // Parser del report "Esiti pagamenti" BPM (xlsx o csv, 16 colonne):
@@ -543,6 +553,34 @@ function FinanzaPage() {
     }
     return best;
   };
+
+  // Spaccato del modal per APPALTO: ogni beneficiario passa nel
+  // riconoscitore fuzzy dei dipendenti e prende l'appalto dall'anagrafica.
+  const distSpaccato = useMemo(() => {
+    if (!distModal || !rosterDip?.length) return null;
+    const nomi = rosterDip.map((r) => r.nome);
+    const per = new Map<string, { n: number; somma: number }>();
+    const nonRic: string[] = [];
+    for (const d of distModal.righe) {
+      const nome = matchDipendenteNome(d.beneficiario, nomi);
+      if (!nome) {
+        nonRic.push(d.beneficiario);
+        continue;
+      }
+      const app = rosterDip.find((r) => r.nome === nome)?.appalto || "__senza__";
+      const g = per.get(app) ?? { n: 0, somma: 0 };
+      g.n++;
+      g.somma += d.importo;
+      per.set(app, g);
+    }
+    if (!per.size) return null;
+    return {
+      righe: [...per.entries()]
+        .map(([app, g]) => ({ app, n: g.n, somma: Math.round(g.somma * 100) / 100 }))
+        .sort((a, b) => b.somma - a.somma),
+      nonRic,
+    };
+  }, [distModal, rosterDip]);
 
   const distinteCard = (
     <div className="mb-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
@@ -1242,6 +1280,13 @@ function FinanzaPage() {
         (m) => m.cliente && clientiF.includes(clienteGroupKey(m.cliente) || m.cliente),
       );
     if (tipiF.length) out = out.filter((m) => tipiF.includes(m.tipologia));
+    // Sottocategoria e allocazioni: "__vuoto__" = senza valore, per stanare
+    // il non classificato.
+    if (sottF.length) out = out.filter((m) => sottF.includes(m.sottocategoria || "__vuoto__"));
+    if (allocPriF.length)
+      out = out.filter((m) => allocPriF.includes(m.allocPrimaria || "__vuoto__"));
+    if (allocSecF.length)
+      out = out.filter((m) => allocSecF.includes(m.allocSecondaria || "__vuoto__"));
     if (mesiF.length) out = out.filter((m) => mesiF.includes(Number(m.dataContabile.slice(5, 7))));
     if (contoF) out = out.filter((m) => (m.conto || "") === (contoF === "__vuoto__" ? "" : contoF));
     if (cercaF.trim()) {
@@ -1263,7 +1308,7 @@ function FinanzaPage() {
       );
     }
     return out;
-  }, [movimenti, anni, tipiF, mesiF, cercaF, clientiF, contoF]);
+  }, [movimenti, anni, tipiF, mesiF, cercaF, clientiF, contoF, sottF, allocPriF, allocSecF]);
   // Totale (e spezzato entrate/uscite) di QUELLO CHE SI VEDE coi filtri.
   const totaleFiltrato = useMemo(() => {
     let entrate = 0;
@@ -1284,7 +1329,7 @@ function FinanzaPage() {
   // la lista, es. dopo una sincronizzazione).
   useEffect(() => {
     setPaginaMov(1);
-  }, [tipiF, mesiF, cercaF, anni, clientiF]);
+  }, [tipiF, mesiF, cercaF, anni, clientiF, sottF, allocPriF, allocSecF]);
   const pagineMovTot = Math.max(1, Math.ceil(filtrati.length / RIGHE_PAGINA));
   const pagMov = Math.min(paginaMov, pagineMovTot);
   const inizioMov = (pagMov - 1) * RIGHE_PAGINA;
@@ -1292,6 +1337,22 @@ function FinanzaPage() {
   const tipologiePresenti = useMemo(() => {
     const set = new Set((movimenti ?? []).map((m) => m.tipologia).filter(Boolean));
     return [...set].sort((a, b) => a.localeCompare(b));
+  }, [movimenti]);
+  // Valori presenti per i filtri di classificazione (con la voce "(vuota)").
+  const opzClassifica = useMemo(() => {
+    const raccogli = (get: (m: SpMovimento) => string) => {
+      const set = new Set((movimenti ?? []).map(get).filter(Boolean));
+      return [
+        { v: "__vuoto__", label: t("fin.vuota") },
+        ...[...set].sort((a, b) => a.localeCompare(b)).map((x) => ({ v: x, label: x })),
+      ];
+    };
+    return {
+      sottocategorie: raccogli((m) => m.sottocategoria),
+      allocPrimarie: raccogli((m) => m.allocPrimaria),
+      allocSecondarie: raccogli((m) => m.allocSecondaria),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movimenti]);
 
   const mesi = lang === "it" ? MESI_IT : MESI_EN;
@@ -1319,7 +1380,9 @@ function FinanzaPage() {
     let selezione =
       ovMode === "incassi"
         ? all.filter((m) => m.tipologia === "Incasso" && m.importo > 0)
-        : all.filter((m) => m.importo < 0);
+        : ovMode === "spese"
+          ? all.filter((m) => m.importo < 0)
+          : all;
     if (ovMode === "spese" && ovTipF !== "tutte")
       selezione = selezione.filter((m) => m.tipologia === ovTipF);
     // Raggruppamento per chiave canonica (accorpa varianti dello stesso nome,
@@ -1334,11 +1397,24 @@ function FinanzaPage() {
     for (const m of selezione) {
       const i = colIdx(m);
       if (i < 0 || i >= colonne.length) continue;
-      const valore = ovMode === "incassi" ? m.importo : -m.importo;
+      const valore = ovMode === "incassi" ? m.importo : ovMode === "spese" ? -m.importo : m.importo;
+      // "Per regole": righe tipologia - sottocategoria; "Per appalto":
+      // righe dall'allocazione (secondaria, o primaria in mancanza).
       const label =
-        m.cliente ||
-        (ovMode === "spese" && m.tipologia ? m.tipologia : `(${t("fin.unknownClient")})`);
-      const key = m.cliente ? clienteGroupKey(m.cliente) || label : label;
+        ovMode === "regole"
+          ? m.tipologia
+            ? m.tipologia + (m.sottocategoria ? ` \u00b7 ${m.sottocategoria}` : "")
+            : `(${t("fin.nonClassificato")})`
+          : ovMode === "appalti"
+            ? m.allocSecondaria || m.allocPrimaria || `(${t("fin.nonAllocato")})`
+            : m.cliente ||
+              (ovMode === "spese" && m.tipologia ? m.tipologia : `(${t("fin.unknownClient")})`);
+      const key =
+        ovMode === "regole" || ovMode === "appalti"
+          ? label
+          : m.cliente
+            ? clienteGroupKey(m.cliente) || label
+            : label;
       const row = byRiga.get(key) ?? {
         valori: colonne.map(() => 0),
         tot: 0,
@@ -1534,6 +1610,33 @@ function FinanzaPage() {
               onChange={setClientiF}
               className="w-56"
             />
+            <MultiSelect
+              label={t("fin.sottocat")}
+              tuttiLabel={t("common.allF")}
+              selLabel={t("fin.msSel")}
+              opzioni={opzClassifica.sottocategorie}
+              valori={sottF}
+              onChange={setSottF}
+              className="w-48"
+            />
+            <MultiSelect
+              label={t("fin.allocPri")}
+              tuttiLabel={t("common.allF")}
+              selLabel={t("fin.msSel")}
+              opzioni={opzClassifica.allocPrimarie}
+              valori={allocPriF}
+              onChange={setAllocPriF}
+              className="w-44"
+            />
+            <MultiSelect
+              label={t("fin.allocSec")}
+              tuttiLabel={t("common.allF")}
+              selLabel={t("fin.msSel")}
+              opzioni={opzClassifica.allocSecondarie}
+              valori={allocSecF}
+              onChange={setAllocSecF}
+              className="w-44"
+            />
             <div className="flex-1 min-w-48">
               <label className="text-xs text-muted-foreground">{t("fin.conto")}</label>
               <select
@@ -1641,6 +1744,40 @@ function FinanzaPage() {
                         ))}
                     </tbody>
                   </table>
+                  {distSpaccato && (
+                    <div className="mt-3 border-t border-border/60 pt-2">
+                      <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {t("fin.distPerAppalto")}
+                      </div>
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {distSpaccato.righe.map((r) => (
+                            <tr key={r.app} className="border-b border-border/40">
+                              <td className="py-1 pr-2">
+                                {r.app === "__senza__" ? t("fin.distSenzaApp") : r.app}
+                              </td>
+                              <td className="py-1 pr-2 text-right text-[11px] text-muted-foreground">
+                                {r.n}
+                              </td>
+                              <td className="py-1 text-right tabular-nums whitespace-nowrap font-medium">
+                                {fmtImporto(r.somma)} €
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {distSpaccato.nonRic.length > 0 && (
+                        <p
+                          className="mt-1.5 text-[11px] text-muted-foreground"
+                          title={distSpaccato.nonRic.join(", ")}
+                        >
+                          {t("fin.distNonRic")}: {distSpaccato.nonRic.length} —{" "}
+                          {distSpaccato.nonRic.slice(0, 4).join(", ")}
+                          {distSpaccato.nonRic.length > 4 ? "…" : ""}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <div className="mt-3 flex justify-end">
                     <button
                       type="button"
@@ -2126,6 +2263,20 @@ function FinanzaPage() {
                     className={`rounded-md px-3 py-1 font-medium ${ovMode === "spese" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
                   >
                     {t("fin.ovSpese")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOvMode("regole")}
+                    className={`rounded-md px-3 py-1 font-medium ${ovMode === "regole" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {t("fin.ovRegole")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOvMode("appalti")}
+                    className={`rounded-md px-3 py-1 font-medium ${ovMode === "appalti" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {t("fin.ovAppalti")}
                   </button>
                 </div>
                 {ovMode === "spese" && (

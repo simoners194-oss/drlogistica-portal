@@ -795,6 +795,14 @@ const en = {
   "fin.riapplicaConfirm":
     "Every rule will be re-applied to the whole archive (useful after adding missing columns). Existing values are overwritten by the rules. Proceed?",
   "fin.causaleCol": "Reason code",
+  "fin.distPerAppalto": "Breakdown by contract",
+  "fin.distSenzaApp": "No contract assigned",
+  "fin.distNonRic": "Not recognized",
+  "fin.vuota": "(empty)",
+  "fin.ovRegole": "By rules",
+  "fin.ovAppalti": "By contract",
+  "fin.nonClassificato": "not classified",
+  "fin.nonAllocato": "not allocated",
   "fin.distTitolo": "Payment batches (bulk payment details)",
   "fin.distDesc":
     "Upload the \u201cPayment outcomes\u201d report from BPM home banking (xlsx or csv): each row inside a bulk payment (salary batch, RiBa collection) is stored and automatically linked to its cumulative bank transaction \u2014 same total, close date. The people icon on a transaction opens the beneficiary breakdown.",
@@ -1868,6 +1876,14 @@ const it: Record<DictKey, string> = {
   "fin.riapplicaConfirm":
     "Tutte le regole verranno riapplicate all'intero archivio (utile dopo aver creato colonne mancanti). I valori esistenti vengono riscritti dalle regole. Procedere?",
   "fin.causaleCol": "Causale",
+  "fin.distPerAppalto": "Riepilogo per appalto",
+  "fin.distSenzaApp": "Senza appalto in anagrafica",
+  "fin.distNonRic": "Non riconosciuti",
+  "fin.vuota": "(vuota)",
+  "fin.ovRegole": "Per regole",
+  "fin.ovAppalti": "Per appalto",
+  "fin.nonClassificato": "non classificato",
+  "fin.nonAllocato": "non allocato",
   "fin.distTitolo": "Distinte ed esiti pagamenti (dettaglio dei pagamenti cumulativi)",
   "fin.distDesc":
     "Caricare il report \u201cEsiti pagamenti\u201d dell'home banking BPM (xlsx o csv): ogni disposizione dentro un pagamento cumulativo (distinta stipendi, ritiro effetti RiBa) viene archiviata e agganciata da sola al movimento bancario \u2014 stessa somma, data vicina. L'icona con le persone sul movimento apre l'elenco dei beneficiari.",

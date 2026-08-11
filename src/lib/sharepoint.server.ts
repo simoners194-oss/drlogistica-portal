@@ -3823,7 +3823,7 @@ function soloColonne(F: Record<string, string | undefined>): string {
 }
 
 /** Roster (nome + appalto) per la regola dipendenti (best-effort). */
-async function nomiDipendenti(): Promise<DipendenteRoster[]> {
+export async function nomiDipendenti(): Promise<DipendenteRoster[]> {
   try {
     const dips = await fetchDipendenti();
     return dips
