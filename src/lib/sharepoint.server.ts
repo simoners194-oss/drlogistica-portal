@@ -5723,6 +5723,23 @@ export async function saveArubaTokenCacheRaw(json: string): Promise<void> {
   }
 }
 
+/** Data/ora dell'ultimo sync fatture riuscito (colonna UltimaSync). */
+export async function saveArubaUltimaSync(iso: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const F = cfg.arubaConfigFields;
+  if (!cfg.listArubaConfig || !F.UltimaSync) return; // colonna assente: no-op
+  const row = await fetchArubaRow(cfg);
+  if (!row) return;
+  try {
+    await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listArubaConfig}/items/${row.id}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify({ [F.UltimaSync]: iso }),
+    });
+  } catch {
+    /* best-effort: al prossimo giro la finestra riparte piu' larga */
+  }
+}
+
 /** Credenziali in chiaro — SOLO per il client API server-side. Mai loggarle. */
 export async function getArubaCredenziali(): Promise<{
   username: string;

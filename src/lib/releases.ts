@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.25.0",
+    date: "2026-08-11",
+    codename: "Le fatture arrivano da sole",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Sincronizzazione fatture direttamente da Aruba",
+        description:
+          "Con il collegamento Premium attivo, il pulsante \u201cSincronizza da Aruba\u201d scarica dalle API le fatture nuove \u2014 emesse e ricevute \u2014 e le importa nell'archivio con la stessa pipeline e la stessa protezione anti-doppioni dei caricamenti manuali. La finestra riparte dall'ultima sincronizzazione (con margine di sicurezza) e si puo' allargare indicando i giorni indietro. I caricamenti manuali di XML restano disponibili, ma non sono piu' necessari per l'ordinaria amministrazione.",
+      },
+    ],
+  },
+  {
     version: "1.24.0",
     date: "2026-08-11",
     codename: "I costi trovano il loro appalto",

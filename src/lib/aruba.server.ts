@@ -17,7 +17,13 @@ import {
   getArubaCredenziali,
   getArubaTokenCacheRaw,
   saveArubaTokenCacheRaw,
+  saveArubaUltimaSync,
+  getArubaStato,
+  fetchFatture,
+  importFatture,
+  type DirezioneFattura,
 } from "./sharepoint.server";
+import { parseFatturaPA, normalizzaNomeFile, type FatturaRaw } from "./fatture-logic";
 
 const ARUBA_AUTH_BASE = "https://auth.fatturazioneelettronica.aruba.it";
 const ARUBA_WS_BASE = "https://ws.fatturazioneelettronica.aruba.it";
@@ -397,6 +403,172 @@ export async function arubaProvaDownload(): Promise<ArubaDownloadProbe> {
     filename,
     tentativi,
   };
+}
+
+// --- SYNC FATTURE -----------------------------------------------------------
+// Stessa pipeline dei caricamenti manuali (parseFatturaPA + importFatture,
+// chiave anti-doppioni = nome file SdI normalizzato): qui cambia solo la
+// SORGENTE — gli XML arrivano dall'API invece che dagli ZIP. La finestra di
+// ricerca usa creationDate (la data di CARICAMENTO su Aruba, non quella del
+// documento: cosi' si prendono anche le fatture caricate in ritardo).
+
+export interface ArubaSyncEsito {
+  direzione: DirezioneFattura;
+  lotti: number;
+  daScaricare: number;
+  importate: number;
+  aggiornate: number;
+  errori: string[];
+}
+
+export interface ArubaSyncResult {
+  finestraDa: string;
+  finestraA: string;
+  esiti: ArubaSyncEsito[];
+}
+
+const SYNC_MAX_PAGINE = 30;
+const SYNC_MAX_DOWNLOAD = 300; // per giro: il resto al giro successivo
+
+function paramsRicerca(docType: "out" | "in"): Record<string, string> {
+  // Emesse: il cedente siamo noi. Ricevute: il cessionario siamo noi
+  // (nomi parametro simmetrici: se l'API ne pretende altri, l'errore
+  // integrale arrivera' nel pannello come per senderVatcode).
+  return docType === "out"
+    ? { senderCountry: "IT", senderVatcode: ARUBA_PIVA }
+    : { receiverCountry: "IT", receiverVatcode: ARUBA_PIVA };
+}
+
+async function arubaListaLotti(
+  docType: "out" | "in",
+  startISO: string,
+  endISO: string,
+): Promise<{ filename: string }[]> {
+  const out: { filename: string }[] = [];
+  for (let page = 1; page <= SYNC_MAX_PAGINE; page++) {
+    const raw = await arubaGet(`/api/v2/invoices-${docType}`, {
+      ...paramsRicerca(docType),
+      creationStartDate: startISO,
+      creationEndDate: endISO,
+      page: String(page),
+      size: "100",
+    });
+    const obj = (raw ?? {}) as Record<string, unknown>;
+    const content = Array.isArray(obj["content"]) ? (obj["content"] as unknown[]) : [];
+    for (const el of content) {
+      const fn = String((el as Record<string, unknown>)["filename"] ?? "").trim();
+      if (fn) out.push({ filename: fn });
+    }
+    if (content.length < 100) break;
+  }
+  return out;
+}
+
+/** Scarica l'XML di una fattura: preferisce unsignedFile (gia' senza firma);
+ *  dal p7m l'XML si ritaglia dalla busta firmata. */
+async function arubaScaricaXml(docType: "out" | "in", filename: string): Promise<string | null> {
+  const r = await arubaGetRaw(`/services/invoice/${docType}/getByFilename`, { filename });
+  if (r.status < 200 || r.status >= 300)
+    throw new ArubaError(r.status, `dettaglio ${filename} → HTTP ${r.status}`);
+  let j: Record<string, unknown>;
+  try {
+    j = JSON.parse(r.testo) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const b64 =
+    (typeof j["unsignedFile"] === "string" && (j["unsignedFile"] as string)) ||
+    (typeof j["file"] === "string" && (j["file"] as string)) ||
+    "";
+  if (!b64) return null;
+  let bytes: Uint8Array;
+  try {
+    const bin = atob(b64.replace(/\s/g, ""));
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  } catch {
+    return null;
+  }
+  let xml = new TextDecoder("utf-8").decode(bytes);
+  if (!xml.trimStart().startsWith("<?xml")) {
+    const i0 = xml.indexOf("<?xml");
+    const fine = "FatturaElettronica>";
+    const i1 = xml.lastIndexOf(fine);
+    if (i0 < 0 || i1 <= i0) return null;
+    xml = xml.slice(i0, i1 + fine.length);
+  }
+  return xml;
+}
+
+export async function arubaSyncFatture(giorniIndietro?: number): Promise<ArubaSyncResult> {
+  await arubaSignin();
+  const now = new Date();
+  // Finestra: dall'ultimo sync (con 3 giorni di margine) o, in mancanza,
+  // dai giorni chiesti (default 7, max 90).
+  let da: Date;
+  const giorni = Math.min(Math.max(giorniIndietro ?? 0, 0), 90);
+  if (giorni > 0) {
+    da = new Date(now.getTime() - giorni * 86400000);
+  } else {
+    const stato = await getArubaStato();
+    da = stato.ultimaSync
+      ? new Date(new Date(stato.ultimaSync).getTime() - 3 * 86400000)
+      : new Date(now.getTime() - 7 * 86400000);
+  }
+  const iso = (d: Date) => d.toISOString().slice(0, 19);
+  const esiti: ArubaSyncEsito[] = [];
+  for (const [docType, direzione] of [
+    ["out", "Emessa"],
+    ["in", "Ricevuta"],
+  ] as const) {
+    const esito: ArubaSyncEsito = {
+      direzione,
+      lotti: 0,
+      daScaricare: 0,
+      importate: 0,
+      aggiornate: 0,
+      errori: [],
+    };
+    try {
+      const lotti = await arubaListaLotti(docType, iso(da), iso(now));
+      esito.lotti = lotti.length;
+      const presenti = new Set((await fetchFatture(direzione)).map((f) => f.nomeFile));
+      const nuovi = lotti.filter((l) => !presenti.has(normalizzaNomeFile(l.filename)));
+      esito.daScaricare = nuovi.length;
+      const righe: FatturaRaw[] = [];
+      for (const lotto of nuovi.slice(0, SYNC_MAX_DOWNLOAD)) {
+        try {
+          const xml = await arubaScaricaXml(docType, lotto.filename);
+          if (!xml) {
+            esito.errori.push(`${lotto.filename}: XML non estraibile`);
+            continue;
+          }
+          const parsed = parseFatturaPA(xml, lotto.filename);
+          // Il parser deduce la direzione dalla P.IVA: si tengono solo le
+          // righe coerenti con la lista di destinazione.
+          righe.push(...parsed.rows.filter((r) => r.direzione === direzione));
+          for (const sc of parsed.scartati) esito.errori.push(`${sc}: non parsato`);
+        } catch (err) {
+          esito.errori.push(err instanceof Error ? err.message : String(err));
+          if (esito.errori.length > 20) break;
+        }
+      }
+      for (let i = 0; i < righe.length; i += 100) {
+        const res = await importFatture(righe.slice(i, i + 100), direzione);
+        esito.importate += res.importate;
+        esito.aggiornate += res.aggiornate;
+        esito.errori.push(...res.errori);
+      }
+    } catch (err) {
+      esito.errori.push(err instanceof Error ? err.message : String(err));
+    }
+    esiti.push(esito);
+  }
+  // UltimaSync avanza solo se ALMENO una direzione e' andata a buon fine
+  // senza errori di ricerca (gli errori di parse non bloccano la finestra).
+  if (esiti.some((e) => e.lotti > 0 || e.errori.length === 0))
+    await saveArubaUltimaSync(now.toISOString());
+  return { finestraDa: iso(da), finestraA: iso(now), esiti };
 }
 
 /** Ricerca grezza fatture emesse (per il sync, dopo la verifica del probe). */

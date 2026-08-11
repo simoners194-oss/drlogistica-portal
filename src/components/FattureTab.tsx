@@ -20,6 +20,7 @@ import {
   Trash2,
   Upload,
   Wand2,
+  RefreshCw,
 } from "lucide-react";
 import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -71,6 +72,7 @@ import {
   spSetArubaCredenziali,
   spArubaProvaConnessione,
   spArubaProvaDownload,
+  spArubaSincronizza,
   spSetRettificaNumero,
   spSetIncassoManuale,
   spTrovaFattureSenzaCliente,
@@ -81,7 +83,7 @@ import {
   spEliminaFatture,
 } from "@/lib/sharepoint.functions";
 import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
-import type { ArubaProbeResult, ArubaDownloadProbe } from "@/lib/aruba.server";
+import type { ArubaProbeResult, ArubaDownloadProbe, ArubaSyncResult } from "@/lib/aruba.server";
 
 // Cache di sessione per l'apertura istantanea della pagina: l'elenco fatture
 // e i movimenti pesano megabyte e arrivano da SharePoint in molte pagine —
@@ -196,6 +198,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   const [arubaTesting, setArubaTesting] = useState(false);
   const [probe, setProbe] = useState<ArubaProbeResult | null>(null);
   const [probeDl, setProbeDl] = useState<ArubaDownloadProbe | null>(null);
+  const [syncEsito, setSyncEsito] = useState<ArubaSyncResult | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncGiorni, setSyncGiorni] = useState("");
   const [dlTesting, setDlTesting] = useState(false);
 
   // Applica gli incassi del report movimenti alle fatture in archivio: gli
@@ -2535,6 +2540,66 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   )}
                   {t("ft.arProvaDl")}
                 </button>
+                <div className="flex items-end gap-1.5">
+                  <div>
+                    <label className="text-xs text-muted-foreground">{t("ft.arSyncGiorni")}</label>
+                    <input
+                      value={syncGiorni}
+                      onChange={(e) => setSyncGiorni(e.target.value.replace(/[^0-9]/g, ""))}
+                      placeholder="auto"
+                      className="w-20 rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSyncBusy(true);
+                      setSyncEsito(null);
+                      spArubaSincronizza({ data: { giorni: Number(syncGiorni) || 0 } })
+                        .then((r) => {
+                          setSyncEsito(r as ArubaSyncResult);
+                          load();
+                        })
+                        .catch((err) =>
+                          toast.error(t("common.error"), {
+                            description: err instanceof Error ? err.message : String(err),
+                          }),
+                        )
+                        .finally(() => setSyncBusy(false));
+                    }}
+                    disabled={syncBusy || !aruba.configurato}
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  >
+                    {syncBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    {t("ft.arSync")}
+                  </button>
+                </div>
+              </div>
+            )}
+            {syncEsito && (
+              <div className="mt-3 rounded-lg bg-status-present/10 p-3 text-[13px] text-foreground">
+                <div className="font-medium">
+                  {t("ft.arSyncFinestra")} {syncEsito.finestraDa.slice(0, 10)} →{" "}
+                  {syncEsito.finestraA.slice(0, 10)}
+                </div>
+                {syncEsito.esiti.map((e2) => (
+                  <div key={e2.direzione} className="mt-1">
+                    <b>{e2.direzione === "Emessa" ? t("ft.dirEmesse") : t("ft.dirRicevute")}</b>:{" "}
+                    {e2.lotti} {t("ft.arSyncLotti")} · {e2.daScaricare} {t("ft.arSyncNuovi")} ·{" "}
+                    {e2.importate} {t("ft.arSyncImportate")} · {e2.aggiornate}{" "}
+                    {t("ft.arSyncAggiornate")}
+                    {e2.errori.length > 0 && (
+                      <div className="mt-0.5 text-[11px] text-status-absent break-all">
+                        {e2.errori.slice(0, 5).join(" — ")}
+                        {e2.errori.length > 5 ? ` (+${e2.errori.length - 5})` : ""}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
             {probeDl && (

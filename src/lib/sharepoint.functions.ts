@@ -9,8 +9,10 @@ import { isSupervisoreGlobale } from "./richieste-logic";
 import {
   arubaProvaConnessione,
   arubaProvaDownload,
+  arubaSyncFatture,
   type ArubaProbeResult,
   type ArubaDownloadProbe,
+  type ArubaSyncResult,
 } from "./aruba.server";
 import { lunediDellaSettimana, ymd } from "./rendiconto-logic";
 import {
@@ -1426,6 +1428,15 @@ export const spArubaProvaDownload = createServerFn({ method: "POST" }).handler(
     return arubaProvaDownload();
   },
 );
+
+export const spArubaSincronizza = createServerFn({ method: "POST" })
+  .inputValidator((input?: { giorni?: number }) => ({
+    giorni: Math.min(Math.max(Number(input?.giorni ?? 0) || 0, 0), 90),
+  }))
+  .handler(async ({ data }): Promise<ArubaSyncResult> => {
+    await assertDirettore(await currentUser());
+    return arubaSyncFatture(data.giorni || undefined);
+  });
 
 // --- Collegamento banca Enable Banking / PSD2 (solo direttore) ---------------
 // SOLA LETTURA del conto aziendale: autorizzazione con SCA della banca,
