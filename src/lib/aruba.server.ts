@@ -439,27 +439,43 @@ function paramsRicerca(docType: "out" | "in"): Record<string, string> {
     : { receiverCountry: "IT", receiverVatcode: ARUBA_PIVA };
 }
 
+// Aruba limita ogni ricerca a 10 GIORNI di finestra (HTTP 400 oltre):
+// la finestra chiesta si affetta in tranche da 9 giorni e si cuce il totale.
+const SYNC_FETTA_GIORNI = 9;
+
 async function arubaListaLotti(
   docType: "out" | "in",
-  startISO: string,
-  endISO: string,
+  start: Date,
+  end: Date,
 ): Promise<{ filename: string }[]> {
+  const iso = (d: Date) => d.toISOString().slice(0, 19);
   const out: { filename: string }[] = [];
-  for (let page = 1; page <= SYNC_MAX_PAGINE; page++) {
-    const raw = await arubaGet(`/api/v2/invoices-${docType}`, {
-      ...paramsRicerca(docType),
-      creationStartDate: startISO,
-      creationEndDate: endISO,
-      page: String(page),
-      size: "100",
-    });
-    const obj = (raw ?? {}) as Record<string, unknown>;
-    const content = Array.isArray(obj["content"]) ? (obj["content"] as unknown[]) : [];
-    for (const el of content) {
-      const fn = String((el as Record<string, unknown>)["filename"] ?? "").trim();
-      if (fn) out.push({ filename: fn });
+  const visti = new Set<string>();
+  for (
+    let da = new Date(start);
+    da < end;
+    da = new Date(da.getTime() + SYNC_FETTA_GIORNI * 86400000)
+  ) {
+    const a = new Date(Math.min(da.getTime() + SYNC_FETTA_GIORNI * 86400000, end.getTime()));
+    for (let page = 1; page <= SYNC_MAX_PAGINE; page++) {
+      const raw = await arubaGet(`/api/v2/invoices-${docType}`, {
+        ...paramsRicerca(docType),
+        creationStartDate: iso(da),
+        creationEndDate: iso(a),
+        page: String(page),
+        size: "100",
+      });
+      const obj = (raw ?? {}) as Record<string, unknown>;
+      const content = Array.isArray(obj["content"]) ? (obj["content"] as unknown[]) : [];
+      for (const el of content) {
+        const fn = String((el as Record<string, unknown>)["filename"] ?? "").trim();
+        if (fn && !visti.has(fn)) {
+          visti.add(fn);
+          out.push({ filename: fn });
+        }
+      }
+      if (content.length < 100) break;
     }
-    if (content.length < 100) break;
   }
   return out;
 }
@@ -530,7 +546,7 @@ export async function arubaSyncFatture(giorniIndietro?: number): Promise<ArubaSy
       errori: [],
     };
     try {
-      const lotti = await arubaListaLotti(docType, iso(da), iso(now));
+      const lotti = await arubaListaLotti(docType, da, now);
       esito.lotti = lotti.length;
       const presenti = new Set((await fetchFatture(direzione)).map((f) => f.nomeFile));
       const nuovi = lotti.filter((l) => !presenti.has(normalizzaNomeFile(l.filename)));
