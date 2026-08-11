@@ -928,7 +928,7 @@ const en = {
   "ft.arVuoto":
     "No invoices in the last 2 days — authentication is OK; the field list will appear when the window contains an invoice.",
   "ft.arNota":
-    "NOTE: Aruba APIs require the Premium plan (~€1,300/year) — with the base plan authentication returns HTTP 429. This connection stays parked: if the plan is ever upgraded, enter the credentials and it works. Read-only access, nothing is ever sent to SdI; the password is stored encrypted.",
+    "Active connection (Premium plan, read-only delegation): nothing is ever sent to SdI and no data is ever modified on Aruba; the password is stored encrypted.",
   "ft.terminiGg": "payment terms",
   "ft.reconcile": "Reconcile with bank",
   "ft.reconcileTip":
@@ -2011,7 +2011,7 @@ const it: Record<DictKey, string> = {
   "ft.arVuoto":
     "Nessuna fattura negli ultimi 2 giorni — l'autenticazione è OK; l'elenco campi apparirà quando la finestra conterrà una fattura.",
   "ft.arNota":
-    "NOTA: le API Aruba richiedono il piano Premium (~1.300 €/anno) — col piano base l'autenticazione risponde HTTP 429. Questo collegamento resta parcheggiato: se un giorno si passa a Premium, basta inserire le credenziali. Accesso in sola lettura, nulla viene mai inviato allo SdI; la password è salvata cifrata.",
+    "Collegamento attivo (piano Premium, delega in sola lettura): nulla viene mai inviato allo SdI e nessun dato viene mai modificato su Aruba; la password è salvata cifrata.",
   "ft.terminiGg": "termini di pagamento",
   "ft.reconcile": "Riconcilia con banca",
   "ft.reconcileTip":
