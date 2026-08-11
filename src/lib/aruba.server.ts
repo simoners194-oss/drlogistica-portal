@@ -312,97 +312,72 @@ async function arubaGetRaw(
   return { status: 401, contentType: "", testo: "" };
 }
 
-export async function arubaProvaDownload(): Promise<ArubaDownloadProbe> {
+export async function arubaProvaDownload(filenameRichiesto?: string): Promise<ArubaDownloadProbe> {
   await arubaSignin();
-  const now = new Date();
-  const start = new Date(now.getTime() - 7 * 86400000);
-  const iso = (d: Date) => d.toISOString().slice(0, 19);
-  const raw = await arubaGet("/api/v2/invoices-out", {
-    senderCountry: "IT",
-    senderVatcode: ARUBA_PIVA,
-    creationStartDate: iso(start),
-    creationEndDate: iso(now),
-    page: "1",
-    size: "1",
-  });
-  const obj = (raw ?? {}) as Record<string, unknown>;
-  const lista = Array.isArray(obj["content"]) ? (obj["content"] as unknown[]) : [];
-  const primo = (lista[0] ?? null) as Record<string, unknown> | null;
-  if (!primo)
-    return {
-      ok: false,
-      messaggio: "Nessuna fattura negli ultimi 7 giorni: riprovare quando ce n'e' una.",
-      tentativi: [],
-    };
-  const id = String(primo["id"] ?? "");
-  const filename = String(primo["filename"] ?? "");
-  const candidati: { percorso: string; params: Record<string, string> }[] = [
-    { percorso: `/api/v2/invoices-out/${id}`, params: {} },
-    { percorso: "/api/v2/invoices-out/getByFilename", params: { filename } },
-    { percorso: `/api/v2/invoices-out/${id}/detail`, params: {} },
-    { percorso: "/services/invoice/out/getByFilename", params: { filename } },
-  ];
+  let filename = (filenameRichiesto ?? "").trim();
+  if (!filename) {
+    const now = new Date();
+    const start = new Date(now.getTime() - 7 * 86400000);
+    const iso = (d: Date) => d.toISOString().slice(0, 19);
+    const raw = await arubaGet("/api/v2/invoices-out", {
+      ...paramsRicerca("out"),
+      creationStartDate: iso(start),
+      creationEndDate: iso(now),
+      page: "1",
+      size: "1",
+    });
+    const obj = (raw ?? {}) as Record<string, unknown>;
+    const lista = Array.isArray(obj["content"]) ? (obj["content"] as unknown[]) : [];
+    filename = String(((lista[0] ?? {}) as Record<string, unknown>)["filename"] ?? "");
+    if (!filename)
+      return {
+        ok: false,
+        messaggio: "Nessuna fattura negli ultimi 7 giorni: riprovare quando ce n'e' una.",
+        tentativi: [],
+      };
+  }
   const tentativi: ArubaDownloadProbe["tentativi"] = [];
-  let trovato = false;
-  for (const c of candidati) {
+  for (const docType of ["out", "in"] as const) {
+    const percorso = `/services/invoice/${docType}/getByFilename`;
     try {
-      const r = await arubaGetRaw(c.percorso, c.params);
+      const r = await arubaGetRaw(percorso, { filename });
       const voce: ArubaDownloadProbe["tentativi"][number] = {
-        percorso: c.percorso,
+        percorso,
         status: r.status,
         contentType: r.contentType,
       };
       if (r.status >= 200 && r.status < 300) {
-        trovato = true;
-        if (r.contentType.includes("json")) {
-          try {
-            const j = JSON.parse(r.testo) as Record<string, unknown>;
-            voce.chiavi = Object.keys(j);
-            // Se un campo sembra il file in base64, se ne decodifica l'inizio
-            // per capire se e' l'XML vero (o il p7m firmato).
-            for (const [k, val] of Object.entries(j)) {
-              if (
-                typeof val === "string" &&
-                val.length > 400 &&
-                /^[A-Za-z0-9+/=\r\n]+$/.test(val.slice(0, 200))
-              ) {
-                try {
-                  const inizio = atob(val.slice(0, 400).replace(/\s/g, ""));
-                  voce.anteprima = `${k} (base64): ${inizio.slice(0, 80)}`;
-                } catch {
-                  voce.anteprima = `${k}: campo lungo non decodificabile`;
-                }
-                break;
-              }
-            }
-            if (!voce.anteprima) voce.anteprima = r.testo.slice(0, 200);
-          } catch {
-            voce.anteprima = r.testo.slice(0, 200);
-          }
+        // Verifica END-TO-END con la stessa strada del sync: estrazione
+        // dell'XML e parse — cosi' un lotto "non parsato" si spiega qui.
+        const xml = await arubaScaricaXml(docType, filename);
+        if (!xml) {
+          voce.anteprima = "estrazione FALLITA (ne' unsignedFile ne' ritaglio dal p7m)";
         } else {
-          voce.anteprima = r.testo.slice(0, 120);
+          const parsed = parseFatturaPA(xml, filename);
+          voce.anteprima =
+            `estratti ${xml.length} caratteri; parse: ${parsed.rows.length} righe` +
+            (parsed.scartati.length ? `, scarti [${parsed.scartati.join(", ")}]` : "") +
+            `; inizio: ${xml.slice(0, 100)}`;
         }
-      } else {
-        voce.anteprima = r.testo.slice(0, 160);
+        tentativi.push(voce);
+        return {
+          ok: true,
+          messaggio: `Dettaglio trovato (${docType}) per ${filename}.`,
+          filename,
+          tentativi,
+        };
       }
+      voce.anteprima = r.testo.slice(0, 160);
       tentativi.push(voce);
-      if (trovato) break;
     } catch (err) {
       tentativi.push({
-        percorso: c.percorso,
+        percorso,
         status: 0,
         anteprima: err instanceof Error ? err.message : String(err),
       });
     }
   }
-  return {
-    ok: trovato,
-    messaggio: trovato
-      ? `Endpoint di dettaglio trovato per ${filename}.`
-      : "Nessun endpoint candidato ha risposto 200: vedere i tentativi.",
-    filename,
-    tentativi,
-  };
+  return { ok: false, messaggio: `Nessun dettaglio per ${filename}.`, filename, tentativi };
 }
 
 // --- Probe INCASSI ----------------------------------------------------------

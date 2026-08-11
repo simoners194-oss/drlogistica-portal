@@ -1424,12 +1424,16 @@ export const spArubaProvaConnessione = createServerFn({ method: "POST" }).handle
   },
 );
 
-export const spArubaProvaDownload = createServerFn({ method: "POST" }).handler(
-  async (): Promise<ArubaDownloadProbe> => {
+export const spArubaProvaDownload = createServerFn({ method: "POST" })
+  .inputValidator((input?: { filename?: string }) => ({
+    filename: String(input?.filename ?? "")
+      .trim()
+      .slice(0, 120),
+  }))
+  .handler(async ({ data }): Promise<ArubaDownloadProbe> => {
     await assertDirettore(await currentUser());
-    return arubaProvaDownload();
-  },
-);
+    return arubaProvaDownload(data.filename || undefined);
+  });
 
 export const spArubaProvaIncassi = createServerFn({ method: "POST" })
   .inputValidator((input?: { filename?: string }) => ({

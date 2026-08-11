@@ -70,10 +70,7 @@ import {
   spSetIncassiAruba,
   spGetArubaStato,
   spSetArubaCredenziali,
-  spArubaProvaConnessione,
-  spArubaProvaDownload,
   spArubaSincronizza,
-  spArubaProvaIncassi,
   spSetRettificaNumero,
   spSetIncassoManuale,
   spTrovaFattureSenzaCliente,
@@ -84,12 +81,7 @@ import {
   spEliminaFatture,
 } from "@/lib/sharepoint.functions";
 import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
-import type {
-  ArubaProbeResult,
-  ArubaDownloadProbe,
-  ArubaSyncResult,
-  ArubaIncassiProbe,
-} from "@/lib/aruba.server";
+import type { ArubaSyncResult } from "@/lib/aruba.server";
 
 // Cache di sessione per l'apertura istantanea della pagina: l'elenco fatture
 // e i movimenti pesano megabyte e arrivano da SharePoint in molte pagine —
@@ -202,15 +194,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   const [arubaPass, setArubaPass] = useState("");
   const [arubaSaving, setArubaSaving] = useState(false);
   const [arubaTesting, setArubaTesting] = useState(false);
-  const [probe, setProbe] = useState<ArubaProbeResult | null>(null);
-  const [probeDl, setProbeDl] = useState<ArubaDownloadProbe | null>(null);
   const [syncEsito, setSyncEsito] = useState<ArubaSyncResult | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncGiorni, setSyncGiorni] = useState("");
-  const [incProbe, setIncProbe] = useState<ArubaIncassiProbe | null>(null);
-  const [incBusy, setIncBusy] = useState(false);
-  const [incProbeFile, setIncProbeFile] = useState("");
-  const [dlTesting, setDlTesting] = useState(false);
 
   // Applica gli incassi del report movimenti alle fatture in archivio: gli
   // importi per rata sono l'unico dato che quantifica i PARZIALI.
@@ -1892,26 +1878,6 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     }
   };
 
-  const provaConnessione = async () => {
-    setArubaTesting(true);
-    setProbe(null);
-    try {
-      const res = (await spArubaProvaConnessione()) as ArubaProbeResult;
-      setProbe(res);
-      toast.success(t("ft.arProvaOk"));
-    } catch (err) {
-      setProbe({
-        ok: false,
-        messaggio: err instanceof Error ? err.message : String(err),
-      });
-      toast.error(t("ft.arProvaKo"), {
-        description: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setArubaTesting(false);
-    }
-  };
-
   const esporta = () => {
     esportaCsvFile(
       `fatture-${dir === "Ricevuta" ? "ricevute" : "emesse"}-${anniF.length ? [...anniF].sort().join("-") : "tutte"}`,
@@ -2510,45 +2476,6 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   )}
                   {t("ft.arSalva")}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void provaConnessione()}
-                  disabled={arubaTesting || !aruba.configurato}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                >
-                  {arubaTesting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plug className="h-4 w-4" />
-                  )}
-                  {t("ft.arProva")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDlTesting(true);
-                    setProbeDl(null);
-                    spArubaProvaDownload()
-                      .then((r) => setProbeDl(r as ArubaDownloadProbe))
-                      .catch((err) =>
-                        setProbeDl({
-                          ok: false,
-                          messaggio: err instanceof Error ? err.message : String(err),
-                          tentativi: [],
-                        }),
-                      )
-                      .finally(() => setDlTesting(false));
-                  }}
-                  disabled={dlTesting || !aruba.configurato}
-                  className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
-                >
-                  {dlTesting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plug className="h-4 w-4" />
-                  )}
-                  {t("ft.arProvaDl")}
-                </button>
                 <div className="flex items-end gap-1.5">
                   <div>
                     <label className="text-xs text-muted-foreground">{t("ft.arSyncGiorni")}</label>
@@ -2587,54 +2514,6 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                     {t("ft.arSync")}
                   </button>
                 </div>
-                <div className="flex items-end gap-1.5">
-                  <div>
-                    <label className="text-xs text-muted-foreground">{t("ft.arIncFile")}</label>
-                    <input
-                      value={incProbeFile}
-                      onChange={(e) => setIncProbeFile(e.target.value)}
-                      placeholder="IT…xml"
-                      className="w-56 rounded-lg border border-border bg-background px-2 py-2 text-sm"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIncBusy(true);
-                      setIncProbe(null);
-                      spArubaProvaIncassi({ data: { filename: incProbeFile } })
-                        .then((r) => setIncProbe(r as ArubaIncassiProbe))
-                        .catch((err) =>
-                          setIncProbe({
-                            ok: false,
-                            messaggio: err instanceof Error ? err.message : String(err),
-                          }),
-                        )
-                        .finally(() => setIncBusy(false));
-                    }}
-                    disabled={incBusy || !aruba.configurato}
-                    className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
-                  >
-                    {incBusy ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Plug className="h-4 w-4" />
-                    )}
-                    {t("ft.arIncassi")}
-                  </button>
-                </div>
-              </div>
-            )}
-            {incProbe && (
-              <div
-                className={`mt-3 rounded-lg p-3 text-[13px] ${incProbe.ok ? "bg-status-present/10 text-foreground" : "bg-status-absent/10 text-status-absent"}`}
-              >
-                <div className="font-medium">{incProbe.messaggio}</div>
-                {incProbe.dettaglio && (
-                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all text-[11px] text-muted-foreground">
-                    {incProbe.dettaglio}
-                  </pre>
-                )}
               </div>
             )}
             {syncEsito && (
@@ -2657,65 +2536,6 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                     )}
                   </div>
                 ))}
-              </div>
-            )}
-            {probeDl && (
-              <div
-                className={`mt-3 rounded-lg p-3 text-[13px] ${probeDl.ok ? "bg-status-present/10 text-foreground" : "bg-status-absent/10 text-status-absent"}`}
-              >
-                <div className="font-medium">{probeDl.messaggio}</div>
-                {probeDl.tentativi.length > 0 && (
-                  <div className="mt-2 overflow-x-auto">
-                    <table className="text-xs">
-                      <tbody>
-                        {probeDl.tentativi.map((tv) => (
-                          <tr key={tv.percorso}>
-                            <td className="pr-3 py-0.5 font-mono whitespace-nowrap text-foreground">
-                              {tv.percorso}
-                            </td>
-                            <td className="pr-3 py-0.5 tabular-nums">{tv.status}</td>
-                            <td className="pr-3 py-0.5">{tv.contentType ?? ""}</td>
-                            <td className="py-0.5 break-all text-muted-foreground">
-                              {tv.chiavi ? `[${tv.chiavi.join(", ")}] ` : ""}
-                              {tv.anteprima ?? ""}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-            {probe && (
-              <div
-                className={`mt-3 rounded-lg p-3 text-[13px] ${probe.ok ? "bg-status-present/10 text-foreground" : "bg-status-absent/10 text-status-absent"}`}
-              >
-                <div className="font-medium">{probe.messaggio}</div>
-                {probe.ok && probe.campiEsempio && (
-                  <div className="mt-2 text-muted-foreground">
-                    <div className="text-xs font-medium text-foreground mb-1">
-                      {t("ft.arCampi")}
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="text-xs">
-                        <tbody>
-                          {Object.entries(probe.campiEsempio).map(([k, v]) => (
-                            <tr key={k}>
-                              <td className="pr-3 py-0.5 font-mono text-foreground whitespace-nowrap">
-                                {k}
-                              </td>
-                              <td className="py-0.5 break-all">{v}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-                {probe.ok && probe.elementi === 0 && (
-                  <p className="mt-1 text-muted-foreground">{t("ft.arVuoto")}</p>
-                )}
               </div>
             )}
             <p className="mt-3 text-[11px] text-muted-foreground">{t("ft.arNota")}</p>

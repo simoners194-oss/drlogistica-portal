@@ -25,6 +25,7 @@ import {
 import type { SpSelfTestResult, SpHealth, ImportDipendentiResult } from "@/lib/sharepoint.server";
 import { spImportDipendenti, spImportAppalti, spProtectPins } from "@/lib/sharepoint.functions";
 import { BancaPsd2Panel } from "@/components/BancaPsd2Panel";
+import { ArubaDiagnosticaCard } from "@/components/ArubaDiagnosticaCard";
 import { toast } from "sonner";
 import { readSession } from "@/lib/session";
 import { useLang } from "@/lib/i18n";
@@ -231,6 +232,8 @@ function AmministrazionePage() {
         <ImportAppaltiCard />
 
         <BancaPsd2Panel />
+
+        <ArubaDiagnosticaCard />
 
         <ProtezionePinCard />
       </div>
