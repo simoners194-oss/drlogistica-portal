@@ -52,6 +52,8 @@ import {
   spImportMovimenti,
   spUpdateMovimento,
   spGetImportStorico,
+  spGetDettagliDistinte,
+  spImportDistinta,
   spAnnullaImport,
   spGetRegoleFinanza,
   spGetTerminiPagamento,
@@ -75,6 +77,7 @@ import {
 import type {
   SpMovimento,
   ImportStoricoRiga,
+  DettaglioDistinta,
   EbStato,
   EbSyncResult,
   EbSaldoInfo,
@@ -266,6 +269,26 @@ function FinanzaPage() {
   const [movimenti, setMovimenti] = useState<SpMovimento[] | null>(null);
   const [anomalie, setAnomalie] = useState<SpMovimento[] | null>(null);
   const [storico, setStorico] = useState<ImportStoricoRiga[] | null>(null);
+  // Distinte / esiti pagamenti: dettaglio dei pagamenti cumulativi.
+  const [distinte, setDistinte] = useState<DettaglioDistinta[] | null>(null);
+  const [distPreview, setDistPreview] = useState<
+    | {
+        idPagamento: string;
+        dataEsecuzione: string;
+        beneficiario: string;
+        importo: number;
+        tipoPagamento: string;
+        descrizione: string;
+      }[]
+    | null
+  >(null);
+  const [distBusy, setDistBusy] = useState(false);
+  const [distModal, setDistModal] = useState<{
+    data: string;
+    tipo: string;
+    somma: number;
+    righe: DettaglioDistinta[];
+  } | null>(null);
 
   // Filtri archivio movimenti
   const [tipiF, setTipiF] = useState<string[]>([]);
@@ -385,6 +408,211 @@ function FinanzaPage() {
       .then((l) => setAnomalie(l as SpMovimento[]))
       .catch(() => setAnomalie([]));
   };
+  useEffect(() => {
+    spGetDettagliDistinte()
+      .then((l) => setDistinte(l as DettaglioDistinta[]))
+      .catch(() => setDistinte([]));
+  }, []);
+
+  // Parser del report "Esiti pagamenti" BPM (xlsx o csv, 16 colonne):
+  // riconosce l'intestazione ovunque sia e legge per NOME colonna.
+  const parseEsiti = async (file: File) => {
+    let tab2d: string[][] = [];
+    const isoLocale = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+        d.getDate(),
+      ).padStart(2, "0")}`;
+    if (/\.csv$/i.test(file.name)) {
+      const testo = await file.text();
+      tab2d = testo
+        .split(/\r?\n/)
+        .filter((l) => l.trim())
+        .map((l) => l.split(";").map((c) => c.replace(/^"+|"+$/g, "").trim()));
+    } else {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      tab2d = (XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as unknown[][]).map((r) =>
+        (r ?? []).map((c) => (c instanceof Date ? isoLocale(c) : String(c ?? "").trim())),
+      );
+    }
+    const hIdx = tab2d.findIndex((r) => r.some((c) => c.toLowerCase().startsWith("beneficiario")));
+    if (hIdx < 0) return [];
+    const header = tab2d[hIdx].map((c) => c.toLowerCase());
+    const col = (pfx: string) => header.findIndex((h) => h.startsWith(pfx));
+    const iData = col("esecuzione");
+    const iBen = col("beneficiario");
+    const iTipo = col("tipo pagamento");
+    const iImp = col("importo");
+    const iDesc = col("descrizione causale");
+    const iId = col("identificativo");
+    if (iBen < 0 || iImp < 0 || iId < 0) return [];
+    const out: NonNullable<typeof distPreview> = [];
+    for (const r of tab2d.slice(hIdx + 1)) {
+      const ben = (r[iBen] ?? "").trim();
+      const idRaw = (r[iId] ?? "").trim();
+      const rawImp = (r[iImp] ?? "").trim();
+      // Formato italiano "1314,2900" o numero gia' decimale dall'xlsx.
+      const importo = rawImp.includes(",")
+        ? Number(rawImp.replace(/\./g, "").replace(",", "."))
+        : Number(rawImp);
+      let dataEs = (iData >= 0 ? (r[iData] ?? "") : "").trim().slice(0, 10);
+      const mIt = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dataEs);
+      if (mIt) dataEs = `${mIt[3]}-${mIt[2]}-${mIt[1]}`;
+      if (!ben || !idRaw || !importo || !Number.isFinite(importo)) continue;
+      out.push({
+        // L'identificativo da solo NON e' univoco (distinte stipendi):
+        // la chiave anti-doppioni e' identificativo|beneficiario.
+        idPagamento: `${idRaw}|${ben}`.slice(0, 240),
+        dataEsecuzione: dataEs,
+        beneficiario: ben,
+        importo: Math.round(importo * 100) / 100,
+        tipoPagamento: iTipo >= 0 ? (r[iTipo] ?? "").trim() : "",
+        descrizione: iDesc >= 0 ? (r[iDesc] ?? "").trim() : "",
+      });
+    }
+    return out;
+  };
+
+  const importaDistinte = async () => {
+    if (!distPreview?.length) return;
+    setDistBusy(true);
+    try {
+      let create = 0;
+      let gia = 0;
+      for (let i = 0; i < distPreview.length; i += 60) {
+        const esito = (await spImportDistinta({
+          data: { rows: distPreview.slice(i, i + 60) },
+        })) as { create: number; giaPresenti: number };
+        create += esito.create;
+        gia += esito.giaPresenti;
+      }
+      const agg = (await spGetDettagliDistinte()) as DettaglioDistinta[];
+      setDistinte(agg);
+      setDistPreview(null);
+      toast.success(t("fin.distEsitoOk"), {
+        description: `+${create} · ${t("fin.distGia")}: ${gia}`,
+      });
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setDistBusy(false);
+    }
+  };
+
+  // Le disposizioni raggruppate per giorno+tipo: il gruppo la cui somma
+  // coincide con l'addebito cumulativo (al centesimo, data entro 6 giorni)
+  // e' il dettaglio di quel movimento.
+  const distGruppi = useMemo(() => {
+    const map = new Map<
+      string,
+      { data: string; tipo: string; somma: number; righe: DettaglioDistinta[] }
+    >();
+    for (const d of distinte ?? []) {
+      const k = `${d.dataEsecuzione}|${d.tipoPagamento}`;
+      const g = map.get(k) ?? {
+        data: d.dataEsecuzione,
+        tipo: d.tipoPagamento,
+        somma: 0,
+        righe: [],
+      };
+      g.somma += d.importo;
+      g.righe.push(d);
+      map.set(k, g);
+    }
+    return [...map.values()].map((g) => ({ ...g, somma: Math.round(g.somma * 100) / 100 }));
+  }, [distinte]);
+  const distintaDi = (m: SpMovimento) => {
+    if (m.importo >= 0 || !distGruppi.length) return null;
+    const target = Math.round(-m.importo * 100) / 100;
+    let best: (typeof distGruppi)[number] | null = null;
+    let bestDiff = 7;
+    for (const g of distGruppi) {
+      if (Math.abs(g.somma - target) > 1) continue;
+      const diff = Math.abs(
+        (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+          new Date(`${g.data}T00:00:00`).getTime()) /
+          86400000,
+      );
+      if (diff <= 6 && diff < bestDiff) {
+        best = g;
+        bestDiff = diff;
+      }
+    }
+    return best;
+  };
+
+  const distinteCard = (
+    <div className="mb-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+      <div className="text-sm font-semibold text-foreground mb-1">{t("fin.distTitolo")}</div>
+      <p className="text-xs text-muted-foreground mb-3">{t("fin.distDesc")}</p>
+      <input
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          void parseEsiti(file).then((righe) => {
+            if (!righe.length) toast.error(t("fin.distNoRighe"));
+            setDistPreview(righe.length ? righe : null);
+          });
+        }}
+        className="block text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
+      />
+      {distPreview && (
+        <div className="mt-3 rounded-xl border border-border/60 bg-muted/20 p-3 text-sm">
+          <p className="mb-2 text-foreground">
+            {distPreview.length} {t("fin.distRighe")}
+          </p>
+          <ul className="mb-3 space-y-0.5 text-xs text-muted-foreground">
+            {[
+              ...distPreview
+                .reduce((map, r) => {
+                  const k = `${r.dataEsecuzione}|${r.tipoPagamento}`;
+                  const g = map.get(k) ?? { n: 0, somma: 0 };
+                  g.n++;
+                  g.somma += r.importo;
+                  map.set(k, g);
+                  return map;
+                }, new Map<string, { n: number; somma: number }>())
+                .entries(),
+            ].map(([k, g]) => (
+              <li key={k}>
+                {fmtData(k.split("|")[0])} · {k.split("|")[1] || "—"} — {g.n} ×{" "}
+                {fmtImporto(Math.round(g.somma * 100) / 100)} €
+              </li>
+            ))}
+          </ul>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={distBusy}
+              onClick={() => void importaDistinte()}
+              className="rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            >
+              {distBusy ? t("common.loading") : t("fin.distImporta")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDistPreview(null)}
+              className="rounded-lg border border-border px-4 py-1.5 text-sm hover:bg-muted"
+            >
+              {t("common.cancel")}
+            </button>
+          </div>
+        </div>
+      )}
+      {distinte != null && distinte.length > 0 && !distPreview && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {distinte.length} {t("fin.distArchivio")}
+        </p>
+      )}
+    </div>
+  );
+
   const loadStorico = () => {
     spGetImportStorico()
       .then((l) => setStorico(l as ImportStoricoRiga[]))
@@ -1375,6 +1603,56 @@ function FinanzaPage() {
                 +{fmtImporto(totaleFiltrato.entrate)} / {fmtImporto(totaleFiltrato.uscite)}
               </div>
             </div>
+            {/* Dentro il pagamento cumulativo: l'elenco delle disposizioni
+                della distinta agganciata (somma uguale, data vicina). */}
+            {distModal && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                onClick={() => setDistModal(null)}
+              >
+                <div
+                  className="max-h-[80vh] w-full max-w-lg overflow-auto rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-elegant)]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="mb-1 text-[15px] font-semibold text-foreground">
+                    {t("fin.distModalTitolo")}
+                  </div>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    {fmtData(distModal.data)} · {distModal.tipo || "—"} · {distModal.righe.length}{" "}
+                    {t("fin.distRighe")} · {t("fin.distTotale")} {fmtImporto(distModal.somma)} €
+                  </p>
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {[...distModal.righe]
+                        .sort((a, b) => b.importo - a.importo)
+                        .map((d2) => (
+                          <tr key={d2.id} className="border-b border-border/40">
+                            <td className="py-1 pr-2">{d2.beneficiario}</td>
+                            <td className="py-1 pr-2 text-right tabular-nums whitespace-nowrap">
+                              {fmtImporto(d2.importo)} €
+                            </td>
+                            <td
+                              className="max-w-40 truncate py-1 text-[11px] text-muted-foreground"
+                              title={d2.descrizione}
+                            >
+                              {d2.descrizione}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setDistModal(null)}
+                      className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
+                    >
+                      {t("common.close")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* CORREZIONE del singolo movimento (matita): stessi campi della
                 sanatura — svuotare un campo e salvare = cancellare il valore. */}
             {editId != null && (
@@ -1714,6 +1992,22 @@ function FinanzaPage() {
                             ABI {m.causale}
                           </div>
                         )}
+                        {(() => {
+                          const g = distintaDi(m);
+                          return g ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDistModal(g);
+                              }}
+                              title={t("fin.distBadgeTip")}
+                              className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/20"
+                            >
+                              <Users className="h-3 w-3" /> {g.righe.length}
+                            </button>
+                          ) : null;
+                        })()}
                       </td>
                       <td className="py-1.5 pr-3">
                         {m.tipologia}
@@ -2093,6 +2387,7 @@ function FinanzaPage() {
       )}
 
       {/* ------------------------------- Storico import -------------------- */}
+      {tab === "storico" && distinteCard}
       {tab === "storico" && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="text-sm font-semibold text-foreground mb-1">{t("fin.storicoTitle")}</div>

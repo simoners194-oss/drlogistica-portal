@@ -36,6 +36,10 @@ import {
   fetchTimbratureManuali,
   importDipendenti,
   importAppaltiDipendenti,
+  fetchDettagliDistinte,
+  importDistinta,
+  type DettaglioDistinta,
+  type RigaDistintaImport,
   type ImportDipendentiResult,
   protectAllPins,
   uploadFileToLibrary,
@@ -485,6 +489,48 @@ export const spImportAppalti = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     assertCap(isAdmin(await currentUser()));
     return importAppaltiDipendenti(data.rows, data.dryRun);
+  });
+
+// Distinte / esiti pagamenti: il dettaglio dei pagamenti cumulativi
+// (distinta stipendi, ritiro effetti). Lettura e import: solo direzione.
+export const spGetDettagliDistinte = createServerFn({ method: "GET" }).handler(
+  async (): Promise<DettaglioDistinta[]> => {
+    await assertDirettore(await currentUser());
+    return fetchDettagliDistinte();
+  },
+);
+
+export const spImportDistinta = createServerFn({ method: "POST" })
+  .inputValidator((input: { rows: RigaDistintaImport[] }) => {
+    if (!Array.isArray(input?.rows) || input.rows.length === 0)
+      throw new Error("Nessuna riga da importare");
+    if (input.rows.length > 80) throw new Error("Blocco troppo grande (max 80 righe per volta)");
+    return {
+      rows: input.rows
+        .map((r) => ({
+          idPagamento: String(r?.idPagamento ?? "")
+            .trim()
+            .slice(0, 240),
+          dataEsecuzione: String(r?.dataEsecuzione ?? "")
+            .trim()
+            .slice(0, 10),
+          beneficiario: String(r?.beneficiario ?? "")
+            .trim()
+            .slice(0, 120),
+          importo: Number(r?.importo ?? 0) || 0,
+          tipoPagamento: String(r?.tipoPagamento ?? "")
+            .trim()
+            .slice(0, 60),
+          descrizione: String(r?.descrizione ?? "")
+            .trim()
+            .slice(0, 255),
+        }))
+        .filter((r) => r.idPagamento && r.beneficiario && r.importo),
+    };
+  })
+  .handler(async ({ data }) => {
+    await assertDirettore(await currentUser());
+    return importDistinta(data.rows);
   });
 
 // Protezione massiva dei PIN (S3): converte in hash tutti i PIN in chiaro.

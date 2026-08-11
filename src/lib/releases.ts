@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.23.0",
+    date: "2026-08-11",
+    codename: "Dentro i pagamenti cumulativi",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Le distinte di pagamento si aprono e mostrano i beneficiari",
+        description:
+          "I pagamenti cumulativi (distinta stipendi, ritiro effetti RiBa) non sono piu' scatole chiuse: caricando il report \u201cEsiti pagamenti\u201d dell'home banking, il portale archivia ogni disposizione e la aggancia da sola al movimento bancario corrispondente \u2014 stessa somma, data vicina. Sul movimento compare l'icona con il numero dei beneficiari: un clic apre l'elenco completo con gli importi. I file gia' caricati non si duplicano.",
+      },
+    ],
+  },
+  {
     version: "1.22.0",
     date: "2026-08-10",
     codename: "Mese e servizio anche sulle attive",

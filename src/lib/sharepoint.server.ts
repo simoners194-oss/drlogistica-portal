@@ -287,6 +287,18 @@ export const SP_DISPLAY = {
   },
   // Anomalie timbrature SCARTATE a mano (soprattutto le informative):
   // Title = chiave "dipendenteId|giorno|tipo". OPZIONALE.
+  // Dettaglio delle DISTINTE di pagamento (report "Esiti pagamenti" BPM):
+  // ogni riga e' una disposizione dentro un pagamento cumulativo
+  // ("beneficiari vari distinta" salari, ritiro effetti RiBa).
+  // Title = "IdentificativoPagamento|Beneficiario" (chiave anti-doppioni:
+  // il solo identificativo NON e' univoco nelle distinte stipendi). OPZIONALE.
+  dettagliDistinte: {
+    DataEsecuzione: "DataEsecuzione",
+    Beneficiario: "Beneficiario",
+    Importo: "Importo",
+    TipoPagamento: "TipoPagamento",
+    Descrizione: "Descrizione",
+  },
   anomalieScartate: {
     Dipendente: "Dipendente",
     Giorno: "Giorno",
@@ -444,6 +456,7 @@ const LIST_NAMES = {
   regoleFatture: ["RegoleFatture", "RegoleClassificazione", "RegoleFatturePassive"],
   gruppiControparti: ["GruppiControparti", "Gruppi", "GruppiMadre"],
   anomalieScartate: ["AnomalieScartate", "AnomalieIgnorate"],
+  dettagliDistinte: ["DettagliDistinte", "Distinte", "EsitiPagamenti"],
   fatture: ["FattureEmesse", "FatturaEmessa", "Fatture"],
   fattureRicevute: ["FattureRicevute", "FatturaRicevuta"],
   terminiPagamento: ["TerminiPagamento", "TerminiDiPagamento", "TerminePagamento"],
@@ -560,6 +573,8 @@ export interface SpDiscovered {
   gruppiContropartiFields: Record<string, string>;
   listAnomalieScartate: string | null;
   anomalieScartateFields: Record<string, string>;
+  listDettagliDistinte: string | null;
+  dettagliDistinteFields: Record<string, string>;
   listFatture: string | null;
   listFattureName: string | null;
   fattureFields: Record<string, string>;
@@ -918,6 +933,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const regFat = await softList(LIST_NAMES.regoleFatture, SP_DISPLAY.regoleFatture);
   const gruppiCp = await softList(LIST_NAMES.gruppiControparti, SP_DISPLAY.gruppiControparti);
   const anomSc = await softList(LIST_NAMES.anomalieScartate, SP_DISPLAY.anomalieScartate);
+  const distD = await softList(LIST_NAMES.dettagliDistinte, SP_DISPLAY.dettagliDistinte);
   const fat = await softList(LIST_NAMES.fatture, SP_DISPLAY.fatture);
   const fatR = await softList(LIST_NAMES.fattureRicevute, SP_DISPLAY.fatture);
   const trm = await softList(LIST_NAMES.terminiPagamento, SP_DISPLAY.terminiPagamento);
@@ -985,6 +1001,8 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     gruppiContropartiFields: gruppiCp.fields,
     listAnomalieScartate: anomSc.id,
     anomalieScartateFields: anomSc.fields,
+    listDettagliDistinte: distD.id,
+    dettagliDistinteFields: distD.fields,
     listFatture: fat.id,
     listFattureName: fat.name,
     fattureFields: fat.fields,
@@ -5043,6 +5061,111 @@ export async function deleteGruppoControparti(id: string): Promise<void> {
   );
   if (!del.ok && del.status !== 204) throw new Error(`DELETE gruppo → HTTP ${del.status}`);
   logSp("info", "gruppi.delete", `Gruppo controparti eliminato: #${id}`);
+}
+
+// --- Distinte / esiti pagamenti (lista DettagliDistinte) --------------------
+// Il dettaglio dei pagamenti CUMULATIVI: la banca addebita un solo totale
+// (distinta stipendi, ritiro effetti), i nominativi stanno nel report
+// "Esiti pagamenti" dell'home banking. Le disposizioni si depositano qui e
+// il portale le aggancia al movimento per somma+data — lato client.
+
+export interface DettaglioDistinta {
+  id: string;
+  /** Title: "IdentificativoPagamento|Beneficiario" — chiave anti-doppioni. */
+  idPagamento: string;
+  dataEsecuzione: string; // YYYY-MM-DD
+  beneficiario: string;
+  importo: number;
+  tipoPagamento: string;
+  descrizione: string;
+}
+
+export async function fetchDettagliDistinte(): Promise<DettaglioDistinta[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listDettagliDistinte) return [];
+  const F = cfg.dettagliDistinteFields;
+  const out: DettaglioDistinta[] = [];
+  let url: string | null =
+    `/sites/${cfg.siteId}/lists/${cfg.listDettagliDistinte}/items?expand=fields&$top=999`;
+  while (url) {
+    const pagina: string = url;
+    const res: GraphListResponse<Record<string, unknown>> = await withDiscoveryRetry(() =>
+      gatewayJson<GraphListResponse<Record<string, unknown>>>(pagina),
+    );
+    for (const it of res.value) {
+      const f = it.fields ?? {};
+      out.push({
+        id: String(it.id),
+        idPagamento: String(f["Title"] ?? "").trim(),
+        dataEsecuzione: F.DataEsecuzione ? String(f[F.DataEsecuzione] ?? "").slice(0, 10) : "",
+        beneficiario: F.Beneficiario ? String(f[F.Beneficiario] ?? "").trim() : "",
+        importo: F.Importo ? Number(f[F.Importo] ?? 0) || 0 : 0,
+        tipoPagamento: F.TipoPagamento ? String(f[F.TipoPagamento] ?? "").trim() : "",
+        descrizione: F.Descrizione ? String(f[F.Descrizione] ?? "").trim() : "",
+      });
+    }
+    const next: unknown = (res as unknown as Record<string, unknown>)["@odata.nextLink"];
+    url =
+      typeof next === "string" && next.includes("/sites/")
+        ? next.slice(next.indexOf("/sites/"))
+        : null;
+  }
+  return out.filter((d) => d.idPagamento && d.beneficiario);
+}
+
+export interface RigaDistintaImport {
+  idPagamento: string;
+  dataEsecuzione: string;
+  beneficiario: string;
+  importo: number;
+  tipoPagamento: string;
+  descrizione: string;
+}
+
+export async function importDistinta(
+  righe: RigaDistintaImport[],
+): Promise<{ create: number; giaPresenti: number }> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listDettagliDistinte)
+    throw new Error(
+      'Lista "DettagliDistinte" assente su SharePoint: crearla con le colonne testo ' +
+        '"DataEsecuzione", "Beneficiario", "TipoPagamento", "Descrizione" e la colonna ' +
+        'numerica "Importo", poi fare Riscopri.',
+    );
+  const F = cfg.dettagliDistinteFields;
+  const mancanti = ["DataEsecuzione", "Beneficiario", "Importo"].filter((c) => !F[c]);
+  if (mancanti.length)
+    throw new Error(
+      `Colonne mancanti sulla lista DettagliDistinte: ${mancanti.join(", ")}. ` +
+        "Crearle su SharePoint e fare Riscopri.",
+    );
+  const esistenti = new Set((await fetchDettagliDistinte()).map((d) => d.idPagamento));
+  let create = 0;
+  let giaPresenti = 0;
+  for (const r of righe) {
+    if (esistenti.has(r.idPagamento)) {
+      giaPresenti++;
+      continue;
+    }
+    const fields: Record<string, unknown> = { Title: r.idPagamento };
+    fields[F.DataEsecuzione] = r.dataEsecuzione;
+    fields[F.Beneficiario] = r.beneficiario;
+    fields[F.Importo] = r.importo;
+    if (F.TipoPagamento) fields[F.TipoPagamento] = r.tipoPagamento;
+    if (F.Descrizione) fields[F.Descrizione] = r.descrizione;
+    await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listDettagliDistinte}/items`, {
+      method: "POST",
+      body: JSON.stringify({ fields }),
+    });
+    esistenti.add(r.idPagamento);
+    create++;
+  }
+  logSp(
+    "info",
+    "distinte.import",
+    `Distinte: +${create} disposizioni (${giaPresenti} gia' presenti)`,
+  );
+  return { create, giaPresenti };
 }
 
 // --- Regole di classificazione passive (lista RegoleFatture) ----------------
