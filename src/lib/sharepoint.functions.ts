@@ -6,7 +6,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { normalizeRuolo } from "./session";
 import { isSupervisoreGlobale } from "./richieste-logic";
-import { arubaProvaConnessione, type ArubaProbeResult } from "./aruba.server";
+import {
+  arubaProvaConnessione,
+  arubaProvaDownload,
+  type ArubaProbeResult,
+  type ArubaDownloadProbe,
+} from "./aruba.server";
 import { lunediDellaSettimana, ymd } from "./rendiconto-logic";
 import {
   setSessionCookie,
@@ -1412,6 +1417,13 @@ export const spArubaProvaConnessione = createServerFn({ method: "POST" }).handle
   async (): Promise<ArubaProbeResult> => {
     await assertDirettore(await currentUser());
     return arubaProvaConnessione();
+  },
+);
+
+export const spArubaProvaDownload = createServerFn({ method: "POST" }).handler(
+  async (): Promise<ArubaDownloadProbe> => {
+    await assertDirettore(await currentUser());
+    return arubaProvaDownload();
   },
 );
 

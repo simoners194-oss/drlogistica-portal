@@ -70,6 +70,7 @@ import {
   spGetArubaStato,
   spSetArubaCredenziali,
   spArubaProvaConnessione,
+  spArubaProvaDownload,
   spSetRettificaNumero,
   spSetIncassoManuale,
   spTrovaFattureSenzaCliente,
@@ -80,7 +81,7 @@ import {
   spEliminaFatture,
 } from "@/lib/sharepoint.functions";
 import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
-import type { ArubaProbeResult } from "@/lib/aruba.server";
+import type { ArubaProbeResult, ArubaDownloadProbe } from "@/lib/aruba.server";
 
 // Cache di sessione per l'apertura istantanea della pagina: l'elenco fatture
 // e i movimenti pesano megabyte e arrivano da SharePoint in molte pagine —
@@ -194,6 +195,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   const [arubaSaving, setArubaSaving] = useState(false);
   const [arubaTesting, setArubaTesting] = useState(false);
   const [probe, setProbe] = useState<ArubaProbeResult | null>(null);
+  const [probeDl, setProbeDl] = useState<ArubaDownloadProbe | null>(null);
+  const [dlTesting, setDlTesting] = useState(false);
 
   // Applica gli incassi del report movimenti alle fatture in archivio: gli
   // importi per rata sono l'unico dato che quantifica i PARZIALI.
@@ -2506,6 +2509,60 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   )}
                   {t("ft.arProva")}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDlTesting(true);
+                    setProbeDl(null);
+                    spArubaProvaDownload()
+                      .then((r) => setProbeDl(r as ArubaDownloadProbe))
+                      .catch((err) =>
+                        setProbeDl({
+                          ok: false,
+                          messaggio: err instanceof Error ? err.message : String(err),
+                          tentativi: [],
+                        }),
+                      )
+                      .finally(() => setDlTesting(false));
+                  }}
+                  disabled={dlTesting || !aruba.configurato}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+                >
+                  {dlTesting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plug className="h-4 w-4" />
+                  )}
+                  {t("ft.arProvaDl")}
+                </button>
+              </div>
+            )}
+            {probeDl && (
+              <div
+                className={`mt-3 rounded-lg p-3 text-[13px] ${probeDl.ok ? "bg-status-present/10 text-foreground" : "bg-status-absent/10 text-status-absent"}`}
+              >
+                <div className="font-medium">{probeDl.messaggio}</div>
+                {probeDl.tentativi.length > 0 && (
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="text-xs">
+                      <tbody>
+                        {probeDl.tentativi.map((tv) => (
+                          <tr key={tv.percorso}>
+                            <td className="pr-3 py-0.5 font-mono whitespace-nowrap text-foreground">
+                              {tv.percorso}
+                            </td>
+                            <td className="pr-3 py-0.5 tabular-nums">{tv.status}</td>
+                            <td className="pr-3 py-0.5">{tv.contentType ?? ""}</td>
+                            <td className="py-0.5 break-all text-muted-foreground">
+                              {tv.chiavi ? `[${tv.chiavi.join(", ")}] ` : ""}
+                              {tv.anteprima ?? ""}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
             {probe && (

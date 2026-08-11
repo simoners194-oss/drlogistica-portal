@@ -265,6 +265,140 @@ export async function arubaProvaConnessione(): Promise<ArubaProbeResult> {
   };
 }
 
+// --- Probe di DOWNLOAD ------------------------------------------------------
+// La ricerca da' id e filename ma non il contenuto: qui si tentano gli
+// endpoint di dettaglio candidati sulla prima fattura trovata e si riporta
+// cosa risponde ciascuno (status, content-type, chiavi/anteprima) — cosi' il
+// sync si costruisce sull'endpoint che esiste davvero, senza inventare.
+
+export interface ArubaDownloadProbe {
+  ok: boolean;
+  messaggio: string;
+  filename?: string;
+  tentativi: {
+    percorso: string;
+    status: number;
+    contentType?: string;
+    chiavi?: string[];
+    anteprima?: string;
+  }[];
+}
+
+async function arubaGetRaw(
+  path: string,
+  params: Record<string, string>,
+): Promise<{ status: number; contentType: string; testo: string }> {
+  const qs = new URLSearchParams(params).toString();
+  const url = `${ARUBA_WS_BASE}${path}${qs ? `?${qs}` : ""}`;
+  let token = await arubaSignin();
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const res = await fetchConTimeout(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "*/*", "User-Agent": UA },
+    });
+    if (res.status === 401 && attempt === 1) {
+      token = await arubaSignin(true);
+      continue;
+    }
+    const contentType = res.headers.get("content-type") ?? "";
+    const testo = await res.text().catch(() => "");
+    return { status: res.status, contentType, testo };
+  }
+  return { status: 401, contentType: "", testo: "" };
+}
+
+export async function arubaProvaDownload(): Promise<ArubaDownloadProbe> {
+  await arubaSignin();
+  const now = new Date();
+  const start = new Date(now.getTime() - 7 * 86400000);
+  const iso = (d: Date) => d.toISOString().slice(0, 19);
+  const raw = await arubaGet("/api/v2/invoices-out", {
+    senderCountry: "IT",
+    senderVatcode: ARUBA_PIVA,
+    creationStartDate: iso(start),
+    creationEndDate: iso(now),
+    page: "1",
+    size: "1",
+  });
+  const obj = (raw ?? {}) as Record<string, unknown>;
+  const lista = Array.isArray(obj["content"]) ? (obj["content"] as unknown[]) : [];
+  const primo = (lista[0] ?? null) as Record<string, unknown> | null;
+  if (!primo)
+    return {
+      ok: false,
+      messaggio: "Nessuna fattura negli ultimi 7 giorni: riprovare quando ce n'e' una.",
+      tentativi: [],
+    };
+  const id = String(primo["id"] ?? "");
+  const filename = String(primo["filename"] ?? "");
+  const candidati: { percorso: string; params: Record<string, string> }[] = [
+    { percorso: `/api/v2/invoices-out/${id}`, params: {} },
+    { percorso: "/api/v2/invoices-out/getByFilename", params: { filename } },
+    { percorso: `/api/v2/invoices-out/${id}/detail`, params: {} },
+    { percorso: "/services/invoice/out/getByFilename", params: { filename } },
+  ];
+  const tentativi: ArubaDownloadProbe["tentativi"] = [];
+  let trovato = false;
+  for (const c of candidati) {
+    try {
+      const r = await arubaGetRaw(c.percorso, c.params);
+      const voce: ArubaDownloadProbe["tentativi"][number] = {
+        percorso: c.percorso,
+        status: r.status,
+        contentType: r.contentType,
+      };
+      if (r.status >= 200 && r.status < 300) {
+        trovato = true;
+        if (r.contentType.includes("json")) {
+          try {
+            const j = JSON.parse(r.testo) as Record<string, unknown>;
+            voce.chiavi = Object.keys(j);
+            // Se un campo sembra il file in base64, se ne decodifica l'inizio
+            // per capire se e' l'XML vero (o il p7m firmato).
+            for (const [k, val] of Object.entries(j)) {
+              if (
+                typeof val === "string" &&
+                val.length > 400 &&
+                /^[A-Za-z0-9+/=\r\n]+$/.test(val.slice(0, 200))
+              ) {
+                try {
+                  const inizio = atob(val.slice(0, 400).replace(/\s/g, ""));
+                  voce.anteprima = `${k} (base64): ${inizio.slice(0, 80)}`;
+                } catch {
+                  voce.anteprima = `${k}: campo lungo non decodificabile`;
+                }
+                break;
+              }
+            }
+            if (!voce.anteprima) voce.anteprima = r.testo.slice(0, 200);
+          } catch {
+            voce.anteprima = r.testo.slice(0, 200);
+          }
+        } else {
+          voce.anteprima = r.testo.slice(0, 120);
+        }
+      } else {
+        voce.anteprima = r.testo.slice(0, 160);
+      }
+      tentativi.push(voce);
+      if (trovato) break;
+    } catch (err) {
+      tentativi.push({
+        percorso: c.percorso,
+        status: 0,
+        anteprima: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return {
+    ok: trovato,
+    messaggio: trovato
+      ? `Endpoint di dettaglio trovato per ${filename}.`
+      : "Nessun endpoint candidato ha risposto 200: vedere i tentativi.",
+    filename,
+    tentativi,
+  };
+}
+
 /** Ricerca grezza fatture emesse (per il sync, dopo la verifica del probe). */
 export async function arubaSearchInvoicesOut(params: {
   startISO: string;
