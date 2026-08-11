@@ -218,6 +218,10 @@ export interface ArubaProbeResult {
   campiEsempio?: Record<string, string>;
 }
 
+// P.IVA del cedente (DR Logistica): obbligatoria sulla ricerca v2 insieme
+// a senderCountry ('senderVatcode' con la c minuscola, come da errore API).
+const ARUBA_PIVA = "16935881009";
+
 function truncVal(v: unknown): string {
   const s = typeof v === "object" ? JSON.stringify(v) : String(v ?? "");
   return s.length > 60 ? `${s.slice(0, 60)}…` : s;
@@ -237,6 +241,7 @@ export async function arubaProvaConnessione(): Promise<ArubaProbeResult> {
     // senderCountry e' OBBLIGATORIO sulla v2 (HTTP 400 senza): il cedente
     // siamo noi, quindi Italia.
     senderCountry: "IT",
+    senderVatcode: ARUBA_PIVA,
     creationStartDate: iso(start),
     creationEndDate: iso(now),
     page: "1",
@@ -269,6 +274,7 @@ export async function arubaSearchInvoicesOut(params: {
 }): Promise<unknown> {
   return arubaGet("/api/v2/invoices-out", {
     senderCountry: "IT",
+    senderVatcode: ARUBA_PIVA,
     creationStartDate: params.startISO,
     creationEndDate: params.endISO,
     page: String(params.page),
