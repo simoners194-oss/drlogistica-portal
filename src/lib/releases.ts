@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.26.0",
+    date: "2026-08-11",
+    codename: "Regole senza doppioni",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Le regole doppie si unificano con un click",
+        description:
+          "Nella scheda Regole, il pulsante \u201cUnifica doppie\u201d fonde le regole equivalenti \u2014 stessi esiti e stesso criterio di ricerca \u2014 in una sola con l'unione dei termini, elimina le copie e ripulisce i termini ripetuti dentro le singole regole. Il comportamento di classificazione non cambia: cambia solo l'ordine in casa. Le fatture, intanto, si sincronizzano da Aruba senza piu' caricamenti manuali.",
+      },
+    ],
+  },
+  {
     version: "1.25.0",
     date: "2026-08-11",
     codename: "Le fatture arrivano da sole",

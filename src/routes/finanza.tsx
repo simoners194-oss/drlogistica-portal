@@ -342,6 +342,97 @@ function FinanzaPage() {
   const [rEditId, setREditId] = useState<string | null>(null);
   // Elenco regole raggruppato per tipologia: si apre un gruppo al tocco.
   const [catAperta, setCatAperta] = useState<string | null>(null);
+  const [uniBusy, setUniBusy] = useState(false);
+  // UNIFICA DOPPIE: regole con gli stessi esiti (tipologia, sottocategoria,
+  // allocazioni, controparte) e stesso campo/modo diventano UNA regola con
+  // l'unione dei termini; i termini ripetuti spariscono anche dalle singole.
+  // La semantica non cambia: il match multi-termine e' un OR.
+  const unificaDoppie = async () => {
+    const rs = regole ?? [];
+    if (!rs.length) return;
+    const fondi = (patterns: string[]) => {
+      const visti = new Set<string>();
+      const out: string[] = [];
+      for (const pat of patterns)
+        for (const parte of pat.split(/[,;\n]/)) {
+          const termine = parte.trim();
+          if (!termine) continue;
+          const k2 = termine.toLowerCase();
+          if (!visti.has(k2)) {
+            visti.add(k2);
+            out.push(termine);
+          }
+        }
+      return out.join(", ");
+    };
+    const gruppi = new Map<string, RegolaFinanza[]>();
+    for (const r of rs) {
+      const k2 = [
+        r.campo,
+        r.modo,
+        r.tipologia ?? "",
+        r.sottocategoria ?? "",
+        r.allocPrimaria ?? "",
+        r.allocSecondaria ?? "",
+        r.cliente ?? "",
+      ].join("|");
+      gruppi.set(k2, [...(gruppi.get(k2) ?? []), r]);
+    }
+    const daUnire = [...gruppi.values()].filter((g) => g.length > 1);
+    const inGruppo = new Set(daUnire.flat().map((r) => r.id));
+    const daRipulire = rs.filter((r) => !inGruppo.has(r.id) && fondi([r.pattern]) !== r.pattern);
+    const eliminate = daUnire.reduce((s2, g) => s2 + g.length - 1, 0);
+    if (!daUnire.length && !daRipulire.length) {
+      toast.success(t("fin.uniNiente"));
+      return;
+    }
+    const msg = `${t("fin.uniConfirm1")} ${daUnire.length} ${t("fin.uniConfirm2")} ${eliminate} ${t("fin.uniConfirm3")} ${daRipulire.length} ${t("fin.uniConfirm4")}`;
+    if (!window.confirm(msg)) return;
+    setUniBusy(true);
+    try {
+      for (const g of daUnire) {
+        const keep = g[0];
+        const payload = {
+          pattern: fondi(g.map((r) => r.pattern)),
+          campo: keep.campo,
+          modo: keep.modo,
+          tipologia: keep.tipologia,
+          sottocategoria: keep.sottocategoria,
+          allocPrimaria: keep.allocPrimaria,
+          allocSecondaria: keep.allocSecondaria,
+          cliente: keep.cliente,
+        };
+        await spUpdateRegolaFinanza({ data: { regolaId: keep.id ?? "", ...payload } });
+        for (const extra of g.slice(1))
+          await spDeleteRegolaFinanza({ data: { regolaId: extra.id ?? "" } });
+      }
+      for (const r of daRipulire)
+        await spUpdateRegolaFinanza({
+          data: {
+            regolaId: r.id ?? "",
+            pattern: fondi([r.pattern]),
+            campo: r.campo,
+            modo: r.modo,
+            tipologia: r.tipologia,
+            sottocategoria: r.sottocategoria,
+            allocPrimaria: r.allocPrimaria,
+            allocSecondaria: r.allocSecondaria,
+            cliente: r.cliente,
+          },
+        });
+      const agg = (await spGetRegoleFinanza()) as RegolaFinanza[];
+      setRegole(agg);
+      toast.success(t("fin.uniFatto"), {
+        description: `${daUnire.length + daRipulire.length} regole sistemate, ${eliminate} eliminate`,
+      });
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setUniBusy(false);
+    }
+  };
   const [dipBusy, setDipBusy] = useState(false);
   // Filtro conto sui movimenti + assegnazione conto per lotto (storico).
   const [contoF, setContoF] = useState("");
@@ -3080,6 +3171,14 @@ function FinanzaPage() {
                 className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
               >
                 {t("fin.riapplicaBtn")}
+              </button>
+              <button
+                type="button"
+                disabled={uniBusy || regole == null}
+                onClick={() => void unificaDoppie()}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+              >
+                {uniBusy ? t("common.loading") : t("fin.uniBtn")}
               </button>
             </div>
             {regole == null ? (
