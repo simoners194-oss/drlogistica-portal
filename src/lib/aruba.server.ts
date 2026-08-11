@@ -24,6 +24,7 @@ import {
   type DirezioneFattura,
 } from "./sharepoint.server";
 import { parseFatturaPA, normalizzaNomeFile, type FatturaRaw } from "./fatture-logic";
+import { unzipSync } from "fflate";
 
 const ARUBA_AUTH_BASE = "https://auth.fatturazioneelettronica.aruba.it";
 const ARUBA_WS_BASE = "https://ws.fatturazioneelettronica.aruba.it";
@@ -349,12 +350,55 @@ export async function arubaProvaDownload(filenameRichiesto?: string): Promise<Ar
       if (r.status >= 200 && r.status < 300) {
         // Verifica END-TO-END con la stessa strada del sync: estrazione
         // dell'XML e parse — cosi' un lotto "non parsato" si spiega qui.
+        // Il nome file RESTITUITO puo' non coincidere con quello chiesto
+        // (match lasco di Aruba senza estensione .p7m): va detto subito.
+        let nota = "";
+        try {
+          const j = JSON.parse(r.testo) as Record<string, unknown>;
+          const fnVero = String(j["filename"] ?? "");
+          if (fnVero && !fnVero.startsWith(filename.replace(/\.p7m$/i, "")))
+            nota = `ATTENZIONE: Aruba ha risposto con UN ALTRO file (${fnVero}) — `;
+          if (!nota) {
+            const campi = ["unsignedFile", "file"]
+              .map((k2) => {
+                const val = j[k2];
+                return `${k2}=${typeof val === "string" && val ? val.length : 0}`;
+              })
+              .join(" ");
+            nota = `${campi} — `;
+          }
+        } catch {
+          /* diagnostica best-effort */
+        }
         const xml = await arubaScaricaXml(docType, filename);
         if (!xml) {
-          voce.anteprima = "estrazione FALLITA (ne' unsignedFile ne' ritaglio dal p7m)";
+          // Primi byte del contenuto grezzo: dicono COSA c'e' davvero
+          // (p7m DER = 30 82…, ZIP = 50 4b, XML = 3c 3f…).
+          let grezzo = "";
+          try {
+            const j = JSON.parse(r.testo) as Record<string, unknown>;
+            const b64 =
+              (typeof j["unsignedFile"] === "string" && (j["unsignedFile"] as string)) ||
+              (typeof j["file"] === "string" && (j["file"] as string)) ||
+              "";
+            const bytes = b64 ? decodeBase64(b64.slice(0, 4000)) : null;
+            if (bytes) {
+              const hex = [...bytes.slice(0, 24)]
+                .map((x) => x.toString(16).padStart(2, "0"))
+                .join(" ");
+              const testo = new TextDecoder("utf-8", { fatal: false })
+                .decode(bytes.slice(0, 160))
+                .replace(/[^\x20-\x7e]/g, ".");
+              grezzo = ` — grezzo: [${hex}] "${testo}"`;
+            }
+          } catch {
+            /* best-effort */
+          }
+          voce.anteprima = `${nota}estrazione FALLITA${grezzo}`;
         } else {
           const parsed = parseFatturaPA(xml, filename);
           voce.anteprima =
+            nota +
             `estratti ${xml.length} caratteri; parse: ${parsed.rows.length} righe` +
             (parsed.scartati.length ? `, scarti [${parsed.scartati.join(", ")}]` : "") +
             `; inizio: ${xml.slice(0, 100)}`;
@@ -517,6 +561,17 @@ async function arubaListaLotti(
   return out;
 }
 
+function decodeBase64(b64: string): Uint8Array | null {
+  try {
+    const bin = atob(b64.replace(/[\s]/g, "").replace(/-/g, "+").replace(/_/g, "/"));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
 /** Scarica l'XML di una fattura: preferisce unsignedFile (gia' senza firma);
  *  dal p7m l'XML si ritaglia dalla busta firmata. */
 async function arubaScaricaXml(docType: "out" | "in", filename: string): Promise<string | null> {
@@ -534,13 +589,19 @@ async function arubaScaricaXml(docType: "out" | "in", filename: string): Promise
     (typeof j["file"] === "string" && (j["file"] as string)) ||
     "";
   if (!b64) return null;
-  let bytes: Uint8Array;
-  try {
-    const bin = atob(b64.replace(/\s/g, ""));
-    bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  } catch {
-    return null;
+  let bytes = decodeBase64(b64);
+  if (!bytes) return null;
+  // Alcune risposte impacchettano il file in uno ZIP: si apre e si prende
+  // il primo XML/p7m che contiene.
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
+    try {
+      const dentro = unzipSync(bytes);
+      const nomi = Object.keys(dentro).filter((k) => /\.(xml|p7m)$/i.test(k));
+      if (!nomi.length) return null;
+      bytes = dentro[nomi[0]];
+    } catch {
+      return null;
+    }
   }
   let xml = new TextDecoder("utf-8").decode(bytes).replace(/^﻿/, "");
   if (!xml.trimStart().startsWith("<")) {
