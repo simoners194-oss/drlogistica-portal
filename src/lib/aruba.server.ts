@@ -435,8 +435,7 @@ export async function arubaProvaIncassi(filenameRichiesto?: string): Promise<Aru
     const obj = (raw ?? {}) as Record<string, unknown>;
     const lista = Array.isArray(obj["content"]) ? (obj["content"] as unknown[]) : [];
     filename = String(((lista[0] ?? {}) as Record<string, unknown>)["filename"] ?? "");
-    if (!filename)
-      return { ok: false, messaggio: "Nessuna fattura emessa negli ultimi 9 giorni." };
+    if (!filename) return { ok: false, messaggio: "Nessuna fattura emessa negli ultimi 9 giorni." };
   }
   // La direzione del nome file non si conosce a priori: prima out, poi in.
   for (const docType of ["out", "in"] as const) {
@@ -444,8 +443,10 @@ export async function arubaProvaIncassi(filenameRichiesto?: string): Promise<Aru
     if (r.status < 200 || r.status >= 300) continue;
     try {
       const j = JSON.parse(r.testo) as Record<string, unknown>;
-      delete j["file"];
-      delete j["unsignedFile"];
+      for (const k of ["file", "unsignedFile"]) {
+        const val = j[k];
+        j[k] = typeof val === "string" && val ? `(presente, ${val.length} caratteri)` : "(assente)";
+      }
       return {
         ok: true,
         messaggio: `Dettaglio completo (${docType}): cercare i campi di incasso/pagamento dentro invoices[].`,
@@ -577,7 +578,13 @@ async function arubaScaricaXml(docType: "out" | "in", filename: string): Promise
     const fine = "FatturaElettronica>";
     const i1 = xml.lastIndexOf(fine);
     if (i0 < 0 || i1 <= i0) return null;
-    xml = xml.slice(i0, i1 + fine.length);
+    // La firma p7m spezza il contenuto in blocchi DER e i byte di servizio
+    // cadono in mezzo ai tag: spazzati via i caratteri di controllo, i tag
+    // spezzati si ricongiungono (caso IT01879020517A2026_f4GEF).
+    xml = xml
+      .slice(i0, i1 + fine.length)
+      // eslint-disable-next-line no-control-regex
+      .replace(/[ --]/g, "");
   }
   return xml;
 }
