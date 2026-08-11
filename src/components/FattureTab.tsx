@@ -73,6 +73,7 @@ import {
   spArubaProvaConnessione,
   spArubaProvaDownload,
   spArubaSincronizza,
+  spArubaProvaIncassi,
   spSetRettificaNumero,
   spSetIncassoManuale,
   spTrovaFattureSenzaCliente,
@@ -83,7 +84,12 @@ import {
   spEliminaFatture,
 } from "@/lib/sharepoint.functions";
 import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
-import type { ArubaProbeResult, ArubaDownloadProbe, ArubaSyncResult } from "@/lib/aruba.server";
+import type {
+  ArubaProbeResult,
+  ArubaDownloadProbe,
+  ArubaSyncResult,
+  ArubaIncassiProbe,
+} from "@/lib/aruba.server";
 
 // Cache di sessione per l'apertura istantanea della pagina: l'elenco fatture
 // e i movimenti pesano megabyte e arrivano da SharePoint in molte pagine —
@@ -201,6 +207,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   const [syncEsito, setSyncEsito] = useState<ArubaSyncResult | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncGiorni, setSyncGiorni] = useState("");
+  const [incProbe, setIncProbe] = useState<ArubaIncassiProbe | null>(null);
+  const [incBusy, setIncBusy] = useState(false);
+  const [incProbeFile, setIncProbeFile] = useState("");
   const [dlTesting, setDlTesting] = useState(false);
 
   // Applica gli incassi del report movimenti alle fatture in archivio: gli
@@ -2578,6 +2587,54 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                     {t("ft.arSync")}
                   </button>
                 </div>
+                <div className="flex items-end gap-1.5">
+                  <div>
+                    <label className="text-xs text-muted-foreground">{t("ft.arIncFile")}</label>
+                    <input
+                      value={incProbeFile}
+                      onChange={(e) => setIncProbeFile(e.target.value)}
+                      placeholder="IT…xml"
+                      className="w-56 rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIncBusy(true);
+                      setIncProbe(null);
+                      spArubaProvaIncassi({ data: { filename: incProbeFile } })
+                        .then((r) => setIncProbe(r as ArubaIncassiProbe))
+                        .catch((err) =>
+                          setIncProbe({
+                            ok: false,
+                            messaggio: err instanceof Error ? err.message : String(err),
+                          }),
+                        )
+                        .finally(() => setIncBusy(false));
+                    }}
+                    disabled={incBusy || !aruba.configurato}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+                  >
+                    {incBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plug className="h-4 w-4" />
+                    )}
+                    {t("ft.arIncassi")}
+                  </button>
+                </div>
+              </div>
+            )}
+            {incProbe && (
+              <div
+                className={`mt-3 rounded-lg p-3 text-[13px] ${incProbe.ok ? "bg-status-present/10 text-foreground" : "bg-status-absent/10 text-status-absent"}`}
+              >
+                <div className="font-medium">{incProbe.messaggio}</div>
+                {incProbe.dettaglio && (
+                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all text-[11px] text-muted-foreground">
+                    {incProbe.dettaglio}
+                  </pre>
+                )}
               </div>
             )}
             {syncEsito && (

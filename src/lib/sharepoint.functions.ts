@@ -10,9 +10,11 @@ import {
   arubaProvaConnessione,
   arubaProvaDownload,
   arubaSyncFatture,
+  arubaProvaIncassi,
   type ArubaProbeResult,
   type ArubaDownloadProbe,
   type ArubaSyncResult,
+  type ArubaIncassiProbe,
 } from "./aruba.server";
 import { lunediDellaSettimana, ymd } from "./rendiconto-logic";
 import {
@@ -1428,6 +1430,17 @@ export const spArubaProvaDownload = createServerFn({ method: "POST" }).handler(
     return arubaProvaDownload();
   },
 );
+
+export const spArubaProvaIncassi = createServerFn({ method: "POST" })
+  .inputValidator((input?: { filename?: string }) => ({
+    filename: String(input?.filename ?? "")
+      .trim()
+      .slice(0, 120),
+  }))
+  .handler(async ({ data }): Promise<ArubaIncassiProbe> => {
+    await assertDirettore(await currentUser());
+    return arubaProvaIncassi(data.filename || undefined);
+  });
 
 export const spArubaSincronizza = createServerFn({ method: "POST" })
   .inputValidator((input?: { giorni?: number }) => ({

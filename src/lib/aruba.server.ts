@@ -405,6 +405,64 @@ export async function arubaProvaDownload(): Promise<ArubaDownloadProbe> {
   };
 }
 
+// --- Probe INCASSI ----------------------------------------------------------
+// Mette a nudo il dettaglio completo di UNA fattura (senza i campi-file):
+// se Aruba espone lo stato incassato/pagato, sta nel campo invoices[] —
+// si verifica su una fattura che l'utente SA essere segnata come incassata.
+
+export interface ArubaIncassiProbe {
+  ok: boolean;
+  messaggio: string;
+  filename?: string;
+  /** JSON leggibile del dettaglio, senza file/unsignedFile (troncato). */
+  dettaglio?: string;
+}
+
+export async function arubaProvaIncassi(filenameRichiesto?: string): Promise<ArubaIncassiProbe> {
+  await arubaSignin();
+  let filename = (filenameRichiesto ?? "").trim();
+  if (!filename) {
+    const now = new Date();
+    const start = new Date(now.getTime() - 9 * 86400000);
+    const iso = (d: Date) => d.toISOString().slice(0, 19);
+    const raw = await arubaGet("/api/v2/invoices-out", {
+      ...paramsRicerca("out"),
+      creationStartDate: iso(start),
+      creationEndDate: iso(now),
+      page: "1",
+      size: "1",
+    });
+    const obj = (raw ?? {}) as Record<string, unknown>;
+    const lista = Array.isArray(obj["content"]) ? (obj["content"] as unknown[]) : [];
+    filename = String(((lista[0] ?? {}) as Record<string, unknown>)["filename"] ?? "");
+    if (!filename)
+      return { ok: false, messaggio: "Nessuna fattura emessa negli ultimi 9 giorni." };
+  }
+  // La direzione del nome file non si conosce a priori: prima out, poi in.
+  for (const docType of ["out", "in"] as const) {
+    const r = await arubaGetRaw(`/services/invoice/${docType}/getByFilename`, { filename });
+    if (r.status < 200 || r.status >= 300) continue;
+    try {
+      const j = JSON.parse(r.testo) as Record<string, unknown>;
+      delete j["file"];
+      delete j["unsignedFile"];
+      return {
+        ok: true,
+        messaggio: `Dettaglio completo (${docType}): cercare i campi di incasso/pagamento dentro invoices[].`,
+        filename,
+        dettaglio: JSON.stringify(j, null, 2).slice(0, 6000),
+      };
+    } catch {
+      return { ok: false, messaggio: "Risposta non JSON.", filename };
+    }
+  }
+  return {
+    ok: false,
+    messaggio: `Nessun dettaglio trovato per ${filename} (ne' tra le emesse ne' tra le ricevute).`,
+    filename,
+  };
+}
+
 // --- SYNC FATTURE -----------------------------------------------------------
 // Stessa pipeline dei caricamenti manuali (parseFatturaPA + importFatture,
 // chiave anti-doppioni = nome file SdI normalizzato): qui cambia solo la
