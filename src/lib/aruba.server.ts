@@ -419,6 +419,9 @@ export interface ArubaSyncEsito {
   importate: number;
   aggiornate: number;
   errori: string[];
+  /** false se il giro NON ha esaurito i nuovi (limite 429 o tetto download):
+   *  in quel caso UltimaSync non avanza e la finestra ricopre i mancanti. */
+  completo: boolean;
 }
 
 export interface ArubaSyncResult {
@@ -549,6 +552,7 @@ export async function arubaSyncFatture(giorniIndietro?: number): Promise<ArubaSy
       importate: 0,
       aggiornate: 0,
       errori: [],
+      completo: true,
     };
     try {
       const lotti = await arubaListaLotti(docType, da, now);
@@ -596,6 +600,7 @@ export async function arubaSyncFatture(giorniIndietro?: number): Promise<ArubaSy
         esito.errori.push(
           `Limite richieste Aruba: scaricate ${righe.length} su ${esito.daScaricare} — ripremere Sincronizza tra qualche minuto per il resto.`,
         );
+      if (fermatoPerLimite || nuovi.length > SYNC_MAX_DOWNLOAD) esito.completo = false;
       for (let i = 0; i < righe.length; i += 100) {
         const res = await importFatture(righe.slice(i, i + 100), direzione);
         esito.importate += res.importate;
@@ -604,13 +609,14 @@ export async function arubaSyncFatture(giorniIndietro?: number): Promise<ArubaSy
       }
     } catch (err) {
       esito.errori.push(err instanceof Error ? err.message : String(err));
+      esito.completo = false;
     }
     esiti.push(esito);
   }
-  // UltimaSync avanza solo se ALMENO una direzione e' andata a buon fine
-  // senza errori di ricerca (gli errori di parse non bloccano la finestra).
-  if (esiti.some((e) => e.lotti > 0 || e.errori.length === 0))
-    await saveArubaUltimaSync(now.toISOString());
+  // UltimaSync avanza SOLO se tutte le direzioni hanno esaurito i nuovi:
+  // un giro fermato dal limite non deve restringere la finestra successiva
+  // (successe: 26 ricevute scavalcate — mai piu').
+  if (esiti.every((e) => e.completo)) await saveArubaUltimaSync(now.toISOString());
   return { finestraDa: iso(da), finestraA: iso(now), esiti };
 }
 
