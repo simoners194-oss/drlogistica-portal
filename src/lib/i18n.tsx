@@ -941,6 +941,8 @@ const en = {
   "ft.ncCompensata": "settled",
   "ft.ncDaCompensare": "to settle",
   "ft.annullataNCTip": "Credit notes cover the whole amount: nothing left to collect.",
+  "ft.movAzzCsv":
+    "The detail of these invoices was just downloaded (riduzioni-incassi.csv): check it before choosing.",
   "ft.movAzz1": "This file covers the period",
   "ft.movAzz2":
     "invoices in the archive are recorded as collected for MORE than this file says (they appear only partially, or not at all).",
@@ -2112,6 +2114,8 @@ const it: Record<DictKey, string> = {
   "ft.ncDaCompensare": "da compensare",
   "ft.annullataNCTip":
     "Le note di credito coprono l'intero importo: non c'è più nulla da incassare.",
+  "ft.movAzzCsv":
+    "Il dettaglio di queste fatture è appena stato scaricato (riduzioni-incassi.csv): controllalo prima di scegliere.",
   "ft.movAzz1": "Questo file copre il periodo",
   "ft.movAzz2":
     "fatture in archivio risultano incassate per PIÙ di quanto dice questo file (compaiono solo in parte, o per niente).",

@@ -260,6 +260,37 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     };
     const nAzzeramenti = [...daFare.Emessa, ...daFare.Ricevuta].filter(eRiduzione).length;
     if (nAzzeramenti > 0) {
+      // DETTAGLIO PRIMA DELLA SCELTA (richiesta direzione): parte da solo il
+      // download del CSV con le fatture che verrebbero ridotte — archivio vs
+      // file — cosi' la decisione si prende sui numeri, non sulla fiducia.
+      const dettaglio = [
+        ...daFare.Emessa.map((r) => ({ ...r, dir2: "Emessa" })),
+        ...daFare.Ricevuta.map((r) => ({ ...r, dir2: "Ricevuta" })),
+      ]
+        .filter(eRiduzione)
+        .map((r) => {
+          const prev = perFile.get(r.nomeFile);
+          return [
+            r.dir2,
+            prev?.numero ?? "",
+            prev?.cliente ?? "",
+            r.nomeFile,
+            String((prev?.incassatoAruba ?? 0).toFixed(2)).replace(".", ","),
+            String(r.incassato.toFixed(2)).replace(".", ","),
+          ];
+        });
+      esportaCsvFile(
+        "riduzioni-incassi",
+        [
+          "Direzione",
+          "Numero",
+          "Controparte",
+          "Nome file",
+          "Incassato in archivio",
+          "Incassato nel file",
+        ],
+        dettaglio,
+      );
       // Domanda in italiano corrente, col periodo del file in chiaro: la
       // versione precedente era tecnicamente esatta e umanamente illeggibile.
       const dateRate = mov
@@ -279,6 +310,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           `OK — ${t("ft.movAzz3")}`,
           "",
           `ANNULLA — ${t("ft.movAzz4")}`,
+          "",
+          t("ft.movAzzCsv"),
         ].join("\n"),
       );
       if (!completo) {
