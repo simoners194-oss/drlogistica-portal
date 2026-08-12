@@ -3684,8 +3684,14 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                                         {fmtImporto(x.s.incassatoBanca)}
                                       </span>
                                     </td>
-                                    <td className="py-0.5 pr-2 text-right whitespace-nowrap tabular-nums font-medium">
-                                      {x.s.stato === "NC" ? "" : fmtImporto(x.s.residuo)}
+                                    <td
+                                      className={`py-0.5 pr-2 text-right whitespace-nowrap tabular-nums font-medium ${x.s.eccedenzaNC > 0 ? "text-status-absent" : ""}`}
+                                    >
+                                      {x.s.stato === "NC"
+                                        ? ""
+                                        : x.s.eccedenzaNC > 0
+                                          ? `-${fmtImporto(x.s.eccedenzaNC)}`
+                                          : fmtImporto(x.s.residuo)}
                                     </td>
                                   </tr>
                                 ),

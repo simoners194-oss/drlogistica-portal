@@ -369,7 +369,8 @@ function FinanzaPage() {
   // Clienti selezionati nel menu a tendina (vuoto = tutti). Le voci proposte
   // sono le 15 controparti con piu' incassi, in ordine decrescente.
   const [clientiF, setClientiF] = useState<string[]>([]);
-  const [paginaMov, setPaginaMov] = useState(1); // pagine da RIGHE_PAGINA
+  const [paginaMov, setPaginaMov] = useState(1); // pagine da righePagina
+  const [righePagina, setRighePagina] = useState(RIGHE_PAGINA);
 
   // Overview: incassi o spese (+ filtro tipologia, utile solo per le spese)
   const [ovMode, setOvMode] = useState<"incassi" | "spese" | "regole" | "appalti">("incassi");
@@ -588,6 +589,29 @@ function FinanzaPage() {
       allocSec: sec.length ? sec : uniq(rs.map((r) => r.allocSecondaria)),
     };
   }, [regole, editTip, editAllocPri]);
+  // Cascata che RICOMINCIA: cambiata la tipologia, la sottocategoria
+  // scritta prima si svuota se non e' coerente con la nuova scelta
+  // (idem allocazione primaria -> secondaria).
+  const coerenteSott = (tip: string, sott: string) =>
+    !tip.trim() ||
+    !sott.trim() ||
+    (regole ?? []).some(
+      (r) => (r.tipologia ?? "") === tip.trim() && (r.sottocategoria ?? "") === sott.trim(),
+    );
+  const coerenteSec = (pri: string, sec: string) =>
+    !pri.trim() ||
+    !sec.trim() ||
+    (regole ?? []).some(
+      (r) => (r.allocPrimaria ?? "") === pri.trim() && (r.allocSecondaria ?? "") === sec.trim(),
+    );
+  const cambiaEditTip = (v: string) => {
+    setEditTip(v);
+    if (!coerenteSott(v, editSott)) setEditSott("");
+  };
+  const cambiaEditAllocPri = (v: string) => {
+    setEditAllocPri(v);
+    if (!coerenteSec(v, editAllocSec)) setEditAllocSec("");
+  };
   const vocabBulk = useMemo(() => {
     const rs = regole ?? [];
     const uniq = (xs: (string | undefined)[]) =>
@@ -605,6 +629,14 @@ function FinanzaPage() {
       allocSec: sec.length ? sec : uniq(rs.map((r) => r.allocSecondaria)),
     };
   }, [regole, bulkTip, bulkPri]);
+  const cambiaBulkTip = (v: string) => {
+    setBulkTip(v);
+    if (!coerenteSott(v, bulkSott)) setBulkSott("");
+  };
+  const cambiaBulkPri = (v: string) => {
+    setBulkPri(v);
+    if (!coerenteSec(v, bulkSec)) setBulkSec("");
+  };
 
   const salvaBulk = async () => {
     if (!selMov.size) return;
@@ -1952,9 +1984,9 @@ function FinanzaPage() {
     impMinF,
     impMaxF,
   ]);
-  const pagineMovTot = Math.max(1, Math.ceil(filtrati.length / RIGHE_PAGINA));
+  const pagineMovTot = Math.max(1, Math.ceil(filtrati.length / righePagina));
   const pagMov = Math.min(paginaMov, pagineMovTot);
-  const inizioMov = (pagMov - 1) * RIGHE_PAGINA;
+  const inizioMov = (pagMov - 1) * righePagina;
 
   const thFiltroMov = (c: MovColTh, extra = "") => {
     const sel = movFiltriTh[c.key];
@@ -2518,7 +2550,7 @@ function FinanzaPage() {
                       <CampoVocabolario
                         label={t("common.type")}
                         valore={bulkTip}
-                        onChange={setBulkTip}
+                        onChange={cambiaBulkTip}
                         opzioni={vocabBulk.tipologie}
                         testoNessuno={t("fin.selNonCambiare")}
                         testoNuova={t("fin.vocNuova")}
@@ -2538,7 +2570,7 @@ function FinanzaPage() {
                       <CampoVocabolario
                         label={t("fin.allocPri")}
                         valore={bulkPri}
-                        onChange={setBulkPri}
+                        onChange={cambiaBulkPri}
                         opzioni={vocabBulk.allocPri}
                         testoNessuno={t("fin.selNonCambiare")}
                         testoNuova={t("fin.vocNuova")}
@@ -2739,7 +2771,7 @@ function FinanzaPage() {
                       <CampoVocabolario
                         label={t("common.type")}
                         valore={editTip}
-                        onChange={setEditTip}
+                        onChange={cambiaEditTip}
                         opzioni={vocabEdit.tipologie}
                         testoNessuno={t("fin.vuota")}
                         testoNuova={t("fin.vocNuova")}
@@ -2759,7 +2791,7 @@ function FinanzaPage() {
                       <CampoVocabolario
                         label={t("fin.allocPri")}
                         valore={editAllocPri}
-                        onChange={setEditAllocPri}
+                        onChange={cambiaEditAllocPri}
                         opzioni={vocabEdit.allocPri}
                         testoNessuno={t("fin.vuota")}
                         testoNuova={t("fin.vocNuova")}
@@ -2986,12 +3018,12 @@ function FinanzaPage() {
                         className="accent-primary"
                         checked={
                           filtrati
-                            .slice(inizioMov, inizioMov + RIGHE_PAGINA)
+                            .slice(inizioMov, inizioMov + righePagina)
                             .every((m) => selMov.has(m.id)) && filtrati.length > 0
                         }
                         onChange={(e) => {
                           const ns = new Set(selMov);
-                          for (const m of filtrati.slice(inizioMov, inizioMov + RIGHE_PAGINA))
+                          for (const m of filtrati.slice(inizioMov, inizioMov + righePagina))
                             if (e.target.checked) ns.add(m.id);
                             else ns.delete(m.id);
                           setSelMov(ns);
@@ -3011,7 +3043,7 @@ function FinanzaPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtrati.slice(inizioMov, inizioMov + RIGHE_PAGINA).map((m) => (
+                  {filtrati.slice(inizioMov, inizioMov + righePagina).map((m) => (
                     <tr
                       key={m.id}
                       className="border-b border-border/50 hover:bg-muted/40"
@@ -3138,8 +3170,23 @@ function FinanzaPage() {
                 <span>
                   {filtrati.length <= RIGHE_PAGINA
                     ? `${filtrati.length} ${t("fin.rows")}`
-                    : `${inizioMov + 1}–${Math.min(inizioMov + RIGHE_PAGINA, filtrati.length)} ${t("fin.pageOf")} ${filtrati.length} ${t("fin.rows")}`}
+                    : `${inizioMov + 1}–${Math.min(inizioMov + righePagina, filtrati.length)} ${t("fin.pageOf")} ${filtrati.length} ${t("fin.rows")}`}
                 </span>
+                <select
+                  value={righePagina}
+                  onChange={(e) => {
+                    setRighePagina(Number(e.target.value));
+                    setPaginaMov(1);
+                  }}
+                  title={t("fin.perPagina")}
+                  className="rounded-lg border border-border bg-background px-2 py-1 text-xs"
+                >
+                  {[100, 200, 500, 1000].map((nr) => (
+                    <option key={nr} value={nr}>
+                      {nr} / {t("fin.page").toLowerCase()}
+                    </option>
+                  ))}
+                </select>
                 {pagineMovTot > 1 && (
                   <span className="inline-flex items-center gap-2">
                     <button

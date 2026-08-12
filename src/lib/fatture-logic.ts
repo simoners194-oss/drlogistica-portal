@@ -727,6 +727,9 @@ export interface FatturaStato {
   /** Le note di credito collegate coprono l'intero importo: non c'è più
    *  nulla da incassare, ma non è un pagamento. */
   annullataDaNC: boolean;
+  /** Quanto la nota di credito SUPERA la fattura (caso NC 21k su fattura
+   *  16k): eccedenza da mostrare in negativo, mai nascosta. */
+  eccedenzaNC: number;
   /** Importo delle note di credito collegate (0 se nessuna). */
   notaCredito: number;
   scadenza: string;
@@ -769,6 +772,7 @@ export function computeStatoFattura(
       v == null ? null : Math.max(0, impNC - v) <= TOLLERANZA_SALDO ? "Pagata" : "Non incassata";
     return {
       annullataDaNC: false,
+      eccedenzaNC: 0,
       notaCredito: 0,
       incassato,
       incassatoFatturazione:
@@ -871,6 +875,7 @@ export function computeStatoFattura(
     // Coperta per intero dalle note di credito: nulla da incassare, ma non è
     // un incasso — chi legge deve poter distinguere le due cose.
     annullataDaNC: notaCredito > 0 && base <= TOLLERANZA_SALDO,
+    eccedenzaNC: Math.max(0, Math.round((notaCredito - dovuto) * 100) / 100),
     notaCredito,
     incassato: incassatoComb,
     incassatoFatturazione,
