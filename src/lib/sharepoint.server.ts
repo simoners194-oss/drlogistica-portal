@@ -293,6 +293,17 @@ export const SP_DISPLAY = {
   // ("beneficiari vari distinta" salari, ritiro effetti RiBa).
   // Title = "IdentificativoPagamento|Beneficiario" (chiave anti-doppioni:
   // il solo identificativo NON e' univoco nelle distinte stipendi). OPZIONALE.
+  // PREFATTURE: fatturato pianificato ma non ancora emesso/ricevuto
+  // (canoni ricorrenti, contratti). Title = controparte. Entra nella
+  // Previsione del Resoconto finche' la fattura vera non arriva. OPZIONALE.
+  prefatture: {
+    Direzione: "Direzione",
+    Importo: "Importo",
+    MeseInizio: "MeseInizio",
+    Ricorrenza: "Ricorrenza",
+    MeseFine: "MeseFine",
+    Note: "Note",
+  },
   dettagliDistinte: {
     DataEsecuzione: "DataEsecuzione",
     Beneficiario: "Beneficiario",
@@ -457,6 +468,7 @@ const LIST_NAMES = {
   regoleFatture: ["RegoleFatture", "RegoleClassificazione", "RegoleFatturePassive"],
   gruppiControparti: ["GruppiControparti", "Gruppi", "GruppiMadre"],
   anomalieScartate: ["AnomalieScartate", "AnomalieIgnorate"],
+  prefatture: ["Prefatture", "FatturePianificate"],
   dettagliDistinte: ["DettagliDistinte", "Distinte", "EsitiPagamenti"],
   fatture: ["FattureEmesse", "FatturaEmessa", "Fatture"],
   fattureRicevute: ["FattureRicevute", "FatturaRicevuta"],
@@ -574,6 +586,8 @@ export interface SpDiscovered {
   gruppiContropartiFields: Record<string, string>;
   listAnomalieScartate: string | null;
   anomalieScartateFields: Record<string, string>;
+  listPrefatture: string | null;
+  prefattureFields: Record<string, string>;
   listDettagliDistinte: string | null;
   dettagliDistinteFields: Record<string, string>;
   listFatture: string | null;
@@ -935,6 +949,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const gruppiCp = await softList(LIST_NAMES.gruppiControparti, SP_DISPLAY.gruppiControparti);
   const anomSc = await softList(LIST_NAMES.anomalieScartate, SP_DISPLAY.anomalieScartate);
   const distD = await softList(LIST_NAMES.dettagliDistinte, SP_DISPLAY.dettagliDistinte);
+  const prefat = await softList(LIST_NAMES.prefatture, SP_DISPLAY.prefatture);
   const fat = await softList(LIST_NAMES.fatture, SP_DISPLAY.fatture);
   const fatR = await softList(LIST_NAMES.fattureRicevute, SP_DISPLAY.fatture);
   const trm = await softList(LIST_NAMES.terminiPagamento, SP_DISPLAY.terminiPagamento);
@@ -1004,6 +1019,8 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     anomalieScartateFields: anomSc.fields,
     listDettagliDistinte: distD.id,
     dettagliDistinteFields: distD.fields,
+    listPrefatture: prefat.id,
+    prefattureFields: prefat.fields,
     listFatture: fat.id,
     listFattureName: fat.name,
     fattureFields: fat.fields,
@@ -5073,6 +5090,87 @@ export async function deleteGruppoControparti(id: string): Promise<void> {
   );
   if (!del.ok && del.status !== 204) throw new Error(`DELETE gruppo → HTTP ${del.status}`);
   logSp("info", "gruppi.delete", `Gruppo controparti eliminato: #${id}`);
+}
+
+// --- Prefatture (fatturato pianificato) -------------------------------------
+
+export interface Prefattura {
+  id: string;
+  controparte: string; // Title
+  direzione: "Emessa" | "Ricevuta";
+  importo: number;
+  meseInizio: string; // YYYY-MM
+  ricorrenza: "mensile" | "una";
+  meseFine?: string; // YYYY-MM
+  note?: string;
+}
+
+export async function fetchPrefatture(): Promise<Prefattura[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listPrefatture) return [];
+  const F = cfg.prefattureFields;
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listPrefatture}/items?expand=fields&$top=999`,
+    ),
+  );
+  return res.value
+    .map((it) => {
+      const f = it.fields ?? {};
+      const dir = String(F.Direzione ? (f[F.Direzione] ?? "") : "").trim();
+      const ric = String(F.Ricorrenza ? (f[F.Ricorrenza] ?? "") : "")
+        .trim()
+        .toLowerCase();
+      return {
+        id: String(it.id),
+        controparte: String(f["Title"] ?? "").trim(),
+        direzione: (dir === "Ricevuta" ? "Ricevuta" : "Emessa") as "Emessa" | "Ricevuta",
+        importo: F.Importo ? Number(f[F.Importo] ?? 0) || 0 : 0,
+        meseInizio: F.MeseInizio ? String(f[F.MeseInizio] ?? "").slice(0, 7) : "",
+        ricorrenza: (ric.startsWith("una") ? "una" : "mensile") as "mensile" | "una",
+        meseFine: F.MeseFine ? String(f[F.MeseFine] ?? "").slice(0, 7) || undefined : undefined,
+        note: F.Note ? String(f[F.Note] ?? "").trim() || undefined : undefined,
+      };
+    })
+    .filter((x) => x.controparte && x.importo > 0 && /^\d{4}-\d{2}$/.test(x.meseInizio));
+}
+
+export async function createPrefattura(input: Omit<Prefattura, "id">): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listPrefatture)
+    throw new Error(
+      'Lista "Prefatture" assente su SharePoint: crearla con le colonne testo ' +
+        '"Direzione", "MeseInizio", "Ricorrenza", "MeseFine", "Note" e la colonna ' +
+        'numerica "Importo", poi fare Riscopri.',
+    );
+  const F = cfg.prefattureFields;
+  const mancanti = ["Direzione", "Importo", "MeseInizio", "Ricorrenza"].filter((c) => !F[c]);
+  if (mancanti.length)
+    throw new Error(
+      `Colonne mancanti sulla lista Prefatture: ${mancanti.join(", ")}. Crearle e fare Riscopri.`,
+    );
+  const fields: Record<string, unknown> = { Title: input.controparte };
+  fields[F.Direzione] = input.direzione;
+  fields[F.Importo] = input.importo;
+  fields[F.MeseInizio] = input.meseInizio;
+  fields[F.Ricorrenza] = input.ricorrenza;
+  if (F.MeseFine && input.meseFine) fields[F.MeseFine] = input.meseFine;
+  if (F.Note && input.note) fields[F.Note] = input.note;
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listPrefatture}/items`, {
+    method: "POST",
+    body: JSON.stringify({ fields }),
+  });
+  logSp("info", "prefatture.create", `Prefattura ${input.controparte} ${input.importo}`);
+}
+
+export async function deletePrefattura(id: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listPrefatture) throw new Error('Lista "Prefatture" assente.');
+  const del = await gatewayFetch(`/sites/${cfg.siteId}/lists/${cfg.listPrefatture}/items/${id}`, {
+    method: "DELETE",
+  });
+  if (!del.ok && del.status !== 204) throw new Error(`DELETE prefattura → HTTP ${del.status}`);
+  logSp("info", "prefatture.delete", `Prefattura eliminata: #${id}`);
 }
 
 // --- Distinte / esiti pagamenti (lista DettagliDistinte) --------------------

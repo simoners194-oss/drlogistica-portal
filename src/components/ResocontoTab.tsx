@@ -23,11 +23,19 @@ import {
   spGetFatture,
   spGetMovimenti,
   spGetTerminiPagamento,
+  spGetPrefatture,
+  spCreatePrefattura,
+  spDeletePrefattura,
   spGetGruppiControparti,
   spCreateGruppoControparti,
   spDeleteGruppoControparti,
 } from "@/lib/sharepoint.functions";
-import type { SpFattura, SpMovimento, GruppoControparti } from "@/lib/sharepoint.server";
+import type {
+  SpFattura,
+  SpMovimento,
+  GruppoControparti,
+  Prefattura,
+} from "@/lib/sharepoint.server";
 
 function fmtImporto(n: number): string {
   return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -77,6 +85,16 @@ export function ResocontoTab() {
   const [gNome, setGNome] = useState("");
   const [gBusy, setGBusy] = useState(false);
   const [fasceSel, setFasceSel] = useState<number[]>([]); // indici in FASCE
+  // Prefatture: fatturato pianificato che entra nella Previsione.
+  const [prefatture, setPrefatture] = useState<Prefattura[] | null>(null);
+  const [pfControparte, setPfControparte] = useState("");
+  const [pfDirezione, setPfDirezione] = useState<"Emessa" | "Ricevuta">("Emessa");
+  const [pfImporto, setPfImporto] = useState("");
+  const [pfMese, setPfMese] = useState("");
+  const [pfRicorrenza, setPfRicorrenza] = useState<"mensile" | "una">("mensile");
+  const [pfMeseFine, setPfMeseFine] = useState("");
+  const [pfNote, setPfNote] = useState("");
+  const [pfBusy, setPfBusy] = useState(false);
   // "" = solo ritardi (default); un numero = anche le scadenze future entro N giorni.
   const [scadEntro, setScadEntro] = useState("");
 
@@ -101,6 +119,9 @@ export function ResocontoTab() {
     spGetGruppiControparti()
       .then((l) => setGruppi(l as GruppoControparti[]))
       .catch(() => setGruppi([]));
+    spGetPrefatture()
+      .then((l) => setPrefatture(l as Prefattura[]))
+      .catch(() => setPrefatture([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -894,6 +915,36 @@ export function ResocontoTab() {
             };
             const att = somma(attive);
             const pas = somma(passive);
+            // PREFATTURE: mesi pianificati non ancora coperti da una
+            // fattura vera della stessa controparte nello stesso mese.
+            const copertura = (dir2: "Emessa" | "Ricevuta") => {
+              const fonte = dir2 === "Emessa" ? (fattureEm ?? []) : (fattureRic ?? []);
+              return new Set(
+                fonte.map(
+                  (f2) =>
+                    `${clienteGroupKey(f2.cliente) || f2.cliente.toLowerCase()}|${f2.dataDocumento.slice(0, 7)}`,
+                ),
+              );
+            };
+            const prefSomme = (dir2: "Emessa" | "Ricevuta") => {
+              const cov = copertura(dir2);
+              const out = new Map<string, number>();
+              for (const pf of (prefatture ?? []).filter((x) => x.direzione === dir2)) {
+                const chiave = clienteGroupKey(pf.controparte) || pf.controparte.toLowerCase();
+                const mesiPf =
+                  pf.ricorrenza === "una"
+                    ? mesi6.filter((m) => m === pf.meseInizio)
+                    : mesi6.filter((m) => m >= pf.meseInizio && (!pf.meseFine || m <= pf.meseFine));
+                for (const m of mesiPf) {
+                  if (cov.has(`${chiave}|${m}`)) continue;
+                  out.set(m, (out.get(m) ?? 0) + pf.importo);
+                }
+              }
+              return out;
+            };
+            const prefAtt = prefSomme("Emessa");
+            const prefPas = prefSomme("Ricevuta");
+            const haPref = prefAtt.size > 0 || prefPas.size > 0;
             const fmt = (v2: number) => (v2 ? `${fmtImporto(Math.round(v2 * 100) / 100)} €` : "—");
             return (
               <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
@@ -937,13 +988,39 @@ export function ResocontoTab() {
                           </td>
                         ))}
                       </tr>
+                      {haPref && (
+                        <tr className="border-t border-border/40 italic text-primary">
+                          <td className="py-1 pr-3">{t("rt.prevDaFattAtt")}</td>
+                          <td className="py-1 pr-3 text-right">—</td>
+                          {mesi6.map((m) => (
+                            <td key={m} className="py-1 pr-3 text-right tabular-nums">
+                              {fmt(prefAtt.get(m) ?? 0)}
+                            </td>
+                          ))}
+                        </tr>
+                      )}
+                      {haPref && (
+                        <tr className="border-t border-border/40 italic text-primary">
+                          <td className="py-1 pr-3">{t("rt.prevDaFattPas")}</td>
+                          <td className="py-1 pr-3 text-right">—</td>
+                          {mesi6.map((m) => (
+                            <td key={m} className="py-1 pr-3 text-right tabular-nums">
+                              {fmt(prefPas.get(m) ?? 0)}
+                            </td>
+                          ))}
+                        </tr>
+                      )}
                       <tr className="border-t border-border/60 font-medium">
                         <td className="py-1 pr-3">{t("rt.prevSaldo")}</td>
                         <td className="py-1 pr-3 text-right tabular-nums">
                           {fmt(att.scaduto - pas.scaduto)}
                         </td>
                         {mesi6.map((m) => {
-                          const v2 = (att.out.get(m) ?? 0) - (pas.out.get(m) ?? 0);
+                          const v2 =
+                            (att.out.get(m) ?? 0) -
+                            (pas.out.get(m) ?? 0) +
+                            (prefAtt.get(m) ?? 0) -
+                            (prefPas.get(m) ?? 0);
                           return (
                             <td
                               key={m}
@@ -960,6 +1037,167 @@ export function ResocontoTab() {
               </div>
             );
           })()}
+
+          {/* Gestione PREFATTURE: canoni ricorrenti e fatture pianificate.
+              Quando la fattura vera arriva (stessa controparte, stesso
+              mese) la riga si considera coperta da sola. */}
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+            <div className="mb-1 text-sm font-semibold text-foreground">{t("rt.prefTitolo")}</div>
+            <p className="mb-3 text-xs text-muted-foreground">{t("rt.prefDesc")}</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <label className="text-xs text-muted-foreground">{t("fin.cliForn")}</label>
+                <input
+                  value={pfControparte}
+                  onChange={(e) => setPfControparte(e.target.value)}
+                  className="w-44 rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">{t("rt.prefDirezione")}</label>
+                <select
+                  value={pfDirezione}
+                  onChange={(e) => setPfDirezione(e.target.value as "Emessa" | "Ricevuta")}
+                  className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                >
+                  <option value="Emessa">{t("rt.prefAttiva")}</option>
+                  <option value="Ricevuta">{t("rt.prefPassiva")}</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">{t("common.amount")}</label>
+                <input
+                  value={pfImporto}
+                  onChange={(e) => setPfImporto(e.target.value)}
+                  placeholder="1000,00"
+                  className="w-28 rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">{t("rt.prefMese")}</label>
+                <input
+                  type="month"
+                  value={pfMese}
+                  onChange={(e) => setPfMese(e.target.value)}
+                  className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">{t("rt.prefRicorrenza")}</label>
+                <select
+                  value={pfRicorrenza}
+                  onChange={(e) => setPfRicorrenza(e.target.value as "mensile" | "una")}
+                  className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                >
+                  <option value="mensile">{t("rt.prefMensile")}</option>
+                  <option value="una">{t("rt.prefUna")}</option>
+                </select>
+              </div>
+              {pfRicorrenza === "mensile" && (
+                <div>
+                  <label className="text-xs text-muted-foreground">{t("rt.prefMeseFine")}</label>
+                  <input
+                    type="month"
+                    value={pfMeseFine}
+                    onChange={(e) => setPfMeseFine(e.target.value)}
+                    className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="text-xs text-muted-foreground">{t("fin.note")}</label>
+                <input
+                  value={pfNote}
+                  onChange={(e) => setPfNote(e.target.value)}
+                  className="w-40 rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={pfBusy || !pfControparte.trim() || !pfImporto.trim() || !pfMese}
+                onClick={() => {
+                  void (async () => {
+                    setPfBusy(true);
+                    try {
+                      await spCreatePrefattura({
+                        data: {
+                          controparte: pfControparte,
+                          direzione: pfDirezione,
+                          importo: Number(pfImporto.replace(/\./g, "").replace(",", ".")),
+                          meseInizio: pfMese,
+                          ricorrenza: pfRicorrenza,
+                          meseFine:
+                            pfRicorrenza === "mensile" ? pfMeseFine || undefined : undefined,
+                          note: pfNote || undefined,
+                        },
+                      });
+                      const agg = (await spGetPrefatture()) as Prefattura[];
+                      setPrefatture(agg);
+                      setPfControparte("");
+                      setPfImporto("");
+                      setPfNote("");
+                      toast.success(t("rt.prefCreata"));
+                    } catch (err) {
+                      toast.error(t("common.error"), {
+                        description: err instanceof Error ? err.message : String(err),
+                      });
+                    } finally {
+                      setPfBusy(false);
+                    }
+                  })();
+                }}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+              >
+                {pfBusy ? t("common.loading") : t("common.save")}
+              </button>
+            </div>
+            {prefatture != null && prefatture.length > 0 && (
+              <table className="mt-3 w-full text-[13px]">
+                <tbody>
+                  {prefatture.map((pf) => (
+                    <tr key={pf.id} className="border-t border-border/40">
+                      <td className="py-1 pr-3 font-medium">{pf.controparte}</td>
+                      <td className="py-1 pr-3">
+                        {pf.direzione === "Emessa" ? t("rt.prefAttiva") : t("rt.prefPassiva")}
+                      </td>
+                      <td className="py-1 pr-3 text-right tabular-nums">
+                        {fmtImporto(pf.importo)} €
+                      </td>
+                      <td className="py-1 pr-3 text-muted-foreground">
+                        {pf.ricorrenza === "una"
+                          ? `${t("rt.prefUna")} ${fmtMese(pf.meseInizio)}`
+                          : `${t("rt.prefMensile")} ${fmtMese(pf.meseInizio)} → ${pf.meseFine ? fmtMese(pf.meseFine) : "…"}`}
+                      </td>
+                      <td className="py-1 pr-3 text-[11px] text-muted-foreground max-w-40 truncate">
+                        {pf.note ?? ""}
+                      </td>
+                      <td className="py-1 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              if (!window.confirm(t("rt.prefDelConfirm"))) return;
+                              try {
+                                await spDeletePrefattura({ data: { id: pf.id } });
+                                setPrefatture((prev) => (prev ?? []).filter((x) => x.id !== pf.id));
+                              } catch (err) {
+                                toast.error(t("common.error"), {
+                                  description: err instanceof Error ? err.message : String(err),
+                                });
+                              }
+                            })();
+                          }}
+                          className="rounded-md p-1 text-muted-foreground hover:text-status-absent"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </>
       )}
     </div>

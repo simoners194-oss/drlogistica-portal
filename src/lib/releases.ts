@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.32.0",
+    date: "2026-08-12",
+    codename: "La cassa di domani",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Prefatturazione: il pianificato entra nella Previsione",
+        description:
+          "Nel Resoconto si registrano canoni ricorrenti e fatture pianificate non ancora emesse (controparte, importo, mese di inizio, ricorrenza mensile o una tantum): compaiono nella Previsione come righe dedicate e il saldo mensile le comprende. Quando la fattura vera arriva \u2014 anche dal sync automatico \u2014 la riga pianificata di quel mese si considera coperta da sola: mai doppi conteggi.",
+      },
+    ],
+  },
+  {
     version: "1.31.0",
     date: "2026-08-12",
     codename: "Si guarda anche avanti",

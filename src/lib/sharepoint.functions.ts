@@ -45,6 +45,10 @@ import {
   fetchTimbratureManuali,
   importDipendenti,
   importAppaltiDipendenti,
+  fetchPrefatture,
+  createPrefattura,
+  deletePrefattura,
+  type Prefattura,
   fetchDettagliDistinte,
   nomiDipendenti,
   importDistinta,
@@ -499,6 +503,58 @@ export const spImportAppalti = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     assertCap(isAdmin(await currentUser()));
     return importAppaltiDipendenti(data.rows, data.dryRun);
+  });
+
+// Prefatture: fatturato pianificato per la Previsione (solo direzione).
+export const spGetPrefatture = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Prefattura[]> => {
+    await assertDirettore(await currentUser());
+    return fetchPrefatture();
+  },
+);
+
+export const spCreatePrefattura = createServerFn({ method: "POST" })
+  .inputValidator((input: Omit<Prefattura, "id">) => {
+    const controparte = String(input?.controparte ?? "")
+      .trim()
+      .slice(0, 120);
+    if (!controparte) throw new Error("Controparte mancante");
+    const importo = Number(input?.importo ?? 0);
+    if (!Number.isFinite(importo) || importo <= 0) throw new Error("Importo non valido");
+    const meseInizio = String(input?.meseInizio ?? "").trim();
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(meseInizio))
+      throw new Error("Mese di inizio non valido (formato 2026-09)");
+    const meseFine = String(input?.meseFine ?? "").trim();
+    if (meseFine && !/^\d{4}-(0[1-9]|1[0-2])$/.test(meseFine))
+      throw new Error("Mese di fine non valido (formato 2026-12)");
+    return {
+      controparte,
+      direzione: (input?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as "Emessa" | "Ricevuta",
+      importo: Math.round(importo * 100) / 100,
+      meseInizio,
+      ricorrenza: (input?.ricorrenza === "una" ? "una" : "mensile") as "mensile" | "una",
+      meseFine: meseFine || undefined,
+      note:
+        String(input?.note ?? "")
+          .trim()
+          .slice(0, 255) || undefined,
+    };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await createPrefattura(data);
+    return { ok: true };
+  });
+
+export const spDeletePrefattura = createServerFn({ method: "POST" })
+  .inputValidator((input: { id: string }) => {
+    if (!input?.id) throw new Error("id mancante");
+    return { id: String(input.id) };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await deletePrefattura(data.id);
+    return { ok: true };
   });
 
 // Distinte / esiti pagamenti: il dettaglio dei pagamenti cumulativi
