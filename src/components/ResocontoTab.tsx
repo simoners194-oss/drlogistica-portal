@@ -348,27 +348,40 @@ export function ResocontoTab() {
         86400000,
     );
   };
+  // SIMULAZIONE TERMINI (il "giochino" della direzione): con N scritto, il
+  // ritardo si calcola su una scadenza FITTIZIA = data documento + N giorni.
+  // I termini veri (regole/termini di pagamento) non vengono toccati.
+  const simTermini = Number(scadEntro) || 0;
+  const ggRitardoVis = (x: (typeof attive)[number]): number => {
+    if (simTermini <= 0) return x.s.giorniRitardo;
+    if (!x.f.dataDocumento) return 0;
+    return (
+      Math.round(
+        (new Date(`${oggiISO}T00:00:00`).getTime() -
+          new Date(`${x.f.dataDocumento.slice(0, 10)}T00:00:00`).getTime()) /
+          86400000,
+      ) - simTermini
+    );
+  };
   const ritardi = (righe: typeof attive, sel: string[]) => {
-    const entro = Number(scadEntro) || 0;
     return righe
       .filter((x) => {
         if (residuoDi(x) <= 1) return false;
         if (!inSelezione(x.f.cliente, sel)) return false;
-        // Il requisito "gestita in fatturazione/incassi" vale solo per i
-        // RITARDI (tiene fuori il rumore); le fatture fresche con scadenza
-        // futura non sono ancora nel report incassi e prima venivano
-        // scartate qui — il filtro "entro N gg" sembrava morto.
-        if (x.s.inRitardo)
-          return (
-            (x.s.statoIncassi != null || x.s.statoFatturazione != null) &&
-            inFascia(x.s.giorniRitardo)
-          );
-        // Non in ritardo: entra solo col filtro "in scadenza entro N gg".
-        if (entro <= 0) return false;
-        const gg = giorniAScadenza(x.s.scadenza);
-        return gg != null && gg >= 0 && gg <= entro;
+        if (simTermini > 0) {
+          // Modalita' simulazione: in ritardo chi ha superato i giorni
+          // simulati dall'emissione. Niente requisito report incassi: la
+          // simulazione deve vedere TUTTO l'aperto.
+          const gg = ggRitardoVis(x);
+          return gg > 0 && inFascia(gg);
+        }
+        return (
+          x.s.inRitardo &&
+          (x.s.statoIncassi != null || x.s.statoFatturazione != null) &&
+          inFascia(x.s.giorniRitardo)
+        );
       })
-      .sort((a, b) => b.s.giorniRitardo - a.s.giorniRitardo);
+      .sort((a, b) => ggRitardoVis(b) - ggRitardoVis(a));
   };
   const ritardiAtt = useMemo(
     () =>
@@ -531,11 +544,9 @@ export function ResocontoTab() {
                     {fmtData(x.s.scadenza)}
                   </td>
                   <td
-                    className={`py-0.5 pr-2 text-right tabular-nums whitespace-nowrap ${x.s.inRitardo ? "text-status-absent" : "text-primary"}`}
+                    className={`py-0.5 pr-2 text-right tabular-nums whitespace-nowrap ${simTermini > 0 ? "text-primary" : "text-status-absent"}`}
                   >
-                    {x.s.inRitardo
-                      ? x.s.giorniRitardo
-                      : `${t("rt.fra")} ${giorniAScadenza(x.s.scadenza) ?? "—"}`}
+                    {ggRitardoVis(x)}
                   </td>
                   <td className="py-0.5 pr-2 text-right tabular-nums font-medium">
                     {fmtImporto(residuoDi(x))}
@@ -627,15 +638,6 @@ export function ResocontoTab() {
           >
             {t("rt.gruppiBtn")}
           </button>
-          <div>
-            <label className="text-xs text-muted-foreground">{t("rt.scadEntro")}</label>
-            <input
-              value={scadEntro}
-              onChange={(e) => setScadEntro(e.target.value.replace(/[^0-9]/g, ""))}
-              placeholder={t("rt.scadEntroPh")}
-              className="block w-28 rounded-lg border border-border bg-background px-2 py-2 text-sm"
-            />
-          </div>
           {/* Fasce di ritardo: giorni e settimane, multi-selezione. */}
           <div>
             <label className="text-xs text-muted-foreground">{t("rt.fasce")}</label>
@@ -892,6 +894,26 @@ export function ResocontoTab() {
             <p className="mt-2 text-[11px] text-muted-foreground">{t("rt.nota")}</p>
           </div>
 
+          {/* SIMULAZIONE termini, accanto ai riquadri dei numeri. */}
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card px-5 py-3 shadow-[var(--shadow-card)]">
+            <label className="text-sm font-medium text-foreground">{t("rt.scadEntro")}</label>
+            <input
+              value={scadEntro}
+              onChange={(e) => setScadEntro(e.target.value.replace(/[^0-9]/g, ""))}
+              placeholder={t("rt.scadEntroPh")}
+              className="w-24 rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+            />
+            <span className="text-xs text-muted-foreground">{t("rt.scadEntroNota")}</span>
+            {simTermini > 0 && (
+              <button
+                type="button"
+                onClick={() => setScadEntro("")}
+                className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-muted"
+              >
+                {t("rt.scadEntroReset")}
+              </button>
+            )}
+          </div>
           {/* I ritardi, nelle due direzioni, con le fatture in chiaro. */}
           <div className="grid gap-4 lg:grid-cols-2">
             {cardRitardi(t("rt.ritardiIncassare"), ritardiAtt, t("rt.nessunoIncassare"), true)}

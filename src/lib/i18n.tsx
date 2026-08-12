@@ -610,8 +610,11 @@ const en = {
   "rt.prefCreata": "Planned invoice saved",
   "rt.prefDelConfirm": "Remove this planned invoice?",
   "rt.fra": "in",
-  "rt.scadEntro": "Also due within (days)",
-  "rt.scadEntroPh": "e.g. 7",
+  "rt.scadEntro": "Simulate payment terms (days)",
+  "rt.scadEntroPh": "e.g. 60",
+  "rt.scadEntroNota":
+    "What-if only: overdue is recomputed as document date + N days. Real terms are not touched.",
+  "rt.scadEntroReset": "Back to real terms",
   "rt.prevTitolo": "Forecast — cash in and out by month",
   "rt.prevDesc":
     "From the due dates of open invoices: expected collections, expected payments and the balance, month by month. The overdue column is expected cash too — just late.",
@@ -1775,8 +1778,11 @@ const it: Record<DictKey, string> = {
   "rt.prefCreata": "Prefattura salvata",
   "rt.prefDelConfirm": "Rimuovere questa prefattura?",
   "rt.fra": "fra",
-  "rt.scadEntro": "Anche in scadenza entro (gg)",
-  "rt.scadEntroPh": "es. 7",
+  "rt.scadEntro": "Simula termini di pagamento (gg)",
+  "rt.scadEntroPh": "es. 60",
+  "rt.scadEntroNota":
+    "Solo un gioco di specchi: il ritardo si ricalcola come data documento + N giorni. I termini veri non vengono toccati.",
+  "rt.scadEntroReset": "Torna ai termini veri",
   "rt.prevTitolo": "Previsione — incassi e pagamenti per mese",
   "rt.prevDesc":
     "Dalle scadenze delle fatture aperte: incassi attesi, pagamenti attesi e saldo, mese per mese. La colonna Scaduto è cassa attesa anche lei — solo in ritardo.",
