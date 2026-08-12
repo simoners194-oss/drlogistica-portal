@@ -346,9 +346,16 @@ export function ResocontoTab() {
     return righe
       .filter((x) => {
         if (x.s.residuo <= 1) return false;
-        if (x.s.statoIncassi == null && x.s.statoFatturazione == null) return false;
         if (!inSelezione(x.f.cliente, sel)) return false;
-        if (x.s.inRitardo) return inFascia(x.s.giorniRitardo);
+        // Il requisito "gestita in fatturazione/incassi" vale solo per i
+        // RITARDI (tiene fuori il rumore); le fatture fresche con scadenza
+        // futura non sono ancora nel report incassi e prima venivano
+        // scartate qui — il filtro "entro N gg" sembrava morto.
+        if (x.s.inRitardo)
+          return (
+            (x.s.statoIncassi != null || x.s.statoFatturazione != null) &&
+            inFascia(x.s.giorniRitardo)
+          );
         // Non in ritardo: entra solo col filtro "in scadenza entro N gg".
         if (entro <= 0) return false;
         const gg = giorniAScadenza(x.s.scadenza);
