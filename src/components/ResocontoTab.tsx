@@ -19,6 +19,7 @@ import {
   type TerminePagamento,
 } from "@/lib/fatture-logic";
 import { clienteGroupKey } from "@/lib/finanza-logic";
+import { esportaCsvFile } from "@/lib/csv";
 import {
   spGetFatture,
   spGetMovimenti,
@@ -506,6 +507,40 @@ export function ResocontoTab() {
 
   const loading = fattureEm == null || fattureRic == null || movimenti == null;
 
+  // Export in CSV (si apre in Excel): le due liste cosi' come filtrate,
+  // con giorni (anche simulati), residuo = totale - incassato e composizione.
+  const esportaResoconto = () => {
+    const riga = (x: (typeof attive)[number], direzione: string) => [
+      direzione,
+      x.f.numero,
+      x.f.cliente,
+      x.f.dataDocumento,
+      x.s.scadenza ?? "",
+      String(ggRitardoVis(x)),
+      String(residuoDi(x).toFixed(2)).replace(".", ","),
+      x.nc && x.nc.importo > 0
+        ? `tot ${x.f.totale.toFixed(2)} - NC ${x.nc.numeri.join("+")} ${x.nc.importo.toFixed(2)}`
+        : "",
+    ];
+    esportaCsvFile(
+      `resoconto-ritardi${simTermini > 0 ? `-sim${simTermini}gg` : ""}`,
+      [
+        "Direzione",
+        "Numero",
+        "Controparte",
+        "Data documento",
+        "Scadenza",
+        "Giorni ritardo",
+        "Residuo (totale - incassato)",
+        "Composizione",
+      ],
+      [
+        ...ritardiAtt.map((x) => riga(x, "Da incassare")),
+        ...ritardiPas.map((x) => riga(x, "Da pagare")),
+      ],
+    );
+  };
+
   const cardRitardi = (
     titolo: string,
     righe: typeof attive,
@@ -913,6 +948,13 @@ export function ResocontoTab() {
                 {t("rt.scadEntroReset")}
               </button>
             )}
+            <button
+              type="button"
+              onClick={esportaResoconto}
+              className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+            >
+              {t("rt.esporta")}
+            </button>
           </div>
           {/* I ritardi, nelle due direzioni, con le fatture in chiaro. */}
           <div className="grid gap-4 lg:grid-cols-2">

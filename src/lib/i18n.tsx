@@ -615,6 +615,7 @@ const en = {
   "rt.scadEntroNota":
     "What-if only: overdue is recomputed as document date + N days. Real terms are not touched.",
   "rt.scadEntroReset": "Back to real terms",
+  "rt.esporta": "Export for Excel (CSV)",
   "rt.prevTitolo": "Forecast — cash in and out by month",
   "rt.prevDesc":
     "From the due dates of open invoices: expected collections, expected payments and the balance, month by month. The overdue column is expected cash too — just late.",
@@ -1787,6 +1788,7 @@ const it: Record<DictKey, string> = {
   "rt.scadEntroNota":
     "Solo un gioco di specchi: il ritardo si ricalcola come data documento + N giorni. I termini veri non vengono toccati.",
   "rt.scadEntroReset": "Torna ai termini veri",
+  "rt.esporta": "Esporta per Excel (CSV)",
   "rt.prevTitolo": "Previsione — incassi e pagamenti per mese",
   "rt.prevDesc":
     "Dalle scadenze delle fatture aperte: incassi attesi, pagamenti attesi e saldo, mese per mese. La colonna Scaduto è cassa attesa anche lei — solo in ritardo.",
