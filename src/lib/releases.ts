@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.33.0",
+    date: "2026-08-12",
+    codename: "Nessuno preme piu' niente",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Fatture e banca si sincronizzano da sole a orari fissi",
+        description:
+          "Il sync delle fatture da Aruba ha ora il suo innesco programmato, come la banca: uno scheduler gratuito chiama il portale al mattino e nel primo pomeriggio e le fatture nuove entrano da sole nell'archivio. Una guardia impedisce le esecuzioni ravvicinate. Il pulsante manuale resta per i giri fuori orario.",
+      },
+    ],
+  },
+  {
     version: "1.32.0",
     date: "2026-08-12",
     codename: "La cassa di domani",

@@ -1,0 +1,49 @@
+# DR Portal — sincronizzazioni PROGRAMMATE (banca + fatture).
+# GitHub Actions fa da scheduler gratuito: a orari fissi chiama gli URL
+# /cron-banca e /cron-fatture del portale (il Worker non ha uno scheduler
+# proprio e il connettore HTTP di Power Automate è a pagamento).
+#
+# CONFIGURAZIONE (una tantum, dal proprietario del repo):
+#   GitHub → Settings → Secrets and variables → Actions → New repository secret
+#     CRON_BANCA_URL   = https://portal.drlogistica.it/cron-banca?token=<token>
+#     CRON_FATTURE_URL = https://portal.drlogistica.it/cron-fatture?token=<token>
+#   I token si leggono in Amministrazione (pannello Banca e card Diagnostica
+#   Aruba). Un secret assente = quel sync viene semplicemente saltato.
+#
+# NB: gli orari di "schedule" sono in UTC. 05:30/11:30 UTC = 07:30/13:30
+# in Italia d'estate (06:30/12:30 d'inverno) — per il nostro uso va bene
+# così, senza inseguire l'ora legale.
+name: Sync programmato
+
+on:
+  schedule:
+    - cron: "30 5 * * 1-6" # mattina, lun-sab
+    - cron: "30 11 * * 1-6" # primo pomeriggio, lun-sab
+  workflow_dispatch: {} # lancio manuale dalla pagina Actions, per prova
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Chiama i cron del portale
+        env:
+          BANCA: ${{ secrets.CRON_BANCA_URL }}
+          FATTURE: ${{ secrets.CRON_FATTURE_URL }}
+        run: |
+          esito=0
+          if [ -n "$BANCA" ]; then
+            echo "— sync banca —"
+            curl -fsS --max-time 300 "$BANCA" || esito=1
+            echo
+          else
+            echo "CRON_BANCA_URL non configurato: salto la banca."
+          fi
+          if [ -n "$FATTURE" ]; then
+            echo "— sync fatture —"
+            curl -fsS --max-time 540 "$FATTURE" || esito=1
+            echo
+          else
+            echo "CRON_FATTURE_URL non configurato: salto le fatture."
+          fi
+          exit $esito

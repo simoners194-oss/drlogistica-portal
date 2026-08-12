@@ -6568,7 +6568,7 @@ export async function decideCorrezione(
 // Banca in Amministrazione.
 
 /** Token dell'innesco programmato, uno per tipo di lavoro. */
-export async function cronToken(job: "banca" | "turni"): Promise<string> {
+export async function cronToken(job: "banca" | "turni" | "fatture"): Promise<string> {
   const pepper = pinPepper();
   if (!pepper) throw new Error("Segreto server assente: token non generabile.");
   const d = await crypto.subtle.digest(
@@ -6583,6 +6583,16 @@ export async function cronToken(job: "banca" | "turni"): Promise<string> {
 
 export async function ebCronToken(): Promise<string> {
   return cronToken("banca");
+}
+
+export async function arubaCronToken(): Promise<string> {
+  return cronToken("fatture");
+}
+
+/** Verifica del token dell'innesco fatture (confronto a tempo costante). */
+export async function verificaTokenCronFatture(token: string): Promise<void> {
+  const atteso = await arubaCronToken();
+  if (!tokenUguale(token, atteso)) throw new Error("Token non valido.");
 }
 
 /** Confronto a tempo costante: non rivela quanti caratteri sono corretti. */

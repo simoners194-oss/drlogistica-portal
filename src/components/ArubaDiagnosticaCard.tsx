@@ -12,6 +12,7 @@ import {
   spArubaProvaConnessione,
   spArubaProvaDownload,
   spArubaProvaIncassi,
+  spArubaCronToken,
 } from "@/lib/sharepoint.functions";
 import type { ArubaStato } from "@/lib/sharepoint.server";
 import type { ArubaProbeResult, ArubaDownloadProbe, ArubaIncassiProbe } from "@/lib/aruba.server";
@@ -24,11 +25,19 @@ export function ArubaDiagnosticaCard() {
   const [probeDl, setProbeDl] = useState<ArubaDownloadProbe | null>(null);
   const [incProbe, setIncProbe] = useState<ArubaIncassiProbe | null>(null);
   const [busy, setBusy] = useState<"conn" | "dl" | "inc" | null>(null);
+  const [cronUrl, setCronUrl] = useState("");
 
   useEffect(() => {
     spGetArubaStato()
       .then((s) => setAruba(s as ArubaStato))
       .catch(() => setAruba(null));
+    spArubaCronToken()
+      .then((r) =>
+        setCronUrl(
+          `${window.location.origin}/cron-fatture?token=${(r as { token: string }).token}`,
+        ),
+      )
+      .catch(() => setCronUrl(""));
   }, []);
 
   const btnCls =
@@ -128,6 +137,11 @@ export function ArubaDiagnosticaCard() {
       </div>
       {!configurato && aruba != null && (
         <p className="mt-2 text-[11px] text-muted-foreground">{t("ft.arDiagNoCfg")}</p>
+      )}
+      {cronUrl && (
+        <p className="mt-2 break-all text-[11px] text-muted-foreground">
+          {t("ft.arCronUrl")}: <code className="text-foreground">{cronUrl}</code>
+        </p>
       )}
       {probe && (
         <div

@@ -45,6 +45,8 @@ import {
   fetchTimbratureManuali,
   importDipendenti,
   importAppaltiDipendenti,
+  arubaCronToken,
+  verificaTokenCronFatture,
   fetchPrefatture,
   createPrefattura,
   deletePrefattura,
@@ -555,6 +557,34 @@ export const spDeletePrefattura = createServerFn({ method: "POST" })
     await assertDirettore(await currentUser());
     await deletePrefattura(data.id);
     return { ok: true };
+  });
+
+// Cron FATTURE: innesco esterno del sync Aruba (GitHub Actions a orari
+// fissi). Nessuna sessione: l'unica credenziale e' il token derivato dal
+// segreto server. Guardia anti-doppione: se l'ultimo sync completo e' di
+// meno di 20 minuti fa, non si riparte.
+export const spArubaCronToken = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ token: string }> => {
+    await assertDirettore(await currentUser());
+    return { token: await arubaCronToken() };
+  },
+);
+
+export const spArubaCron = createServerFn({ method: "POST" })
+  .inputValidator((input: { token: string }) => {
+    const token = String(input?.token ?? "").trim();
+    if (!token || token.length > 100) throw new Error("Token mancante.");
+    return { token };
+  })
+  .handler(async ({ data }) => {
+    await verificaTokenCronFatture(data.token);
+    const stato = await getArubaStato();
+    if (stato.ultimaSync) {
+      const minuti = (Date.now() - new Date(stato.ultimaSync).getTime()) / 60000;
+      if (minuti >= 0 && minuti < 20)
+        return { saltato: true, messaggio: `Sync recente (${Math.round(minuti)} min fa).` };
+    }
+    return arubaSyncFatture();
   });
 
 // Distinte / esiti pagamenti: il dettaglio dei pagamenti cumulativi

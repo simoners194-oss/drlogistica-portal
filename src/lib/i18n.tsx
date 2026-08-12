@@ -980,6 +980,7 @@ const en = {
   "ft.arDiagDesc":
     "Connection, XML download and payments-API probes. The file name (optional) targets a specific invoice — useful to investigate a batch the sync reports as not parsed.",
   "ft.arDiagNoCfg": "Aruba credentials are not configured yet (Finance → Invoices panel).",
+  "ft.arCronUrl": "Scheduled sync URL (for GitHub Actions)",
   "ft.arProva": "Test connection",
   "ft.arProvaDl": "Test XML download",
   "ft.arSync": "Sync from Aruba",
@@ -2134,6 +2135,7 @@ const it: Record<DictKey, string> = {
   "ft.arDiagDesc":
     "Prove di connessione, download XML e API incassi. Il nome file (facoltativo) punta i probe su una fattura precisa — utile per indagare un lotto che il sync segnala come non parsato.",
   "ft.arDiagNoCfg": "Credenziali Aruba non ancora configurate (pannello Finanze → Fatture).",
+  "ft.arCronUrl": "URL del sync programmato (per GitHub Actions)",
   "ft.arProva": "Prova connessione",
   "ft.arProvaDl": "Prova download XML",
   "ft.arSync": "Sincronizza da Aruba",
