@@ -20,6 +20,8 @@ import {
   Pencil,
   Users,
   Filter,
+  ArrowDown,
+  ArrowUp,
   GraduationCap,
   Wand2,
   Receipt,
@@ -229,6 +231,37 @@ function CampoVocabolario({
 // limite di 255 delle colonne testo SharePoint): un elenco piu' lungo si
 // SPEZZA in piu' regole gemelle — il match multi-termine e' un OR, quindi
 // il comportamento e' identico. I termini doppi spariscono.
+// Tasto laterale: porta in FONDO alla pagina con un colpo; arrivati in
+// fondo si capovolge e riporta in cima.
+function ScorriFondo() {
+  const [inFondo, setInFondo] = useState(false);
+  useEffect(() => {
+    const controlla = () =>
+      setInFondo(window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80);
+    controlla();
+    window.addEventListener("scroll", controlla, { passive: true });
+    window.addEventListener("resize", controlla);
+    return () => {
+      window.removeEventListener("scroll", controlla);
+      window.removeEventListener("resize", controlla);
+    };
+  }, []);
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        window.scrollTo({
+          top: inFondo ? 0 : document.documentElement.scrollHeight,
+          behavior: "smooth",
+        })
+      }
+      className="fixed bottom-6 right-4 z-40 rounded-full border border-border bg-card p-2.5 text-muted-foreground shadow-[var(--shadow-elegant)] hover:text-foreground"
+    >
+      {inFondo ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+    </button>
+  );
+}
+
 const MAX_PATTERN = 240;
 function spezzaPattern(testo: string): string[] {
   const visti = new Set<string>();
@@ -376,6 +409,10 @@ function FinanzaPage() {
   const [catAperta, setCatAperta] = useState<string | null>(null);
   const [uniBusy, setUniBusy] = useState(false);
   const [rCerca, setRCerca] = useState("");
+  const [dataDaF, setDataDaF] = useState("");
+  const [dataAF, setDataAF] = useState("");
+  const [impMinF, setImpMinF] = useState("");
+  const [impMaxF, setImpMaxF] = useState("");
   // UNIFICA DOPPIE: regole con gli stessi esiti (tipologia, sottocategoria,
   // allocazioni, controparte) e stesso campo/modo diventano UNA regola con
   // l'unione dei termini; i termini ripetuti spariscono anche dalle singole.
@@ -516,6 +553,26 @@ function FinanzaPage() {
   const [editNrFatt, setEditNrFatt] = useState("");
   const [editNote, setEditNote] = useState("");
   const [saving, setSaving] = useState(false);
+  // Vocabolario A CASCATA per il modal di correzione: stesse voci delle
+  // regole apprese (scelta la tipologia restano le sottocategorie coerenti,
+  // idem per le allocazioni).
+  const vocabEdit = useMemo(() => {
+    const rs = regole ?? [];
+    const uniq = (xs: (string | undefined)[]) =>
+      [...new Set(xs.filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b));
+    const perTip = editTip.trim() ? rs.filter((r) => (r.tipologia ?? "") === editTip.trim()) : rs;
+    const perPri = editAllocPri.trim()
+      ? rs.filter((r) => (r.allocPrimaria ?? "") === editAllocPri.trim())
+      : rs;
+    const sotto = uniq(perTip.map((r) => r.sottocategoria));
+    const sec = uniq(perPri.map((r) => r.allocSecondaria));
+    return {
+      tipologie: uniq([...TIPOLOGIE_MOVIMENTO, ...rs.map((r) => r.tipologia)]),
+      sottocat: sotto.length ? sotto : uniq(rs.map((r) => r.sottocategoria)),
+      allocPri: uniq(rs.map((r) => r.allocPrimaria)),
+      allocSec: sec.length ? sec : uniq(rs.map((r) => r.allocSecondaria)),
+    };
+  }, [regole, editTip, editAllocPri]);
 
   const isDirettore =
     session != null &&
@@ -1515,6 +1572,14 @@ function FinanzaPage() {
       out = out.filter((m) => allocSecF.includes(m.allocSecondaria || "__vuoto__"));
     if (mesiF.length) out = out.filter((m) => mesiF.includes(Number(m.dataContabile.slice(5, 7))));
     if (contoF) out = out.filter((m) => (m.conto || "") === (contoF === "__vuoto__" ? "" : contoF));
+    // Range di DATE (contabile) e di IMPORTI: un solo estremo = "da" o
+    // "fino a" (per gli importi: maggiore/minore di).
+    if (dataDaF) out = out.filter((m) => m.dataContabile >= dataDaF);
+    if (dataAF) out = out.filter((m) => m.dataContabile <= dataAF);
+    const impMin = impMinF.trim() ? Number(impMinF.replace(",", ".")) : null;
+    const impMax = impMaxF.trim() ? Number(impMaxF.replace(",", ".")) : null;
+    if (impMin != null && Number.isFinite(impMin)) out = out.filter((m) => m.importo >= impMin);
+    if (impMax != null && Number.isFinite(impMax)) out = out.filter((m) => m.importo <= impMax);
     if (cercaF.trim()) {
       // Più termini separati da , o ; = basta che UNO corrisponda (per
       // trovare in un colpo "aereo, treno, dirigibile" e regolarli insieme).
@@ -1534,7 +1599,22 @@ function FinanzaPage() {
       );
     }
     return out;
-  }, [movimenti, anni, tipiF, mesiF, cercaF, clientiF, contoF, sottF, allocPriF, allocSecF]);
+  }, [
+    movimenti,
+    anni,
+    tipiF,
+    mesiF,
+    cercaF,
+    clientiF,
+    contoF,
+    sottF,
+    allocPriF,
+    allocSecF,
+    dataDaF,
+    dataAF,
+    impMinF,
+    impMaxF,
+  ]);
   const filtrati = useMemo(
     () => filtratiBase.filter((m) => passaMovTh(m)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1560,7 +1640,21 @@ function FinanzaPage() {
   // la lista, es. dopo una sincronizzazione).
   useEffect(() => {
     setPaginaMov(1);
-  }, [tipiF, mesiF, cercaF, anni, clientiF, sottF, allocPriF, allocSecF, movFiltriTh]);
+  }, [
+    tipiF,
+    mesiF,
+    cercaF,
+    anni,
+    clientiF,
+    sottF,
+    allocPriF,
+    allocSecF,
+    movFiltriTh,
+    dataDaF,
+    dataAF,
+    impMinF,
+    impMaxF,
+  ]);
   const pagineMovTot = Math.max(1, Math.ceil(filtrati.length / RIGHE_PAGINA));
   const pagMov = Math.min(paginaMov, pagineMovTot);
   const inizioMov = (pagMov - 1) * RIGHE_PAGINA;
@@ -2005,6 +2099,42 @@ function FinanzaPage() {
                 className={inputCls}
               />
             </div>
+            <div>
+              <label className="text-xs text-muted-foreground">{t("fin.rangeDate")}</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="date"
+                  value={dataDaF}
+                  onChange={(e) => setDataDaF(e.target.value)}
+                  className={inputCls}
+                />
+                <span className="text-xs text-muted-foreground">→</span>
+                <input
+                  type="date"
+                  value={dataAF}
+                  onChange={(e) => setDataAF(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">{t("fin.rangeImporti")}</label>
+              <div className="flex items-center gap-1">
+                <input
+                  value={impMinF}
+                  onChange={(e) => setImpMinF(e.target.value)}
+                  placeholder={t("fin.rangeMin")}
+                  className="w-24 rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                />
+                <span className="text-xs text-muted-foreground">→</span>
+                <input
+                  value={impMaxF}
+                  onChange={(e) => setImpMaxF(e.target.value)}
+                  placeholder={t("fin.rangeMax")}
+                  className="w-24 rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                />
+              </div>
+            </div>
             <button
               type="button"
               onClick={aggiorna}
@@ -2141,87 +2271,44 @@ function FinanzaPage() {
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="text-xs text-muted-foreground">{t("common.type")}</label>
-                      <input
-                        list="tipologie-mov-edit"
-                        value={editTip}
-                        onChange={(e) => setEditTip(e.target.value)}
-                        className={inputCls}
+                      <CampoVocabolario
+                        label={t("common.type")}
+                        valore={editTip}
+                        onChange={setEditTip}
+                        opzioni={vocabEdit.tipologie}
+                        testoNessuno={t("fin.vuota")}
+                        testoNuova={t("fin.vocNuova")}
                       />
-                      <datalist id="tipologie-mov-edit">
-                        {[
-                          ...new Set([
-                            ...TIPOLOGIE_MOVIMENTO,
-                            ...(movimenti ?? []).map((x) => x.tipologia).filter(Boolean),
-                          ]),
-                        ]
-                          .sort((a, b) => a.localeCompare(b))
-                          .map((tp) => (
-                            <option key={tp} value={tp} />
-                          ))}
-                      </datalist>
                     </div>
                     <div>
-                      <label className="text-xs text-muted-foreground">{t("fin.sottocat")}</label>
-                      <input
-                        list="sottocat-mov-edit"
-                        value={editSott}
-                        onChange={(e) => setEditSott(e.target.value)}
-                        className={inputCls}
+                      <CampoVocabolario
+                        label={t("fin.sottocat")}
+                        valore={editSott}
+                        onChange={setEditSott}
+                        opzioni={vocabEdit.sottocat}
+                        testoNessuno={t("fin.vuota")}
+                        testoNuova={t("fin.vocNuova")}
                       />
-                      <datalist id="sottocat-mov-edit">
-                        {[
-                          ...new Set(
-                            (movimenti ?? []).map((x) => x.sottocategoria).filter(Boolean),
-                          ),
-                        ]
-                          .sort((a, b) => a.localeCompare(b))
-                          .map((sc) => (
-                            <option key={sc} value={sc} />
-                          ))}
-                      </datalist>
                     </div>
                     <div>
-                      <label className="text-xs text-muted-foreground">{t("fin.allocPri")}</label>
-                      <input
-                        list="allocpri-mov-edit"
-                        value={editAllocPri}
-                        onChange={(e) => setEditAllocPri(e.target.value)}
-                        className={inputCls}
+                      <CampoVocabolario
+                        label={t("fin.allocPri")}
+                        valore={editAllocPri}
+                        onChange={setEditAllocPri}
+                        opzioni={vocabEdit.allocPri}
+                        testoNessuno={t("fin.vuota")}
+                        testoNuova={t("fin.vocNuova")}
                       />
-                      <datalist id="allocpri-mov-edit">
-                        {[
-                          ...new Set([
-                            "Costi generali",
-                            "Appalto",
-                            ...(movimenti ?? []).map((x) => x.allocPrimaria).filter(Boolean),
-                          ]),
-                        ]
-                          .sort((a, b) => a.localeCompare(b))
-                          .map((a) => (
-                            <option key={a} value={a} />
-                          ))}
-                      </datalist>
                     </div>
                     <div>
-                      <label className="text-xs text-muted-foreground">{t("fin.allocSec")}</label>
-                      <input
-                        list="allocsec-mov-edit"
-                        value={editAllocSec}
-                        onChange={(e) => setEditAllocSec(e.target.value)}
-                        className={inputCls}
+                      <CampoVocabolario
+                        label={t("fin.allocSec")}
+                        valore={editAllocSec}
+                        onChange={setEditAllocSec}
+                        opzioni={vocabEdit.allocSec}
+                        testoNessuno={t("fin.vuota")}
+                        testoNuova={t("fin.vocNuova")}
                       />
-                      <datalist id="allocsec-mov-edit">
-                        {[
-                          ...new Set(
-                            (movimenti ?? []).map((x) => x.allocSecondaria).filter(Boolean),
-                          ),
-                        ]
-                          .sort((a, b) => a.localeCompare(b))
-                          .map((a) => (
-                            <option key={a} value={a} />
-                          ))}
-                      </datalist>
                     </div>
                     <div>
                       <label className="text-xs text-muted-foreground">{t("fin.cliForn")}</label>
@@ -2882,6 +2969,7 @@ function FinanzaPage() {
       )}
 
       {/* ------------------------------- Storico import -------------------- */}
+      <ScorriFondo />
       {tab === "storico" && distinteCard}
       {tab === "storico" && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">

@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.28.0",
+    date: "2026-08-12",
+    codename: "Filtri su misura",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Range di date e importi, correzione a cascata e scorrimento rapido",
+        description:
+          "Nei Movimenti e nelle Fatture si filtra per intervallo di date (dal \u2192 al) e di importi (da \u2192 a; un solo estremo vale come maggiore/minore di). La finestra \u201cCorreggi movimento\u201d ora propone menu a discesa a cascata con le voci delle regole apprese, come il modulo delle regole. E il tasto laterale in basso a destra porta in fondo alla pagina con un colpo \u2014 e da la' riporta in cima.",
+      },
+    ],
+  },
+  {
     version: "1.27.0",
     date: "2026-08-12",
     codename: "Regole che si tengono in ordine da sole",

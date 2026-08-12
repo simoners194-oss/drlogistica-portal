@@ -662,6 +662,10 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     return true;
   };
 
+  const [ftDataDa, setFtDataDa] = useState("");
+  const [ftDataA, setFtDataA] = useState("");
+  const [ftImpMin, setFtImpMin] = useState("");
+  const [ftImpMax, setFtImpMax] = useState("");
   const filtrate = useMemo(() => {
     // Gli scarti SdI non compaiono: una fattura scartata non è mai esistita.
     // Il chip "Scartate" le mostra da sole, per chi deve ricostruire la storia.
@@ -676,10 +680,31 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         (x) => x.f.cliente.toLowerCase().includes(q) || x.f.numero.toLowerCase().includes(q),
       );
     }
+    // Range di DATE (documento) e di IMPORTI (totale): un solo estremo
+    // vale come "da" / "fino a".
+    if (ftDataDa) out = out.filter((x) => x.f.dataDocumento >= ftDataDa);
+    if (ftDataA) out = out.filter((x) => x.f.dataDocumento <= ftDataA);
+    const impMin = ftImpMin.trim() ? Number(ftImpMin.replace(",", ".")) : null;
+    const impMax = ftImpMax.trim() ? Number(ftImpMax.replace(",", ".")) : null;
+    if (impMin != null && Number.isFinite(impMin)) out = out.filter((x) => x.f.totale >= impMin);
+    if (impMax != null && Number.isFinite(impMax)) out = out.filter((x) => x.f.totale <= impMax);
     if (filtriThAttivi) out = out.filter((x) => passaFiltriTh(x));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conStato, anniF, clienteF, statiF, soloScartate, clientiSel, filtriTh, colonneTh]);
+  }, [
+    conStato,
+    anniF,
+    clienteF,
+    statiF,
+    soloScartate,
+    clientiSel,
+    filtriTh,
+    colonneTh,
+    ftDataDa,
+    ftDataA,
+    ftImpMin,
+    ftImpMax,
+  ]);
 
   // Riepilogo (sugli anni filtrati, tutte le fatture non escluse). Gli importi
   // seguono lo stato UFFICIALE (Aruba quando c'è); `confermatoBanca` dice
@@ -2259,6 +2284,42 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
             onChange={setClientiSel}
             className="w-56"
           />
+          <div>
+            <label className="text-xs text-muted-foreground">{t("fin.rangeDate")}</label>
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={ftDataDa}
+                onChange={(e) => setFtDataDa(e.target.value)}
+                className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+              />
+              <span className="text-xs text-muted-foreground">→</span>
+              <input
+                type="date"
+                value={ftDataA}
+                onChange={(e) => setFtDataA(e.target.value)}
+                className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">{t("fin.rangeImporti")}</label>
+            <div className="flex items-center gap-1">
+              <input
+                value={ftImpMin}
+                onChange={(e) => setFtImpMin(e.target.value)}
+                placeholder={t("fin.rangeMin")}
+                className="w-24 rounded-lg border border-border bg-background px-2 py-2 text-sm"
+              />
+              <span className="text-xs text-muted-foreground">→</span>
+              <input
+                value={ftImpMax}
+                onChange={(e) => setFtImpMax(e.target.value)}
+                placeholder={t("fin.rangeMax")}
+                className="w-24 rounded-lg border border-border bg-background px-2 py-2 text-sm"
+              />
+            </div>
+          </div>
           {aggiornatoAl && (
             <div
               className="self-center text-[11px] text-muted-foreground whitespace-nowrap"

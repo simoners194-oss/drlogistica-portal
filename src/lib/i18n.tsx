@@ -808,6 +808,10 @@ const en = {
   "fin.regolaUnitaEsistente":
     "An identical rule already exists: the new terms were merged into it.",
   "fin.regoleCercaPh": "Type to find a rule (name, term, category)…",
+  "fin.rangeDate": "Date from → to",
+  "fin.rangeImporti": "Amount from → to",
+  "fin.rangeMin": "min",
+  "fin.rangeMax": "max",
   "fin.uniBtn": "Merge duplicates",
   "fin.uniNiente": "No duplicate rules to merge",
   "fin.uniConfirm1": "Merging",
@@ -1915,6 +1919,10 @@ const it: Record<DictKey, string> = {
   "fin.regolaUnitaEsistente":
     "Esisteva già una regola identica: i termini nuovi sono stati uniti a lei.",
   "fin.regoleCercaPh": "Scrivi per trovare una regola (nome, termine, categoria)…",
+  "fin.rangeDate": "Data dal → al",
+  "fin.rangeImporti": "Importo da → a",
+  "fin.rangeMin": "min",
+  "fin.rangeMax": "max",
   "fin.uniBtn": "Unifica doppie",
   "fin.uniNiente": "Nessuna regola doppia da unificare",
   "fin.uniConfirm1": "Verranno uniti",
