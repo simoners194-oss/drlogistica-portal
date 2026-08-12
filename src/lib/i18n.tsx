@@ -805,6 +805,9 @@ const en = {
   "fin.nonAllocato": "not allocated",
   "fin.regolaSpezzata1": "Long list: split into",
   "fin.regolaSpezzata2": "twin rules (same outcome).",
+  "fin.regolaUnitaEsistente":
+    "An identical rule already exists: the new terms were merged into it.",
+  "fin.regoleCercaPh": "Type to find a rule (name, term, category)…",
   "fin.uniBtn": "Merge duplicates",
   "fin.uniNiente": "No duplicate rules to merge",
   "fin.uniConfirm1": "Merging",
@@ -1909,6 +1912,9 @@ const it: Record<DictKey, string> = {
   "fin.nonAllocato": "non allocato",
   "fin.regolaSpezzata1": "Elenco lungo: spezzato in",
   "fin.regolaSpezzata2": "regole gemelle (stesso effetto).",
+  "fin.regolaUnitaEsistente":
+    "Esisteva già una regola identica: i termini nuovi sono stati uniti a lei.",
+  "fin.regoleCercaPh": "Scrivi per trovare una regola (nome, termine, categoria)…",
   "fin.uniBtn": "Unifica doppie",
   "fin.uniNiente": "Nessuna regola doppia da unificare",
   "fin.uniConfirm1": "Verranno uniti",

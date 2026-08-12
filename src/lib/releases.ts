@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.27.0",
+    date: "2026-08-12",
+    codename: "Regole che si tengono in ordine da sole",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Regole: ricerca istantanea e fusione automatica dei doppioni",
+        description:
+          "Nell'elenco delle regole basta iniziare a scrivere per trovare subito quella giusta (per nome, termine o categoria), con le sezioni che si aprono da sole sul risultato. E se si inserisce una regola identica a una gia' esistente, i termini nuovi si uniscono automaticamente a quella \u2014 con un avviso \u2014 invece di creare un doppione. Gli elenchi lunghi di nominativi vengono spezzati in regole gemelle senza piu' rifiuti al salvataggio.",
+      },
+    ],
+  },
+  {
     version: "1.26.0",
     date: "2026-08-11",
     codename: "Regole senza doppioni",

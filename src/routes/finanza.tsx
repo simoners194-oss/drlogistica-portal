@@ -88,7 +88,7 @@ import type {
 } from "@/lib/sharepoint.server";
 
 export const Route = createFileRoute("/finanza")({
-  head: () => ({ meta: [{ title: "Finanza — DR Portal" }] }),
+  head: () => ({ meta: [{ title: "Finanze — DR Portal" }] }),
   beforeLoad: ({ location }) => {
     if (typeof window === "undefined") return;
     if (!readSession()) throw redirect({ to: "/", search: { redirect: location.href } });
@@ -375,6 +375,7 @@ function FinanzaPage() {
   // Elenco regole raggruppato per tipologia: si apre un gruppo al tocco.
   const [catAperta, setCatAperta] = useState<string | null>(null);
   const [uniBusy, setUniBusy] = useState(false);
+  const [rCerca, setRCerca] = useState("");
   // UNIFICA DOPPIE: regole con gli stessi esiti (tipologia, sottocategoria,
   // allocazioni, controparte) e stesso campo/modo diventano UNA regola con
   // l'unione dei termini; i termini ripetuti spariscono anche dalle singole.
@@ -1253,11 +1254,40 @@ function FinanzaPage() {
       }
       // Modifica = aggiornamento SUL POSTO: mai piu' cancella-e-ricrea (una
       // create fallita dopo la delete ha bruciato due regole del direttore).
-      if (rEditId) await spUpdateRegolaFinanza({ data: { regolaId: rEditId, ...payload } });
-      else await spCreateRegolaFinanza({ data: payload });
+      // Regola GEMELLA gia' esistente (stessi esiti, stesso criterio)?
+      // I termini nuovi si uniscono a lei invece di creare un doppione.
+      const gemella =
+        !rEditId &&
+        (regole ?? []).find(
+          (r) =>
+            r.campo === payload.campo &&
+            r.modo === payload.modo &&
+            (r.tipologia ?? "") === (payload.tipologia ?? "") &&
+            (r.sottocategoria ?? "") === (payload.sottocategoria ?? "") &&
+            (r.allocPrimaria ?? "") === (payload.allocPrimaria ?? "") &&
+            (r.allocSecondaria ?? "") === (payload.allocSecondaria ?? "") &&
+            (r.cliente ?? "") === (payload.cliente ?? "") &&
+            `${r.pattern}, ${payload.pattern}`.length <= MAX_PATTERN + 100,
+        );
+      if (gemella) {
+        const fusi = spezzaPattern(`${gemella.pattern}, ${blocchi.join(", ")}`);
+        await spUpdateRegolaFinanza({
+          data: { regolaId: gemella.id ?? "", ...payload, pattern: fusi[0] },
+        });
+        for (const blocco of fusi.slice(1))
+          await spCreateRegolaFinanza({ data: { ...payload, pattern: blocco } });
+        toast.info(t("fin.regolaUnitaEsistente"), {
+          description: gemella.pattern.slice(0, 80),
+        });
+      } else if (rEditId) {
+        await spUpdateRegolaFinanza({ data: { regolaId: rEditId, ...payload } });
+      } else {
+        await spCreateRegolaFinanza({ data: payload });
+      }
       // Blocchi oltre il primo: regole gemelle (stessi esiti, altri termini).
-      for (const blocco of blocchi.slice(1))
-        await spCreateRegolaFinanza({ data: { ...payload, pattern: blocco } });
+      if (!gemella)
+        for (const blocco of blocchi.slice(1))
+          await spCreateRegolaFinanza({ data: { ...payload, pattern: blocco } });
       if (blocchi.length > 1)
         toast.info(`${t("fin.regolaSpezzata1")} ${blocchi.length} ${t("fin.regolaSpezzata2")}`);
       let applicati = 0;
@@ -3229,6 +3259,15 @@ function FinanzaPage() {
                 {uniBusy ? t("common.loading") : t("fin.uniBtn")}
               </button>
             </div>
+            {/* Ricerca ISTANTANEA: mentre si scrive restano solo le regole
+                col termine (nei pattern o negli esiti) e le categorie si
+                aprono da sole sul match. */}
+            <input
+              value={rCerca}
+              onChange={(e) => setRCerca(e.target.value)}
+              placeholder={t("fin.regoleCercaPh")}
+              className="mb-3 w-full max-w-md rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            />
             {regole == null ? (
               <div className="py-6 text-center text-sm text-muted-foreground">
                 <Loader2 className="h-5 w-5 animate-spin inline-block" />
@@ -3239,8 +3278,24 @@ function FinanzaPage() {
               </p>
             ) : (
               (() => {
+                const q = rCerca.trim().toLowerCase();
+                const visibili = q
+                  ? regole.filter((r) =>
+                      [
+                        r.pattern,
+                        r.tipologia ?? "",
+                        r.sottocategoria ?? "",
+                        r.allocPrimaria ?? "",
+                        r.allocSecondaria ?? "",
+                        r.cliente ?? "",
+                      ]
+                        .join(" ")
+                        .toLowerCase()
+                        .includes(q),
+                    )
+                  : regole;
                 const perCat = new Map<string, RegolaFinanza[]>();
-                for (const r of regole) {
+                for (const r of visibili) {
                   const k = r.tipologia?.trim() || t("fin.regoleAltro");
                   perCat.set(k, [...(perCat.get(k) ?? []), r]);
                 }
@@ -3263,7 +3318,7 @@ function FinanzaPage() {
                           ({lista.length})
                         </span>
                       </button>
-                      {catAperta === cat && (
+                      {(catAperta === cat || rCerca.trim() !== "") && (
                         <ul className="divide-y divide-border/40 pl-5">
                           {lista.map((r) => (
                             <li key={r.id} className="py-2.5 flex items-center gap-3 text-sm">
