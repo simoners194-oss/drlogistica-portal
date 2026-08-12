@@ -160,6 +160,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   // Gli scarti SdI sono nascosti ovunque: questo chip li isola, ed è l'unico
   // modo per vederli (serve a ricostruire la storia di una fattura rispedita).
   const [soloScartate, setSoloScartate] = useState(false);
+  // "" = tutte; "tutte" = solo NC; "sciolte" = solo NC non collegate.
+  const [ncFiltro, setNcFiltro] = useState<"" | "tutte" | "sciolte">("");
   // Clienti selezionati nel menu a tendina (vuoto = tutti). Le voci proposte
   // sono i 15 clienti con piu' fatturato, in ordine decrescente.
   const [clientiSel, setClientiSel] = useState<string[]>([]);
@@ -419,6 +421,13 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   // Note di credito collegate alle fatture che rettificano: il credito si
   // legge al netto, perché il cliente paga la differenza.
   const noteCredito = useMemo(() => collegaNoteCredito(fatture ?? [], escluse), [fatture, escluse]);
+
+  // Note di credito: quante sono e quante NON risultano collegate a una
+  // fattura (ne' per rettifica dichiarata ne' per auto-aggancio).
+  const ncCollegate = useMemo(
+    () => new Set([...noteCredito.values()].flatMap((v) => v.numeri)),
+    [noteCredito],
+  );
 
   // Fatture con stato calcolato.
   const conStato = useMemo(
@@ -694,6 +703,12 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     const impMax = ftImpMax.trim() ? Number(ftImpMax.replace(",", ".")) : null;
     if (impMin != null && Number.isFinite(impMin)) out = out.filter((x) => x.f.totale >= impMin);
     if (impMax != null && Number.isFinite(impMax)) out = out.filter((x) => x.f.totale <= impMax);
+    if (ncFiltro)
+      out = out.filter(
+        (x) =>
+          isNotaCredito(x.f.tipoDocumento) &&
+          (ncFiltro === "tutte" || !ncCollegate.has(x.f.numero)),
+      );
     if (filtriThAttivi) out = out.filter((x) => passaFiltriTh(x));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -710,6 +725,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     ftDataA,
     ftImpMin,
     ftImpMax,
+    ncFiltro,
+    ncCollegate,
   ]);
 
   // Riepilogo (sugli anni filtrati, tutte le fatture non escluse). Gli importi
@@ -2279,6 +2296,20 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   {t("ft.fScartate")} ({nScartate})
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => setNcFiltro(ncFiltro === "tutte" ? "" : "tutte")}
+                className={chipCls(ncFiltro === "tutte")}
+              >
+                {t("ft.fNc")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setNcFiltro(ncFiltro === "sciolte" ? "" : "sciolte")}
+                className={chipCls(ncFiltro === "sciolte")}
+              >
+                {t("ft.fNcSciolte")}
+              </button>
             </div>
           </div>
           <MultiSelect
@@ -2914,7 +2945,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                         setAbbMov("");
                         setAbbImporto("");
                       }}
-                      className={`border-b border-border/50 cursor-pointer hover:bg-muted/40 ${aperta ? "bg-muted/30" : ""}`}
+                      className={`border-b border-border/50 cursor-pointer hover:bg-muted/40 ${isNotaCredito(x.f.tipoDocumento) ? "bg-amber-500/10" : ""} ${aperta ? "bg-muted/30" : ""}`}
                       title={x.f.nomeFile}
                     >
                       <td className="py-1 pr-1" onClick={(e) => e.stopPropagation()}>
