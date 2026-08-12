@@ -776,7 +776,7 @@ function FinanzaPage() {
         tipo: string;
         somma: number;
         righe: DettaglioDistinta[];
-        movChiave?: string;
+        movChiavi: string[];
         primaRigaId: string;
       }
     >();
@@ -787,20 +787,22 @@ function FinanzaPage() {
         tipo: d.tipoPagamento,
         somma: 0,
         righe: [] as DettaglioDistinta[],
-        movChiave: undefined as string | undefined,
+        movChiavi: [] as string[],
         primaRigaId: d.id,
       };
       g.somma += d.importo;
       g.righe.push(d);
-      if (d.movimentoChiave) g.movChiave = d.movimentoChiave;
+      if (d.movimentoChiave && !g.movChiavi.includes(d.movimentoChiave))
+        g.movChiavi.push(d.movimentoChiave);
       map.set(k, g);
     }
     return [...map.values()].map((g) => ({ ...g, somma: Math.round(g.somma * 100) / 100 }));
   }, [distinte]);
   const distintaDi = (m: SpMovimento) => {
     if (!distGruppi.length) return null;
-    // Aggancio MANUALE: vince su tutto (badge anche quando la somma non torna).
-    const manuale = distGruppi.find((g) => g.movChiave && g.movChiave === m.chiave);
+    // Aggancio MANUALE: vince su tutto (badge anche quando la somma non torna),
+    // e una distinta puo' essere agganciata a PIU' movimenti (tranche).
+    const manuale = distGruppi.find((g) => g.movChiavi.includes(m.chiave));
     if (manuale) return manuale;
     if (m.importo >= 0) return null;
     const target = Math.round(-m.importo * 100) / 100;
@@ -982,17 +984,30 @@ function FinanzaPage() {
               {distGruppi
                 .sort((a, b) => (a.data < b.data ? 1 : -1))
                 .map((g) => {
-                  const mov = (movimenti ?? []).find(
-                    (m) =>
-                      (g.movChiave && g.movChiave === m.chiave) ||
-                      (m.importo < 0 &&
-                        Math.abs(Math.round(-m.importo * 100) / 100 - g.somma) <= 1 &&
-                        Math.abs(
-                          (new Date(`${m.dataContabile}T00:00:00`).getTime() -
-                            new Date(`${g.data}T00:00:00`).getTime()) /
-                            86400000,
-                        ) <= 6),
-                  );
+                  // Copertura: somma dei movimenti agganciati (manuali) o
+                  // il singolo movimento trovato in automatico.
+                  const collegati = (movimenti ?? []).filter((m) => g.movChiavi.includes(m.chiave));
+                  const autoMov =
+                    collegati.length === 0
+                      ? (movimenti ?? []).find(
+                          (m) =>
+                            m.importo < 0 &&
+                            Math.abs(Math.round(-m.importo * 100) / 100 - g.somma) <= 1 &&
+                            Math.abs(
+                              (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+                                new Date(`${g.data}T00:00:00`).getTime()) /
+                                86400000,
+                            ) <= 6,
+                        )
+                      : undefined;
+                  const coperto =
+                    Math.round(collegati.reduce((s2, m) => s2 - m.importo, 0) * 100) / 100;
+                  const completo = collegati.length
+                    ? Math.abs(coperto - g.somma) <= 1
+                    : Boolean(autoMov);
+                  // La chiave nuova si salva su una riga della distinta ancora
+                  // senza chiave: 70 disposizioni = spazio per 70 tranche.
+                  const rigaLibera = g.righe.find((r) => !r.movimentoChiave);
                   return (
                     <tr key={`${g.data}|${g.tipo}`} className="border-t border-border/40">
                       <td className="py-1 pr-3 whitespace-nowrap">{fmtData(g.data)}</td>
@@ -1001,20 +1016,32 @@ function FinanzaPage() {
                         {g.righe.length} × {fmtImporto(g.somma)} €
                       </td>
                       <td className="py-1 pr-3">
-                        {mov ? (
+                        {collegati.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setDistModal(g)}
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${completo ? "bg-status-present/10 text-status-present" : "bg-primary/10 text-primary"}`}
+                          >
+                            <Users className="h-3 w-3" /> {collegati.length} mov ·{" "}
+                            {fmtImporto(coperto)}
+                            {completo ? " €" : ` di ${fmtImporto(g.somma)} €`}
+                          </button>
+                        ) : autoMov ? (
                           <button
                             type="button"
                             onClick={() => setDistModal(g)}
                             className="inline-flex items-center gap-1 rounded-full bg-status-present/10 px-2 py-0.5 text-[11px] font-medium text-status-present"
                           >
                             <Users className="h-3 w-3" /> {t("fin.distAgganciata")}{" "}
-                            {fmtData(mov.dataContabile)}
+                            {fmtData(autoMov.dataContabile)}
                           </button>
                         ) : (
-                          <span className="inline-flex flex-wrap items-center gap-1.5">
-                            <span className="rounded-full bg-status-absent/10 px-2 py-0.5 text-[11px] font-medium text-status-absent">
-                              {t("fin.distNonAgganciata")}
-                            </span>
+                          <span className="rounded-full bg-status-absent/10 px-2 py-0.5 text-[11px] font-medium text-status-absent">
+                            {t("fin.distNonAgganciata")}
+                          </span>
+                        )}
+                        {!completo && (
+                          <span className="ml-1.5 inline-flex flex-wrap items-center gap-1.5">
                             {/* Candidati vicini per data (uscite, ±15 gg),
                                 ordinati per somiglianza d'importo: scelto
                                 uno, l'aggancio si salva su SharePoint e il
@@ -1025,14 +1052,13 @@ function FinanzaPage() {
                                 const chiave = e.target.value;
                                 if (!chiave) return;
                                 void spSetDistintaMovimento({
-                                  data: { id: g.primaRigaId, chiave },
+                                  data: { id: rigaLibera?.id ?? g.primaRigaId, chiave },
                                 })
                                   .then(() => {
+                                    const idScelto = rigaLibera?.id ?? g.primaRigaId;
                                     setDistinte((prev) =>
                                       (prev ?? []).map((x) =>
-                                        x.id === g.primaRigaId
-                                          ? { ...x, movimentoChiave: chiave }
-                                          : x,
+                                        x.id === idScelto ? { ...x, movimentoChiave: chiave } : x,
                                       ),
                                     );
                                     toast.success(t("fin.distAggOk"));
@@ -1065,6 +1091,7 @@ function FinanzaPage() {
                                 .filter(
                                   (m) =>
                                     m.importo < 0 &&
+                                    !g.movChiavi.includes(m.chiave) &&
                                     Math.abs(
                                       (new Date(`${m.dataContabile}T00:00:00`).getTime() -
                                         new Date(`${g.data}T00:00:00`).getTime()) /
@@ -1073,7 +1100,8 @@ function FinanzaPage() {
                                 )
                                 .sort(
                                   (a, b) =>
-                                    Math.abs(-a.importo - g.somma) - Math.abs(-b.importo - g.somma),
+                                    Math.abs(-a.importo - (g.somma - coperto)) -
+                                    Math.abs(-b.importo - (g.somma - coperto)),
                                 )
                                 .slice(0, 8)
                                 .map((m) => (

@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.35.0",
+    date: "2026-08-12",
+    codename: "Una distinta, tante tranche",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Le distinte si agganciano anche a piu' movimenti",
+        description:
+          "Quando la banca addebita una distinta stipendi in piu' tranche (piu' movimenti lo stesso giorno con lo stesso riferimento), ora si agganciano tutti, uno alla volta: lo Storico estratti mostra la copertura in tempo reale \u2014 \u201c3 movimenti \u00b7 84.199 di 138.383\u201d \u2014 e il badge dei beneficiari compare su ogni tranche. I candidati proposti sono ordinati sull'importo che manca.",
+      },
+    ],
+  },
+  {
     version: "1.34.0",
     date: "2026-08-12",
     codename: "Anche i vecchi trovano posto",
