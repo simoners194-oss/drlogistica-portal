@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.34.0",
+    date: "2026-08-12",
+    codename: "Anche i vecchi trovano posto",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Appalto a mano per i beneficiari fuori anagrafica",
+        description:
+          "Nel dettaglio di una distinta, i beneficiari non riconosciuti (es. ex dipendenti che non si vogliono in anagrafica) hanno una casella per assegnare l'appalto a mano. L'assegnazione si ricorda per nome: le distinte future con lo stesso beneficiario si classificano da sole, e il riepilogo per appalto e il CSV la comprendono.",
+      },
+    ],
+  },
+  {
     version: "1.33.0",
     date: "2026-08-12",
     codename: "Nessuno preme piu' niente",

@@ -305,6 +305,7 @@ export const SP_DISPLAY = {
     Note: "Note",
   },
   dettagliDistinte: {
+    Appalto: "Appalto",
     DataEsecuzione: "DataEsecuzione",
     Beneficiario: "Beneficiario",
     Importo: "Importo",
@@ -5188,6 +5189,9 @@ export interface DettaglioDistinta {
   importo: number;
   tipoPagamento: string;
   descrizione: string;
+  /** Appalto assegnato A MANO sulla disposizione (ex dipendenti fuori
+   *  anagrafica): vince quando il beneficiario non si riconosce. */
+  appalto?: string;
 }
 
 export async function fetchDettagliDistinte(): Promise<DettaglioDistinta[]> {
@@ -5212,6 +5216,7 @@ export async function fetchDettagliDistinte(): Promise<DettaglioDistinta[]> {
         importo: F.Importo ? Number(f[F.Importo] ?? 0) || 0 : 0,
         tipoPagamento: F.TipoPagamento ? String(f[F.TipoPagamento] ?? "").trim() : "",
         descrizione: F.Descrizione ? String(f[F.Descrizione] ?? "").trim() : "",
+        appalto: F.Appalto ? String(f[F.Appalto] ?? "").trim() || undefined : undefined,
       });
     }
     const next: unknown = (res as unknown as Record<string, unknown>)["@odata.nextLink"];
@@ -5221,6 +5226,22 @@ export async function fetchDettagliDistinte(): Promise<DettaglioDistinta[]> {
         : null;
   }
   return out.filter((d) => d.idPagamento && d.beneficiario);
+}
+
+/** Assegna (o svuota) l'appalto manuale di una disposizione. */
+export async function setDistintaAppalto(id: string, appalto: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listDettagliDistinte) throw new Error('Lista "DettagliDistinte" assente.');
+  const F = cfg.dettagliDistinteFields;
+  if (!F.Appalto)
+    throw new Error(
+      'Colonna "Appalto" mancante sulla lista DettagliDistinte: crearla (testo) e fare Riscopri.',
+    );
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listDettagliDistinte}/items/${id}/fields`, {
+    method: "PATCH",
+    body: JSON.stringify({ [F.Appalto]: appalto }),
+  });
+  logSp("info", "distinte.appalto", `Disposizione #${id} → appalto "${appalto}"`);
 }
 
 export interface RigaDistintaImport {

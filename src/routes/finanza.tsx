@@ -58,6 +58,7 @@ import {
   spUpdateMovimento,
   spGetImportStorico,
   spGetDettagliDistinte,
+  spSetDistintaAppalto,
   spGetRosterDipendenti,
   spImportDistinta,
   spAnnullaImport,
@@ -806,22 +807,44 @@ function FinanzaPage() {
 
   // Spaccato del modal per APPALTO: ogni beneficiario passa nel
   // riconoscitore fuzzy dei dipendenti e prende l'appalto dall'anagrafica.
+  // Memoria dell'appalto MANUALE per beneficiario: assegnato una volta,
+  // vale per tutte le distinte (anche future) con lo stesso nome.
+  const appaltoPerNome = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const d of distinte ?? [])
+      if (d.appalto?.trim()) out.set(d.beneficiario.toLowerCase(), d.appalto.trim());
+    return out;
+  }, [distinte]);
+  // Risoluzione dell'appalto di una disposizione: anagrafica -> assegnazione
+  // manuale della riga -> memoria per nome -> niente.
+  const risolviAppaltoDist = (d: DettaglioDistinta) => {
+    const nomi = (rosterDip ?? []).map((r) => r.nome);
+    const nome = nomi.length ? matchDipendenteNome(d.beneficiario, nomi) : null;
+    if (nome) {
+      return {
+        nome,
+        appalto: (rosterDip ?? []).find((r) => r.nome === nome)?.appalto || "__senza__",
+        manuale: false,
+      };
+    }
+    const man = d.appalto?.trim() || appaltoPerNome.get(d.beneficiario.toLowerCase()) || "";
+    return { nome: null, appalto: man, manuale: Boolean(man) };
+  };
+
   const distSpaccato = useMemo(() => {
     if (!distModal || !rosterDip?.length) return null;
-    const nomi = rosterDip.map((r) => r.nome);
     const per = new Map<string, { n: number; somma: number }>();
     const nonRic: string[] = [];
     for (const d of distModal.righe) {
-      const nome = matchDipendenteNome(d.beneficiario, nomi);
-      if (!nome) {
+      const ris = risolviAppaltoDist(d);
+      if (!ris.appalto) {
         nonRic.push(d.beneficiario);
         continue;
       }
-      const app = rosterDip.find((r) => r.nome === nome)?.appalto || "__senza__";
-      const g = per.get(app) ?? { n: 0, somma: 0 };
+      const g = per.get(ris.appalto) ?? { n: 0, somma: 0 };
       g.n++;
       g.somma += d.importo;
-      per.set(app, g);
+      per.set(ris.appalto, g);
     }
     if (!per.size) return null;
     return {
@@ -830,7 +853,8 @@ function FinanzaPage() {
         .sort((a, b) => b.somma - a.somma),
       nonRic,
     };
-  }, [distModal, rosterDip]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [distModal, rosterDip, distinte]);
 
   // CSV dello spaccato distinta ("diviso -> riconducibile, esportabile"):
   // una riga per disposizione, con dipendente riconosciuto e appalto.
@@ -840,8 +864,9 @@ function FinanzaPage() {
     const righe = [...distModal.righe]
       .sort((a, b) => b.importo - a.importo)
       .map((d) => {
-        const nome = nomi.length ? matchDipendenteNome(d.beneficiario, nomi) : null;
-        const app = nome ? ((rosterDip ?? []).find((r) => r.nome === nome)?.appalto ?? "") : "";
+        const ris = risolviAppaltoDist(d);
+        const nome = ris.nome;
+        const app = ris.appalto === "__senza__" ? "" : ris.appalto;
         return [
           d.dataEsecuzione,
           d.tipoPagamento,
@@ -2440,6 +2465,19 @@ function FinanzaPage() {
                     {fmtData(distModal.data)} · {distModal.tipo || "—"} · {distModal.righe.length}{" "}
                     {t("fin.distRighe")} · {t("fin.distTotale")} {fmtImporto(distModal.somma)} €
                   </p>
+                  <datalist id="appalti-distinta">
+                    {[
+                      ...new Set([
+                        ...(rosterDip ?? []).map((r) => r.appalto ?? ""),
+                        ...(distinte ?? []).map((d3) => d3.appalto ?? ""),
+                      ]),
+                    ]
+                      .filter(Boolean)
+                      .sort()
+                      .map((a) => (
+                        <option key={a} value={a} />
+                      ))}
+                  </datalist>
                   <table className="w-full text-sm">
                     <tbody>
                       {[...distModal.righe]
@@ -2449,6 +2487,53 @@ function FinanzaPage() {
                             <td className="py-1 pr-2">{d2.beneficiario}</td>
                             <td className="py-1 pr-2 text-right tabular-nums whitespace-nowrap">
                               {fmtImporto(d2.importo)} €
+                            </td>
+                            <td className="py-1 pr-2 whitespace-nowrap">
+                              {(() => {
+                                const ris = risolviAppaltoDist(d2);
+                                if (ris.nome)
+                                  return (
+                                    <span className="text-[11px] text-muted-foreground">
+                                      {ris.appalto === "__senza__"
+                                        ? t("fin.distSenzaApp")
+                                        : ris.appalto}
+                                    </span>
+                                  );
+                                // NON riconosciuto (es. ex dipendente fuori
+                                // anagrafica): appalto assegnabile A MANO,
+                                // ricordato per nome sulle distinte future.
+                                return (
+                                  <input
+                                    list="appalti-distinta"
+                                    defaultValue={ris.appalto}
+                                    placeholder={t("fin.distAppaltoPh")}
+                                    onBlur={(e) => {
+                                      const val = e.target.value.trim();
+                                      if (val === (d2.appalto ?? "")) return;
+                                      void spSetDistintaAppalto({
+                                        data: { id: d2.id, appalto: val },
+                                      })
+                                        .then(() => {
+                                          setDistinte((prev) =>
+                                            (prev ?? []).map((x) =>
+                                              x.id === d2.id
+                                                ? { ...x, appalto: val || undefined }
+                                                : x,
+                                            ),
+                                          );
+                                          toast.success(t("fin.distAppaltoOk"));
+                                        })
+                                        .catch((err) =>
+                                          toast.error(t("common.error"), {
+                                            description:
+                                              err instanceof Error ? err.message : String(err),
+                                          }),
+                                        );
+                                    }}
+                                    className="w-36 rounded border border-border bg-background px-1.5 py-0.5 text-[11px]"
+                                  />
+                                );
+                              })()}
                             </td>
                             <td
                               className="max-w-40 truncate py-1 text-[11px] text-muted-foreground"

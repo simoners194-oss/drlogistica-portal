@@ -872,6 +872,8 @@ const en = {
   "fin.distModalTitolo": "Inside this bulk payment",
   "fin.distTotale": "Total",
   "fin.distEsporta": "Export CSV",
+  "fin.distAppaltoPh": "contract…",
+  "fin.distAppaltoOk": "Contract saved: it will apply to future batches with this name too.",
   "fin.distAgganciata": "linked to the transaction of",
   "fin.distNonAgganciata": "no matching transaction (same amount ±1€, date within 6 days)",
   "fin.distAggancioNota":
@@ -2029,6 +2031,8 @@ const it: Record<DictKey, string> = {
   "fin.distModalTitolo": "Dentro questo pagamento",
   "fin.distTotale": "Totale",
   "fin.distEsporta": "Esporta CSV",
+  "fin.distAppaltoPh": "appalto…",
+  "fin.distAppaltoOk": "Appalto salvato: varrà anche per le distinte future con questo nome.",
   "fin.distAgganciata": "agganciata al movimento del",
   "fin.distNonAgganciata": "nessun movimento corrispondente (stessa somma ±1€, data entro 6 gg)",
   "fin.distAggancioNota":

@@ -52,6 +52,7 @@ import {
   deletePrefattura,
   type Prefattura,
   fetchDettagliDistinte,
+  setDistintaAppalto,
   nomiDipendenti,
   importDistinta,
   type DettaglioDistinta,
@@ -602,6 +603,22 @@ export const spGetRosterDipendenti = createServerFn({ method: "GET" }).handler(a
   await assertDirettore(await currentUser());
   return nomiDipendenti();
 });
+
+export const spSetDistintaAppalto = createServerFn({ method: "POST" })
+  .inputValidator((input: { id: string; appalto: string }) => {
+    if (!input?.id) throw new Error("id mancante");
+    return {
+      id: String(input.id),
+      appalto: String(input?.appalto ?? "")
+        .trim()
+        .slice(0, 80),
+    };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await setDistintaAppalto(data.id, data.appalto);
+    return { ok: true };
+  });
 
 export const spImportDistinta = createServerFn({ method: "POST" })
   .inputValidator((input: { rows: RigaDistintaImport[] }) => {
