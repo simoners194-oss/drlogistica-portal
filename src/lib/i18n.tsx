@@ -796,6 +796,8 @@ const en = {
   "fin.regolaClienteNuovo": "Rename client/supplier to",
   "fin.regolaClienteNuovoPh": "e.g. TIM / Telecom Italia (optional)",
   "fin.regolaApplicaEsistenti": "Also apply to transactions already in the archive",
+  "fin.soloMovBtn": "Apply to this transaction only",
+  "fin.soloMovFatto": "Classification saved on the transaction (no rule created).",
   "fin.regolaCrea": "Save rule",
   "fin.regolaCreata": "Rule saved — it will apply to every future import",
   "fin.regolaRipristinoConfirm":
@@ -1969,6 +1971,8 @@ const it: Record<DictKey, string> = {
   "fin.regolaClienteNuovo": "Rinomina cliente/fornitore in",
   "fin.regolaClienteNuovoPh": "es. TIM / Telecom Italia (facoltativo)",
   "fin.regolaApplicaEsistenti": "Applica anche ai movimenti già in archivio",
+  "fin.soloMovBtn": "Applica solo a questo movimento",
+  "fin.soloMovFatto": "Classificazione salvata sul movimento (nessuna regola creata).",
   "fin.regolaCrea": "Salva regola",
   "fin.regolaCreata": "Regola salvata — varrà per ogni import futuro",
   "fin.regolaRipristinoConfirm":

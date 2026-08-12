@@ -555,6 +555,9 @@ function FinanzaPage() {
     };
   }, [regole, rTipologia, rAllocPri]);
   const [rNote, setRNote] = useState("");
+  // Movimento da cui e' partita la bacchetta: consente di applicare la
+  // classificazione SOLO a lui, senza creare la regola.
+  const [rSorgente, setRSorgente] = useState<string | null>(null);
   const [rApplica, setRApplica] = useState(true);
   const [rBusy, setRBusy] = useState(false);
   const [rProgress, setRProgress] = useState(0);
@@ -1583,6 +1586,7 @@ function FinanzaPage() {
   // --- Regole apprese -------------------------------------------------------
   // Prefill del form regola a partire da un movimento ("insegna al sistema").
   const creaRegolaDa = (m: SpMovimento) => {
+    setRSorgente(m.id);
     setRPattern(m.cliente || "");
     setRCampo("cliente");
     setRModo("esatto");
@@ -1711,6 +1715,7 @@ function FinanzaPage() {
       setRAllocSec("");
       setRCliente("");
       setRNote("");
+      setRSorgente(null);
       setREditId(null);
       loadRegole();
       if (rApplica) {
@@ -3777,6 +3782,52 @@ function FinanzaPage() {
                 {t("fin.regolaApplicaEsistenti")}
               </label>
             </div>
+            {rSorgente && !rEditId && (
+              <button
+                type="button"
+                disabled={
+                  rBusy ||
+                  (!rTipologia.trim() &&
+                    !rSottocat.trim() &&
+                    !rAllocPri.trim() &&
+                    !rAllocSec.trim() &&
+                    !rCliente.trim())
+                }
+                onClick={() => {
+                  void (async () => {
+                    setRBusy(true);
+                    try {
+                      // La classificazione RESTA nelle categorie del movimento
+                      // anche senza salvare la regola (richiesta direzione).
+                      await spUpdateMovimento({
+                        data: {
+                          movimentoId: rSorgente,
+                          ...(rTipologia.trim()
+                            ? { tipologia: rTipologia.trim(), daVerificare: false }
+                            : {}),
+                          ...(rSottocat.trim() ? { sottocategoria: rSottocat.trim() } : {}),
+                          ...(rAllocPri.trim() ? { allocPrimaria: rAllocPri.trim() } : {}),
+                          ...(rAllocSec.trim() ? { allocSecondaria: rAllocSec.trim() } : {}),
+                          ...(rCliente.trim() ? { cliente: rCliente.trim() } : {}),
+                        },
+                      });
+                      toast.success(t("fin.soloMovFatto"));
+                      setRSorgente(null);
+                      loadMovimenti(anni);
+                    } catch (err) {
+                      toast.error(t("common.error"), {
+                        description: err instanceof Error ? err.message : String(err),
+                      });
+                    } finally {
+                      setRBusy(false);
+                    }
+                  })();
+                }}
+                className="mt-4 mr-2 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+              >
+                {t("fin.soloMovBtn")}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void submitRegola()}
@@ -4060,6 +4111,7 @@ function FinanzaPage() {
                                   setRAllocSec(r.allocSecondaria ?? "");
                                   setRCliente(r.cliente ?? "");
                                   setRNote(r.note ?? "");
+                                  setRSorgente(null);
                                   setRApplica(true);
                                   setREditId(r.id ?? null);
                                   window.scrollTo({ top: 0, behavior: "smooth" });
