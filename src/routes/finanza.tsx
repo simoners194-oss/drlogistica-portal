@@ -929,9 +929,58 @@ function FinanzaPage() {
         </div>
       )}
       {distinte != null && distinte.length > 0 && !distPreview && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          {distinte.length} {t("fin.distArchivio")}
-        </p>
+        <div className="mt-3">
+          <p className="mb-1 text-[11px] text-muted-foreground">
+            {distinte.length} {t("fin.distArchivio")}
+          </p>
+          {/* DIAGNOSTICA AGGANCIO: per ogni distinta si dice subito se ha
+              trovato il suo movimento cumulativo (stessa somma ±1€, data
+              entro 6 giorni) — e se no, quale importo si sta cercando. */}
+          <table className="w-full text-[12px]">
+            <tbody>
+              {distGruppi
+                .sort((a, b) => (a.data < b.data ? 1 : -1))
+                .map((g) => {
+                  const mov = (movimenti ?? []).find(
+                    (m) =>
+                      m.importo < 0 &&
+                      Math.abs(Math.round(-m.importo * 100) / 100 - g.somma) <= 1 &&
+                      Math.abs(
+                        (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+                          new Date(`${g.data}T00:00:00`).getTime()) /
+                          86400000,
+                      ) <= 6,
+                  );
+                  return (
+                    <tr key={`${g.data}|${g.tipo}`} className="border-t border-border/40">
+                      <td className="py-1 pr-3 whitespace-nowrap">{fmtData(g.data)}</td>
+                      <td className="py-1 pr-3">{g.tipo || "—"}</td>
+                      <td className="py-1 pr-3 text-right tabular-nums whitespace-nowrap">
+                        {g.righe.length} × {fmtImporto(g.somma)} €
+                      </td>
+                      <td className="py-1 pr-3">
+                        {mov ? (
+                          <button
+                            type="button"
+                            onClick={() => setDistModal(g)}
+                            className="inline-flex items-center gap-1 rounded-full bg-status-present/10 px-2 py-0.5 text-[11px] font-medium text-status-present"
+                          >
+                            <Users className="h-3 w-3" /> {t("fin.distAgganciata")}{" "}
+                            {fmtData(mov.dataContabile)}
+                          </button>
+                        ) : (
+                          <span className="rounded-full bg-status-absent/10 px-2 py-0.5 text-[11px] font-medium text-status-absent">
+                            {t("fin.distNonAgganciata")}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+          <p className="mt-1 text-[10px] text-muted-foreground">{t("fin.distAggancioNota")}</p>
+        </div>
       )}
     </div>
   );

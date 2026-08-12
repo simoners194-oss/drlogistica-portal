@@ -872,6 +872,10 @@ const en = {
   "fin.distModalTitolo": "Inside this bulk payment",
   "fin.distTotale": "Total",
   "fin.distEsporta": "Export CSV",
+  "fin.distAgganciata": "linked to the transaction of",
+  "fin.distNonAgganciata": "no matching transaction (same amount ±1€, date within 6 days)",
+  "fin.distAggancioNota":
+    "A batch not linked usually means the bank debited a different total (e.g. rejected payments) or a date outside the window: check the cumulative transaction amount in Movements.",
   "fin.editMovTip": "Edit this transaction",
   "fin.editMovTitolo": "Edit transaction",
   "fin.editMovSvuota": "Clearing a field and saving removes that value from the transaction.",
@@ -2025,6 +2029,10 @@ const it: Record<DictKey, string> = {
   "fin.distModalTitolo": "Dentro questo pagamento",
   "fin.distTotale": "Totale",
   "fin.distEsporta": "Esporta CSV",
+  "fin.distAgganciata": "agganciata al movimento del",
+  "fin.distNonAgganciata": "nessun movimento corrispondente (stessa somma ±1€, data entro 6 gg)",
+  "fin.distAggancioNota":
+    "Una distinta non agganciata di solito significa che la banca ha addebitato un totale diverso (es. disposizioni rifiutate) o una data fuori finestra: controllare l'importo del movimento cumulativo nei Movimenti.",
   "fin.editMovTip": "Correggi questo movimento",
   "fin.editMovTitolo": "Correggi movimento",
   "fin.editMovSvuota": "Svuotare un campo e salvare cancella quel valore dal movimento.",
