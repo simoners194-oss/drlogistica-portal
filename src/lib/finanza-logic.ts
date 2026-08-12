@@ -185,6 +185,8 @@ export interface RegolaFinanza {
   allocSecondaria?: string;
   /** Nome controparte da assegnare al match (per unificare es. TIM/Telecom). */
   cliente?: string;
+  /** Nota libera del direttore (perche' esiste la regola, quando, per chi). */
+  note?: string;
 }
 
 export function matchRegola(

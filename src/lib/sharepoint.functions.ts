@@ -919,6 +919,7 @@ function validateRegola(input: Partial<RegolaFinanza>): RegolaFinanza {
     ? String(input.allocSecondaria).trim().slice(0, 60)
     : undefined;
   const cliente = input.cliente ? String(input.cliente).trim().slice(0, 120) : undefined;
+  const note = input.note ? String(input.note).trim().slice(0, 255) : undefined;
   if (!tipologia && !cliente)
     throw new Error("La regola deve impostare tipologia o nome controparte");
   return {
@@ -935,6 +936,7 @@ function validateRegola(input: Partial<RegolaFinanza>): RegolaFinanza {
     modo: input.modo === "contiene" ? "contiene" : "esatto",
     tipologia,
     cliente,
+    note,
   };
 }
 

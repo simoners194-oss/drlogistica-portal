@@ -270,6 +270,7 @@ export const SP_DISPLAY = {
     AllocPrimaria: "AllocazionePrimaria",
     AllocSecondaria: "AllocazioneSecondaria",
     ClienteNuovo: "ClienteNuovo",
+    Note: "Note",
   },
   // Regole di CLASSIFICAZIONE delle fatture passive (tab Regole): per
   // fornitore (match sul nome, contiene) fissano tipologia di costo e/o
@@ -4310,6 +4311,7 @@ function mapRegola(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>
   const modo = String(F.ModoMatch ? (f[F.ModoMatch] ?? "") : "").toLowerCase();
   return {
     id: String(it.id),
+    note: F.Note ? String(f[F.Note] ?? "").trim() || undefined : undefined,
     pattern: F.Pattern ? String(f[F.Pattern] ?? "") : "",
     campo: campo === "descrizione" ? "descrizione" : campo === "entrambi" ? "entrambi" : "cliente",
     modo: modo === "contiene" ? "contiene" : "esatto",
@@ -4364,10 +4366,15 @@ export async function createRegolaFinanza(input: RegolaFinanza): Promise<RegolaF
         `La regola imposta "${nome}" ma la colonna manca sulla lista MovimentiBancari: crearla (testo) e fare Riscopri.`,
       );
   }
+  if (input.note?.trim() && !F.Note)
+    throw new Error(
+      'La regola ha una NOTA ma la colonna "Note" manca sulla lista RegoleFinanza: crearla (testo) e fare Riscopri.',
+    );
   if (!input.tipologia?.trim() && !input.cliente?.trim())
     throw new Error("La regola deve cambiare almeno la tipologia o il nome della controparte.");
   const fields: Record<string, unknown> = { Title: input.pattern.trim().slice(0, 120) };
   if (F.Pattern) fields[F.Pattern] = input.pattern.trim();
+  if (F.Note && input.note?.trim()) fields[F.Note] = input.note.trim();
   if (F.Sottocategoria && input.sottocategoria?.trim())
     fields[F.Sottocategoria] = input.sottocategoria.trim();
   if (F.AllocPrimaria && input.allocPrimaria?.trim())
@@ -4428,6 +4435,11 @@ export async function updateRegolaFinanza(
   if (F.AllocPrimaria) fields[F.AllocPrimaria] = input.allocPrimaria?.trim() ?? "";
   if (F.AllocSecondaria) fields[F.AllocSecondaria] = input.allocSecondaria?.trim() ?? "";
   if (F.ClienteNuovo) fields[F.ClienteNuovo] = input.cliente?.trim() ?? "";
+  if (input.note?.trim() && !F.Note)
+    throw new Error(
+      'La regola ha una NOTA ma la colonna "Note" manca sulla lista RegoleFinanza: crearla (testo) e fare Riscopri.',
+    );
+  if (F.Note) fields[F.Note] = input.note?.trim() ?? "";
   await withDiscoveryRetry(() =>
     gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${id}/fields`, {
       method: "PATCH",

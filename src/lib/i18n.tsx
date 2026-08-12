@@ -808,6 +808,8 @@ const en = {
   "fin.regolaUnitaEsistente":
     "An identical rule already exists: the new terms were merged into it.",
   "fin.regoleCercaPh": "Type to find a rule (name, term, category)…",
+  "fin.regolaNote": "Note (optional)",
+  "fin.regolaNotePh": "e.g. why this rule exists, who asked for it…",
   "fin.rangeDate": "Date from → to",
   "fin.rangeImporti": "Amount from → to",
   "fin.rangeMin": "min",
@@ -1919,6 +1921,8 @@ const it: Record<DictKey, string> = {
   "fin.regolaUnitaEsistente":
     "Esisteva già una regola identica: i termini nuovi sono stati uniti a lei.",
   "fin.regoleCercaPh": "Scrivi per trovare una regola (nome, termine, categoria)…",
+  "fin.regolaNote": "Nota (facoltativa)",
+  "fin.regolaNotePh": "es. perché esiste la regola, chi l'ha chiesta…",
   "fin.rangeDate": "Data dal → al",
   "fin.rangeImporti": "Importo da → a",
   "fin.rangeMin": "min",

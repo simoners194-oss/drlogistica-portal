@@ -472,6 +472,7 @@ function FinanzaPage() {
           allocPrimaria: keep.allocPrimaria,
           allocSecondaria: keep.allocSecondaria,
           cliente: keep.cliente,
+          note: keep.note,
         };
         await spUpdateRegolaFinanza({ data: { regolaId: keep.id ?? "", ...payload } });
         for (const blocco of blocchiUni.slice(1))
@@ -491,6 +492,7 @@ function FinanzaPage() {
             allocPrimaria: r.allocPrimaria,
             allocSecondaria: r.allocSecondaria,
             cliente: r.cliente,
+            note: r.note,
           },
         });
       const agg = (await spGetRegoleFinanza()) as RegolaFinanza[];
@@ -539,6 +541,7 @@ function FinanzaPage() {
       allocSec: sec.length ? sec : uniq(rs.map((r) => r.allocSecondaria)),
     };
   }, [regole, rTipologia, rAllocPri]);
+  const [rNote, setRNote] = useState("");
   const [rApplica, setRApplica] = useState(true);
   const [rBusy, setRBusy] = useState(false);
   const [rProgress, setRProgress] = useState(0);
@@ -1270,6 +1273,7 @@ function FinanzaPage() {
     setRAllocPri(m.allocPrimaria || "");
     setRAllocSec(m.allocSecondaria || "");
     setRCliente("");
+    setRNote("");
     setRApplica(true);
     setTab("regole");
   };
@@ -1289,6 +1293,7 @@ function FinanzaPage() {
         allocPrimaria: rAllocPri.trim() || undefined,
         allocSecondaria: rAllocSec.trim() || undefined,
         cliente: rCliente.trim() || undefined,
+        note: rNote.trim() || undefined,
       };
       // PARACADUTE: prima di salvare si mostra QUANTI movimenti verrebbero
       // toccati — una regola troppo larga si riconosce dal numero.
@@ -1329,7 +1334,12 @@ function FinanzaPage() {
       if (gemella) {
         const fusi = spezzaPattern(`${gemella.pattern}, ${blocchi.join(", ")}`);
         await spUpdateRegolaFinanza({
-          data: { regolaId: gemella.id ?? "", ...payload, pattern: fusi[0] },
+          data: {
+            regolaId: gemella.id ?? "",
+            ...payload,
+            pattern: fusi[0],
+            note: payload.note ?? gemella.note,
+          },
         });
         for (const blocco of fusi.slice(1))
           await spCreateRegolaFinanza({ data: { ...payload, pattern: blocco } });
@@ -1382,6 +1392,7 @@ function FinanzaPage() {
       setRAllocPri("");
       setRAllocSec("");
       setRCliente("");
+      setRNote("");
       setREditId(null);
       loadRegole();
       if (rApplica) {
@@ -3203,6 +3214,15 @@ function FinanzaPage() {
                   testoNuova={t("fin.vocNuova")}
                 />
               </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs text-muted-foreground">{t("fin.regolaNote")}</label>
+                <input
+                  value={rNote}
+                  onChange={(e) => setRNote(e.target.value)}
+                  placeholder={t("fin.regolaNotePh")}
+                  className={inputCls}
+                />
+              </div>
               <div>
                 <label className="text-xs text-muted-foreground">
                   {t("fin.regolaClienteNuovo")}
@@ -3451,6 +3471,12 @@ function FinanzaPage() {
                                     {t("fin.regolaFraseNomeNuovo")} {r.cliente}
                                   </span>
                                 )}
+                                {r.note && (
+                                  <span className="text-xs italic text-muted-foreground">
+                                    {" "}
+                                    — {r.note}
+                                  </span>
+                                )}
                               </span>
                               <button
                                 type="button"
@@ -3463,6 +3489,7 @@ function FinanzaPage() {
                                   setRAllocPri(r.allocPrimaria ?? "");
                                   setRAllocSec(r.allocSecondaria ?? "");
                                   setRCliente(r.cliente ?? "");
+                                  setRNote(r.note ?? "");
                                   setRApplica(true);
                                   setREditId(r.id ?? null);
                                   window.scrollTo({ top: 0, behavior: "smooth" });
