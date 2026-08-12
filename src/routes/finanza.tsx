@@ -409,6 +409,15 @@ function FinanzaPage() {
   const [catAperta, setCatAperta] = useState<string | null>(null);
   const [uniBusy, setUniBusy] = useState(false);
   const [rCerca, setRCerca] = useState("");
+  // Multi-selezione: spunta le righe e agisci in blocco.
+  const [selMov, setSelMov] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkTip, setBulkTip] = useState("");
+  const [bulkSott, setBulkSott] = useState("");
+  const [bulkPri, setBulkPri] = useState("");
+  const [bulkSec, setBulkSec] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [selReg, setSelReg] = useState<Set<string>>(new Set());
   const [dataDaF, setDataDaF] = useState("");
   const [dataAF, setDataAF] = useState("");
   const [impMinF, setImpMinF] = useState("");
@@ -576,6 +585,59 @@ function FinanzaPage() {
       allocSec: sec.length ? sec : uniq(rs.map((r) => r.allocSecondaria)),
     };
   }, [regole, editTip, editAllocPri]);
+  const vocabBulk = useMemo(() => {
+    const rs = regole ?? [];
+    const uniq = (xs: (string | undefined)[]) =>
+      [...new Set(xs.filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b));
+    const perTip = bulkTip.trim() ? rs.filter((r) => (r.tipologia ?? "") === bulkTip.trim()) : rs;
+    const perPri = bulkPri.trim()
+      ? rs.filter((r) => (r.allocPrimaria ?? "") === bulkPri.trim())
+      : rs;
+    const sotto = uniq(perTip.map((r) => r.sottocategoria));
+    const sec = uniq(perPri.map((r) => r.allocSecondaria));
+    return {
+      tipologie: uniq([...TIPOLOGIE_MOVIMENTO, ...rs.map((r) => r.tipologia)]),
+      sottocat: sotto.length ? sotto : uniq(rs.map((r) => r.sottocategoria)),
+      allocPri: uniq(rs.map((r) => r.allocPrimaria)),
+      allocSec: sec.length ? sec : uniq(rs.map((r) => r.allocSecondaria)),
+    };
+  }, [regole, bulkTip, bulkPri]);
+
+  const salvaBulk = async () => {
+    if (!selMov.size) return;
+    setBulkBusy(true);
+    try {
+      let fatti = 0;
+      for (const id of selMov) {
+        await spUpdateMovimento({
+          data: {
+            movimentoId: id,
+            // Vuoto = NON toccare (semantica del blocco, diversa dalla
+            // matita singola dove vuoto = cancella).
+            ...(bulkTip.trim() ? { tipologia: bulkTip.trim(), daVerificare: false } : {}),
+            ...(bulkSott.trim() ? { sottocategoria: bulkSott.trim() } : {}),
+            ...(bulkPri.trim() ? { allocPrimaria: bulkPri.trim() } : {}),
+            ...(bulkSec.trim() ? { allocSecondaria: bulkSec.trim() } : {}),
+          },
+        });
+        fatti++;
+      }
+      toast.success(t("fin.selFatto"), { description: `${fatti} ${t("fin.rows")}` });
+      setBulkOpen(false);
+      setSelMov(new Set());
+      setBulkTip("");
+      setBulkSott("");
+      setBulkPri("");
+      setBulkSec("");
+      loadMovimenti(anni);
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const isDirettore =
     session != null &&
@@ -2188,6 +2250,94 @@ function FinanzaPage() {
                 +{fmtImporto(totaleFiltrato.entrate)} / {fmtImporto(totaleFiltrato.uscite)}
               </div>
             </div>
+            {selMov.size > 0 && (
+              <div className="mb-2 flex flex-wrap items-center gap-3 rounded-lg bg-primary/10 px-3 py-2 text-sm">
+                <b>{selMov.size}</b> {t("fin.selN")}
+                <button
+                  type="button"
+                  onClick={() => setBulkOpen(true)}
+                  className="rounded-lg bg-primary px-3 py-1 text-sm font-medium text-primary-foreground"
+                >
+                  {t("fin.selCorreggi")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelMov(new Set())}
+                  className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-muted"
+                >
+                  {t("fin.selDeselez")}
+                </button>
+              </div>
+            )}
+            {bulkOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-elegant)]">
+                  <div className="mb-1 text-[15px] font-semibold text-foreground">
+                    {t("fin.selCorreggi")} ({selMov.size})
+                  </div>
+                  <p className="mb-3 text-xs text-muted-foreground">{t("fin.selVuotoNonCambia")}</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <CampoVocabolario
+                        label={t("common.type")}
+                        valore={bulkTip}
+                        onChange={setBulkTip}
+                        opzioni={vocabBulk.tipologie}
+                        testoNessuno={t("fin.selNonCambiare")}
+                        testoNuova={t("fin.vocNuova")}
+                      />
+                    </div>
+                    <div>
+                      <CampoVocabolario
+                        label={t("fin.sottocat")}
+                        valore={bulkSott}
+                        onChange={setBulkSott}
+                        opzioni={vocabBulk.sottocat}
+                        testoNessuno={t("fin.selNonCambiare")}
+                        testoNuova={t("fin.vocNuova")}
+                      />
+                    </div>
+                    <div>
+                      <CampoVocabolario
+                        label={t("fin.allocPri")}
+                        valore={bulkPri}
+                        onChange={setBulkPri}
+                        opzioni={vocabBulk.allocPri}
+                        testoNessuno={t("fin.selNonCambiare")}
+                        testoNuova={t("fin.vocNuova")}
+                      />
+                    </div>
+                    <div>
+                      <CampoVocabolario
+                        label={t("fin.allocSec")}
+                        valore={bulkSec}
+                        onChange={setBulkSec}
+                        opzioni={vocabBulk.allocSec}
+                        testoNessuno={t("fin.selNonCambiare")}
+                        testoNuova={t("fin.vocNuova")}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBulkOpen(false)}
+                      className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
+                    >
+                      {t("common.cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={bulkBusy}
+                      onClick={() => void salvaBulk()}
+                      className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                    >
+                      {bulkBusy ? t("common.loading") : t("common.save")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Dentro il pagamento cumulativo: l'elenco delle disposizioni
                 della distinta agganciata (somma uguale, data vicina). */}
             {distModal && (
@@ -2526,6 +2676,24 @@ function FinanzaPage() {
                       combaciare con le celle del corpo). Il Saldo e' un
                       progressivo calcolato: niente filtro. */}
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                    <th className="py-2 pr-2">
+                      <input
+                        type="checkbox"
+                        className="accent-primary"
+                        checked={
+                          filtrati
+                            .slice(inizioMov, inizioMov + RIGHE_PAGINA)
+                            .every((m) => selMov.has(m.id)) && filtrati.length > 0
+                        }
+                        onChange={(e) => {
+                          const ns = new Set(selMov);
+                          for (const m of filtrati.slice(inizioMov, inizioMov + RIGHE_PAGINA))
+                            if (e.target.checked) ns.add(m.id);
+                            else ns.delete(m.id);
+                          setSelMov(ns);
+                        }}
+                      />
+                    </th>
                     {thFiltroMov(movColTh[0])}
                     {thFiltroMov(movColTh[1])}
                     {thFiltroMov(movColTh[2], "text-right")}
@@ -2545,6 +2713,20 @@ function FinanzaPage() {
                       className="border-b border-border/50 hover:bg-muted/40"
                       title={m.descrizione}
                     >
+                      <td className="py-1.5 pr-2">
+                        <input
+                          type="checkbox"
+                          className="accent-primary"
+                          checked={selMov.has(m.id)}
+                          onChange={() => {
+                            const ns = new Set(selMov);
+                            if (ns.has(m.id)) ns.delete(m.id);
+                            else ns.add(m.id);
+                            setSelMov(ns);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
                       <td className="py-1.5 pr-3 whitespace-nowrap">{fmtData(m.dataContabile)}</td>
                       <td className="py-1.5 pr-3 whitespace-nowrap text-muted-foreground">
                         {fmtData(m.dataValuta)}
@@ -3366,6 +3548,30 @@ function FinanzaPage() {
               >
                 {uniBusy ? t("common.loading") : t("fin.uniBtn")}
               </button>
+              {selReg.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      if (!window.confirm(`${t("fin.selEliminaConfirm")} (${selReg.size})`)) return;
+                      try {
+                        for (const rid of selReg)
+                          await spDeleteRegolaFinanza({ data: { regolaId: rid } });
+                        toast.success(t("fin.selFatto"), { description: `${selReg.size}` });
+                        setSelReg(new Set());
+                        loadRegole();
+                      } catch (err) {
+                        toast.error(t("common.error"), {
+                          description: err instanceof Error ? err.message : String(err),
+                        });
+                      }
+                    })();
+                  }}
+                  className="rounded-lg border border-status-absent/40 px-3 py-1.5 text-xs text-status-absent hover:bg-status-absent/10"
+                >
+                  {t("fin.selElimina")} ({selReg.size})
+                </button>
+              )}
             </div>
             {/* Ricerca ISTANTANEA: mentre si scrive restano solo le regole
                 col termine (nei pattern o negli esiti) e le categorie si
@@ -3478,6 +3684,19 @@ function FinanzaPage() {
                                   </span>
                                 )}
                               </span>
+                              <input
+                                type="checkbox"
+                                className="accent-primary mr-1 shrink-0"
+                                checked={selReg.has(r.id ?? "")}
+                                onChange={() => {
+                                  const ns = new Set(selReg);
+                                  const rid = r.id ?? "";
+                                  if (ns.has(rid)) ns.delete(rid);
+                                  else ns.add(rid);
+                                  setSelReg(ns);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              />
                               <button
                                 type="button"
                                 onClick={() => {

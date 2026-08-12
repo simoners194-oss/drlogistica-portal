@@ -662,6 +662,12 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     return true;
   };
 
+  const [selFat, setSelFat] = useState<Set<string>>(new Set());
+  const [fbOpen, setFbOpen] = useState(false);
+  const [fbMese, setFbMese] = useState("");
+  const [fbTip, setFbTip] = useState("");
+  const [fbServ, setFbServ] = useState("");
+  const [fbBusy, setFbBusy] = useState(false);
   const [ftDataDa, setFtDataDa] = useState("");
   const [ftDataA, setFtDataA] = useState("");
   const [ftImpMin, setFtImpMin] = useState("");
@@ -2628,6 +2634,124 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                 </button>
               </div>
             )}
+            {selFat.size > 0 && (
+              <div className="mb-2 flex flex-wrap items-center gap-3 rounded-lg bg-primary/10 px-3 py-2 text-sm">
+                <b>{selFat.size}</b> {t("fin.selN")}
+                <button
+                  type="button"
+                  onClick={() => setFbOpen(true)}
+                  className="rounded-lg bg-primary px-3 py-1 text-sm font-medium text-primary-foreground"
+                >
+                  {t("ft.selClassifica")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelFat(new Set())}
+                  className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-muted"
+                >
+                  {t("fin.selDeselez")}
+                </button>
+              </div>
+            )}
+            {fbOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-elegant)]">
+                  <div className="mb-1 text-[15px] font-semibold text-foreground">
+                    {t("ft.selClassifica")} ({selFat.size})
+                  </div>
+                  <p className="mb-3 text-xs text-muted-foreground">{t("fin.selVuotoNonCambia")}</p>
+                  <div className="grid gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground">
+                        {t("ft.colCompetenza")}
+                      </label>
+                      <input
+                        value={fbMese}
+                        onChange={(e) => setFbMese(e.target.value)}
+                        placeholder="2026-07"
+                        className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                      />
+                    </div>
+                    {ricevute && (
+                      <div>
+                        <label className="text-xs text-muted-foreground">
+                          {t("ft.colTipologia")}
+                        </label>
+                        <input
+                          list="tipologie-note"
+                          value={fbTip}
+                          onChange={(e) => setFbTip(e.target.value)}
+                          className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-xs text-muted-foreground">
+                        {ricevute ? t("ft.colClienteRif") : t("ft.colServizio")}
+                      </label>
+                      <input
+                        value={fbServ}
+                        onChange={(e) => setFbServ(e.target.value)}
+                        className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFbOpen(false)}
+                      className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
+                    >
+                      {t("common.cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={fbBusy}
+                      onClick={() => {
+                        void (async () => {
+                          setFbBusy(true);
+                          try {
+                            const perFile = new Map((fatture ?? []).map((f2) => [f2.nomeFile, f2]));
+                            let fatti = 0;
+                            for (const nomeFile of selFat) {
+                              const f2 = perFile.get(nomeFile);
+                              if (!f2) continue;
+                              // Vuoto = si conserva il valore attuale.
+                              await spSetClassificazione({
+                                data: {
+                                  nomeFile,
+                                  direzione: dir,
+                                  meseCompetenza: fbMese.trim() || (f2.meseCompetenza ?? ""),
+                                  tipologiaCosto: fbTip.trim() || (f2.tipologiaCosto ?? ""),
+                                  clienteRif: fbServ.trim() || (f2.clienteRif ?? ""),
+                                },
+                              });
+                              fatti++;
+                            }
+                            toast.success(t("ft.classSalvata"), { description: `${fatti}` });
+                            setFbOpen(false);
+                            setSelFat(new Set());
+                            setFbMese("");
+                            setFbTip("");
+                            setFbServ("");
+                            load();
+                          } catch (err) {
+                            toast.error(t("common.error"), {
+                              description: err instanceof Error ? err.message : String(err),
+                            });
+                          } finally {
+                            setFbBusy(false);
+                          }
+                        })();
+                      }}
+                      className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                    >
+                      {fbBusy ? t("common.loading") : t("common.save")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <table className="w-full text-sm">
               <thead>
                 {/* Intestazione GENERATA dal modello colonne: l'ordine dei
@@ -2635,6 +2759,23 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                     colonna ha il suo imbuto: spunte sui valori distinti, a
                     cascata come i filtri di Excel. */}
                 <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                  <th className="py-1.5 pr-1">
+                    <input
+                      type="checkbox"
+                      className="accent-primary"
+                      checked={
+                        filtrate.length > 0 &&
+                        filtrate.slice(0, 400).every((x) => selFat.has(x.f.nomeFile))
+                      }
+                      onChange={(e) => {
+                        const ns = new Set(selFat);
+                        for (const x of filtrate.slice(0, 400))
+                          if (e.target.checked) ns.add(x.f.nomeFile);
+                          else ns.delete(x.f.nomeFile);
+                        setSelFat(ns);
+                      }}
+                    />
+                  </th>
                   {colonneTh.map((c) => {
                     const sel = filtriTh[c.key];
                     const attivo = (sel?.size ?? 0) > 0;
@@ -2776,6 +2917,19 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                       className={`border-b border-border/50 cursor-pointer hover:bg-muted/40 ${aperta ? "bg-muted/30" : ""}`}
                       title={x.f.nomeFile}
                     >
+                      <td className="py-1 pr-1" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="accent-primary"
+                          checked={selFat.has(x.f.nomeFile)}
+                          onChange={() => {
+                            const ns = new Set(selFat);
+                            if (ns.has(x.f.nomeFile)) ns.delete(x.f.nomeFile);
+                            else ns.add(x.f.nomeFile);
+                            setSelFat(ns);
+                          }}
+                        />
+                      </td>
                       <td className="py-1 pr-2 whitespace-nowrap font-medium">{x.f.numero}</td>
                       <td className="py-1 pr-2 whitespace-nowrap">{fmtData(x.f.dataDocumento)}</td>
                       <td className="py-1 pr-2 max-w-40 truncate">{x.f.cliente}</td>
@@ -2965,7 +3119,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                     </tr>,
                     aperta && (
                       <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
-                        <td colSpan={ricevute ? 12 : 11} className="py-3 px-3 bg-muted/20">
+                        <td colSpan={ricevute ? 13 : 12} className="py-3 px-3 bg-muted/20">
                           <div className="text-xs text-muted-foreground mb-2">
                             {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
                             {termini.length

@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.30.0",
+    date: "2026-08-12",
+    codename: "Piu' righe, un gesto",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Selezione multipla con azioni in blocco",
+        description:
+          "Su Movimenti, Fatture e Regole ci sono le caselle di selezione (anche l'intera pagina con un click sull'intestazione). Sui movimenti selezionati si corregge in blocco tipologia, sottocategoria e allocazioni (i campi vuoti non vengono toccati); sulle fatture si classifica in blocco mese di competenza e servizio; le regole selezionate si eliminano insieme. In tutti i casi i valori proposti arrivano dal vocabolario delle regole, a cascata.",
+      },
+    ],
+  },
+  {
     version: "1.29.0",
     date: "2026-08-12",
     codename: "Un vocabolario solo",
