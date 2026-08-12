@@ -46,7 +46,7 @@ export const RELEASES: readonly Release[] = [
         audience: "direzione",
         title: "Appalto a mano per i beneficiari fuori anagrafica",
         description:
-          "Nel dettaglio di una distinta, i beneficiari non riconosciuti (es. ex dipendenti che non si vogliono in anagrafica) hanno una casella per assegnare l'appalto a mano. L'assegnazione si ricorda per nome: le distinte future con lo stesso beneficiario si classificano da sole, e il riepilogo per appalto e il CSV la comprendono.",
+          "Nel dettaglio di una distinta, i beneficiari non riconosciuti (es. ex dipendenti che non si vogliono in anagrafica) hanno una casella per assegnare l'appalto a mano. L'assegnazione si ricorda per nome: le distinte future con lo stesso beneficiario si classificano da sole, e il riepilogo per appalto e il CSV la comprendono. Le distinte senza movimento corrispondente si agganciano a mano scegliendo dai candidati vicini per data (il badge compare anche se la somma non torna al centesimo), e nei Movimenti il filtro \u201cSolo distinte\u201d isola i pagamenti cumulativi con un click.",
       },
     ],
   },

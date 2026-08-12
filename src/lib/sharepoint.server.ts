@@ -306,6 +306,7 @@ export const SP_DISPLAY = {
   },
   dettagliDistinte: {
     Appalto: "Appalto",
+    MovimentoChiave: "MovimentoChiave",
     DataEsecuzione: "DataEsecuzione",
     Beneficiario: "Beneficiario",
     Importo: "Importo",
@@ -5192,6 +5193,9 @@ export interface DettaglioDistinta {
   /** Appalto assegnato A MANO sulla disposizione (ex dipendenti fuori
    *  anagrafica): vince quando il beneficiario non si riconosce. */
   appalto?: string;
+  /** Chiave del movimento AGGANCIATO A MANO (quando la somma non torna:
+   *  disposizioni rifiutate, spese bancarie). Basta sulla prima riga. */
+  movimentoChiave?: string;
 }
 
 export async function fetchDettagliDistinte(): Promise<DettaglioDistinta[]> {
@@ -5217,6 +5221,9 @@ export async function fetchDettagliDistinte(): Promise<DettaglioDistinta[]> {
         tipoPagamento: F.TipoPagamento ? String(f[F.TipoPagamento] ?? "").trim() : "",
         descrizione: F.Descrizione ? String(f[F.Descrizione] ?? "").trim() : "",
         appalto: F.Appalto ? String(f[F.Appalto] ?? "").trim() || undefined : undefined,
+        movimentoChiave: F.MovimentoChiave
+          ? String(f[F.MovimentoChiave] ?? "").trim() || undefined
+          : undefined,
       });
     }
     const next: unknown = (res as unknown as Record<string, unknown>)["@odata.nextLink"];
@@ -5242,6 +5249,22 @@ export async function setDistintaAppalto(id: string, appalto: string): Promise<v
     body: JSON.stringify({ [F.Appalto]: appalto }),
   });
   logSp("info", "distinte.appalto", `Disposizione #${id} → appalto "${appalto}"`);
+}
+
+/** Aggancia A MANO una distinta a un movimento (chiave sulla riga data). */
+export async function setDistintaMovimento(id: string, chiave: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listDettagliDistinte) throw new Error('Lista "DettagliDistinte" assente.');
+  const F = cfg.dettagliDistinteFields;
+  if (!F.MovimentoChiave)
+    throw new Error(
+      'Colonna "MovimentoChiave" mancante sulla lista DettagliDistinte: crearla (testo) e fare Riscopri.',
+    );
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listDettagliDistinte}/items/${id}/fields`, {
+    method: "PATCH",
+    body: JSON.stringify({ [F.MovimentoChiave]: chiave }),
+  });
+  logSp("info", "distinte.aggancio", `Disposizione #${id} → movimento "${chiave.slice(0, 40)}"`);
 }
 
 export interface RigaDistintaImport {

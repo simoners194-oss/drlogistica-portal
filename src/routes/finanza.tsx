@@ -59,6 +59,7 @@ import {
   spGetImportStorico,
   spGetDettagliDistinte,
   spSetDistintaAppalto,
+  spSetDistintaMovimento,
   spGetRosterDipendenti,
   spImportDistinta,
   spAnnullaImport,
@@ -411,6 +412,7 @@ function FinanzaPage() {
   const [uniBusy, setUniBusy] = useState(false);
   const [rCerca, setRCerca] = useState("");
   // Multi-selezione: spunta le righe e agisci in blocco.
+  const [soloDistinte, setSoloDistinte] = useState(false);
   const [selMov, setSelMov] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkTip, setBulkTip] = useState("");
@@ -769,7 +771,14 @@ function FinanzaPage() {
   const distGruppi = useMemo(() => {
     const map = new Map<
       string,
-      { data: string; tipo: string; somma: number; righe: DettaglioDistinta[] }
+      {
+        data: string;
+        tipo: string;
+        somma: number;
+        righe: DettaglioDistinta[];
+        movChiave?: string;
+        primaRigaId: string;
+      }
     >();
     for (const d of distinte ?? []) {
       const k = `${d.dataEsecuzione}|${d.tipoPagamento}`;
@@ -777,16 +786,23 @@ function FinanzaPage() {
         data: d.dataEsecuzione,
         tipo: d.tipoPagamento,
         somma: 0,
-        righe: [],
+        righe: [] as DettaglioDistinta[],
+        movChiave: undefined as string | undefined,
+        primaRigaId: d.id,
       };
       g.somma += d.importo;
       g.righe.push(d);
+      if (d.movimentoChiave) g.movChiave = d.movimentoChiave;
       map.set(k, g);
     }
     return [...map.values()].map((g) => ({ ...g, somma: Math.round(g.somma * 100) / 100 }));
   }, [distinte]);
   const distintaDi = (m: SpMovimento) => {
-    if (m.importo >= 0 || !distGruppi.length) return null;
+    if (!distGruppi.length) return null;
+    // Aggancio MANUALE: vince su tutto (badge anche quando la somma non torna).
+    const manuale = distGruppi.find((g) => g.movChiave && g.movChiave === m.chiave);
+    if (manuale) return manuale;
+    if (m.importo >= 0) return null;
     const target = Math.round(-m.importo * 100) / 100;
     let best: (typeof distGruppi)[number] | null = null;
     let bestDiff = 7;
@@ -968,13 +984,14 @@ function FinanzaPage() {
                 .map((g) => {
                   const mov = (movimenti ?? []).find(
                     (m) =>
-                      m.importo < 0 &&
-                      Math.abs(Math.round(-m.importo * 100) / 100 - g.somma) <= 1 &&
-                      Math.abs(
-                        (new Date(`${m.dataContabile}T00:00:00`).getTime() -
-                          new Date(`${g.data}T00:00:00`).getTime()) /
-                          86400000,
-                      ) <= 6,
+                      (g.movChiave && g.movChiave === m.chiave) ||
+                      (m.importo < 0 &&
+                        Math.abs(Math.round(-m.importo * 100) / 100 - g.somma) <= 1 &&
+                        Math.abs(
+                          (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+                            new Date(`${g.data}T00:00:00`).getTime()) /
+                            86400000,
+                        ) <= 6),
                   );
                   return (
                     <tr key={`${g.data}|${g.tipo}`} className="border-t border-border/40">
@@ -994,8 +1011,63 @@ function FinanzaPage() {
                             {fmtData(mov.dataContabile)}
                           </button>
                         ) : (
-                          <span className="rounded-full bg-status-absent/10 px-2 py-0.5 text-[11px] font-medium text-status-absent">
-                            {t("fin.distNonAgganciata")}
+                          <span className="inline-flex flex-wrap items-center gap-1.5">
+                            <span className="rounded-full bg-status-absent/10 px-2 py-0.5 text-[11px] font-medium text-status-absent">
+                              {t("fin.distNonAgganciata")}
+                            </span>
+                            {/* Candidati vicini per data (uscite, ±15 gg),
+                                ordinati per somiglianza d'importo: scelto
+                                uno, l'aggancio si salva su SharePoint e il
+                                badge compare anche con somma diversa. */}
+                            <select
+                              defaultValue=""
+                              onChange={(e) => {
+                                const chiave = e.target.value;
+                                if (!chiave) return;
+                                void spSetDistintaMovimento({
+                                  data: { id: g.primaRigaId, chiave },
+                                })
+                                  .then(() => {
+                                    setDistinte((prev) =>
+                                      (prev ?? []).map((x) =>
+                                        x.id === g.primaRigaId
+                                          ? { ...x, movimentoChiave: chiave }
+                                          : x,
+                                      ),
+                                    );
+                                    toast.success(t("fin.distAggOk"));
+                                  })
+                                  .catch((err) =>
+                                    toast.error(t("common.error"), {
+                                      description: err instanceof Error ? err.message : String(err),
+                                    }),
+                                  );
+                              }}
+                              className="max-w-72 rounded border border-border bg-background px-1.5 py-0.5 text-[11px]"
+                            >
+                              <option value="">{t("fin.distAggScegli")}</option>
+                              {(movimenti ?? [])
+                                .filter(
+                                  (m) =>
+                                    m.importo < 0 &&
+                                    Math.abs(
+                                      (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+                                        new Date(`${g.data}T00:00:00`).getTime()) /
+                                        86400000,
+                                    ) <= 15,
+                                )
+                                .sort(
+                                  (a, b) =>
+                                    Math.abs(-a.importo - g.somma) - Math.abs(-b.importo - g.somma),
+                                )
+                                .slice(0, 8)
+                                .map((m) => (
+                                  <option key={m.chiave} value={m.chiave}>
+                                    {fmtData(m.dataContabile)} · {fmtImporto(m.importo)} ·{" "}
+                                    {m.descrizione.slice(0, 40)}
+                                  </option>
+                                ))}
+                            </select>
                           </span>
                         )}
                       </td>
@@ -1798,9 +1870,9 @@ function FinanzaPage() {
     impMaxF,
   ]);
   const filtrati = useMemo(
-    () => filtratiBase.filter((m) => passaMovTh(m)),
+    () => filtratiBase.filter((m) => passaMovTh(m) && (!soloDistinte || distintaDi(m) != null)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filtratiBase, movFiltriTh],
+    [filtratiBase, movFiltriTh, soloDistinte, distGruppi],
   );
   // Totale (e spezzato entrate/uscite) di QUELLO CHE SI VEDE coi filtri.
   const totaleFiltrato = useMemo(() => {
@@ -2280,6 +2352,19 @@ function FinanzaPage() {
                 placeholder={t("fin.searchPh")}
                 className={inputCls}
               />
+            </div>
+            <div className="self-end">
+              <button
+                type="button"
+                onClick={() => setSoloDistinte((x) => !x)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
+                  soloDistinte
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-background text-foreground hover:bg-muted"
+                }`}
+              >
+                <Users className="h-4 w-4" /> {t("fin.soloDistinte")}
+              </button>
             </div>
             <div>
               <label className="text-xs text-muted-foreground">{t("fin.rangeDate")}</label>

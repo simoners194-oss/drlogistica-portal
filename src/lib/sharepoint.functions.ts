@@ -53,6 +53,7 @@ import {
   type Prefattura,
   fetchDettagliDistinte,
   setDistintaAppalto,
+  setDistintaMovimento,
   nomiDipendenti,
   importDistinta,
   type DettaglioDistinta,
@@ -617,6 +618,22 @@ export const spSetDistintaAppalto = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     await assertDirettore(await currentUser());
     await setDistintaAppalto(data.id, data.appalto);
+    return { ok: true };
+  });
+
+export const spSetDistintaMovimento = createServerFn({ method: "POST" })
+  .inputValidator((input: { id: string; chiave: string }) => {
+    if (!input?.id) throw new Error("id mancante");
+    return {
+      id: String(input.id),
+      chiave: String(input?.chiave ?? "")
+        .trim()
+        .slice(0, 200),
+    };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await setDistintaMovimento(data.id, data.chiave);
     return { ok: true };
   });
 
