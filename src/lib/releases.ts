@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.31.0",
+    date: "2026-08-12",
+    codename: "Si guarda anche avanti",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Scadenze future e previsione di cassa nel Resoconto",
+        description:
+          "Nelle tabelle dei ritardi, il filtro \u201cAnche in scadenza entro N giorni\u201d aggiunge ai ritardi le fatture in arrivo (in blu, \u201cfra N gg\u201d): si vede cosa scade dopodomani accanto a cosa e' gia' scaduto. Sotto, la nuova Previsione: incassi attesi, pagamenti attesi e saldo per i prossimi sei mesi, calcolati dalle scadenze delle fatture aperte, con lo scaduto in prima colonna.",
+      },
+    ],
+  },
+  {
     version: "1.30.0",
     date: "2026-08-12",
     codename: "Piu' righe, un gesto",

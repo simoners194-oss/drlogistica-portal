@@ -32,6 +32,11 @@ import type { SpFattura, SpMovimento, GruppoControparti } from "@/lib/sharepoint
 function fmtImporto(n: number): string {
   return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+function fmtMese(yyyymm: string): string {
+  const [y, m] = yyyymm.split("-");
+  const nomi = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
+  return `${nomi[Number(m) - 1] ?? m} ${y}`;
+}
 function fmtData(iso?: string): string {
   if (!iso) return "—";
   const [y, m, g] = iso.slice(0, 10).split("-");
@@ -72,6 +77,8 @@ export function ResocontoTab() {
   const [gNome, setGNome] = useState("");
   const [gBusy, setGBusy] = useState(false);
   const [fasceSel, setFasceSel] = useState<number[]>([]); // indici in FASCE
+  // "" = solo ritardi (default); un numero = anche le scadenze future entro N giorni.
+  const [scadEntro, setScadEntro] = useState("");
 
   useEffect(() => {
     spGetFatture({ data: { direzione: "Emessa" } })
@@ -303,17 +310,31 @@ export function ResocontoTab() {
       return gg >= fscia.da && (fscia.a == null || gg <= fscia.a);
     });
   };
-  const ritardi = (righe: typeof attive, sel: string[]) =>
-    righe
-      .filter(
-        (x) =>
-          x.s.inRitardo &&
-          x.s.residuo > 1 &&
-          (x.s.statoIncassi != null || x.s.statoFatturazione != null) &&
-          inSelezione(x.f.cliente, sel) &&
-          inFascia(x.s.giorniRitardo),
-      )
+  // Giorni ALLA scadenza (positivi = futura). Serve per includere nelle
+  // card anche i pagamenti/incassi in arrivo ("fra N giorni").
+  const giorniAScadenza = (scadenza?: string): number | null => {
+    if (!scadenza) return null;
+    return Math.round(
+      (new Date(`${scadenza.slice(0, 10)}T00:00:00`).getTime() -
+        new Date(`${oggiISO}T00:00:00`).getTime()) /
+        86400000,
+    );
+  };
+  const ritardi = (righe: typeof attive, sel: string[]) => {
+    const entro = Number(scadEntro) || 0;
+    return righe
+      .filter((x) => {
+        if (x.s.residuo <= 1) return false;
+        if (x.s.statoIncassi == null && x.s.statoFatturazione == null) return false;
+        if (!inSelezione(x.f.cliente, sel)) return false;
+        if (x.s.inRitardo) return inFascia(x.s.giorniRitardo);
+        // Non in ritardo: entra solo col filtro "in scadenza entro N gg".
+        if (entro <= 0) return false;
+        const gg = giorniAScadenza(x.s.scadenza);
+        return gg != null && gg >= 0 && gg <= entro;
+      })
       .sort((a, b) => b.s.giorniRitardo - a.s.giorniRitardo);
+  };
   const ritardiAtt = useMemo(
     () =>
       clientiSel.includes(NESSUNO)
@@ -474,8 +495,12 @@ export function ResocontoTab() {
                   <td className="py-0.5 pr-2 whitespace-nowrap text-muted-foreground">
                     {fmtData(x.s.scadenza)}
                   </td>
-                  <td className="py-0.5 pr-2 text-right tabular-nums text-status-absent">
-                    {x.s.giorniRitardo}
+                  <td
+                    className={`py-0.5 pr-2 text-right tabular-nums whitespace-nowrap ${x.s.inRitardo ? "text-status-absent" : "text-primary"}`}
+                  >
+                    {x.s.inRitardo
+                      ? x.s.giorniRitardo
+                      : `${t("rt.fra")} ${giorniAScadenza(x.s.scadenza) ?? "—"}`}
                   </td>
                   <td className="py-0.5 pr-2 text-right tabular-nums font-medium">
                     {fmtImporto(x.s.residuo)}
@@ -567,6 +592,15 @@ export function ResocontoTab() {
           >
             {t("rt.gruppiBtn")}
           </button>
+          <div>
+            <label className="text-xs text-muted-foreground">{t("rt.scadEntro")}</label>
+            <input
+              value={scadEntro}
+              onChange={(e) => setScadEntro(e.target.value.replace(/[^0-9]/g, ""))}
+              placeholder={t("rt.scadEntroPh")}
+              className="block w-28 rounded-lg border border-border bg-background px-2 py-2 text-sm"
+            />
+          </div>
           {/* Fasce di ritardo: giorni e settimane, multi-selezione. */}
           <div>
             <label className="text-xs text-muted-foreground">{t("rt.fasce")}</label>
@@ -828,6 +862,104 @@ export function ResocontoTab() {
             {cardRitardi(t("rt.ritardiIncassare"), ritardiAtt, t("rt.nessunoIncassare"), true)}
             {cardRitardi(t("rt.ritardiPagare"), ritardiPas, t("rt.nessunoPagare"))}
           </div>
+
+          {/* PREVISIONE: quanto si incassa e si paga nei prossimi mesi,
+              dalle scadenze delle fatture ancora aperte (lo scaduto e' la
+              prima riga: e' cassa attesa anche lui, solo in ritardo). */}
+          {(() => {
+            const chiaveMese = (iso: string) => iso.slice(0, 7);
+            const mesi6: string[] = [];
+            {
+              const base = new Date(`${oggiISO.slice(0, 7)}-01T00:00:00`);
+              for (let i = 0; i < 6; i++) {
+                const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
+                mesi6.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+              }
+            }
+            const somma = (righe: typeof attive) => {
+              const out = new Map<string, number>();
+              let scaduto = 0;
+              for (const x of righe) {
+                if (x.s.residuo <= 1) continue;
+                if (x.s.statoIncassi == null && x.s.statoFatturazione == null) continue;
+                if (!x.s.scadenza) continue;
+                if (x.s.inRitardo) {
+                  scaduto += x.s.residuo;
+                  continue;
+                }
+                const k = chiaveMese(x.s.scadenza);
+                out.set(k, (out.get(k) ?? 0) + x.s.residuo);
+              }
+              return { out, scaduto };
+            };
+            const att = somma(attive);
+            const pas = somma(passive);
+            const fmt = (v2: number) => (v2 ? `${fmtImporto(Math.round(v2 * 100) / 100)} €` : "—");
+            return (
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+                <div className="mb-2 text-sm font-semibold text-foreground">
+                  {t("rt.prevTitolo")}
+                </div>
+                <p className="mb-3 text-xs text-muted-foreground">{t("rt.prevDesc")}</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr className="text-left text-[11px] text-muted-foreground">
+                        <th className="py-1 pr-3" />
+                        <th className="py-1 pr-3 text-right">{t("rt.prevScaduto")}</th>
+                        {mesi6.map((m) => (
+                          <th key={m} className="py-1 pr-3 text-right whitespace-nowrap">
+                            {fmtMese(m)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-t border-border/40">
+                        <td className="py-1 pr-3">{t("rt.prevIncassi")}</td>
+                        <td className="py-1 pr-3 text-right tabular-nums text-status-absent">
+                          {fmt(att.scaduto)}
+                        </td>
+                        {mesi6.map((m) => (
+                          <td key={m} className="py-1 pr-3 text-right tabular-nums">
+                            {fmt(att.out.get(m) ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr className="border-t border-border/40">
+                        <td className="py-1 pr-3">{t("rt.prevPagamenti")}</td>
+                        <td className="py-1 pr-3 text-right tabular-nums text-status-absent">
+                          {fmt(pas.scaduto)}
+                        </td>
+                        {mesi6.map((m) => (
+                          <td key={m} className="py-1 pr-3 text-right tabular-nums">
+                            {fmt(pas.out.get(m) ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr className="border-t border-border/60 font-medium">
+                        <td className="py-1 pr-3">{t("rt.prevSaldo")}</td>
+                        <td className="py-1 pr-3 text-right tabular-nums">
+                          {fmt(att.scaduto - pas.scaduto)}
+                        </td>
+                        {mesi6.map((m) => {
+                          const v2 = (att.out.get(m) ?? 0) - (pas.out.get(m) ?? 0);
+                          return (
+                            <td
+                              key={m}
+                              className={`py-1 pr-3 text-right tabular-nums ${v2 >= 0 ? "text-status-present" : "text-status-absent"}`}
+                            >
+                              {fmt(v2)}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
     </div>
