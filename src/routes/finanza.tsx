@@ -1046,6 +1046,21 @@ function FinanzaPage() {
                               className="max-w-72 rounded border border-border bg-background px-1.5 py-0.5 text-[11px]"
                             >
                               <option value="">{t("fin.distAggScegli")}</option>
+                              {(movimenti ?? []).filter(
+                                (m) =>
+                                  m.importo < 0 &&
+                                  Math.abs(
+                                    (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+                                      new Date(`${g.data}T00:00:00`).getTime()) /
+                                      86400000,
+                                  ) <= 15,
+                              ).length === 0 && (
+                                <option value="" disabled>
+                                  {g.data > new Date().toISOString().slice(0, 10)
+                                    ? t("fin.distAggFuturo")
+                                    : t("fin.distAggNessunMov")}
+                                </option>
+                              )}
                               {(movimenti ?? [])
                                 .filter(
                                   (m) =>
