@@ -109,6 +109,8 @@ export function ResocontoTab() {
       .map((f) => ({
         f,
         s: computeStatoFattura(f, 0, termini, oggiISO, nc.get(f.nomeFile)?.importo ?? 0),
+        // NC collegate: servono alla colonna "Composizione" dei ritardi.
+        nc: nc.get(f.nomeFile),
       }));
   };
   const attive = useMemo(
@@ -460,6 +462,7 @@ export function ResocontoTab() {
                 <th className="py-1 pr-2">{t("ft.scadenza")}</th>
                 <th className="py-1 pr-2 text-right">{t("rt.gg")}</th>
                 <th className="py-1 pr-2 text-right">{t("ft.residuo")}</th>
+                <th className="py-1 pr-2">{t("rt.composizione")}</th>
                 {conSollecito && <th className="py-1" />}
               </tr>
             </thead>
@@ -476,6 +479,21 @@ export function ResocontoTab() {
                   </td>
                   <td className="py-0.5 pr-2 text-right tabular-nums font-medium">
                     {fmtImporto(x.s.residuo)}
+                  </td>
+                  <td className="py-0.5 pr-2 whitespace-nowrap text-[11px] text-muted-foreground">
+                    {x.nc && x.nc.importo > 0 ? (
+                      <>
+                        {fmtImporto(x.f.totale)} − NC {x.nc.numeri.join("+")}{" "}
+                        {fmtImporto(x.nc.importo)}
+                      </>
+                    ) : x.f.netto > 0 && x.f.netto < x.f.totale - 0.01 ? (
+                      <>
+                        {t("rt.compTot")} {fmtImporto(x.f.totale)} → {t("rt.compNetto")}{" "}
+                        {fmtImporto(x.f.netto)}
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   {conSollecito && (
                     <td className="py-0.5 whitespace-nowrap">

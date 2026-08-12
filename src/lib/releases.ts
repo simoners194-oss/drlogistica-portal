@@ -36,6 +36,28 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.29.0",
+    date: "2026-08-12",
+    codename: "Un vocabolario solo",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "improvement",
+        audience: "tutti",
+        title: "Le richieste di acquisto parlano la lingua della Finanza",
+        description:
+          "Nel modulo acquisti, categoria e dettaglio ora propongono le voci del vocabolario delle regole di classificazione (tipologia e sottocategorie apprese): un solo vocabolario in tutto il portale. L'elenco voci precedente resta conservato come riserva.",
+      },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Nel Resoconto si vede come si compone ogni importo",
+        description:
+          "Nelle tabelle dei ritardi c'e' la colonna Composizione: per ogni fattura si legge il totale documento, la nota di credito collegata (con il numero) e il netto \u2014 cos\u00ec un residuo ridotto da una NC non sembra piu' un errore. Nei filtri, intervalli di date e importi anche sulle fatture; nelle regole, note e fusione automatica dei doppioni.",
+      },
+    ],
+  },
+  {
     version: "1.28.0",
     date: "2026-08-12",
     codename: "Filtri su misura",

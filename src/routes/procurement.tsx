@@ -16,6 +16,7 @@ import {
 import { readSession, type SessionUser } from "@/lib/session";
 import {
   spGetVoci,
+  spGetVociRegole,
   spGetAcquisti,
   spCreateAcquisto,
   spDecideAcquisto,
@@ -95,6 +96,7 @@ function ProcurementPage() {
   const { t, tStato } = useLang();
   const [session, setSession] = useState<SessionUser | null>(null);
   const [voci, setVoci] = useState<SpVoce[]>([]);
+  const [vociRegole, setVociRegole] = useState<{ tipologia: string; sottocategoria: string }[]>([]);
   const [mie, setMie] = useState<SpAcquisto[] | null>(null);
   const [tutte, setTutte] = useState<SpAcquisto[] | null>(null);
   const [view, setView] = useState<"mie" | "coda">("mie");
@@ -143,15 +145,36 @@ function ProcurementPage() {
     spGetVoci({ data: { ambito: "Acquisto" } })
       .then((l) => setVoci(l as SpVoce[]))
       .catch(() => {});
+    spGetVociRegole()
+      .then((l) => setVociRegole(l as { tipologia: string; sottocategoria: string }[]))
+      .catch(() => {});
     loadMie();
     if (s.autorizza || s.ruolo === "amministratore_sistema") loadTutte();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const macros = useMemo(() => [...new Set(voci.map((v) => v.macro))], [voci]);
+  // Le voci arrivano dal VOCABOLARIO DELLE REGOLE Finanza (tipologia ->
+  // sottocategorie); la vecchia lista Voci resta solo come riserva quando
+  // le regole non ci sono ancora.
+  const macros = useMemo(
+    () =>
+      vociRegole.length
+        ? [...new Set(vociRegole.map((v) => v.tipologia))]
+        : [...new Set(voci.map((v) => v.macro))],
+    [voci, vociRegole],
+  );
   const dettagli = useMemo(
-    () => voci.filter((v) => v.macro === macro && v.dettaglio).map((v) => v.dettaglio),
-    [voci, macro],
+    () =>
+      vociRegole.length
+        ? [
+            ...new Set(
+              vociRegole
+                .filter((v) => v.tipologia === macro && v.sottocategoria)
+                .map((v) => v.sottocategoria),
+            ),
+          ]
+        : voci.filter((v) => v.macro === macro && v.dettaglio).map((v) => v.dettaglio),
+    [voci, vociRegole, macro],
   );
 
   const pending = useMemo(() => (tutte ?? []).filter((r) => r.stato === "Inviata"), [tutte]);

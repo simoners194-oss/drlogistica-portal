@@ -719,6 +719,26 @@ export const spGetMiePreseVisione = createServerFn({ method: "GET" }).handler(
 // ---------------------------------------------------------------------------
 // Voci di spesa + Procurement (richieste di acquisto)
 // ---------------------------------------------------------------------------
+// Vocabolario ACQUISTI dalle regole Finanza: il Procurement propone
+// tipologia -> sottocategorie apprese; la lista Voci resta come riserva.
+export const spGetVociRegole = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ tipologia: string; sottocategoria: string }[]> => {
+    await currentUser();
+    const regole = await fetchRegoleFinanza();
+    const out = new Map<string, { tipologia: string; sottocategoria: string }>();
+    for (const r of regole) {
+      const tip = r.tipologia?.trim();
+      if (!tip) continue;
+      const sc = r.sottocategoria?.trim() ?? "";
+      out.set(`${tip}|${sc}`, { tipologia: tip, sottocategoria: sc });
+    }
+    return [...out.values()].sort(
+      (a, b) =>
+        a.tipologia.localeCompare(b.tipologia) || a.sottocategoria.localeCompare(b.sottocategoria),
+    );
+  },
+);
+
 export const spGetVoci = createServerFn({ method: "GET" })
   .inputValidator((input: { ambito: string }) => {
     if (input?.ambito !== "Rimborso" && input?.ambito !== "Acquisto")
