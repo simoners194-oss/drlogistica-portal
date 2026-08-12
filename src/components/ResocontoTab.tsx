@@ -246,6 +246,13 @@ export function ResocontoTab() {
           ? Math.max(0, x.f.totale - x.s.notaCredito)
           : 0));
 
+  // RESIDUO del Resoconto (richiesta direzione 12/08): non la lettura
+  // combinata, ma TOTALE − INCASSATO — la stessa colonna "Da incassare"
+  // dell'archivio fatture, dove note di credito e storni pesano dentro
+  // l'incassato (NC compensata = negativo). Prima bozza: si rivede insieme.
+  const residuoDi = (x: (typeof attive)[number]) =>
+    Math.round((x.f.totale - incassatoDi(x)) * 100) / 100;
+
   const inSelezione = (nome: string, sel: string[]) =>
     sel.length === 0 || sel.includes(clienteGroupKey(nome) || nome);
 
@@ -299,9 +306,9 @@ export function ResocontoTab() {
     // Residui (fatture non ancora incassate/pagate) per la riga dei totali:
     // il totale attive = incassato + da incassare; il "di cui in ritardo"
     // guarda le sole scadute.
-    const resAtt = attSel.reduce((s, x) => s + Math.max(0, x.s.residuo), 0);
-    const ritAtt = attSel.reduce((s, x) => s + (x.s.inRitardo ? Math.max(0, x.s.residuo) : 0), 0);
-    const resPas = pasSel.reduce((s, x) => s + Math.max(0, x.s.residuo), 0);
+    const resAtt = attSel.reduce((s, x) => s + Math.max(0, residuoDi(x)), 0);
+    const ritAtt = attSel.reduce((s, x) => s + (x.s.inRitardo ? Math.max(0, residuoDi(x)) : 0), 0);
+    const resPas = pasSel.reduce((s, x) => s + Math.max(0, residuoDi(x)), 0);
     const differenza = Math.round((estratto - incassatoAtt + pagatoPas) * 100) / 100;
     return {
       estratto: Math.round(estratto * 100) / 100,
@@ -345,7 +352,7 @@ export function ResocontoTab() {
     const entro = Number(scadEntro) || 0;
     return righe
       .filter((x) => {
-        if (x.s.residuo <= 1) return false;
+        if (residuoDi(x) <= 1) return false;
         if (!inSelezione(x.f.cliente, sel)) return false;
         // Il requisito "gestita in fatturazione/incassi" vale solo per i
         // RITARDI (tiene fuori il rumore); le fatture fresche con scadenza
@@ -402,7 +409,7 @@ export function ResocontoTab() {
         (x) =>
           !isNotaCredito(x.f.tipoDocumento) &&
           x.s.inRitardo &&
-          x.s.residuo > 1 &&
+          residuoDi(x) > 1 &&
           (x.s.statoIncassi != null || x.s.statoFatturazione != null),
       )
       .sort((a, b) => a.s.scadenza.localeCompare(b.s.scadenza));
@@ -421,7 +428,7 @@ export function ResocontoTab() {
         f.totale > 0 &&
         parseIncassoAruba(f.incassoAruba) !== "Incassata",
     );
-    const totale = scadute.reduce((s2, x) => s2 + x.s.residuo, 0);
+    const totale = scadute.reduce((s2, x) => s2 + residuoDi(x), 0);
     const daScalare =
       ncAperte.reduce((s2, x) => s2 + Math.abs(x.f.totale), 0) +
       loroAperte.reduce((s2, f) => s2 + f.totale, 0);
@@ -434,7 +441,7 @@ export function ResocontoTab() {
     r.push("");
     for (const x of scadute)
       r.push(
-        `- ${x.f.numero} del ${fmtData(x.f.dataDocumento)}, scadenza ${fmtData(x.s.scadenza)}, residuo € ${fmtImporto(x.s.residuo)} (${x.s.giorniRitardo} giorni di ritardo)`,
+        `- ${x.f.numero} del ${fmtData(x.f.dataDocumento)}, scadenza ${fmtData(x.s.scadenza)}, residuo € ${fmtImporto(residuoDi(x))} (${x.s.giorniRitardo} giorni di ritardo)`,
       );
     r.push("");
     r.push(`Totale scaduto: € ${fmtImporto(totale)}`);
@@ -496,7 +503,7 @@ export function ResocontoTab() {
       <div className="flex items-baseline gap-3 mb-2">
         <span className="text-sm font-semibold text-foreground">{titolo}</span>
         <span className="text-xs text-muted-foreground">
-          {righe.length} · {fmtImporto(righe.reduce((s, x) => s + x.s.residuo, 0))} €
+          {righe.length} · {fmtImporto(righe.reduce((s, x) => s + residuoDi(x), 0))} €
         </span>
       </div>
       {righe.length === 0 ? (
@@ -531,7 +538,7 @@ export function ResocontoTab() {
                       : `${t("rt.fra")} ${giorniAScadenza(x.s.scadenza) ?? "—"}`}
                   </td>
                   <td className="py-0.5 pr-2 text-right tabular-nums font-medium">
-                    {fmtImporto(x.s.residuo)}
+                    {fmtImporto(residuoDi(x))}
                   </td>
                   <td className="py-0.5 pr-2 whitespace-nowrap text-[11px] text-muted-foreground">
                     {x.nc && x.nc.importo > 0 ? (
@@ -908,15 +915,15 @@ export function ResocontoTab() {
               const out = new Map<string, number>();
               let scaduto = 0;
               for (const x of righe) {
-                if (x.s.residuo <= 1) continue;
+                if (residuoDi(x) <= 1) continue;
                 if (x.s.statoIncassi == null && x.s.statoFatturazione == null) continue;
                 if (!x.s.scadenza) continue;
                 if (x.s.inRitardo) {
-                  scaduto += x.s.residuo;
+                  scaduto += residuoDi(x);
                   continue;
                 }
                 const k = chiaveMese(x.s.scadenza);
-                out.set(k, (out.get(k) ?? 0) + x.s.residuo);
+                out.set(k, (out.get(k) ?? 0) + residuoDi(x));
               }
               return { out, scaduto };
             };
