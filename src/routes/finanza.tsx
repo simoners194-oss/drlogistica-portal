@@ -832,6 +832,41 @@ function FinanzaPage() {
     };
   }, [distModal, rosterDip]);
 
+  // CSV dello spaccato distinta ("diviso -> riconducibile, esportabile"):
+  // una riga per disposizione, con dipendente riconosciuto e appalto.
+  const esportaDistintaCsv = () => {
+    if (!distModal) return;
+    const nomi = (rosterDip ?? []).map((r) => r.nome);
+    const righe = [...distModal.righe]
+      .sort((a, b) => b.importo - a.importo)
+      .map((d) => {
+        const nome = nomi.length ? matchDipendenteNome(d.beneficiario, nomi) : null;
+        const app = nome ? ((rosterDip ?? []).find((r) => r.nome === nome)?.appalto ?? "") : "";
+        return [
+          d.dataEsecuzione,
+          d.tipoPagamento,
+          d.beneficiario,
+          d.importo.toFixed(2).replace(".", ","),
+          nome ?? "",
+          app,
+          d.descrizione,
+        ];
+      });
+    esportaCsvFile(
+      `distinta-${distModal.data}`,
+      [
+        "Data esecuzione",
+        "Tipo pagamento",
+        "Beneficiario",
+        "Importo",
+        "Dipendente riconosciuto",
+        "Appalto",
+        "Causale",
+      ],
+      righe,
+    );
+  };
+
   const distinteCard = (
     <div className="mb-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
       <div className="text-sm font-semibold text-foreground mb-1">{t("fin.distTitolo")}</div>
@@ -2410,7 +2445,14 @@ function FinanzaPage() {
                       )}
                     </div>
                   )}
-                  <div className="mt-3 flex justify-end">
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={esportaDistintaCsv}
+                      className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+                    >
+                      {t("fin.distEsporta")}
+                    </button>
                     <button
                       type="button"
                       onClick={() => setDistModal(null)}
