@@ -106,7 +106,9 @@ def scarica_prima_nota(page, anno: int) -> Path:
         etichetta = page.get_by_text(re.compile(r"Anno:\s*\d{4}")).first
         attuale = etichetta.inner_text(timeout=10000)
         if str(anno) not in attuale:
-            etichetta.click()
+            # il testo e' COPERTO dal bottone ExtJS: si clicca il bottone,
+            # che eredita l'etichetta accessibile "Anno: XXXX".
+            page.get_by_role("button", name=re.compile(r"Anno:")).first.click()
             time.sleep(1.2)
             # nel menu aperto l'anno e' un testo ESATTO ("2025"), cosi' non
             # si confonde con le date tipo 31/12/2025 nelle righe.
