@@ -1889,16 +1889,31 @@ function FinanzaPage() {
     setSheetChoice(null);
     setParsing(true);
     try {
-      const XLSX = await import("xlsx");
-      const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
-      const sheets: SheetInfo[] = wb.SheetNames.map((name) => {
-        const matrix = XLSX.utils.sheet_to_json(wb.Sheets[name], {
-          header: 1,
-          raw: true,
-        }) as unknown[][];
+      let sheets: SheetInfo[];
+      if (/\.csv$/i.test(file.name)) {
+        // CSV letto A MANO, mai con SheetJS: quella libreria interpreta le
+        // date ambigue all'americana (12/06 -> 6 dicembre). Qui le celle
+        // restano stringhe e le interpretano i NOSTRI parser (dd/mm/yyyy,
+        // separatore decimale riga per riga).
+        const testo = await file.text();
+        const matrix = testo
+          .split(/\r?\n/)
+          .filter((l) => l.trim())
+          .map((l) => l.split(";").map((c) => c.replace(/^"+|"+$/g, "").trim()));
         const res = parseMatrice(matrix);
-        return { name, res: res && res.rows.length ? res : null };
-      });
+        sheets = [{ name: file.name, res: res && res.rows.length ? res : null }];
+      } else {
+        const XLSX = await import("xlsx");
+        const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
+        sheets = wb.SheetNames.map((name) => {
+          const matrix = XLSX.utils.sheet_to_json(wb.Sheets[name], {
+            header: 1,
+            raw: true,
+          }) as unknown[][];
+          const res = parseMatrice(matrix);
+          return { name, res: res && res.rows.length ? res : null };
+        });
+      }
       const riconosciuti = sheets.filter((s) => s.res);
       if (riconosciuti.length === 0) {
         toast.error(t("fin.errFile"), { description: t("fin.errFileDesc") });
