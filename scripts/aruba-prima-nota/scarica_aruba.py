@@ -94,6 +94,25 @@ def chiudi_cookie(page) -> None:
             continue
 
 
+def clicca_bottone(page, descrizione: str, testo_regex: str, timeout: int = 15000) -> None:
+    """Bottoni ExtJS: il testo e' COPERTO da un <button> trasparente che
+    eredita l'etichetta accessibile — si clicca il bottone via ruolo."""
+    print(f"  → {descrizione}")
+    try:
+        page.get_by_role("button", name=re.compile(testo_regex)).first.click(timeout=timeout)
+        time.sleep(1.2)
+        return
+    except Exception:
+        pass
+    try:
+        page.click(f"text=/{testo_regex}/", timeout=5000)
+        time.sleep(1.2)
+        return
+    except Exception:
+        dump_errore(page, descrizione[:40].replace(" ", "-"))
+        raise
+
+
 def login(page, cfg: dict) -> None:
     print("Apro Aruba Fatturazione…")
     page.goto(URL_PORTALE)
@@ -151,17 +170,19 @@ def scarica_prima_nota(page, anno: int) -> Path:
         # la barra con "Seleziona tutti (N)".
         "div.x-checkcell:visible",
     )
+    clicca_bottone(page, "clic su Seleziona tutti (N)", r"Seleziona tutti")
+    try:
+        clicca(page, "apro il box Azioni", '[placeholder="Azioni"]', "text=Azioni")
+    except Exception:
+        clicca_bottone(page, "apro il box Azioni (bottone)", r"Azioni")
     clicca(
         page,
-        "clic su Seleziona tutti (N)",
-        r"text=/Seleziona tutti \(\d+\)/",
-        "a:has-text('Seleziona tutti'):visible",
-        "span:has-text('Seleziona tutti'):visible",
+        "flag su Scarica Report Excel",
+        "text=Scarica Report Excel",
+        "div:has-text('Scarica Report Excel'):visible",
     )
-    clicca(page, "apro il box Azioni", "text=Azioni", '[placeholder="Azioni"]')
-    clicca(page, "flag su Scarica Report Excel", "text=Scarica Report Excel")
     with page.expect_download(timeout=120000) as attesa:
-        clicca(page, "clic su Applica", "text=Applica")
+        clicca_bottone(page, "clic su Applica", r"Applica")
     download = attesa.value
     SCARICATI.mkdir(exist_ok=True)
     dest = SCARICATI / f"{datetime.now():%Y%m%d}-{anno}-{download.suggested_filename}"
