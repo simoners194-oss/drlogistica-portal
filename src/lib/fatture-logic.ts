@@ -468,10 +468,16 @@ const MESI_NOMI = [
 /** "YYYY-MM" di competenza. `dichiarato` = testo libero dell'amministrazione
  *  ("GIUGNO", "GIUNGO LUGLIO"...): si prende il primo mese riconoscibile,
  *  con l'anno dedotto dalla data fattura (mai nel futuro). */
+/** Ripiego del mese di competenza quando NON e' scritto nel testo:
+ *  "g15" = regola del giorno 15 (standard), "successivo" = mese dopo
+ *  l'emissione, "corrente" = mese di emissione. */
+export type RegolaMeseFallback = "g15" | "successivo" | "corrente";
+
 export function meseCompetenza(
   dataDocumento: string,
   dichiarato?: string,
   oggetto?: string,
+  fallback: RegolaMeseFallback = "g15",
 ): string {
   const annoDoc = Number(dataDocumento.slice(0, 4));
   const meseDoc = Number(dataDocumento.slice(5, 7));
@@ -495,6 +501,12 @@ export function meseCompetenza(
         return `${anno}-${String(mese).padStart(2, "0")}`;
       }
     }
+  }
+  if (fallback === "corrente") return `${annoDoc}-${String(meseDoc).padStart(2, "0")}`;
+  if (fallback === "successivo") {
+    const succ = meseDoc === 12 ? 1 : meseDoc + 1;
+    const anno = meseDoc === 12 ? annoDoc + 1 : annoDoc;
+    return `${anno}-${String(succ).padStart(2, "0")}`;
   }
   if (giorno <= 15) {
     const prec = meseDoc === 1 ? 12 : meseDoc - 1;
@@ -568,8 +580,9 @@ export function risolviClassificazione(
   >,
   regole: readonly RegolaFattura[],
   auto: ReadonlyMap<string, { tipologia?: string; clienteRif?: string }>,
+  fallbackMese: RegolaMeseFallback = "g15",
 ): ClassificazioneRisolta {
-  const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza, f.oggetto);
+  const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza, f.oggetto, fallbackMese);
   if (f.tipologiaCosto || f.clienteRif)
     return {
       mese,
@@ -608,13 +621,14 @@ export function risolviClassificazioneTutte(
   fatture: readonly FatturaRaw[],
   regole: readonly RegolaFattura[],
   auto: ReadonlyMap<string, { tipologia?: string; clienteRif?: string }>,
+  fallbackMese: RegolaMeseFallback = "g15",
 ): Map<string, ClassificazioneRisolta> {
   const regoleKey = regole
     .map((r) => ({ r, key: clienteGroupKey(r.fornitore) }))
     .filter((x) => x.key);
   const out = new Map<string, ClassificazioneRisolta>();
   for (const f of fatture) {
-    const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza, f.oggetto);
+    const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza, f.oggetto, fallbackMese);
     if (f.tipologiaCosto || f.clienteRif) {
       out.set(f.nomeFile, {
         mese,

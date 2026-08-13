@@ -43,6 +43,7 @@ import {
   classificazioneAuto,
   risolviClassificazione,
   risolviClassificazioneTutte,
+  type RegolaMeseFallback,
   type RegolaFattura,
   aggregaIncassiAruba,
   type MovimentoAruba,
@@ -559,15 +560,30 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
 
   // Risoluzione a catena (manuale → regola → storico) calcolata UNA VOLTA
   // per tutto l'archivio: le celle e i filtri leggono dalla mappa.
+  // Ripiego del mese di competenza (richiesta direzione): scelta salvata
+  // sul browser, vale SOLO quando il mese non e' scritto nel testo.
+  const [meseRegola, setMeseRegola] = useState<RegolaMeseFallback>(() => {
+    const v2 =
+      typeof localStorage !== "undefined" ? localStorage.getItem("dr:cfg:meseRegola") : null;
+    return v2 === "successivo" || v2 === "corrente" ? v2 : "g15";
+  });
+  const cambiaMeseRegola = (v2: RegolaMeseFallback) => {
+    setMeseRegola(v2);
+    try {
+      localStorage.setItem("dr:cfg:meseRegola", v2);
+    } catch {
+      /* niente storage: vale solo per la sessione */
+    }
+  };
   const classMap = useMemo(
-    () => risolviClassificazioneTutte(fattureRic ?? [], regoleFatture, classAuto),
-    [fattureRic, regoleFatture, classAuto],
+    () => risolviClassificazioneTutte(fattureRic ?? [], regoleFatture, classAuto, meseRegola),
+    [fattureRic, regoleFatture, classAuto, meseRegola],
   );
   // Le ATTIVE hanno la loro mappa: niente regole-fornitore ne' proposte
   // dallo storico passivo — vale il dichiarato (o la regola del giorno 15).
   const classMapEm = useMemo(
-    () => risolviClassificazioneTutte(fattureEm ?? [], [], new Map()),
-    [fattureEm],
+    () => risolviClassificazioneTutte(fattureEm ?? [], [], new Map(), meseRegola),
+    [fattureEm, meseRegola],
   );
   const classificaDi = (f: FatturaRaw) =>
     (f.direzione === "Emessa" ? classMapEm : classMap).get(f.nomeFile) ??
@@ -575,6 +591,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       f,
       f.direzione === "Emessa" ? [] : regoleFatture,
       f.direzione === "Emessa" ? new Map() : classAuto,
+      meseRegola,
     );
 
   // --- Filtri di intestazione (stile Excel) ---------------------------------
@@ -2371,6 +2388,19 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                 className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
               />
             </div>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">{t("ft.meseRegola")}</label>
+            <select
+              value={meseRegola}
+              onChange={(e) => cambiaMeseRegola(e.target.value as RegolaMeseFallback)}
+              className="block rounded-lg border border-border bg-background px-2 py-2 text-sm"
+              title={t("ft.meseRegolaTip")}
+            >
+              <option value="g15">{t("ft.meseRegolaG15")}</option>
+              <option value="successivo">{t("ft.meseRegolaSucc")}</option>
+              <option value="corrente">{t("ft.meseRegolaCorr")}</option>
+            </select>
           </div>
           <div>
             <label className="text-xs text-muted-foreground">{t("fin.rangeImporti")}</label>
