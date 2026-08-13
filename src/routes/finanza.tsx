@@ -1374,6 +1374,60 @@ function FinanzaPage() {
                                 € (Δ {fmtImporto(trancheQuasi.diffCent / 100)} €)
                               </span>
                             )}
+                            {trancheQuasi && (
+                              <button
+                                type="button"
+                                disabled={trancheBusy}
+                                onClick={() => {
+                                  void (async () => {
+                                    const scelti = trancheQuasi.scelti;
+                                    const libere = g.righe.filter((r) => !r.movimentoChiave);
+                                    if (libere.length < scelti.length) return;
+                                    const elenco = scelti
+                                      .map(
+                                        (m) =>
+                                          `${fmtData(m.dataContabile)} · ${fmtImporto(m.importo)} € · ${m.descrizione.slice(0, 40)}`,
+                                      )
+                                      .join("\n");
+                                    if (
+                                      !window.confirm(
+                                        `${t("fin.distQuasiConfirm")}\n\n${elenco}\n\nΔ ${fmtImporto(trancheQuasi.diffCent / 100)} €`,
+                                      )
+                                    )
+                                      return;
+                                    setTrancheBusy(true);
+                                    try {
+                                      const fatti: { id: string; chiave: string }[] = [];
+                                      for (let i = 0; i < scelti.length; i++) {
+                                        await spSetDistintaMovimento({
+                                          data: { id: libere[i].id, chiave: scelti[i].chiave },
+                                        });
+                                        fatti.push({ id: libere[i].id, chiave: scelti[i].chiave });
+                                      }
+                                      setDistinte((prev) =>
+                                        (prev ?? []).map((x) => {
+                                          const f = fatti.find((y) => y.id === x.id);
+                                          return f ? { ...x, movimentoChiave: f.chiave } : x;
+                                        }),
+                                      );
+                                      toast.success(t("fin.distAggOk"), {
+                                        description: `${scelti.length} × · Δ ${fmtImporto(trancheQuasi.diffCent / 100)} €`,
+                                      });
+                                    } catch (err) {
+                                      toast.error(t("common.error"), {
+                                        description:
+                                          err instanceof Error ? err.message : String(err),
+                                      });
+                                    } finally {
+                                      setTrancheBusy(false);
+                                    }
+                                  })();
+                                }}
+                                className="rounded-full border border-primary/40 px-2.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+                              >
+                                {trancheBusy ? t("common.loading") : t("fin.distQuasiBtn")}
+                              </button>
+                            )}
                             {collegati.length === 0 && !autoMov && !tr && (
                               <span className="text-[11px] text-muted-foreground">
                                 {t("fin.distNessunCand")}
