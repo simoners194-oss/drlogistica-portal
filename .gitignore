@@ -39,3 +39,4 @@ enablebanking-*.json
 scripts/aruba-prima-nota/config.json
 scripts/aruba-prima-nota/scaricati/
 scripts/aruba-prima-nota/errori/
+scripts/aruba-prima-nota/ricognizione/

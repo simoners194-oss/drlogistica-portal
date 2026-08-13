@@ -29,6 +29,7 @@ QUI = Path(__file__).parent
 CONFIG = QUI / "config.json"
 SCARICATI = QUI / "scaricati"
 ERRORI = QUI / "errori"
+RICOGNIZIONE = QUI / "ricognizione"
 
 URL_PORTALE = "https://fatturazioneelettronica.aruba.it/"
 
@@ -191,6 +192,35 @@ def scarica_prima_nota(page, anno: int) -> Path:
     return dest
 
 
+def ricognizione_nc(page) -> None:
+    """Apre Fatture ricevute e CATTURA le risposte JSON interne della
+    griglia: li' dentro viaggiano anche i documenti collegati (colonna
+    Doc. coll. = aggancio NC-fattura fatto da Aruba). I file salvati in
+    ricognizione/ servono a progettare l'estrattore vero."""
+    catture = []
+
+    def on_response(res):
+        try:
+            ct = res.headers.get("content-type", "")
+            if "json" in ct and res.status == 200:
+                corpo = res.text()
+                if len(corpo) > 300:
+                    catture.append((res.url, corpo))
+        except Exception:
+            pass
+
+    page.on("response", on_response)
+    clicca(page, "apro Fatture ricevute", "text=Fatture ricevute")
+    page.wait_for_load_state("networkidle", timeout=45000)
+    time.sleep(6)
+    RICOGNIZIONE.mkdir(exist_ok=True)
+    for i, (url, corpo) in enumerate(catture):
+        (RICOGNIZIONE / f"nc-{i:02d}.json").write_text(
+            f"URL: {url}\n\n{corpo[:2_000_000]}", encoding="utf-8"
+        )
+    print(f"salvate {len(catture)} risposte JSON in {RICOGNIZIONE}")
+
+
 def main() -> None:
     cfg = carica_config()
     from playwright.sync_api import sync_playwright
@@ -200,6 +230,9 @@ def main() -> None:
         page = browser.new_page(accept_downloads=True)
         try:
             login(page, cfg)
+            if "nc" in sys.argv:
+                ricognizione_nc(page)
+                return
             for anno in cfg.get("anni", [datetime.now().year]):
                 scarica_prima_nota(page, int(anno))
                 # si torna alla dashboard per ripartire puliti
