@@ -4287,8 +4287,11 @@ export async function fetchImportStorico(): Promise<ImportStoricoRiga[]> {
     g.totale += m.importo;
     gruppi.set(m.importId, g);
   }
-  // Più recenti in alto (l'ImportId inizia con un timestamp ISO); legacy in coda.
-  return [...gruppi.values()].sort((a, b) => b.importId.localeCompare(a.importId));
+  // Più recenti in alto per DATA VERA: i lotti API hanno il prefisso
+  // SYNC- che, confrontando gli id grezzi, li piazzava tutti in cima
+  // seppellendo gli import manuali. Si confronta il timestamp nudo.
+  const dataDi = (x: string) => x.replace(/^SYNC-/, "");
+  return [...gruppi.values()].sort((a, b) => dataDi(b.importId).localeCompare(dataDi(a.importId)));
 }
 
 /** Assegna il CONTO a tutti i movimenti di un lotto, un blocco per chiamata
