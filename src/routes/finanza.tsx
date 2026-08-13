@@ -1790,6 +1790,23 @@ function FinanzaPage() {
     setEditNrFatt(m.nrFattura);
     setEditNote(m.note);
   };
+  // "PERCHE' questa classificazione?": per il movimento in modifica, le
+  // regole che fanno match e il TERMINE esatto che ha colpito. Si riusa
+  // matchRegola su cloni a singolo termine: stessa semantica garantita.
+  const spiegaRegole = (m: SpMovimento) =>
+    (regole ?? [])
+      .map((r) => {
+        if (!matchRegola(m, r)) return null;
+        const termine =
+          r.pattern
+            .split(/[,;\n]/)
+            .map((x) => x.trim())
+            .filter(Boolean)
+            .find((termine2) => matchRegola(m, { ...r, pattern: termine2 })) ?? r.pattern;
+        return { r, termine };
+      })
+      .filter(Boolean) as { r: RegolaFinanza; termine: string }[];
+
   const salvaEdit = async () => {
     if (!editId) return;
     setSaving(true);
@@ -2849,6 +2866,30 @@ function FinanzaPage() {
                     </div>
                   </div>
                   <p className="mt-2 text-[11px] text-muted-foreground">{t("fin.editMovSvuota")}</p>
+                  {(() => {
+                    const m2 = (movimenti ?? []).find((x) => x.id === editId);
+                    const colpite = m2 ? spiegaRegole(m2) : [];
+                    if (!m2) return null;
+                    return (
+                      <div className="mt-2 rounded-lg bg-muted/40 p-2 text-[11px]">
+                        <div className="mb-1 font-semibold text-foreground">
+                          {t("fin.spiegaTitolo")}
+                        </div>
+                        {colpite.length === 0 ? (
+                          <p className="text-muted-foreground">{t("fin.spiegaNessuna")}</p>
+                        ) : (
+                          colpite.map(({ r, termine }) => (
+                            <p key={r.id} className="text-muted-foreground">
+                              «<b className="text-foreground">{termine}</b>» ({r.campo} · {r.modo})
+                              → {r.tipologia ?? ""}
+                              {r.sottocategoria ? ` · ${r.sottocategoria}` : ""}
+                              {r.allocSecondaria ? ` · ${r.allocSecondaria}` : ""}
+                            </p>
+                          ))
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="mt-4 flex justify-end gap-2">
                     <button
                       type="button"

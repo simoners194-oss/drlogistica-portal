@@ -895,6 +895,8 @@ const en = {
   "fin.editMovTip": "Edit this transaction",
   "fin.editMovTitolo": "Edit transaction",
   "fin.editMovSvuota": "Clearing a field and saving removes that value from the transaction.",
+  "fin.spiegaTitolo": "Why this classification? Rules matching this transaction:",
+  "fin.spiegaNessuna": "No rule matches now (value set manually or by an old/edited rule).",
   "fin.conto": "Account",
   "fin.contoNonAssegnato": "— not assigned —",
   "fin.contoPh": "e.g. Qonto",
@@ -2088,6 +2090,9 @@ const it: Record<DictKey, string> = {
   "fin.editMovTip": "Correggi questo movimento",
   "fin.editMovTitolo": "Correggi movimento",
   "fin.editMovSvuota": "Svuotare un campo e salvare cancella quel valore dal movimento.",
+  "fin.spiegaTitolo": "Perché questa classificazione? Regole che colpiscono questo movimento:",
+  "fin.spiegaNessuna":
+    "Nessuna regola fa match ora (valore messo a mano o da una regola vecchia/modificata).",
   "fin.conto": "Conto",
   "fin.contoNonAssegnato": "— non assegnato —",
   "fin.contoPh": "es. Qonto",
