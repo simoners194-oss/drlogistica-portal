@@ -3,7 +3,7 @@
 // tab Regole di Finanze (richiesta direzione: regole movimenti e regole
 // fatture fianco a fianco). Form AND/OR, vocabolario condiviso con le
 // regole dei movimenti, import da Excel, elenco con matita e cestino.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLang } from "../lib/i18n";
@@ -46,6 +46,7 @@ export function RegoleFattureCard() {
   const [imp, setImp] = useState<{ nuove: RigaImport[]; doppioni: number } | null>(null);
   const [impBusy, setImpBusy] = useState(false);
   const [impProg, setImpProg] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     spGetRegoleFatture()
@@ -392,19 +393,29 @@ export function RegoleFattureCard() {
       </div>
       {dir === "Ricevuta" && (
         <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-2">
-          <label className="text-xs font-medium text-foreground">
-            {t("ft.rfImpTitolo")}
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-foreground">{t("ft.rfImpTitolo")}</span>
+            {/* Il campo file NATIVO sembrava testo morto: bottone vero che
+                apre la scelta, input nascosto che fa il lavoro. */}
             <input
+              ref={fileRef}
               type="file"
               accept=".xlsx,.xls"
-              className="ml-2 text-xs"
+              className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) void leggiExcel(f);
                 e.target.value = "";
               }}
             />
-          </label>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+            >
+              {t("ft.rfImpScegli")}
+            </button>
+          </div>
           <p className="mt-1 text-[11px] text-muted-foreground">{t("ft.rfImpDesc")}</p>
           {imp && (
             <div className="mt-2 flex items-center gap-3 text-[12px]">

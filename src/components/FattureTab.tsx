@@ -2,7 +2,7 @@
 // Scadenzario fatture emesse: import dall'export Aruba, stato incasso
 // calcolato dagli abbinamenti coi movimenti bancari, ritardi per termini di
 // pagamento cliente, riconciliazione automatica + abbinamento manuale.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -591,6 +591,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   const [rfImp, setRfImp] = useState<{ nuove: RigaRegolaImport[]; doppioni: number } | null>(null);
   const [rfImpBusy, setRfImpBusy] = useState(false);
   const [rfImpProg, setRfImpProg] = useState("");
+  const rfImpFileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     spGetRegoleFinanza()
       .then((l) => setRegoleFin(l as RegolaFinanza[]))
@@ -3277,19 +3278,29 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                   </div>
                   {dir === "Ricevuta" && (
                     <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-2">
-                      <label className="text-xs font-medium text-foreground">
-                        {t("ft.rfImpTitolo")}
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-medium text-foreground">
+                          {t("ft.rfImpTitolo")}
+                        </span>
                         <input
+                          ref={rfImpFileRef}
                           type="file"
                           accept=".xlsx,.xls"
-                          className="ml-2 text-xs"
+                          className="hidden"
                           onChange={(e) => {
                             const f = e.target.files?.[0];
                             if (f) void leggiRegoleExcel(f);
                             e.target.value = "";
                           }}
                         />
-                      </label>
+                        <button
+                          type="button"
+                          onClick={() => rfImpFileRef.current?.click()}
+                          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+                        >
+                          {t("ft.rfImpScegli")}
+                        </button>
+                      </div>
                       <p className="mt-1 text-[11px] text-muted-foreground">{t("ft.rfImpDesc")}</p>
                       {rfImp && (
                         <div className="mt-2 flex items-center gap-3 text-[12px]">
