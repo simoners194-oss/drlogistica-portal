@@ -143,8 +143,11 @@ def scarica_prima_nota(page, anno: int) -> Path:
     clicca(
         page,
         "flag sul quadratino accanto a Data (seleziona pagina)",
-        "div.x-checkcolumn-title-wrap-el",
-        "div.x-checkcolumn .x-title-wrap-el",
+        "div.x-checkcolumn-title-wrap-el:visible",
+        "div.x-checkcolumn .x-title-wrap-el:visible",
+        # riserva: la spunta sulla PRIMA RIGA — basta a far comparire
+        # la barra con "Seleziona tutti (N)".
+        "div.x-checkcell:visible",
     )
     clicca(page, "clic su Seleziona tutti", "text=Seleziona tutti")
     clicca(page, "apro il box Azioni", "text=Azioni", '[placeholder="Azioni"]')
