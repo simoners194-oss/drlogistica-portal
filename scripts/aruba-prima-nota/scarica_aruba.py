@@ -99,13 +99,13 @@ def clicca_bottone(page, descrizione: str, testo_regex: str, timeout: int = 1500
     eredita l'etichetta accessibile — si clicca il bottone via ruolo."""
     print(f"  → {descrizione}")
     try:
-        page.get_by_role("button", name=re.compile(testo_regex)).first.click(timeout=timeout)
+        page.get_by_role("button", name=re.compile(testo_regex, re.I)).first.click(timeout=timeout)
         time.sleep(1.2)
         return
     except Exception:
         pass
     try:
-        page.click(f"text=/{testo_regex}/", timeout=5000)
+        page.click(f"text=/{testo_regex}/i", timeout=5000)
         time.sleep(1.2)
         return
     except Exception:
