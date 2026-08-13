@@ -802,7 +802,17 @@ function FinanzaPage() {
   const trovaTranche = (
     g: (typeof distGruppi)[number],
   ): { scelti: SpMovimento[]; diffCent: number } | null => {
-    const kw = /beneficiari|distint|stipend|emolument|salari|disposizione/i;
+    // Priorita' A DUE LIVELLI: "beneficiari vari/distinta/stipendi" e'
+    // un segnale FORTE, "vostra disposizione" e' la dicitura di qualsiasi
+    // bonifico (segnale debole). In un giorno di paghe con decine di
+    // bonifici singoli, senza questa gerarchia il tetto dei 30 candidati
+    // si riempiva dei bonifici sbagliati e le tranche vere restavano fuori.
+    const kwForte = /beneficiari|distint|stipend|emolument|salari/i;
+    const kwDebole = /disposizione/i;
+    const peso = (m: SpMovimento) => {
+      const txt = `${m.cliente} ${m.descrizione} ${m.causale ?? ""}`;
+      return kwForte.test(txt) ? 0 : kwDebole.test(txt) ? 1 : 2;
+    };
     const giorniDa = (m: SpMovimento) =>
       Math.abs(
         (new Date(`${m.dataContabile}T00:00:00`).getTime() -
@@ -812,8 +822,8 @@ function FinanzaPage() {
     const cand = (movimenti ?? [])
       .filter((m) => m.importo < 0 && distintaDi(m) == null && giorniDa(m) <= 10)
       .sort((a2, b2) => {
-        const ka = kw.test(`${a2.descrizione} ${a2.causale ?? ""}`) ? 0 : 1;
-        const kb = kw.test(`${b2.descrizione} ${b2.causale ?? ""}`) ? 0 : 1;
+        const ka = peso(a2);
+        const kb = peso(b2);
         return ka !== kb ? ka - kb : giorniDa(a2) - giorniDa(b2);
       })
       .slice(0, 30);
