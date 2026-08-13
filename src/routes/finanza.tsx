@@ -363,6 +363,7 @@ function FinanzaPage() {
   const [rCerca, setRCerca] = useState("");
   // Multi-selezione: spunta le righe e agisci in blocco.
   const [soloDistinte, setSoloDistinte] = useState(false);
+  const [soloNonClass, setSoloNonClass] = useState(false);
   const [selMov, setSelMov] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkTip, setBulkTip] = useState("");
@@ -2413,10 +2414,13 @@ function FinanzaPage() {
   const filtrati = useMemo(
     () =>
       filtratiBase.filter(
-        (m) => passaMovTh(m) && (!soloDistinte || m.distChiave != null || distintaDi(m) != null),
+        (m) =>
+          passaMovTh(m) &&
+          (!soloDistinte || m.distChiave != null || distintaDi(m) != null) &&
+          (!soloNonClass || !m.tipologia?.trim()),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filtratiBase, movFiltriTh, soloDistinte, distGruppi],
+    [filtratiBase, movFiltriTh, soloDistinte, soloNonClass, distGruppi],
   );
   // Totale (e spezzato entrate/uscite) di QUELLO CHE SI VEDE coi filtri.
   const totaleFiltrato = useMemo(() => {
@@ -2908,6 +2912,19 @@ function FinanzaPage() {
                 }`}
               >
                 <Users className="h-4 w-4" /> {t("fin.soloDistinte")}
+              </button>
+            </div>
+            <div className="self-end">
+              <button
+                type="button"
+                onClick={() => setSoloNonClass((x) => !x)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
+                  soloNonClass
+                    ? "border-status-absent bg-status-absent text-white"
+                    : "border-border bg-background text-foreground hover:bg-muted"
+                }`}
+              >
+                {t("fin.soloNonClass")}
               </button>
             </div>
             <div>
