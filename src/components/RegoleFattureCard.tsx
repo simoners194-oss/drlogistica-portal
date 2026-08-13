@@ -34,6 +34,18 @@ export function RegoleFattureCard() {
   const [nota, setNota] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  interface RigaImport {
+    fornitore: string;
+    oggettoInclude?: string;
+    tipologia?: string;
+    sottocategoria?: string;
+    allocPrimaria?: string;
+    allocSecondaria?: string;
+    note?: string;
+  }
+  const [imp, setImp] = useState<{ nuove: RigaImport[]; doppioni: number } | null>(null);
+  const [impBusy, setImpBusy] = useState(false);
+  const [impProg, setImpProg] = useState("");
 
   useEffect(() => {
     spGetRegoleFatture()
@@ -108,6 +120,129 @@ export function RegoleFattureCard() {
       });
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Stessa lettura dell'import nella tab Fatture: fogli con header
+  // CLIENTE/FORNITORE; "Se oggetto o descrizione include" = condizione AND;
+  // la NOTA spezza in due regole gemelle (specifica con oggetto=nota +
+  // generica), stessi esiti; l'ultimo foglio vince; le presenti si saltano.
+  const leggiExcel = async (file: File) => {
+    setImp(null);
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
+      const per = new Map<string, RigaImport>();
+      for (const name of wb.SheetNames) {
+        const mat = XLSX.utils.sheet_to_json(wb.Sheets[name], {
+          header: 1,
+          raw: false,
+        }) as unknown[][];
+        const hIdx = mat.findIndex(
+          (r) =>
+            String(r?.[0] ?? "")
+              .trim()
+              .toUpperCase() === "CLIENTE/FORNITORE",
+        );
+        if (hIdx < 0) continue;
+        const header = (mat[hIdx] ?? []).map((c) =>
+          String(c ?? "")
+            .trim()
+            .toLowerCase(),
+        );
+        const conOggetto = (header[1] ?? "").startsWith("se oggetto");
+        const off = conOggetto ? 1 : 0;
+        const iNota = header.findIndex((h) => h === "nota");
+        for (const r of mat.slice(hIdx + 1)) {
+          const fornitore = String(r?.[0] ?? "").trim();
+          const tipologia2 = String(r?.[1 + off] ?? "").trim();
+          if (!fornitore || !tipologia2) continue;
+          const oggettoInc = conOggetto ? String(r?.[1] ?? "").trim() : "";
+          const nota2 = iNota >= 0 ? String(r?.[iNota] ?? "").trim() : "";
+          const base = {
+            fornitore,
+            tipologia: tipologia2,
+            sottocategoria: String(r?.[2 + off] ?? "").trim() || undefined,
+            allocPrimaria: String(r?.[3 + off] ?? "").trim() || undefined,
+            allocSecondaria: String(r?.[4 + off] ?? "").trim() || undefined,
+          };
+          if (conOggetto) {
+            per.set(`${fornitore.toLowerCase()}|${oggettoInc.toLowerCase()}`, {
+              ...base,
+              oggettoInclude: oggettoInc || undefined,
+              note: nota2 || undefined,
+            });
+          } else if (nota2) {
+            per.set(`${fornitore.toLowerCase()}|${nota2.toLowerCase()}`, {
+              ...base,
+              oggettoInclude: nota2,
+              note: nota2,
+            });
+            per.set(`${fornitore.toLowerCase()}|`, { ...base });
+          } else {
+            per.set(`${fornitore.toLowerCase()}|`, { ...base });
+          }
+        }
+      }
+      const esistenti = new Set(
+        regole
+          .filter((r) => (r.direzione ?? "Ricevuta") === "Ricevuta")
+          .map(
+            (r) =>
+              `${(r.fornitore ?? "").trim().toLowerCase()}|${(r.oggettoInclude ?? "")
+                .trim()
+                .toLowerCase()}`,
+          ),
+      );
+      const tutte = [...per.values()];
+      const nuove = tutte.filter(
+        (r) =>
+          !esistenti.has(`${r.fornitore.toLowerCase()}|${(r.oggettoInclude ?? "").toLowerCase()}`),
+      );
+      if (!tutte.length) {
+        toast.error(t("ft.rfImpNiente"));
+        return;
+      }
+      setImp({ nuove, doppioni: tutte.length - nuove.length });
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const creaImportate = async () => {
+    if (!imp?.nuove.length) return;
+    setImpBusy(true);
+    try {
+      let fatte = 0;
+      for (const r of imp.nuove) {
+        await spCreateRegolaFattura({
+          data: {
+            fornitore: r.fornitore,
+            oggettoInclude: r.oggettoInclude,
+            operatore: "AND" as const,
+            direzione: "Ricevuta" as const,
+            tipologia: r.tipologia,
+            sottocategoria: r.sottocategoria,
+            allocPrimaria: r.allocPrimaria,
+            allocSecondaria: r.allocSecondaria,
+            note: r.note,
+          },
+        });
+        fatte++;
+        setImpProg(`${fatte} / ${imp.nuove.length}`);
+      }
+      setRegole((await spGetRegoleFatture()) as RegolaFattura[]);
+      setImp(null);
+      toast.success(t("ft.rfImpOk"), { description: `${fatte}` });
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setImpBusy(false);
+      setImpProg("");
     }
   };
 
@@ -251,7 +386,51 @@ export function RegoleFattureCard() {
           </button>
         )}
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">{t("fin.rfDoveImport")}</p>
+      {dir === "Ricevuta" && (
+        <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-2">
+          <label className="text-xs font-medium text-foreground">
+            {t("ft.rfImpTitolo")}
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              className="ml-2 text-xs"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void leggiExcel(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <p className="mt-1 text-[11px] text-muted-foreground">{t("ft.rfImpDesc")}</p>
+          {imp && (
+            <div className="mt-2 flex items-center gap-3 text-[12px]">
+              <span>
+                <b className="text-status-present">{imp.nuove.length}</b> {t("ft.rfImpNuove")} ·{" "}
+                {imp.doppioni} {t("ft.rfImpDoppie")}
+              </span>
+              <button
+                type="button"
+                disabled={impBusy || imp.nuove.length === 0}
+                onClick={() => void creaImportate()}
+                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
+              >
+                {impBusy
+                  ? `${t("common.loading")} ${impProg}`
+                  : `${t("ft.rfImpBtn")} (${imp.nuove.length})`}
+              </button>
+              {!impBusy && (
+                <button
+                  type="button"
+                  onClick={() => setImp(null)}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted"
+                >
+                  {t("common.cancel")}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <div className="mt-3 space-y-1">
         {elenco.map((r) => (
           <div
