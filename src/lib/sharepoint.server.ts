@@ -271,6 +271,7 @@ export const SP_DISPLAY = {
     AllocPrimaria: "AllocazionePrimaria",
     AllocSecondaria: "AllocazioneSecondaria",
     ClienteNuovo: "ClienteNuovo",
+    Segno: "Segno",
     Note: "Note",
   },
   // Regole di CLASSIFICAZIONE delle fatture passive (tab Regole): per
@@ -4385,6 +4386,12 @@ function mapRegola(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>
   return {
     id: String(it.id),
     note: F.Note ? String(f[F.Note] ?? "").trim() || undefined : undefined,
+    segno: (() => {
+      const sg = String(F.Segno ? (f[F.Segno] ?? "") : "")
+        .trim()
+        .toLowerCase();
+      return sg === "entrate" || sg === "uscite" ? sg : undefined;
+    })(),
     pattern: F.Pattern ? String(f[F.Pattern] ?? "") : "",
     campo: campo === "descrizione" ? "descrizione" : campo === "entrambi" ? "entrambi" : "cliente",
     modo: modo === "contiene" ? "contiene" : "esatto",
@@ -4443,11 +4450,16 @@ export async function createRegolaFinanza(input: RegolaFinanza): Promise<RegolaF
     throw new Error(
       'La regola ha una NOTA ma la colonna "Note" manca sulla lista RegoleFinanza: crearla (testo) e fare Riscopri.',
     );
+  if (input.segno && !F.Segno)
+    throw new Error(
+      'La regola ha il vincolo sul SEGNO ma la colonna "Segno" manca sulla lista RegoleFinanza: crearla (testo) e fare Riscopri.',
+    );
   if (!input.tipologia?.trim() && !input.cliente?.trim())
     throw new Error("La regola deve cambiare almeno la tipologia o il nome della controparte.");
   const fields: Record<string, unknown> = { Title: input.pattern.trim().slice(0, 120) };
   if (F.Pattern) fields[F.Pattern] = input.pattern.trim();
   if (F.Note && input.note?.trim()) fields[F.Note] = input.note.trim();
+  if (F.Segno && input.segno) fields[F.Segno] = input.segno;
   if (F.Sottocategoria && input.sottocategoria?.trim())
     fields[F.Sottocategoria] = input.sottocategoria.trim();
   if (F.AllocPrimaria && input.allocPrimaria?.trim())
@@ -4513,6 +4525,7 @@ export async function updateRegolaFinanza(
       'La regola ha una NOTA ma la colonna "Note" manca sulla lista RegoleFinanza: crearla (testo) e fare Riscopri.',
     );
   if (F.Note) fields[F.Note] = input.note?.trim() ?? "";
+  if (F.Segno) fields[F.Segno] = input.segno ?? "";
   await withDiscoveryRetry(() =>
     gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${id}/fields`, {
       method: "PATCH",
@@ -5187,6 +5200,12 @@ export async function fetchPrefatture(): Promise<Prefattura[]> {
         ricorrenza: (ric.startsWith("una") ? "una" : "mensile") as "mensile" | "una",
         meseFine: F.MeseFine ? String(f[F.MeseFine] ?? "").slice(0, 7) || undefined : undefined,
         note: F.Note ? String(f[F.Note] ?? "").trim() || undefined : undefined,
+        segno: (() => {
+          const sg = String(F.Segno ? (f[F.Segno] ?? "") : "")
+            .trim()
+            .toLowerCase();
+          return sg === "entrate" || sg === "uscite" ? sg : undefined;
+        })(),
       };
     })
     .filter((x) => x.controparte && x.importo > 0 && /^\d{4}-\d{2}$/.test(x.meseInizio));
@@ -5439,6 +5458,12 @@ export async function fetchRegoleFatture(): Promise<RegolaFattura[]> {
           ? String(f[F.AllocSecondaria] ?? "").trim() || undefined
           : undefined,
         note: F.Note ? String(f[F.Note] ?? "").trim() || undefined : undefined,
+        segno: (() => {
+          const sg = String(F.Segno ? (f[F.Segno] ?? "") : "")
+            .trim()
+            .toLowerCase();
+          return sg === "entrate" || sg === "uscite" ? sg : undefined;
+        })(),
         clienteRif: F.ClienteRif ? String(f[F.ClienteRif] ?? "").trim() || undefined : undefined,
       };
     })

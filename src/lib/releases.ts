@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.40.0",
+    date: "2026-08-13",
+    codename: "Regole col segno",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Le regole distinguono entrate e uscite, e c'e' il jolly",
+        description:
+          "Ogni regola puo' valere solo per le entrate o solo per le uscite (campo Segno importo), e il pattern jolly * prende tutto cio' che le regole piu' specifiche non hanno gia' classificato \u2014 il jolly agisce sempre per ultimo. Nella matita del movimento c'e' inoltre \u201cPerche' questa classificazione?\u201d: l'elenco delle regole che colpiscono quel movimento, col termine esatto che ha fatto scattare il match.",
+      },
+    ],
+  },
+  {
     version: "1.39.0",
     date: "2026-08-13",
     codename: "La distinta si apre da sola",

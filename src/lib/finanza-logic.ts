@@ -183,6 +183,9 @@ export interface RegolaFinanza {
   allocPrimaria?: string;
   /** Allocazione secondaria (Ufficio Fiano Romano, iMile, Postadoc Hub...). */
   allocSecondaria?: string;
+  /** Vincolo sul SEGNO dell'importo: "entrate" = solo positivi,
+   *  "uscite" = solo negativi, vuoto = entrambi. */
+  segno?: "entrate" | "uscite";
   /** Nome controparte da assegnare al match (per unificare es. TIM/Telecom). */
   cliente?: string;
   /** Nota libera del direttore (perche' esiste la regola, quando, per chi). */
@@ -190,9 +193,14 @@ export interface RegolaFinanza {
 }
 
 export function matchRegola(
-  mov: { cliente: string; descrizione: string },
+  mov: { cliente: string; descrizione: string; importo?: number },
   r: RegolaFinanza,
 ): boolean {
+  // Vincolo sul segno: una regola "solo entrate" ignora le uscite (e
+  // viceversa). Il pattern jolly "*" prende TUTTO cio' che passa il segno.
+  if (r.segno === "entrate" && (mov.importo ?? 0) <= 0) return false;
+  if (r.segno === "uscite" && (mov.importo ?? 0) >= 0) return false;
+  if (r.pattern.trim() === "*") return true;
   // PATTERN MULTIPLI: "aereo, treno, dirigibile" = basta che UNO dei
   // termini corrisponda (separatori virgola e punto e virgola).
   // Termini sotto le 3 lettere IGNORATI nel modo "contiene": "in" o "ba"
@@ -227,6 +235,7 @@ export function applicaRegole<
   T extends {
     cliente: string;
     descrizione: string;
+    importo?: number;
     tipologia: string;
     daVerificare: boolean;
     sottocategoria?: string;
@@ -236,7 +245,15 @@ export function applicaRegole<
 >(mov: T, regole: readonly RegolaFinanza[]): T {
   if (!regole.length) return mov;
   const priorita = (r: RegolaFinanza) =>
-    r.campo === "cliente" ? (r.modo === "esatto" ? 0 : 1) : r.campo === "entrambi" ? 2 : 3;
+    r.pattern.trim() === "*"
+      ? 9
+      : r.campo === "cliente"
+        ? r.modo === "esatto"
+          ? 0
+          : 1
+        : r.campo === "entrambi"
+          ? 2
+          : 3;
   const ordinate = [...regole].sort((a, b) => priorita(a) - priorita(b));
   const r = ordinate.find((x) => matchRegola(mov, x));
   if (!r) return mov;

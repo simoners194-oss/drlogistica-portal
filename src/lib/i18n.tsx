@@ -842,6 +842,15 @@ const en = {
   "fin.regolaUnitaEsistente":
     "An identical rule already exists: the new terms were merged into it.",
   "fin.regoleCercaPh": "Type to find a rule (name, term, category)…",
+  "fin.segnoBtn": "Set outgoing-only on legacy rules",
+  "fin.segnoConfirm":
+    'Set "outgoing only" on all rules without a sign? Specific incoming rules keep working.',
+  "fin.segnoNiente": "Every rule already has a sign.",
+  "fin.segnoFatto": "Rules updated to outgoing-only",
+  "fin.regolaSegno": "Amount sign",
+  "fin.regolaSegnoTutti": "Any",
+  "fin.regolaSegnoEntrate": "Incoming only (positive)",
+  "fin.regolaSegnoUscite": "Outgoing only (negative)",
   "fin.regolaNote": "Note (optional)",
   "fin.regolaNotePh": "e.g. why this rule exists, who asked for it…",
   "fin.selN": "selected",
@@ -2037,6 +2046,15 @@ const it: Record<DictKey, string> = {
   "fin.regolaUnitaEsistente":
     "Esisteva già una regola identica: i termini nuovi sono stati uniti a lei.",
   "fin.regoleCercaPh": "Scrivi per trovare una regola (nome, termine, categoria)…",
+  "fin.segnoBtn": "Solo uscite alle regole senza segno",
+  "fin.segnoConfirm":
+    'Impostare "Solo uscite" su tutte le regole senza segno? Le regole per le entrate restano valide.',
+  "fin.segnoNiente": "Tutte le regole hanno già un segno.",
+  "fin.segnoFatto": "Regole aggiornate a Solo uscite",
+  "fin.regolaSegno": "Segno importo",
+  "fin.regolaSegnoTutti": "Qualsiasi",
+  "fin.regolaSegnoEntrate": "Solo entrate (positivi)",
+  "fin.regolaSegnoUscite": "Solo uscite (negativi)",
   "fin.regolaNote": "Nota (facoltativa)",
   "fin.regolaNotePh": "es. perché esiste la regola, chi l'ha chiesta…",
   "fin.selN": "selezionati",

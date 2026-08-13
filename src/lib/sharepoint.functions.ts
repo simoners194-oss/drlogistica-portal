@@ -1100,6 +1100,7 @@ function validateRegola(input: Partial<RegolaFinanza>): RegolaFinanza {
     : undefined;
   const cliente = input.cliente ? String(input.cliente).trim().slice(0, 120) : undefined;
   const note = input.note ? String(input.note).trim().slice(0, 255) : undefined;
+  const segno = input.segno === "entrate" || input.segno === "uscite" ? input.segno : undefined;
   if (!tipologia && !cliente)
     throw new Error("La regola deve impostare tipologia o nome controparte");
   return {
@@ -1117,6 +1118,7 @@ function validateRegola(input: Partial<RegolaFinanza>): RegolaFinanza {
     tipologia,
     cliente,
     note,
+    segno,
   };
 }
 

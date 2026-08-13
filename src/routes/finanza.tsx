@@ -390,6 +390,7 @@ function FinanzaPage() {
         r.allocPrimaria ?? "",
         r.allocSecondaria ?? "",
         r.cliente ?? "",
+        r.segno ?? "",
       ].join("|");
       gruppi.set(k2, [...(gruppi.get(k2) ?? []), r]);
     }
@@ -418,6 +419,7 @@ function FinanzaPage() {
           allocSecondaria: keep.allocSecondaria,
           cliente: keep.cliente,
           note: keep.note,
+          segno: keep.segno,
         };
         await spUpdateRegolaFinanza({ data: { regolaId: keep.id ?? "", ...payload } });
         for (const blocco of blocchiUni.slice(1))
@@ -438,6 +440,7 @@ function FinanzaPage() {
             allocSecondaria: r.allocSecondaria,
             cliente: r.cliente,
             note: r.note,
+            segno: r.segno,
           },
         });
       const agg = (await spGetRegoleFinanza()) as RegolaFinanza[];
@@ -487,6 +490,7 @@ function FinanzaPage() {
     };
   }, [regole, rTipologia, rAllocPri]);
   const [rNote, setRNote] = useState("");
+  const [rSegno, setRSegno] = useState<"" | "entrate" | "uscite">("");
   // Movimento da cui e' partita la bacchetta: consente di applicare la
   // classificazione SOLO a lui, senza creare la regola.
   const [rSorgente, setRSorgente] = useState<string | null>(null);
@@ -1624,6 +1628,7 @@ function FinanzaPage() {
         allocSecondaria: rAllocSec.trim() || undefined,
         cliente: rCliente.trim() || undefined,
         note: rNote.trim() || undefined,
+        segno: rSegno || undefined,
       };
       // PARACADUTE: prima di salvare si mostra QUANTI movimenti verrebbero
       // toccati — una regola troppo larga si riconosce dal numero.
@@ -1723,6 +1728,7 @@ function FinanzaPage() {
       setRAllocSec("");
       setRCliente("");
       setRNote("");
+      setRSegno("");
       setRSorgente(null);
       setREditId(null);
       loadRegole();
@@ -3810,6 +3816,18 @@ function FinanzaPage() {
                   testoNuova={t("fin.vocNuova")}
                 />
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground">{t("fin.regolaSegno")}</label>
+                <select
+                  value={rSegno}
+                  onChange={(e) => setRSegno(e.target.value as "" | "entrate" | "uscite")}
+                  className={inputCls}
+                >
+                  <option value="">{t("fin.regolaSegnoTutti")}</option>
+                  <option value="entrate">{t("fin.regolaSegnoEntrate")}</option>
+                  <option value="uscite">{t("fin.regolaSegnoUscite")}</option>
+                </select>
+              </div>
               <div className="sm:col-span-2">
                 <label className="text-xs text-muted-foreground">{t("fin.regolaNote")}</label>
                 <input
@@ -4010,6 +4028,56 @@ function FinanzaPage() {
               </button>
               <button
                 type="button"
+                disabled={uniBusy || regole == null}
+                onClick={() => {
+                  void (async () => {
+                    // MIGRAZIONE UNA TANTUM: le regole storiche (spese,
+                    // salari) valgono solo per le USCITE — cosi' un bonifico
+                    // in ENTRATA non puo' piu' finire "Pagamento Salario".
+                    const senza = (regole ?? []).filter(
+                      (r) => !r.segno && r.pattern.trim() !== "*",
+                    );
+                    if (!senza.length) {
+                      toast.success(t("fin.segnoNiente"));
+                      return;
+                    }
+                    if (!window.confirm(`${t("fin.segnoConfirm")} (${senza.length})`)) return;
+                    setUniBusy(true);
+                    try {
+                      for (const r of senza)
+                        await spUpdateRegolaFinanza({
+                          data: {
+                            regolaId: r.id ?? "",
+                            pattern: r.pattern,
+                            campo: r.campo,
+                            modo: r.modo,
+                            tipologia: r.tipologia,
+                            sottocategoria: r.sottocategoria,
+                            allocPrimaria: r.allocPrimaria,
+                            allocSecondaria: r.allocSecondaria,
+                            cliente: r.cliente,
+                            note: r.note,
+                            segno: "uscite",
+                          },
+                        });
+                      const agg = (await spGetRegoleFinanza()) as RegolaFinanza[];
+                      setRegole(agg);
+                      toast.success(t("fin.segnoFatto"), { description: `${senza.length}` });
+                    } catch (err) {
+                      toast.error(t("common.error"), {
+                        description: err instanceof Error ? err.message : String(err),
+                      });
+                    } finally {
+                      setUniBusy(false);
+                    }
+                  })();
+                }}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+              >
+                {t("fin.segnoBtn")}
+              </button>
+              <button
+                type="button"
                 disabled={regole == null || regole.length === 0}
                 onClick={() => {
                   // Excel-friendly: CSV con BOM e punto e virgola.
@@ -4204,6 +4272,7 @@ function FinanzaPage() {
                                   setRAllocSec(r.allocSecondaria ?? "");
                                   setRCliente(r.cliente ?? "");
                                   setRNote(r.note ?? "");
+                                  setRSegno(r.segno ?? "");
                                   setRSorgente(null);
                                   setRApplica(true);
                                   setREditId(r.id ?? null);
