@@ -17,6 +17,7 @@ import {
   type ArubaIncassiProbe,
 } from "./aruba.server";
 import { lunediDellaSettimana, ymd } from "./rendiconto-logic";
+import type { RegolaFattura } from "./fatture-logic";
 import {
   setSessionCookie,
   readSessionUser,
@@ -48,6 +49,7 @@ import {
   arubaCronToken,
   verificaTokenCronFatture,
   collegaNcBatch,
+  updateRegolaFattura,
   fetchPrefatture,
   createPrefattura,
   deletePrefattura,
@@ -1461,23 +1463,54 @@ export const spGetRegoleFatture = createServerFn({ method: "GET" }).handler(asyn
   return fetchRegoleFatture();
 });
 
-export const spCreateRegolaFattura = createServerFn({ method: "POST" })
-  .inputValidator((input: { fornitore: string; tipologia?: string; clienteRif?: string }) => ({
+const validaRegolaFattura = (input: Partial<RegolaFattura>): RegolaFattura => {
+  const pulisci = (v2: unknown, max: number) =>
+    String(v2 ?? "")
+      .trim()
+      .slice(0, max) || undefined;
+  const regola: RegolaFattura = {
     fornitore: String(input?.fornitore ?? "")
       .trim()
-      .slice(0, 120),
-    tipologia:
-      String(input?.tipologia ?? "")
-        .trim()
-        .slice(0, 120) || undefined,
-    clienteRif:
-      String(input?.clienteRif ?? "")
-        .trim()
-        .slice(0, 80) || undefined,
-  }))
+      .slice(0, 240),
+    oggettoInclude: pulisci(input?.oggettoInclude, 240),
+    operatore: input?.operatore === "OR" ? "OR" : "AND",
+    direzione: input?.direzione === "Emessa" ? "Emessa" : "Ricevuta",
+    tipologia: pulisci(input?.tipologia, 120),
+    sottocategoria: pulisci(input?.sottocategoria, 60),
+    allocPrimaria: pulisci(input?.allocPrimaria, 60),
+    allocSecondaria: pulisci(input?.allocSecondaria, 60),
+    clienteRif: pulisci(input?.clienteRif, 80),
+    note: pulisci(input?.note, 255),
+  };
+  if (!regola.fornitore && !regola.oggettoInclude)
+    throw new Error("La regola deve avere almeno un pattern (cliente oppure oggetto).");
+  if (
+    !regola.tipologia &&
+    !regola.clienteRif &&
+    !regola.sottocategoria &&
+    !regola.allocPrimaria &&
+    !regola.allocSecondaria
+  )
+    throw new Error("La regola deve impostare almeno un esito.");
+  return regola;
+};
+
+export const spCreateRegolaFattura = createServerFn({ method: "POST" })
+  .inputValidator((input: Partial<RegolaFattura>) => validaRegolaFattura(input))
   .handler(async ({ data }) => {
     await assertDirettore(await currentUser());
     return createRegolaFattura(data);
+  });
+
+export const spUpdateRegolaFattura = createServerFn({ method: "POST" })
+  .inputValidator((input: Partial<RegolaFattura> & { regolaId: string }) => {
+    if (!input?.regolaId) throw new Error("regolaId mancante");
+    return { regolaId: String(input.regolaId), regola: validaRegolaFattura(input) };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await updateRegolaFattura(data.regolaId, data.regola);
+    return { ok: true };
   });
 
 export const spDeleteRegolaFattura = createServerFn({ method: "POST" })

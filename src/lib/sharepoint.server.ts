@@ -278,6 +278,13 @@ export const SP_DISPLAY = {
   // cliente di riferimento. OPZIONALE.
   regoleFatture: {
     Fornitore: "Fornitore",
+    OggettoInclude: "OggettoInclude",
+    Operatore: "Operatore",
+    Direzione: "Direzione",
+    Sottocategoria: "Sottocategoria",
+    AllocPrimaria: "AllocazionePrimaria",
+    AllocSecondaria: "AllocazioneSecondaria",
+    Note: "Note",
     Tipologia: "Tipologia",
     ClienteRif: "ClienteRif",
   },
@@ -5372,6 +5379,33 @@ export async function importDistinta(
 
 // --- Regole di classificazione passive (lista RegoleFatture) ----------------
 
+/** Aggiorna una regola fatture SUL POSTO (mai cancella-e-ricrea). */
+export async function updateRegolaFattura(id: string, input: RegolaFattura): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listRegoleFatture) throw new Error('Lista "RegoleFatture" assente su SharePoint.');
+  const F = cfg.regoleFattureFields;
+  const fields: Record<string, unknown> = {
+    Title: (input.fornitore || input.oggettoInclude || "regola").trim().slice(0, 120),
+  };
+  if (F.Fornitore) fields[F.Fornitore] = input.fornitore.trim();
+  if (F.OggettoInclude) fields[F.OggettoInclude] = input.oggettoInclude?.trim() ?? "";
+  if (F.Operatore) fields[F.Operatore] = input.operatore === "OR" ? "OR" : "AND";
+  if (F.Direzione) fields[F.Direzione] = input.direzione === "Emessa" ? "Emessa" : "Ricevuta";
+  if (F.Tipologia) fields[F.Tipologia] = input.tipologia?.trim() ?? "";
+  if (F.Sottocategoria) fields[F.Sottocategoria] = input.sottocategoria?.trim() ?? "";
+  if (F.AllocPrimaria) fields[F.AllocPrimaria] = input.allocPrimaria?.trim() ?? "";
+  if (F.AllocSecondaria) fields[F.AllocSecondaria] = input.allocSecondaria?.trim() ?? "";
+  if (F.Note) fields[F.Note] = input.note?.trim() ?? "";
+  if (F.ClienteRif) fields[F.ClienteRif] = input.clienteRif?.trim() ?? "";
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listRegoleFatture}/items/${id}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    }),
+  );
+  logSp("info", "update.regolafatture", `Regola fatture aggiornata (#${id})`);
+}
+
 export async function fetchRegoleFatture(): Promise<RegolaFattura[]> {
   const cfg = await discoverSharePoint();
   if (!cfg.listRegoleFatture) return [];
@@ -5384,14 +5418,31 @@ export async function fetchRegoleFatture(): Promise<RegolaFattura[]> {
   return res.value
     .map((it) => {
       const f = it.fields ?? {};
+      const op = String(F.Operatore ? (f[F.Operatore] ?? "") : "").toUpperCase();
+      const dir2 = String(F.Direzione ? (f[F.Direzione] ?? "") : "").trim();
       return {
         id: String(it.id),
         fornitore: F.Fornitore ? String(f[F.Fornitore] ?? "").trim() : "",
+        oggettoInclude: F.OggettoInclude
+          ? String(f[F.OggettoInclude] ?? "").trim() || undefined
+          : undefined,
+        operatore: (op === "OR" ? "OR" : "AND") as "AND" | "OR",
+        direzione: (dir2 === "Emessa" ? "Emessa" : "Ricevuta") as DirezioneFattura,
         tipologia: F.Tipologia ? String(f[F.Tipologia] ?? "").trim() || undefined : undefined,
+        sottocategoria: F.Sottocategoria
+          ? String(f[F.Sottocategoria] ?? "").trim() || undefined
+          : undefined,
+        allocPrimaria: F.AllocPrimaria
+          ? String(f[F.AllocPrimaria] ?? "").trim() || undefined
+          : undefined,
+        allocSecondaria: F.AllocSecondaria
+          ? String(f[F.AllocSecondaria] ?? "").trim() || undefined
+          : undefined,
+        note: F.Note ? String(f[F.Note] ?? "").trim() || undefined : undefined,
         clienteRif: F.ClienteRif ? String(f[F.ClienteRif] ?? "").trim() || undefined : undefined,
       };
     })
-    .filter((r) => r.fornitore);
+    .filter((r) => r.fornitore || r.oggettoInclude);
 }
 
 export async function createRegolaFattura(input: RegolaFattura): Promise<RegolaFattura> {
@@ -5403,7 +5454,30 @@ export async function createRegolaFattura(input: RegolaFattura): Promise<RegolaF
   if (!input.tipologia?.trim() && !input.clienteRif?.trim())
     throw new Error("La regola deve impostare almeno tipologia o cliente di riferimento.");
   const fields: Record<string, unknown> = { Title: input.fornitore.trim().slice(0, 120) };
+  const controlliRF: [string | undefined, string | undefined, string][] = [
+    [input.oggettoInclude, F.OggettoInclude, "OggettoInclude"],
+    [input.sottocategoria, F.Sottocategoria, "Sottocategoria"],
+    [input.allocPrimaria, F.AllocPrimaria, "AllocazionePrimaria"],
+    [input.allocSecondaria, F.AllocSecondaria, "AllocazioneSecondaria"],
+    [input.note, F.Note, "Note"],
+  ];
+  for (const [valore, col, nome] of controlliRF)
+    if (valore?.trim() && !col)
+      throw new Error(
+        `La regola imposta "${nome}" ma la colonna manca sulla lista RegoleFatture: crearla (testo) e fare Riscopri.`,
+      );
   if (F.Fornitore) fields[F.Fornitore] = input.fornitore.trim();
+  if (F.OggettoInclude && input.oggettoInclude?.trim())
+    fields[F.OggettoInclude] = input.oggettoInclude.trim();
+  if (F.Operatore) fields[F.Operatore] = input.operatore === "OR" ? "OR" : "AND";
+  if (F.Direzione) fields[F.Direzione] = input.direzione === "Emessa" ? "Emessa" : "Ricevuta";
+  if (F.Sottocategoria && input.sottocategoria?.trim())
+    fields[F.Sottocategoria] = input.sottocategoria.trim();
+  if (F.AllocPrimaria && input.allocPrimaria?.trim())
+    fields[F.AllocPrimaria] = input.allocPrimaria.trim();
+  if (F.AllocSecondaria && input.allocSecondaria?.trim())
+    fields[F.AllocSecondaria] = input.allocSecondaria.trim();
+  if (F.Note && input.note?.trim()) fields[F.Note] = input.note.trim();
   if (F.Tipologia && input.tipologia?.trim()) fields[F.Tipologia] = input.tipologia.trim();
   if (F.ClienteRif && input.clienteRif?.trim()) fields[F.ClienteRif] = input.clienteRif.trim();
   const created = await withDiscoveryRetry(() =>

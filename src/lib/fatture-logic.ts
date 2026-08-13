@@ -564,22 +564,89 @@ export function classificazioneAuto(
 
 export interface RegolaFattura {
   id?: string;
+  /** Pattern sulla CONTROPARTE (multi-termine: virgola, punto e virgola). */
   fornitore: string;
+  /** Pattern su oggetto/descrizione della fattura (multi-termine). */
+  oggettoInclude?: string;
+  /** Come combinare i due pattern quando sono entrambi compilati. */
+  operatore?: "AND" | "OR";
+  /** Direzione della regola (default Ricevuta per le regole storiche). */
+  direzione?: DirezioneFattura;
   tipologia?: string;
+  sottocategoria?: string;
+  allocPrimaria?: string;
+  allocSecondaria?: string;
   clienteRif?: string;
+  note?: string;
+}
+
+/** Regola "compilata": chiavi canoniche calcolate UNA volta (le regex del
+ *  clienteGroupKey sono costose, con 3.000+ fatture si sentono). */
+export interface RegolaFatturaCompilata {
+  r: RegolaFattura;
+  direzione: DirezioneFattura;
+  terminiCliente: string[];
+  terminiOggetto: string[];
+}
+
+export function compilaRegoleFatture(regole: readonly RegolaFattura[]): RegolaFatturaCompilata[] {
+  return regole.map((r) => ({
+    r,
+    direzione: r.direzione ?? "Ricevuta",
+    terminiCliente: (r.fornitore ?? "")
+      .split(/[,;\n]/)
+      .map((x) => clienteGroupKey(x.trim()) || normalizeTesto(x.trim()))
+      .filter((x) => x.length >= 3),
+    terminiOggetto: (r.oggettoInclude ?? "")
+      .split(/[,;\n]/)
+      .map((x) => normalizeTesto(x.trim()))
+      .filter((x) => x.length >= 3),
+  }));
+}
+
+/** Match di una regola fatture: cliente include, oggetto/descrizione
+ *  include, combinati con AND oppure OR (una sola condizione compilata =
+ *  vale quella). La direzione deve coincidere. */
+export function matchRegolaFattura(
+  f: Pick<FatturaRaw, "cliente" | "oggetto" | "causaleDoc" | "direzione">,
+  rc: RegolaFatturaCompilata,
+): boolean {
+  if (rc.direzione !== f.direzione) return false;
+  const chiave = clienteGroupKey(f.cliente) || normalizeTesto(f.cliente);
+  const okCliente = rc.terminiCliente.length
+    ? rc.terminiCliente.some((t2) => chiave === t2 || chiave.includes(t2))
+    : null;
+  const testo = normalizeTesto(`${f.oggetto ?? ""} ${f.causaleDoc ?? ""}`);
+  const okOggetto = rc.terminiOggetto.length
+    ? rc.terminiOggetto.some((t2) => testo.includes(t2))
+    : null;
+  if (okCliente == null && okOggetto == null) return false;
+  if (okCliente == null) return okOggetto === true;
+  if (okOggetto == null) return okCliente;
+  return (rc.r.operatore ?? "AND") === "AND" ? okCliente && okOggetto : okCliente || okOggetto;
 }
 
 export interface ClassificazioneRisolta {
   mese: string;
   tipologia: string;
   clienteRif: string;
+  sottocategoria: string;
+  allocPrimaria: string;
+  allocSecondaria: string;
   fonte: "manuale" | "regola" | "auto" | "";
 }
 
 export function risolviClassificazione(
   f: Pick<
     FatturaRaw,
-    "cliente" | "dataDocumento" | "meseCompetenza" | "tipologiaCosto" | "clienteRif" | "oggetto"
+    | "cliente"
+    | "dataDocumento"
+    | "meseCompetenza"
+    | "tipologiaCosto"
+    | "clienteRif"
+    | "oggetto"
+    | "causaleDoc"
+    | "direzione"
   >,
   regole: readonly RegolaFattura[],
   auto: ReadonlyMap<string, { tipologia?: string; clienteRif?: string }>,
@@ -591,18 +658,28 @@ export function risolviClassificazione(
       mese,
       tipologia: f.tipologiaCosto ?? "",
       clienteRif: f.clienteRif ?? "",
+      sottocategoria: "",
+      allocPrimaria: "",
+      allocSecondaria: "",
       fonte: "manuale",
     };
   const chiave = clienteGroupKey(f.cliente) || f.cliente;
-  const regola = regole.find((r) => {
-    const rk = clienteGroupKey(r.fornitore);
-    return rk && (chiave === rk || chiave.includes(rk));
-  });
-  if (regola && (regola.tipologia || regola.clienteRif))
+  const regola = compilaRegoleFatture(regole).find((rc) => matchRegolaFattura(f, rc))?.r;
+  if (
+    regola &&
+    (regola.tipologia ||
+      regola.clienteRif ||
+      regola.sottocategoria ||
+      regola.allocPrimaria ||
+      regola.allocSecondaria)
+  )
     return {
       mese,
       tipologia: regola.tipologia ?? "",
       clienteRif: regola.clienteRif ?? "",
+      sottocategoria: regola.sottocategoria ?? "",
+      allocPrimaria: regola.allocPrimaria ?? "",
+      allocSecondaria: regola.allocSecondaria ?? "",
       fonte: "regola",
     };
   const proposta = auto.get(chiave);
@@ -611,9 +688,20 @@ export function risolviClassificazione(
       mese,
       tipologia: proposta.tipologia ?? "",
       clienteRif: proposta.clienteRif ?? "",
+      sottocategoria: "",
+      allocPrimaria: "",
+      allocSecondaria: "",
       fonte: "auto",
     };
-  return { mese, tipologia: "", clienteRif: "", fonte: "" };
+  return {
+    mese,
+    tipologia: "",
+    clienteRif: "",
+    sottocategoria: "",
+    allocPrimaria: "",
+    allocSecondaria: "",
+    fonte: "",
+  };
 }
 
 /** Risoluzione IN BLOCCO per tutto l'archivio: una passata sola, con le
@@ -626,9 +714,7 @@ export function risolviClassificazioneTutte(
   auto: ReadonlyMap<string, { tipologia?: string; clienteRif?: string }>,
   fallbackMese: RegolaMeseFallback = "g15",
 ): Map<string, ClassificazioneRisolta> {
-  const regoleKey = regole
-    .map((r) => ({ r, key: clienteGroupKey(r.fornitore) }))
-    .filter((x) => x.key);
+  const compilate = compilaRegoleFatture(regole);
   const out = new Map<string, ClassificazioneRisolta>();
   for (const f of fatture) {
     const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza, f.oggetto, fallbackMese);
@@ -637,17 +723,30 @@ export function risolviClassificazioneTutte(
         mese,
         tipologia: f.tipologiaCosto ?? "",
         clienteRif: f.clienteRif ?? "",
+        sottocategoria: "",
+        allocPrimaria: "",
+        allocSecondaria: "",
         fonte: "manuale",
       });
       continue;
     }
     const chiave = clienteGroupKey(f.cliente) || f.cliente;
-    const regola = regoleKey.find((x) => chiave === x.key || chiave.includes(x.key))?.r;
-    if (regola && (regola.tipologia || regola.clienteRif)) {
+    const regola = compilate.find((rc) => matchRegolaFattura(f, rc))?.r;
+    if (
+      regola &&
+      (regola.tipologia ||
+        regola.clienteRif ||
+        regola.sottocategoria ||
+        regola.allocPrimaria ||
+        regola.allocSecondaria)
+    ) {
       out.set(f.nomeFile, {
         mese,
         tipologia: regola.tipologia ?? "",
         clienteRif: regola.clienteRif ?? "",
+        sottocategoria: regola.sottocategoria ?? "",
+        allocPrimaria: regola.allocPrimaria ?? "",
+        allocSecondaria: regola.allocSecondaria ?? "",
         fonte: "regola",
       });
       continue;
@@ -657,6 +756,9 @@ export function risolviClassificazioneTutte(
       mese,
       tipologia: proposta?.tipologia ?? "",
       clienteRif: proposta?.clienteRif ?? "",
+      sottocategoria: "",
+      allocPrimaria: "",
+      allocSecondaria: "",
       fonte: proposta && (proposta.tipologia || proposta.clienteRif) ? "auto" : "",
     });
   }
