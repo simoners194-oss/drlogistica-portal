@@ -65,6 +65,7 @@ import {
   spGetRosterDipendenti,
   spImportDistinta,
   spAnnullaImport,
+  spEliminaMovimento,
   spGetRegoleFinanza,
   spGetTerminiPagamento,
   spImportTermini,
@@ -3259,7 +3260,42 @@ function FinanzaPage() {
                       </div>
                     );
                   })()}
-                  <div className="mt-4 flex justify-end gap-2">
+                  <div className="mt-4 flex items-center justify-end gap-2">
+                    {/* Eliminazione CHIRURGICA: per righe corrotte (importi
+                        x100 da import sbagliati). Doppia conferma, con
+                        l'importo nel testo per non sbagliare riga. */}
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => {
+                        const m2 = (movimenti ?? []).find((x) => x.id === editId);
+                        if (!m2) return;
+                        if (
+                          !window.confirm(
+                            `${t("fin.eliminaMovConfirm")}
+
+${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizione.slice(0, 60)}`,
+                          )
+                        )
+                          return;
+                        setSaving(true);
+                        void spEliminaMovimento({ data: { id: m2.id } })
+                          .then(() => {
+                            setMovimenti((prev) => (prev ?? []).filter((x) => x.id !== m2.id));
+                            setEditId(null);
+                            toast.success(t("fin.eliminaMovOk"));
+                          })
+                          .catch((err) =>
+                            toast.error(t("common.error"), {
+                              description: err instanceof Error ? err.message : String(err),
+                            }),
+                          )
+                          .finally(() => setSaving(false));
+                      }}
+                      className="mr-auto rounded-lg border border-status-absent/40 px-4 py-2 text-sm text-status-absent hover:bg-status-absent/10 disabled:opacity-50"
+                    >
+                      {t("fin.eliminaMovBtn")}
+                    </button>
                     <button
                       type="button"
                       onClick={() => setEditId(null)}

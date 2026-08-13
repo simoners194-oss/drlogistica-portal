@@ -4367,6 +4367,20 @@ export async function annullaImport(
   return { eliminati, rimanenti };
 }
 
+/** Elimina UN movimento dall'archivio. Chirurgico, per righe corrotte da
+ *  import sbagliati (es. importi x100 da virgola letta come migliaia):
+ *  annullare l'intero lotto butterebbe via anche le sanature manuali. */
+export async function eliminaMovimento(id: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const res = await gatewayFetch(`/sites/${cfg.siteId}/lists/${listId}/items/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok && res.status !== 204)
+    throw new SpHttpError(res.status, `DELETE movimento ${id} -> ${res.status}`, "delete");
+  logSp("info", "elimina.movimento", `Movimento ${id} eliminato dall'archivio`);
+}
+
 // --- Regole apprese (lista RegoleFinanza) -----------------------------------
 // Il direttore insegna al sistema le correzioni permanenti (es. un bonifico a
 // un professionista → Consulenze, "kuwait" → Carburante). Le regole si applicano a

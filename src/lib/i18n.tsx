@@ -921,6 +921,10 @@ const en = {
   "fin.distAggancioNota":
     "A batch not linked usually means the bank debited a different total (e.g. rejected payments) or a date outside the window: check the cumulative transaction amount in Movements.",
   "fin.editMovTip": "Edit this transaction",
+  "fin.eliminaMovBtn": "Delete movement",
+  "fin.eliminaMovConfirm":
+    "Delete this movement from the archive? Use ONLY for corrupted rows from a bad import — real bank movements must stay.",
+  "fin.eliminaMovOk": "Movement deleted from the archive",
   "fin.editMovTitolo": "Edit transaction",
   "fin.editMovSvuota": "Clearing a field and saving removes that value from the transaction.",
   "fin.spiegaTitolo": "Why this classification? Rules matching this transaction:",
@@ -2153,6 +2157,10 @@ const it: Record<DictKey, string> = {
   "fin.distAggancioNota":
     "Una distinta non agganciata di solito significa che la banca ha addebitato un totale diverso (es. disposizioni rifiutate) o una data fuori finestra: controllare l'importo del movimento cumulativo nei Movimenti.",
   "fin.editMovTip": "Correggi questo movimento",
+  "fin.eliminaMovBtn": "Elimina movimento",
+  "fin.eliminaMovConfirm":
+    "Eliminare questo movimento dall’archivio? Da usare SOLO per righe corrotte da un import sbagliato — i movimenti veri della banca devono restare.",
+  "fin.eliminaMovOk": "Movimento eliminato dall’archivio",
   "fin.editMovTitolo": "Correggi movimento",
   "fin.editMovSvuota": "Svuotare un campo e salvare cancella quel valore dal movimento.",
   "fin.spiegaTitolo": "Perché questa classificazione? Regole che colpiscono questo movimento:",

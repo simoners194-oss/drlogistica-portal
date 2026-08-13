@@ -89,6 +89,7 @@ import {
   updateMovimento,
   fetchImportStorico,
   annullaImport,
+  eliminaMovimento,
   LEGACY_IMPORT_ID,
   fetchRegoleFinanza,
   createRegolaFinanza,
@@ -1038,6 +1039,18 @@ export const spGetImportStorico = createServerFn({ method: "GET" }).handler(
 
 // Annulla un import: cancella un blocco di movimenti per chiamata; il client
 // ripete finché `rimanenti` è 0. LEGACY_IMPORT_ID annulla il gruppo senza id.
+export const spEliminaMovimento = createServerFn({ method: "POST" })
+  .inputValidator((input: { id: string }) => {
+    const id = String(input?.id ?? "").trim();
+    if (!id) throw new Error("id mancante");
+    return { id };
+  })
+  .handler(async ({ data }) => {
+    await assertDirettore(await currentUser());
+    await eliminaMovimento(data.id);
+    return { ok: true };
+  });
+
 export const spAnnullaImport = createServerFn({ method: "POST" })
   .inputValidator((input: { importId: string }) => {
     const importId = String(input?.importId ?? "").trim();
