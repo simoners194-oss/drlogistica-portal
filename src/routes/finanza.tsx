@@ -1167,6 +1167,84 @@ function FinanzaPage() {
             </tbody>
           </table>
           <p className="mt-1 text-[10px] text-muted-foreground">{t("fin.distAggancioNota")}</p>
+          {(() => {
+            // Vista speculare: le uscite che dalla descrizione sembrano
+            // pagamenti cumulativi (beneficiari vari, distinte, stipendi)
+            // ma NON hanno trovato nessuna distinta. Per ognuna si mostra
+            // la distinta piu' vicina e di quanto manca l'aggancio.
+            const orfani = (movimenti ?? [])
+              .filter(
+                (m) =>
+                  m.importo < 0 &&
+                  /beneficiari|distint|stipend|emolument|salari/i.test(
+                    `${m.descrizione} ${m.causale ?? ""}`,
+                  ) &&
+                  distintaDi(m) == null,
+              )
+              .sort((a, b) => (a.dataContabile < b.dataContabile ? 1 : -1))
+              .slice(0, 10);
+            if (!orfani.length) return null;
+            return (
+              <div className="mt-3 rounded-lg border border-status-absent/30 bg-status-absent/5 p-2">
+                <p className="mb-1 text-[11px] font-medium text-status-absent">
+                  {t("fin.distOrfaniTitolo")} ({orfani.length})
+                </p>
+                <table className="w-full text-[11px]">
+                  <tbody>
+                    {orfani.map((m) => {
+                      const target = Math.round(-m.importo * 100) / 100;
+                      let best: (typeof distGruppi)[number] | null = null;
+                      let bestScore = Infinity;
+                      for (const g of distGruppi) {
+                        const dEuro = Math.abs(g.somma - target);
+                        const dGg = Math.abs(
+                          (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+                            new Date(`${g.data}T00:00:00`).getTime()) /
+                            86400000,
+                        );
+                        const score = dEuro + dGg * 10;
+                        if (score < bestScore) {
+                          bestScore = score;
+                          best = g;
+                        }
+                      }
+                      const dEuro = best
+                        ? Math.round(Math.abs(best.somma - target) * 100) / 100
+                        : 0;
+                      const dGg = best
+                        ? Math.round(
+                            Math.abs(
+                              (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+                                new Date(`${best.data}T00:00:00`).getTime()) /
+                                86400000,
+                            ),
+                          )
+                        : 0;
+                      return (
+                        <tr key={m.id} className="border-t border-border/30">
+                          <td className="py-1 pr-3 whitespace-nowrap">
+                            {fmtData(m.dataContabile)}
+                          </td>
+                          <td className="py-1 pr-3 text-right tabular-nums whitespace-nowrap">
+                            {fmtImporto(m.importo)} €
+                          </td>
+                          <td className="max-w-64 truncate py-1 pr-3" title={m.descrizione}>
+                            {m.descrizione}
+                          </td>
+                          <td className="py-1 text-muted-foreground">
+                            {best
+                              ? `${t("fin.distOrfanoVicina")}: ${fmtData(best.data)} · ${best.righe.length} × ${fmtImporto(best.somma)} € (Δ ${fmtImporto(dEuro)} €, ${dGg} gg)`
+                              : t("fin.distOrfanoNiente")}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p className="mt-1 text-[10px] text-muted-foreground">{t("fin.distOrfaniNota")}</p>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

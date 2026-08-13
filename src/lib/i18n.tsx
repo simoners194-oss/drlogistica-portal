@@ -892,6 +892,12 @@ const en = {
   "fin.distAggScegli": "Link to a transaction…",
   "fin.distAggOk": "Batch linked: the badge now shows on that transaction.",
   "fin.distResto": "Batch remainder (unmatched items)",
+  "fin.distOrfaniTitolo": "Bulk payments without a batch",
+  "fin.distOrfanoVicina": "closest batch",
+  "fin.distOrfanoNiente":
+    "no batch with a similar amount in the archive: import the batch file for this payment",
+  "fin.distOrfaniNota":
+    "These outgoing movements look like bulk payments but no batch matched (same amount within 1 euro, date within 6 days). If the closest batch is the right one, link it manually from its row above; if none exists, import its Excel file.",
   "fin.soloDistinte": "Batches only",
   "fin.perPagina": "Rows per page",
   "fin.distAggFuturo": "Future date: the debit has not happened yet — it will link by itself.",
@@ -2104,6 +2110,12 @@ const it: Record<DictKey, string> = {
   "fin.distAggScegli": "Aggancia a un movimento…",
   "fin.distAggOk": "Distinta agganciata: il badge ora compare su quel movimento.",
   "fin.distResto": "Resto distinta (disposizioni non riscontrate)",
+  "fin.distOrfaniTitolo": "Pagamenti cumulativi senza distinta",
+  "fin.distOrfanoVicina": "distinta più vicina",
+  "fin.distOrfanoNiente":
+    "nessuna distinta con somma simile in archivio: importa il file della distinta di questo pagamento",
+  "fin.distOrfaniNota":
+    "Uscite che dalla descrizione sembrano pagamenti cumulativi ma senza nessuna distinta agganciata (stessa somma ±1 €, data entro 6 giorni). Se la distinta più vicina è quella giusta, agganciala a mano dalla sua riga qui sopra; se non esiste, va importato il suo file Excel.",
   "fin.soloDistinte": "Solo distinte",
   "fin.perPagina": "Righe per pagina",
   "fin.distAggFuturo": "Data futura: l’addebito non è ancora avvenuto — si aggancerà da solo.",
