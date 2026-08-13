@@ -129,6 +129,7 @@ export function RegoleFattureCard() {
   // generica), stessi esiti; l'ultimo foglio vince; le presenti si saltano.
   const leggiExcel = async (file: File) => {
     setImp(null);
+    toast.info(t("ft.rfImpLettura"), { description: file.name });
     try {
       const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
@@ -204,6 +205,9 @@ export function RegoleFattureCard() {
         return;
       }
       setImp({ nuove, doppioni: tutte.length - nuove.length });
+      toast.success(t("ft.rfImpPronta"), {
+        description: `${nuove.length} ${t("ft.rfImpNuove")} · ${tutte.length - nuove.length} ${t("ft.rfImpDoppie")}`,
+      });
     } catch (err) {
       toast.error(t("common.error"), {
         description: err instanceof Error ? err.message : String(err),

@@ -1220,6 +1220,8 @@ const en = {
   "ft.rfImpTitolo": "Import rules from Excel",
   "ft.rfImpDesc":
     'Sheets with a CLIENTE/FORNITORE header become supplier rules; a "Se oggetto o descrizione include" column becomes an AND condition. The Nota column is stored as the rule\u2019s note (it never affects matching). Rules already present are skipped.',
+  "ft.rfImpLettura": "Reading the file… a few seconds for large workbooks",
+  "ft.rfImpPronta": "Preview ready: check the numbers, then press Create rules",
   "ft.rfImpNuove": "new rules to create",
   "ft.rfImpDoppie": "already present or duplicated",
   "ft.rfImpBtn": "Create rules",
@@ -2491,6 +2493,8 @@ const it: Record<DictKey, string> = {
   "ft.rfImpTitolo": "Importa regole da Excel",
   "ft.rfImpDesc":
     'I fogli con intestazione CLIENTE/FORNITORE diventano regole per fornitore; la colonna "Se oggetto o descrizione include" diventa condizione AND. La colonna Nota finisce nel campo Note della regola (non influenza mai il riconoscimento). Le regole gi\u00e0 presenti vengono saltate.',
+  "ft.rfImpLettura": "Sto leggendo il file… qualche secondo se il foglio è grande",
+  "ft.rfImpPronta": "Anteprima pronta: controlla i numeri e premi Crea le regole",
   "ft.rfImpNuove": "regole nuove da creare",
   "ft.rfImpDoppie": "gi\u00e0 presenti o duplicate",
   "ft.rfImpBtn": "Crea le regole",

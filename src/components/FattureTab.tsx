@@ -671,6 +671,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   // l'ultimo foglio (il consolidato). Le regole gia' presenti si saltano.
   const leggiRegoleExcel = async (file: File) => {
     setRfImp(null);
+    toast.info(t("ft.rfImpLettura"), { description: file.name });
     try {
       const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
@@ -751,6 +752,9 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         return;
       }
       setRfImp({ nuove, doppioni: tutte.length - nuove.length });
+      toast.success(t("ft.rfImpPronta"), {
+        description: `${nuove.length} ${t("ft.rfImpNuove")} · ${tutte.length - nuove.length} ${t("ft.rfImpDoppie")}`,
+      });
     } catch (err) {
       toast.error(t("common.error"), {
         description: err instanceof Error ? err.message : String(err),
