@@ -169,6 +169,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   const [soloScartate, setSoloScartate] = useState(false);
   // "" = tutte; "tutte" = solo NC; "sciolte" = solo NC non collegate.
   const [ncFiltro, setNcFiltro] = useState<"" | "tutte" | "sciolte">("");
+  const [soloNonClassF, setSoloNonClassF] = useState(false);
   // Clienti selezionati nel menu a tendina (vuoto = tutti). Le voci proposte
   // sono i 15 clienti con piu' fatturato, in ordine decrescente.
   const [clientiSel, setClientiSel] = useState<string[]>([]);
@@ -1060,11 +1061,15 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           isNotaCredito(x.f.tipoDocumento) &&
           (ncFiltro === "tutte" || !ncCollegate.has(x.f.numero)),
       );
+    if (soloNonClassF) out = out.filter((x) => !classificaDi(x.f).tipologia);
     if (filtriThAttivi) out = out.filter((x) => passaFiltriTh(x));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     conStato,
+    soloNonClassF,
+    regoleFatture,
+    classAuto,
     anniF,
     clienteF,
     statiF,
@@ -2665,6 +2670,13 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
               >
                 {t("ft.fNcSciolte")}
               </button>
+              <button
+                type="button"
+                onClick={() => setSoloNonClassF((x) => !x)}
+                className={chipCls(soloNonClassF)}
+              >
+                {t("ft.fNonClass")}
+              </button>
             </div>
           </div>
           <MultiSelect
@@ -3016,7 +3028,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         ) : filtrate.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">{t("ft.empty")}</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="max-h-[75vh] overflow-auto">
             {/* Filtri di colonna attivi: conteggio e pulizia a un click. */}
             {filtriThAttivi && (
               <div className="mb-2 flex items-center gap-3 text-xs text-muted-foreground">
@@ -3428,7 +3440,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
               </div>
             )}
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-card">
                 {/* Intestazione GENERATA dal modello colonne: l'ordine dei
                     th DEVE combaciare con le celle del corpo qui sotto. Ogni
                     colonna ha il suo imbuto: spunte sui valori distinti, a
