@@ -4130,12 +4130,12 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
           // come separatore delle migliaia (5.315,55 -> 531555). La riga
           // corrotta e' sempre INTERA, vale 100 volte una riga vera con i
           // centesimi, stessa data e stesso riferimento/descrizione.
-          const rifDi = (m: SpMovimento) => {
-            const r = /rif\.?\s*([a-z0-9/]+)/i.exec(m.descrizione);
-            return r
-              ? r[1].toLowerCase()
-              : m.descrizione.toLowerCase().replace(/\s+/g, " ").slice(0, 60);
-          };
+          // Il confronto usa la DESCRIZIONE COMPLETA normalizzata: i gemelli
+          // corrotti sono fotocopie della riga vera. Il solo riferimento non
+          // basta — sullo stesso bonifico convivono commissioni legittime
+          // diverse (comm.fissa −5,00 e perc.agg. −0,05: 100x per coincidenza).
+          const rifDi = (m: SpMovimento) =>
+            m.descrizione.toLowerCase().replace(/\s+/g, " ").slice(0, 70);
           const gruppi = new Map<string, SpMovimento[]>();
           for (const m of movimenti ?? []) {
             const k = `${m.dataContabile}|${rifDi(m)}`;
