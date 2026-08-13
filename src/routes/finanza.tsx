@@ -846,48 +846,57 @@ function FinanzaPage() {
       })
       .slice(0, 30);
     if (!cand.length) return null;
-    // Meet in the middle SUL PIU' VICINO: le somme di meta' candidati in
-    // un array ordinato, l'altra meta' cerca il complemento migliore.
-    const arr = cand.map((m) => Math.round(-m.importo * 100));
-    const target = Math.round((obiettivo ?? g.somma) * 100);
-    const metaN = Math.ceil(cand.length / 2);
-    const nB = cand.length - metaN;
-    const sommeA: [number, number][] = [];
-    for (let mask = 0; mask < 1 << metaN; mask++) {
-      let s2 = 0;
-      for (let i2 = 0; i2 < metaN; i2++) if (mask & (1 << i2)) s2 += arr[i2];
-      sommeA.push([s2, mask]);
-    }
-    sommeA.sort((x, y) => x[0] - y[0]);
-    let best: { diff: number; maskA: number; maskB: number } | null = null;
-    for (let mask = 0; mask < 1 << nB; mask++) {
-      let s2 = 0;
-      for (let i2 = 0; i2 < nB; i2++) if (mask & (1 << i2)) s2 += arr[metaN + i2];
-      const want = target - s2;
-      let lo = 0;
-      let hi = sommeA.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (sommeA[mid][0] < want) lo = mid + 1;
-        else hi = mid;
+    // Meet in the middle SUL PIU' VICINO, come funzione: si prova PRIMA
+    // sui soli candidati FORTI (le tranche vere si chiamano "beneficiari
+    // vari distinta"), e solo in ripiego sul pool largo — una quadratura
+    // COINCIDENTE di bonifici singoli non deve mai battere quella vera.
+    const cerca = (pool: SpMovimento[]): { scelti: SpMovimento[]; diffCent: number } | null => {
+      if (!pool.length) return null;
+      const arr = pool.map((m) => Math.round(-m.importo * 100));
+      const target = Math.round((obiettivo ?? g.somma) * 100);
+      const metaN = Math.ceil(pool.length / 2);
+      const nB = pool.length - metaN;
+      const sommeA: [number, number][] = [];
+      for (let mask = 0; mask < 1 << metaN; mask++) {
+        let s2 = 0;
+        for (let i2 = 0; i2 < metaN; i2++) if (mask & (1 << i2)) s2 += arr[i2];
+        sommeA.push([s2, mask]);
       }
-      for (const idx of [lo - 1, lo]) {
-        if (idx < 0 || idx >= sommeA.length) continue;
-        const coppia = sommeA[idx];
-        if (coppia[1] === 0 && mask === 0) continue;
-        const diff = Math.abs(coppia[0] + s2 - target);
-        if (!best || diff < best.diff) best = { diff, maskA: coppia[1], maskB: mask };
+      sommeA.sort((x, y) => x[0] - y[0]);
+      let best: { diff: number; maskA: number; maskB: number } | null = null;
+      for (let mask = 0; mask < 1 << nB; mask++) {
+        let s2 = 0;
+        for (let i2 = 0; i2 < nB; i2++) if (mask & (1 << i2)) s2 += arr[metaN + i2];
+        const want = target - s2;
+        let lo = 0;
+        let hi = sommeA.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (sommeA[mid][0] < want) lo = mid + 1;
+          else hi = mid;
+        }
+        for (const idx of [lo - 1, lo]) {
+          if (idx < 0 || idx >= sommeA.length) continue;
+          const coppia = sommeA[idx];
+          if (coppia[1] === 0 && mask === 0) continue;
+          const diff = Math.abs(coppia[0] + s2 - target);
+          if (!best || diff < best.diff) best = { diff, maskA: coppia[1], maskB: mask };
+        }
+        if (best && best.diff === 0) break;
       }
-      if (best && best.diff === 0) break;
-    }
-    if (!best) return null;
-    const scelto = best;
-    const scelti = cand.filter((_, i2) =>
-      i2 < metaN ? scelto.maskA & (1 << i2) : scelto.maskB & (1 << (i2 - metaN)),
-    );
-    // Anche UN solo movimento e' una risposta utile (addebito unico
-    // con commissioni): la soglia minima di 2 scartava proprio quel caso.
-    return scelti.length >= 1 ? { scelti, diffCent: scelto.diff } : null;
+      if (!best) return null;
+      const scelto = best;
+      const scelti = pool.filter((_, i2) =>
+        i2 < metaN ? scelto.maskA & (1 << i2) : scelto.maskB & (1 << (i2 - metaN)),
+      );
+      return scelti.length >= 1 ? { scelti, diffCent: scelto.diff } : null;
+    };
+    const forti = cand.filter((m) => peso(m) === 0);
+    const daForti = cerca(forti);
+    if (daForti && daForti.diffCent === 0) return daForti;
+    const daTutti = cerca(cand);
+    if (daTutti && daForti && daForti.diffCent <= daTutti.diffCent) return daForti;
+    return daTutti ?? daForti;
   };
   const trancheMap = useMemo(() => {
     const out = new Map<string, { scelti: SpMovimento[]; diffCent: number }>();
@@ -1264,15 +1273,59 @@ function FinanzaPage() {
                       </td>
                       <td className="py-1 pr-3">
                         {collegati.length > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => setDistModal(g)}
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${completo ? "bg-status-present/10 text-status-present" : "bg-primary/10 text-primary"}`}
-                          >
-                            <Users className="h-3 w-3" /> {collegati.length} mov ·{" "}
-                            {fmtImporto(coperto)}
-                            {completo ? " €" : ` di ${fmtImporto(g.somma)} €`}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setDistModal(g)}
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${completo ? "bg-status-present/10 text-status-present" : "bg-primary/10 text-primary"}`}
+                            >
+                              <Users className="h-3 w-3" /> {collegati.length} mov ·{" "}
+                              {fmtImporto(coperto)}
+                              {completo ? " €" : ` di ${fmtImporto(g.somma)} €`}
+                            </button>
+                            {/* SGANCIA TUTTO: azzera gli agganci del gruppo per
+                                rifarli da zero (rimedio alle combinazioni
+                                coincidenti agganciate per errore). */}
+                            <button
+                              type="button"
+                              disabled={trancheBusy}
+                              onClick={() => {
+                                void (async () => {
+                                  if (
+                                    !window.confirm(
+                                      `${t("fin.distSganciaConfirm")} (${collegati.length})`,
+                                    )
+                                  )
+                                    return;
+                                  setTrancheBusy(true);
+                                  try {
+                                    const daPulire = g.righe.filter((r2) => r2.movimentoChiave);
+                                    for (const r2 of daPulire)
+                                      await spSetDistintaMovimento({
+                                        data: { id: r2.id, chiave: "" },
+                                      });
+                                    setDistinte((prev) =>
+                                      (prev ?? []).map((x) =>
+                                        daPulire.some((y) => y.id === x.id)
+                                          ? { ...x, movimentoChiave: "" }
+                                          : x,
+                                      ),
+                                    );
+                                    toast.success(t("fin.distSganciaOk"));
+                                  } catch (err) {
+                                    toast.error(t("common.error"), {
+                                      description: err instanceof Error ? err.message : String(err),
+                                    });
+                                  } finally {
+                                    setTrancheBusy(false);
+                                  }
+                                })();
+                              }}
+                              className="ml-1.5 rounded-full border border-status-absent/40 px-2 py-0.5 text-[11px] text-status-absent hover:bg-status-absent/10 disabled:opacity-50"
+                            >
+                              {t("fin.distSganciaBtn")}
+                            </button>
+                          </>
                         ) : autoMov ? (
                           <button
                             type="button"

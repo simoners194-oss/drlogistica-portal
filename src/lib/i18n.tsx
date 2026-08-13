@@ -909,6 +909,10 @@ const en = {
   "fin.distQuasiBtn": "Link this combination",
   "fin.distQuasiConfirm":
     "Link these movements to the batch? The remainder row will absorb the difference. Check the list:",
+  "fin.distSganciaBtn": "Unlink all",
+  "fin.distSganciaConfirm":
+    "Unlink every movement from this batch? The engine will then re-link from scratch, preferring the real tranches.",
+  "fin.distSganciaOk": "Batch unlinked: re-linking from scratch",
   "fin.distTrancheBtn": "Link all tranches, exact total",
   "fin.distTrancheOk": "Tranches linked: the batch now covers its movements",
   "fin.soloDistinte": "Batches only",
@@ -2159,6 +2163,10 @@ const it: Record<DictKey, string> = {
   "fin.distQuasiBtn": "Aggancia questa combinazione",
   "fin.distQuasiConfirm":
     "Agganciare questi movimenti alla distinta? La riga di resto assorbirà lo scarto. Controlla l’elenco:",
+  "fin.distSganciaBtn": "Sgancia tutto",
+  "fin.distSganciaConfirm":
+    "Sganciare tutti i movimenti da questa distinta? Il motore rifar\u00e0 gli agganci da zero, preferendo le tranche vere.",
+  "fin.distSganciaOk": "Distinta sganciata: riaggancio da zero in corso",
   "fin.distTrancheBtn": "Aggancia tutte le tranche, somma esatta",
   "fin.distTrancheOk": "Tranche agganciate: la distinta ora copre i suoi movimenti",
   "fin.soloDistinte": "Solo distinte",
