@@ -694,15 +694,35 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           const tipologia = String(r?.[1 + off] ?? "").trim();
           if (!fornitore || !tipologia) continue;
           const oggettoInclude = conOggetto ? String(r?.[1] ?? "").trim() : "";
-          per.set(`${fornitore.toLowerCase()}|${oggettoInclude.toLowerCase()}`, {
+          const nota = iNota >= 0 ? String(r?.[iNota] ?? "").trim() : "";
+          const base = {
             fornitore,
-            oggettoInclude: oggettoInclude || undefined,
             tipologia,
             sottocategoria: String(r?.[2 + off] ?? "").trim() || undefined,
             allocPrimaria: String(r?.[3 + off] ?? "").trim() || undefined,
             allocSecondaria: String(r?.[4 + off] ?? "").trim() || undefined,
-            note: iNota >= 0 ? String(r?.[iNota] ?? "").trim() || undefined : undefined,
-          });
+          };
+          if (conOggetto) {
+            per.set(`${fornitore.toLowerCase()}|${oggettoInclude.toLowerCase()}`, {
+              ...base,
+              oggettoInclude: oggettoInclude || undefined,
+              note: nota || undefined,
+            });
+          } else if (nota) {
+            // NOTA = classificazione: la riga si SPEZZA in due regole
+            // gemelle con gli stessi esiti — la SPECIFICA (l'oggetto della
+            // fattura contiene la nota, che resta anche come annotazione)
+            // e la GENERICA senza nota. La specifica vince sempre perche'
+            // le regole con oggetto si valutano prima delle generiche.
+            per.set(`${fornitore.toLowerCase()}|${nota.toLowerCase()}`, {
+              ...base,
+              oggettoInclude: nota,
+              note: nota,
+            });
+            per.set(`${fornitore.toLowerCase()}|`, { ...base });
+          } else {
+            per.set(`${fornitore.toLowerCase()}|`, { ...base });
+          }
         }
       }
       const esistenti = new Set(
