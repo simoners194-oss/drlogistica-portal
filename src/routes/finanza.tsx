@@ -3950,6 +3950,41 @@ function FinanzaPage() {
               >
                 {uniBusy ? t("common.loading") : t("fin.uniBtn")}
               </button>
+              <button
+                type="button"
+                disabled={regole == null || regole.length === 0}
+                onClick={() => {
+                  // Excel-friendly: CSV con BOM e punto e virgola.
+                  esportaCsvFile(
+                    "regole-movimenti",
+                    [
+                      "Testo da riconoscere",
+                      "Campo",
+                      "Modo",
+                      "Tipologia",
+                      "Sottocategoria",
+                      "Allocazione primaria",
+                      "Allocazione secondaria",
+                      "Nome controparte",
+                      "Nota",
+                    ],
+                    (regole ?? []).map((r) => [
+                      r.pattern,
+                      r.campo,
+                      r.modo,
+                      r.tipologia ?? "",
+                      r.sottocategoria ?? "",
+                      r.allocPrimaria ?? "",
+                      r.allocSecondaria ?? "",
+                      r.cliente ?? "",
+                      r.note ?? "",
+                    ]),
+                  );
+                }}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+              >
+                {t("fin.regoleEsporta")}
+              </button>
               {selReg.size > 0 && (
                 <button
                   type="button"
