@@ -46,6 +46,7 @@ import {
   LEGACY_IMPORT_ID,
   TIPOLOGIE_MOVIMENTO,
   matchRegola,
+  applicaRegole,
   matchDipendenteNome,
   type DipendenteRoster,
   type MovimentoParsed,
@@ -894,30 +895,44 @@ function FinanzaPage() {
       }
       const chiaveG = `${g.data}|${g.tipo}`;
       let somma = 0;
+      // "Pagamento Salario" vale SOLO per le distinte stipendi (o per i
+      // beneficiari riconosciuti in anagrafica): le RiBa e le altre distinte
+      // sono pagamenti fornitori e passano nelle REGOLE APPRESE, come
+      // qualsiasi movimento (Califano -> la sua regola, non "salario").
+      const eStipendi = (g.tipo || "").toLowerCase().includes("stipend");
       for (const d of g.righe) {
         somma += d.importo;
         const ris = risolviAppaltoDist(d);
         const appalto = ris.appalto && ris.appalto !== "__senza__" ? ris.appalto : "";
-        out.push({
+        let riga: MovVista = {
           ...m,
           id: `dist:${d.id}`,
           importo: Math.round(-d.importo * 100) / 100,
           cliente: d.beneficiario,
           descrizione: `${g.tipo || "distinta"} ${fmtData(g.data)}${d.descrizione ? ` · ${d.descrizione}` : ""}`,
           causale: "",
-          tipologia: "Pagamento Salario",
-          sottocategoria: m.sottocategoria || "Pagamento Salario",
-          allocPrimaria: appalto
-            ? appalto.toLowerCase().startsWith("ufficio")
-              ? "Costi generali"
-              : "Appalto"
-            : "",
-          allocSecondaria: appalto,
+          tipologia: "",
+          sottocategoria: "",
+          allocPrimaria: "",
+          allocSecondaria: "",
           nrFattura: "",
           daVerificare: false,
           distVirtuale: true,
           distChiave: chiaveG,
-        });
+        };
+        if (eStipendi || ris.nome) {
+          riga.tipologia = "Pagamento Salario";
+          riga.sottocategoria = "Pagamento Salario";
+          riga.allocPrimaria = appalto
+            ? appalto.toLowerCase().startsWith("ufficio")
+              ? "Costi generali"
+              : "Appalto"
+            : "";
+          riga.allocSecondaria = appalto;
+        } else {
+          riga = applicaRegole(riga, regole ?? []);
+        }
+        out.push(riga);
       }
       const resto = Math.round((m.importo + somma) * 100) / 100;
       if (Math.abs(resto) > 0.005)
@@ -932,7 +947,7 @@ function FinanzaPage() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [movimenti, distGruppi, rosterDip, distinte]);
+  }, [movimenti, distGruppi, rosterDip, distinte, regole]);
 
   const distinteCard = (
     <div className="mb-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
