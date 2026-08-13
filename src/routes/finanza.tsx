@@ -890,14 +890,31 @@ function FinanzaPage() {
   const movimentiVista = useMemo((): MovVista[] | null => {
     if (!movimenti) return null;
     if (!distGruppi.length) return movimenti;
-    const out: MovVista[] = [];
+    // TRANCHE MULTIPLE: la banca puo' addebitare la stessa distinta in
+    // piu' movimenti (es. stipendi 69.345,22 pagati in 7 addebiti). Il
+    // gruppo si espande UNA volta sola — al primo movimento incontrato —
+    // e il resto si calcola sul TOTALE di tutte le tranche agganciate,
+    // cosi' beneficiari mai duplicati e totali che quadrano al centesimo.
+    const gruppoDi = new Map<string, (typeof distGruppi)[number]>();
+    const totaleTranche = new Map<string, number>();
     for (const m of movimenti) {
       const g = m.importo < 0 ? distintaDi(m) : null;
+      if (!g) continue;
+      const k = `${g.data}|${g.tipo}`;
+      gruppoDi.set(m.id, g);
+      totaleTranche.set(k, Math.round(((totaleTranche.get(k) ?? 0) + m.importo) * 100) / 100);
+    }
+    const espansi = new Set<string>();
+    const out: MovVista[] = [];
+    for (const m of movimenti) {
+      const g = gruppoDi.get(m.id);
       if (!g) {
         out.push(m);
         continue;
       }
       const chiaveG = `${g.data}|${g.tipo}`;
+      if (espansi.has(chiaveG)) continue;
+      espansi.add(chiaveG);
       let somma = 0;
       // "Pagamento Salario" vale SOLO per le distinte stipendi (o per i
       // beneficiari riconosciuti in anagrafica): le RiBa e le altre distinte
@@ -942,7 +959,7 @@ function FinanzaPage() {
         }
         out.push(riga);
       }
-      const resto = Math.round((m.importo + somma) * 100) / 100;
+      const resto = Math.round(((totaleTranche.get(chiaveG) ?? m.importo) + somma) * 100) / 100;
       if (Math.abs(resto) > 0.005)
         out.push({
           ...m,
