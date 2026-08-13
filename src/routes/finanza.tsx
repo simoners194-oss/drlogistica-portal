@@ -920,17 +920,21 @@ function FinanzaPage() {
           distVirtuale: true,
           distChiave: chiaveG,
         };
+        // PRIMA le regole apprese: le regole per nominativo (che portano
+        // anche l'appalto) vincono sempre. Poi, per le distinte stipendi o
+        // i beneficiari in anagrafica, il ripiego "Pagamento Salario" +
+        // appalto della persona riempie SOLO i buchi rimasti.
+        riga = applicaRegole(riga, regole ?? []);
         if (eStipendi || ris.nome) {
-          riga.tipologia = "Pagamento Salario";
-          riga.sottocategoria = "Pagamento Salario";
-          riga.allocPrimaria = appalto
-            ? appalto.toLowerCase().startsWith("ufficio")
-              ? "Costi generali"
-              : "Appalto"
-            : "";
-          riga.allocSecondaria = appalto;
-        } else {
-          riga = applicaRegole(riga, regole ?? []);
+          if (!riga.tipologia) riga.tipologia = "Pagamento Salario";
+          if (!riga.sottocategoria) riga.sottocategoria = "Pagamento Salario";
+          if (!riga.allocSecondaria && appalto) {
+            riga.allocSecondaria = appalto;
+            if (!riga.allocPrimaria)
+              riga.allocPrimaria = appalto.toLowerCase().startsWith("ufficio")
+                ? "Costi generali"
+                : "Appalto";
+          }
         }
         out.push(riga);
       }
