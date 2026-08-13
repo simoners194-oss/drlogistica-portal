@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.39.0",
+    date: "2026-08-13",
+    codename: "La distinta si apre da sola",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "I pagamenti cumulativi si mostrano gia' divisi per beneficiario",
+        description:
+          "Nei Movimenti (e nelle viste dell'Overview) il movimento agganciato a una distinta non compare piu' come totale unico: al suo posto ci sono le singole disposizioni, una per beneficiario, gia' classificate come Pagamento Salario con l'appalto della persona e il badge della distinta \u2014 dal quale si risale sempre al pagamento cumulativo di provenienza. Se la banca ha addebitato una cifra diversa dalla somma delle disposizioni, una riga di resto fa quadrare i totali al centesimo. L'archivio bancario sottostante resta intatto.",
+      },
+    ],
+  },
+  {
     version: "1.38.0",
     date: "2026-08-13",
     codename: "Regole anche per le fatture",

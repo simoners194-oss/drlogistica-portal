@@ -876,6 +876,64 @@ function FinanzaPage() {
     );
   };
 
+  // SPLIT AUTOMATICO: il movimento cumulativo agganciato a una distinta
+  // si presenta come le sue DISPOSIZIONI (una riga per beneficiario, gia'
+  // classificata), piu' una riga di RESTO se le somme non coincidono —
+  // cosi' i totali quadrano al centesimo con l'estratto conto. L'archivio
+  // banca non viene toccato: e' una lente, non una riscrittura.
+  type MovVista = SpMovimento & { distVirtuale?: boolean; distChiave?: string };
+  const movimentiVista = useMemo((): MovVista[] | null => {
+    if (!movimenti) return null;
+    if (!distGruppi.length) return movimenti;
+    const out: MovVista[] = [];
+    for (const m of movimenti) {
+      const g = m.importo < 0 ? distintaDi(m) : null;
+      if (!g) {
+        out.push(m);
+        continue;
+      }
+      const chiaveG = `${g.data}|${g.tipo}`;
+      let somma = 0;
+      for (const d of g.righe) {
+        somma += d.importo;
+        const ris = risolviAppaltoDist(d);
+        const appalto = ris.appalto && ris.appalto !== "__senza__" ? ris.appalto : "";
+        out.push({
+          ...m,
+          id: `dist:${d.id}`,
+          importo: Math.round(-d.importo * 100) / 100,
+          cliente: d.beneficiario,
+          descrizione: `${g.tipo || "distinta"} ${fmtData(g.data)}${d.descrizione ? ` · ${d.descrizione}` : ""}`,
+          causale: "",
+          tipologia: "Pagamento Salario",
+          sottocategoria: m.sottocategoria || "Pagamento Salario",
+          allocPrimaria: appalto
+            ? appalto.toLowerCase().startsWith("ufficio")
+              ? "Costi generali"
+              : "Appalto"
+            : "",
+          allocSecondaria: appalto,
+          nrFattura: "",
+          daVerificare: false,
+          distVirtuale: true,
+          distChiave: chiaveG,
+        });
+      }
+      const resto = Math.round((m.importo + somma) * 100) / 100;
+      if (Math.abs(resto) > 0.005)
+        out.push({
+          ...m,
+          id: `distresto:${m.id}`,
+          importo: resto,
+          descrizione: `${t("fin.distResto")} · ${m.descrizione}`,
+          distVirtuale: true,
+          distChiave: chiaveG,
+        });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movimenti, distGruppi, rosterDip, distinte]);
+
   const distinteCard = (
     <div className="mb-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
       <div className="text-sm font-semibold text-foreground mb-1">{t("fin.distTitolo")}</div>
@@ -1819,7 +1877,7 @@ function FinanzaPage() {
   };
 
   const filtratiBase = useMemo(() => {
-    let out = movimenti ?? [];
+    let out: MovVista[] = movimentiVista ?? [];
     // Anni: il server ha fornito l'intervallo min-max; qui si rifiniscono le
     // selezioni non contigue. Tipologie e mesi: vuoto = tutti, altrimenti OR.
     if (anni.length) out = out.filter((m) => anni.includes(Number(m.dataContabile.slice(0, 4))));
@@ -1865,7 +1923,7 @@ function FinanzaPage() {
     }
     return out;
   }, [
-    movimenti,
+    movimentiVista,
     anni,
     tipiF,
     mesiF,
@@ -1881,7 +1939,10 @@ function FinanzaPage() {
     impMaxF,
   ]);
   const filtrati = useMemo(
-    () => filtratiBase.filter((m) => passaMovTh(m) && (!soloDistinte || distintaDi(m) != null)),
+    () =>
+      filtratiBase.filter(
+        (m) => passaMovTh(m) && (!soloDistinte || m.distChiave != null || distintaDi(m) != null),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filtratiBase, movFiltriTh, soloDistinte, distGruppi],
   );
@@ -2066,7 +2127,7 @@ function FinanzaPage() {
     // Con UN solo anno selezionato le colonne sono i mesi; con più anni (o
     // nessun filtro) le colonne sono gli anni della selezione.
     const annoSingolo = anni.length === 1 ? anni[0] : 0;
-    const all = (movimenti ?? []).filter(
+    const all = (movimentiVista ?? []).filter(
       (m) => anni.length === 0 || anni.includes(Number(m.dataContabile.slice(0, 4))),
     );
     const anniColonna = [...new Set(all.map((m) => m.dataContabile.slice(0, 4)))]
@@ -2142,7 +2203,7 @@ function FinanzaPage() {
       ),
     ].sort((a, b) => a.localeCompare(b));
     return { righe, colonne, totCol, tot, count: selezione.length, tipologieSpese };
-  }, [movimenti, ovMode, ovTipF, anni, mesi, t]);
+  }, [movimentiVista, ovMode, ovTipF, anni, mesi, t]);
 
   const esportaMovimenti = () => {
     esportaCsvFile(
@@ -2986,18 +3047,20 @@ function FinanzaPage() {
                       title={m.descrizione}
                     >
                       <td className="py-1.5 pr-2">
-                        <input
-                          type="checkbox"
-                          className="accent-primary"
-                          checked={selMov.has(m.id)}
-                          onChange={() => {
-                            const ns = new Set(selMov);
-                            if (ns.has(m.id)) ns.delete(m.id);
-                            else ns.add(m.id);
-                            setSelMov(ns);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        />
+                        {!m.distVirtuale && (
+                          <input
+                            type="checkbox"
+                            className="accent-primary"
+                            checked={selMov.has(m.id)}
+                            onChange={() => {
+                              const ns = new Set(selMov);
+                              if (ns.has(m.id)) ns.delete(m.id);
+                              else ns.add(m.id);
+                              setSelMov(ns);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        )}
                       </td>
                       <td className="py-1.5 pr-3 whitespace-nowrap">{fmtData(m.dataContabile)}</td>
                       <td className="py-1.5 pr-3 whitespace-nowrap text-muted-foreground">
@@ -3026,7 +3089,9 @@ function FinanzaPage() {
                           </div>
                         )}
                         {(() => {
-                          const g = distintaDi(m);
+                          const g = m.distChiave
+                            ? distGruppi.find((x) => `${x.data}|${x.tipo}` === m.distChiave)
+                            : distintaDi(m);
                           return g ? (
                             <button
                               type="button"
@@ -3081,14 +3146,16 @@ function FinanzaPage() {
                       <td className="py-1.5 pr-3 text-muted-foreground">{m.nrFattura || "—"}</td>
                       <td className="py-1.5 pr-3 text-muted-foreground">{m.note || "—"}</td>
                       <td className="py-1.5 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => apriEdit(m)}
-                          title={t("fin.editMovTip")}
-                          className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
+                        {!m.distVirtuale && (
+                          <button
+                            type="button"
+                            onClick={() => apriEdit(m)}
+                            title={t("fin.editMovTip")}
+                            className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => creaRegolaDa(m)}
