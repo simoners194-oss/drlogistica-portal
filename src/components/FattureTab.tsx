@@ -730,6 +730,17 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   };
   const ordData = (v: string) => v.split("/").reverse().join("-");
   const ordImporto = (v: string) => Number(v.replace(/\./g, "").replace(",", ".")) || 0;
+  // "Da incassare/pagare" della colonna e del CSV: totale meno incassato,
+  // con le NC compensate che pesano in negativo (semantica dei pivot).
+  const daIncassareDi = (x: (typeof conStato)[number]) => {
+    const inc = isNotaCredito(x.f.tipoDocumento)
+      ? x.s.statoIncassi === "Pagata" || x.s.statoFatturazione === "Pagata"
+        ? -Math.abs(x.f.totale)
+        : 0
+      : x.s.incassato;
+    return Math.round((x.f.totale - inc) * 100) / 100;
+  };
+
   const colonneTh = useMemo<ColFiltro[]>(
     () => [
       { key: "numero", label: t("ft.numero"), get: (x) => x.f.numero },
@@ -807,6 +818,43 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         key: "descrizione",
         label: t("ft.colDescrizione"),
         get: (x: (typeof conStato)[number]) => x.f.oggetto ?? "",
+      },
+      {
+        key: "tipodoc",
+        label: t("ft.colTipoDoc"),
+        get: (x: (typeof conStato)[number]) => x.f.tipoDocumento,
+      },
+      {
+        key: "daincassare",
+        label: ricevute ? t("ft.colDaPagareNetto") : t("ft.colDaIncassareNetto"),
+        get: (x: (typeof conStato)[number]) => fmtImporto(daIncassareDi(x)),
+        ord: ordImporto,
+      },
+      {
+        key: "dataincasso",
+        label: ricevute ? t("ft.colDataPagamento") : t("ft.colDataIncasso"),
+        get: (x: (typeof conStato)[number]) => fmtData(x.f.dataIncasso),
+        ord: ordData,
+      },
+      {
+        key: "statosdi",
+        label: "SdI",
+        get: (x: (typeof conStato)[number]) => x.f.statoSdI || "—",
+      },
+      {
+        key: "discordante",
+        label: t("ft.colDiscordante"),
+        get: (x: (typeof conStato)[number]) => (x.s.discordante ? "Sì" : ""),
+      },
+      {
+        key: "fonteclass",
+        label: t("ft.colFonteClass"),
+        get: (x: (typeof conStato)[number]) => classificaDi(x.f).fonte || "—",
+      },
+      {
+        key: "nomefile",
+        label: t("ft.colNomeFile"),
+        get: (x: (typeof conStato)[number]) => x.f.nomeFile,
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3567,10 +3615,34 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                       >
                         {x.f.oggetto ?? "—"}
                       </td>
+                      <td className="whitespace-nowrap py-1 pr-2 text-[12px] text-muted-foreground">
+                        {x.f.tipoDocumento}
+                      </td>
+                      <td className="whitespace-nowrap py-1 pr-2 text-right tabular-nums">
+                        {fmtImporto(daIncassareDi(x))}
+                      </td>
+                      <td className="whitespace-nowrap py-1 pr-2 text-muted-foreground">
+                        {fmtData(x.f.dataIncasso)}
+                      </td>
+                      <td className="whitespace-nowrap py-1 pr-2 text-[12px] text-muted-foreground">
+                        {x.f.statoSdI || "—"}
+                      </td>
+                      <td className="py-1 pr-2 text-[12px] text-status-absent">
+                        {x.s.discordante ? "Sì" : ""}
+                      </td>
+                      <td className="py-1 pr-2 text-[12px] text-muted-foreground">
+                        {classificaDi(x.f).fonte || "—"}
+                      </td>
+                      <td
+                        className="max-w-44 truncate py-1 pr-2 font-mono text-[10px] text-muted-foreground"
+                        title={x.f.nomeFile}
+                      >
+                        {x.f.nomeFile}
+                      </td>
                     </tr>,
                     aperta && (
                       <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
-                        <td colSpan={ricevute ? 15 : 14} className="py-3 px-3 bg-muted/20">
+                        <td colSpan={ricevute ? 22 : 21} className="py-3 px-3 bg-muted/20">
                           <div className="text-xs text-muted-foreground mb-2">
                             {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
                             {termini.length
