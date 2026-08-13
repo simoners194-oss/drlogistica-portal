@@ -1079,21 +1079,59 @@ function FinanzaPage() {
                   // blocco con un click (caso stipendi 69.345,22 in 7 pezzi).
                   const trancheCand = (() => {
                     if (collegati.length > 0 || autoMov) return null;
-                    const cand = (movimenti ?? []).filter(
+                    // Candidati: uscite SENZA distinta entro 6 giorni. Il
+                    // filtro sulla descrizione e' solo un ripiego se sono
+                    // tanti: la prova vera e' la SOMMA, non le parole.
+                    let cand = (movimenti ?? []).filter(
                       (m) =>
                         m.importo < 0 &&
                         distintaDi(m) == null &&
-                        /beneficiari|distint|stipend|emolument|salari|disposizione/i.test(
-                          `${m.descrizione} ${m.causale ?? ""}`,
-                        ) &&
                         Math.abs(
                           (new Date(`${m.dataContabile}T00:00:00`).getTime() -
                             new Date(`${g.data}T00:00:00`).getTime()) /
                             86400000,
                         ) <= 6,
                     );
-                    const tot = Math.round(cand.reduce((s2, m) => s2 - m.importo, 0) * 100) / 100;
-                    return cand.length >= 2 && Math.abs(tot - g.somma) <= 1 ? cand : null;
+                    if (cand.length > 18)
+                      cand = cand.filter((m) =>
+                        /beneficiari|distint|stipend|emolument|salari|disposizione/i.test(
+                          `${m.descrizione} ${m.causale ?? ""}`,
+                        ),
+                      );
+                    cand = cand
+                      .sort(
+                        (a, b) =>
+                          Math.abs(
+                            new Date(`${a.dataContabile}T00:00:00`).getTime() -
+                              new Date(`${g.data}T00:00:00`).getTime(),
+                          ) -
+                          Math.abs(
+                            new Date(`${b.dataContabile}T00:00:00`).getTime() -
+                              new Date(`${g.data}T00:00:00`).getTime(),
+                          ),
+                      )
+                      .slice(0, 18);
+                    if (cand.length < 2) return null;
+                    // SOTTOINSIEME a somma esatta (in centesimi): regge anche
+                    // se nella finestra ci sono altri movimenti sciolti che
+                    // non c'entrano — si sceglie la combinazione che quadra.
+                    const arr = cand.map((m) => Math.round(-m.importo * 100));
+                    const target = Math.round(g.somma * 100);
+                    let bestMask = 0;
+                    let bestDiff = 2; // tolleranza 1 centesimo
+                    for (let mask = 1; mask < 1 << cand.length; mask++) {
+                      let s2 = 0;
+                      for (let i = 0; i < cand.length; i++) if (mask & (1 << i)) s2 += arr[i];
+                      const d2 = Math.abs(s2 - target);
+                      if (d2 < bestDiff) {
+                        bestDiff = d2;
+                        bestMask = mask;
+                        if (d2 === 0) break;
+                      }
+                    }
+                    if (!bestMask) return null;
+                    const scelti = cand.filter((_, i) => bestMask & (1 << i));
+                    return scelti.length >= 2 ? scelti : null;
                   })();
                   return (
                     <tr key={`${g.data}|${g.tipo}`} className="border-t border-border/40">
