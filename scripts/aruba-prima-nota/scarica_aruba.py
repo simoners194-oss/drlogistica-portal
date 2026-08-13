@@ -19,6 +19,7 @@
 # pianificazione di Windows.
 
 import json
+import re
 import sys
 import time
 from datetime import datetime
@@ -99,19 +100,24 @@ def scarica_prima_nota(page, anno: int) -> Path:
     )
     clicca(page, "apro Prima nota", "text=Prima nota")
     page.wait_for_load_state("networkidle", timeout=30000)
-    # Filtro anno, in alto: prima provo una select vera, poi il click su testo.
+    # Filtro anno: e' un BOTTONE ExtJS "Anno: XXXX" che apre un menu.
     print(f"  → imposto il filtro anno {anno}")
-    impostato = False
-    for sel in ("select", 'select[name*="anno" i]'):
-        try:
-            page.select_option(sel, label=str(anno), timeout=4000)
-            impostato = True
-            break
-        except Exception:
-            continue
-    if not impostato:
-        clicca(page, f"scelgo l'anno {anno}", f"text={anno}", timeout=8000)
-    time.sleep(2)
+    try:
+        etichetta = page.get_by_text(re.compile(r"Anno:\s*\d{4}")).first
+        attuale = etichetta.inner_text(timeout=10000)
+        if str(anno) not in attuale:
+            etichetta.click()
+            time.sleep(1.2)
+            # nel menu aperto l'anno e' un testo ESATTO ("2025"), cosi' non
+            # si confonde con le date tipo 31/12/2025 nelle righe.
+            page.get_by_text(str(anno), exact=True).first.click()
+            time.sleep(2.5)
+        else:
+            print(f"    (gia' su {anno})")
+    except Exception:
+        dump_errore(page, f"filtro-anno-{anno}")
+        raise
+    time.sleep(1)
     clicca(
         page,
         "flag sul quadratino accanto a Data (seleziona pagina)",
