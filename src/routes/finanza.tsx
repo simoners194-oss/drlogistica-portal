@@ -1079,58 +1079,57 @@ function FinanzaPage() {
                   // blocco con un click (caso stipendi 69.345,22 in 7 pezzi).
                   const trancheCand = (() => {
                     if (collegati.length > 0 || autoMov) return null;
-                    // Candidati: uscite SENZA distinta entro 6 giorni. Il
-                    // filtro sulla descrizione e' solo un ripiego se sono
-                    // tanti: la prova vera e' la SOMMA, non le parole.
-                    let cand = (movimenti ?? []).filter(
-                      (m) =>
-                        m.importo < 0 &&
-                        distintaDi(m) == null &&
-                        Math.abs(
-                          (new Date(`${m.dataContabile}T00:00:00`).getTime() -
-                            new Date(`${g.data}T00:00:00`).getTime()) /
-                            86400000,
-                        ) <= 6,
-                    );
-                    if (cand.length > 18)
-                      cand = cand.filter((m) =>
-                        /beneficiari|distint|stipend|emolument|salari|disposizione/i.test(
-                          `${m.descrizione} ${m.causale ?? ""}`,
-                        ),
+                    // Candidati: TUTTE le uscite senza distinta entro 6
+                    // giorni (la dicitura "vostra disposizione" e' quella di
+                    // qualsiasi bonifico, non basta a distinguere). Se sono
+                    // troppi, prima quelli con parole da distinta, poi i
+                    // piu' vicini per data — fino a 30.
+                    const kw = /beneficiari|distint|stipend|emolument|salari|disposizione/i;
+                    const giorniDa = (m: SpMovimento) =>
+                      Math.abs(
+                        (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+                          new Date(`${g.data}T00:00:00`).getTime()) /
+                          86400000,
                       );
-                    cand = cand
-                      .sort(
-                        (a, b) =>
-                          Math.abs(
-                            new Date(`${a.dataContabile}T00:00:00`).getTime() -
-                              new Date(`${g.data}T00:00:00`).getTime(),
-                          ) -
-                          Math.abs(
-                            new Date(`${b.dataContabile}T00:00:00`).getTime() -
-                              new Date(`${g.data}T00:00:00`).getTime(),
-                          ),
-                      )
-                      .slice(0, 18);
+                    const cand = (movimenti ?? [])
+                      .filter((m) => m.importo < 0 && distintaDi(m) == null && giorniDa(m) <= 6)
+                      .sort((a2, b2) => {
+                        const ka = kw.test(`${a2.descrizione} ${a2.causale ?? ""}`) ? 0 : 1;
+                        const kb = kw.test(`${b2.descrizione} ${b2.causale ?? ""}`) ? 0 : 1;
+                        return ka !== kb ? ka - kb : giorniDa(a2) - giorniDa(b2);
+                      })
+                      .slice(0, 30);
                     if (cand.length < 2) return null;
-                    // SOTTOINSIEME a somma esatta (in centesimi): regge anche
-                    // se nella finestra ci sono altri movimenti sciolti che
-                    // non c'entrano — si sceglie la combinazione che quadra.
+                    // SOTTOINSIEME a somma ESATTA (centesimi), meet in the
+                    // middle: meta' candidati enumerati in una mappa, l'altra
+                    // meta' cerca il complemento — 30 elementi senza fatica.
                     const arr = cand.map((m) => Math.round(-m.importo * 100));
                     const target = Math.round(g.somma * 100);
-                    let bestMask = 0;
-                    let bestDiff = 2; // tolleranza 1 centesimo
-                    for (let mask = 1; mask < 1 << cand.length; mask++) {
+                    const metaN = Math.ceil(cand.length / 2);
+                    const mappaA = new Map<number, number>();
+                    for (let mask = 0; mask < 1 << metaN; mask++) {
                       let s2 = 0;
-                      for (let i = 0; i < cand.length; i++) if (mask & (1 << i)) s2 += arr[i];
-                      const d2 = Math.abs(s2 - target);
-                      if (d2 < bestDiff) {
-                        bestDiff = d2;
-                        bestMask = mask;
-                        if (d2 === 0) break;
+                      for (let i2 = 0; i2 < metaN; i2++) if (mask & (1 << i2)) s2 += arr[i2];
+                      if (s2 <= target && !mappaA.has(s2)) mappaA.set(s2, mask);
+                    }
+                    const nB = cand.length - metaN;
+                    let maskA = -1;
+                    let maskB = -1;
+                    for (let mask = 0; mask < 1 << nB; mask++) {
+                      let s2 = 0;
+                      for (let i2 = 0; i2 < nB; i2++) if (mask & (1 << i2)) s2 += arr[metaN + i2];
+                      if (s2 > target) continue;
+                      const resto2 = mappaA.get(target - s2);
+                      if (resto2 !== undefined && (resto2 !== 0 || mask !== 0)) {
+                        maskA = resto2;
+                        maskB = mask;
+                        break;
                       }
                     }
-                    if (!bestMask) return null;
-                    const scelti = cand.filter((_, i) => bestMask & (1 << i));
+                    if (maskA < 0) return null;
+                    const scelti = cand.filter((_, i2) =>
+                      i2 < metaN ? maskA & (1 << i2) : maskB & (1 << (i2 - metaN)),
+                    );
                     return scelti.length >= 2 ? scelti : null;
                   })();
                   return (
