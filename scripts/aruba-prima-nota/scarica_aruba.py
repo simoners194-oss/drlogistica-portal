@@ -205,16 +205,18 @@ def ricognizione_nc(page) -> None:
             url = res.url
             ct = res.headers.get("content-type", "")
             indice.append(f"{res.status} {ct[:40]:40s} {url[:200]}")
-            if res.status == 200 and (
-                "json" in ct
-                or any(k in url.lower() for k in ("invoice", "fattur", "search", "list", "grid"))
-            ):
+            if res.status == 200 and "json" in ct and ("/services/" in url or "/api/" in url):
                 try:
                     corpo = res.text()
                 except Exception:
                     return
-                if len(corpo) > 200:
-                    catture.append((url, corpo))
+                if len(corpo) > 50:
+                    dati_richiesta = ""
+                    try:
+                        dati_richiesta = res.request.post_data or ""
+                    except Exception:
+                        pass
+                    catture.append((url, dati_richiesta, corpo))
         except Exception:
             pass
 
@@ -228,9 +230,10 @@ def ricognizione_nc(page) -> None:
     time.sleep(8)
     RICOGNIZIONE.mkdir(exist_ok=True)
     (RICOGNIZIONE / "indice.txt").write_text(chr(10).join(indice), encoding="utf-8")
-    for i, (url, corpo) in enumerate(catture[:40]):
+    for i, (url, richiesta, corpo) in enumerate(catture[:60]):
         (RICOGNIZIONE / f"nc-{i:02d}.json").write_text(
-            "URL: " + url + chr(10) + chr(10) + corpo[:2_000_000], encoding="utf-8"
+            "URL: " + url + chr(10) + "RICHIESTA: " + richiesta[:5000] + chr(10) + chr(10) + corpo[:2_000_000],
+            encoding="utf-8",
         )
     print(f"salvate {len(catture)} risposte dati + indice.txt in {RICOGNIZIONE}")
 
