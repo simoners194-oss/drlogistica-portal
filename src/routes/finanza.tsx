@@ -818,6 +818,7 @@ function FinanzaPage() {
   // alla distinta: quadratura al centesimo = tranche certe.
   const trovaTranche = (
     g: (typeof distGruppi)[number],
+    obiettivo?: number,
   ): { scelti: SpMovimento[]; diffCent: number } | null => {
     // Priorita' A DUE LIVELLI: "beneficiari vari/distinta/stipendi" e'
     // un segnale FORTE, "vostra disposizione" e' la dicitura di qualsiasi
@@ -848,7 +849,7 @@ function FinanzaPage() {
     // Meet in the middle SUL PIU' VICINO: le somme di meta' candidati in
     // un array ordinato, l'altra meta' cerca il complemento migliore.
     const arr = cand.map((m) => Math.round(-m.importo * 100));
-    const target = Math.round(g.somma * 100);
+    const target = Math.round((obiettivo ?? g.somma) * 100);
     const metaN = Math.ceil(cand.length / 2);
     const nB = cand.length - metaN;
     const sommeA: [number, number][] = [];
@@ -893,19 +894,32 @@ function FinanzaPage() {
     if (!movimenti) return out;
     for (const g of distGruppi) {
       const k = `${g.data}|${g.tipo}`;
-      if (movimenti.some((m) => g.movChiavi.includes(m.chiave))) continue;
-      const auto = movimenti.some(
-        (m) =>
-          m.importo < 0 &&
-          Math.abs(Math.round(-m.importo * 100) / 100 - g.somma) <= 1 &&
-          Math.abs(
-            (new Date(`${m.dataContabile}T00:00:00`).getTime() -
-              new Date(`${g.data}T00:00:00`).getTime()) /
-              86400000,
-          ) <= 6,
-      );
+      // COMPLETAMENTO PARZIALI: se qualche tranche e' gia' agganciata ma la
+      // copertura non torna (un salvataggio saltato), si cerca il pezzo
+      // mancante — quadratura esatta = si completa da sola.
+      const coperto =
+        Math.round(
+          movimenti
+            .filter((m) => g.movChiavi.includes(m.chiave))
+            .reduce((s2, m) => s2 - m.importo, 0) * 100,
+        ) / 100;
+      const resto = Math.round((g.somma - coperto) * 100) / 100;
+      if (coperto > 0 && Math.abs(resto) <= 0.01) continue; // gia' completa
+      if (coperto > 0 && resto < 0) continue; // sovra-coperta: caso manuale
+      const auto =
+        coperto === 0 &&
+        movimenti.some(
+          (m) =>
+            m.importo < 0 &&
+            Math.abs(Math.round(-m.importo * 100) / 100 - g.somma) <= 1 &&
+            Math.abs(
+              (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+                new Date(`${g.data}T00:00:00`).getTime()) /
+                86400000,
+            ) <= 6,
+        );
       if (auto) continue;
-      const r = trovaTranche(g);
+      const r = trovaTranche(g, coperto > 0 ? resto : undefined);
       if (r) out.set(k, r);
     }
     return out;
