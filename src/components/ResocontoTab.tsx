@@ -252,7 +252,10 @@ export function ResocontoTab() {
   // dell'archivio fatture, dove note di credito e storni pesano dentro
   // l'incassato (NC compensata = negativo). Prima bozza: si rivede insieme.
   const residuoDi = (x: (typeof attive)[number]) =>
-    Math.round((x.f.totale - incassatoDi(x)) * 100) / 100;
+    // Le NC non sono mai "da incassare": il loro effetto passa gia' dentro
+    // l'incassato (compensata = negativo). Senza questo azzeramento, una NC
+    // compensata varrebbe DUE volte il suo importo nel "da incassare".
+    isNotaCredito(x.f.tipoDocumento) ? 0 : Math.round((x.f.totale - incassatoDi(x)) * 100) / 100;
 
   const inSelezione = (nome: string, sel: string[]) =>
     sel.length === 0 || sel.includes(clienteGroupKey(nome) || nome);
