@@ -154,7 +154,7 @@ def scarica_prima_nota(page, anno: int) -> Path:
     clicca(
         page,
         "clic su Seleziona tutti (N)",
-        "text=/Seleziona tutti \(\d+\)/",
+        r"text=/Seleziona tutti \(\d+\)/",
         "a:has-text('Seleziona tutti'):visible",
         "span:has-text('Seleziona tutti'):visible",
     )
