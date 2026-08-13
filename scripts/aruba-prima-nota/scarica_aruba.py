@@ -75,6 +75,24 @@ def clicca(page, descrizione: str, *selettori: str, timeout: int = 15000) -> Non
     raise RuntimeError(f"Nessun selettore ha funzionato per: {descrizione}") from ultimo
 
 
+def chiudi_cookie(page) -> None:
+    """Banner Cookiebot: si rifiutano i non necessari (best-effort)."""
+    for sel in (
+        "#CybotCookiebotDialogBodyButtonDecline",
+        "#CybotCookiebotDialogBodyLevelButtonLevelOptinDeclineAll",
+        "text=Rifiuta",
+        "text=Nega tutti",
+        "text=Solo necessari",
+    ):
+        try:
+            page.click(sel, timeout=2500)
+            print("  (banner cookie chiuso)")
+            time.sleep(1)
+            return
+        except Exception:
+            continue
+
+
 def login(page, cfg: dict) -> None:
     print("Apro Aruba Fatturazione…")
     page.goto(URL_PORTALE)
@@ -89,6 +107,7 @@ def login(page, cfg: dict) -> None:
     clicca(page, "premo Accedi", "#kc-login", 'button[type="submit"]', "text=Accedi")
     page.wait_for_load_state("networkidle", timeout=45000)
     print("Login inviato.")
+    chiudi_cookie(page)
 
 
 def scarica_prima_nota(page, anno: int) -> Path:
@@ -120,11 +139,12 @@ def scarica_prima_nota(page, anno: int) -> Path:
         dump_errore(page, f"filtro-anno-{anno}")
         raise
     time.sleep(1)
+    chiudi_cookie(page)
     clicca(
         page,
         "flag sul quadratino accanto a Data (seleziona pagina)",
-        "thead input[type=checkbox]",
-        'input[type="checkbox"]',
+        "div.x-checkcolumn-title-wrap-el",
+        "div.x-checkcolumn .x-title-wrap-el",
     )
     clicca(page, "clic su Seleziona tutti", "text=Seleziona tutti")
     clicca(page, "apro il box Azioni", "text=Azioni", '[placeholder="Azioni"]')
