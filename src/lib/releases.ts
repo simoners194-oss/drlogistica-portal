@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.41.0",
+    date: "2026-08-13",
+    codename: "Le tranche si agganciano da sole",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Distinte pagate in piu' addebiti: aggancio automatico al centesimo",
+        description:
+          "Quando la banca addebita una distinta in piu' movimenti (es. gli stipendi in 7 addebiti), il portale trova da solo la combinazione di uscite che somma esattamente alla distinta \u2014 al centesimo \u2014 e la aggancia senza bisogno di click: le disposizioni per beneficiario compaiono subito nei Movimenti. La ricerca considera fino a 30 movimenti candidati entro 10 giorni dalla data della distinta. Se la quadratura perfetta non esiste, la riga della distinta mostra la migliore combinazione trovata con lo scarto in euro, per capire al volo cosa manca (un addebito non ancora arrivato dalla banca, una commissione, una distinta diversa).",
+      },
+    ],
+  },
+  {
     version: "1.40.0",
     date: "2026-08-13",
     codename: "Regole col segno",

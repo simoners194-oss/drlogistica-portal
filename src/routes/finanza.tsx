@@ -795,6 +795,136 @@ function FinanzaPage() {
     return best;
   };
 
+  // TRANCHE: la banca puo' addebitare una distinta in piu' movimenti.
+  // Per ogni distinta NON agganciata si cerca il sottoinsieme di uscite
+  // libere (entro 10 giorni, fino a 30 candidate) che somma piu' vicino
+  // alla distinta: quadratura al centesimo = tranche certe.
+  const trovaTranche = (
+    g: (typeof distGruppi)[number],
+  ): { scelti: SpMovimento[]; diffCent: number } | null => {
+    const kw = /beneficiari|distint|stipend|emolument|salari|disposizione/i;
+    const giorniDa = (m: SpMovimento) =>
+      Math.abs(
+        (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+          new Date(`${g.data}T00:00:00`).getTime()) /
+          86400000,
+      );
+    const cand = (movimenti ?? [])
+      .filter((m) => m.importo < 0 && distintaDi(m) == null && giorniDa(m) <= 10)
+      .sort((a2, b2) => {
+        const ka = kw.test(`${a2.descrizione} ${a2.causale ?? ""}`) ? 0 : 1;
+        const kb = kw.test(`${b2.descrizione} ${b2.causale ?? ""}`) ? 0 : 1;
+        return ka !== kb ? ka - kb : giorniDa(a2) - giorniDa(b2);
+      })
+      .slice(0, 30);
+    if (cand.length < 2) return null;
+    // Meet in the middle SUL PIU' VICINO: le somme di meta' candidati in
+    // un array ordinato, l'altra meta' cerca il complemento migliore.
+    const arr = cand.map((m) => Math.round(-m.importo * 100));
+    const target = Math.round(g.somma * 100);
+    const metaN = Math.ceil(cand.length / 2);
+    const nB = cand.length - metaN;
+    const sommeA: [number, number][] = [];
+    for (let mask = 0; mask < 1 << metaN; mask++) {
+      let s2 = 0;
+      for (let i2 = 0; i2 < metaN; i2++) if (mask & (1 << i2)) s2 += arr[i2];
+      sommeA.push([s2, mask]);
+    }
+    sommeA.sort((x, y) => x[0] - y[0]);
+    let best: { diff: number; maskA: number; maskB: number } | null = null;
+    for (let mask = 0; mask < 1 << nB; mask++) {
+      let s2 = 0;
+      for (let i2 = 0; i2 < nB; i2++) if (mask & (1 << i2)) s2 += arr[metaN + i2];
+      const want = target - s2;
+      let lo = 0;
+      let hi = sommeA.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (sommeA[mid][0] < want) lo = mid + 1;
+        else hi = mid;
+      }
+      for (const idx of [lo - 1, lo]) {
+        if (idx < 0 || idx >= sommeA.length) continue;
+        const coppia = sommeA[idx];
+        if (coppia[1] === 0 && mask === 0) continue;
+        const diff = Math.abs(coppia[0] + s2 - target);
+        if (!best || diff < best.diff) best = { diff, maskA: coppia[1], maskB: mask };
+      }
+      if (best && best.diff === 0) break;
+    }
+    if (!best) return null;
+    const scelto = best;
+    const scelti = cand.filter((_, i2) =>
+      i2 < metaN ? scelto.maskA & (1 << i2) : scelto.maskB & (1 << (i2 - metaN)),
+    );
+    return scelti.length >= 2 ? { scelti, diffCent: scelto.diff } : null;
+  };
+  const trancheMap = useMemo(() => {
+    const out = new Map<string, { scelti: SpMovimento[]; diffCent: number }>();
+    if (!movimenti) return out;
+    for (const g of distGruppi) {
+      const k = `${g.data}|${g.tipo}`;
+      if (movimenti.some((m) => g.movChiavi.includes(m.chiave))) continue;
+      const auto = movimenti.some(
+        (m) =>
+          m.importo < 0 &&
+          Math.abs(Math.round(-m.importo * 100) / 100 - g.somma) <= 1 &&
+          Math.abs(
+            (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+              new Date(`${g.data}T00:00:00`).getTime()) /
+              86400000,
+          ) <= 6,
+      );
+      if (auto) continue;
+      const r = trovaTranche(g);
+      if (r) out.set(k, r);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movimenti, distGruppi]);
+  // AGGANCIO AUTOMATICO: quadratura al centesimo = si collega da solo,
+  // senza click. Il ref evita partenze doppie mentre le scritture corrono.
+  const trancheAutoBusy = useRef(false);
+  useEffect(() => {
+    if (trancheAutoBusy.current) return;
+    const esatte = [...trancheMap.entries()].filter(([, r]) => r.diffCent === 0);
+    if (!esatte.length) return;
+    trancheAutoBusy.current = true;
+    void (async () => {
+      try {
+        for (const [k, r] of esatte) {
+          const g = distGruppi.find((x) => `${x.data}|${x.tipo}` === k);
+          if (!g) continue;
+          const libere = g.righe.filter((x) => !x.movimentoChiave);
+          if (libere.length < r.scelti.length) continue;
+          const fatti: { id: string; chiave: string }[] = [];
+          for (let i = 0; i < r.scelti.length; i++) {
+            await spSetDistintaMovimento({
+              data: { id: libere[i].id, chiave: r.scelti[i].chiave },
+            });
+            fatti.push({ id: libere[i].id, chiave: r.scelti[i].chiave });
+          }
+          setDistinte((prev) =>
+            (prev ?? []).map((x) => {
+              const f = fatti.find((y) => y.id === x.id);
+              return f ? { ...x, movimentoChiave: f.chiave } : x;
+            }),
+          );
+          toast.success(t("fin.distAutoTrancheOk"), {
+            description: `${fmtData(g.data)} ${g.tipo || ""} · ${r.scelti.length} × = ${fmtImporto(g.somma)} €`,
+          });
+        }
+      } catch (err) {
+        toast.error(t("common.error"), {
+          description: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        trancheAutoBusy.current = false;
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trancheMap]);
+
   // Spaccato del modal per APPALTO: ogni beneficiario passa nel
   // riconoscitore fuzzy dei dipendenti e prende l'appalto dall'anagrafica.
   // Memoria dell'appalto MANUALE per beneficiario: assegnato una volta,
@@ -1073,65 +1203,15 @@ function FinanzaPage() {
                   // La chiave nuova si salva su una riga della distinta ancora
                   // senza chiave: 70 disposizioni = spazio per 70 tranche.
                   const rigaLibera = g.righe.find((r) => !r.movimentoChiave);
-                  // TRANCHE A SOMMA ESATTA: se le uscite cumulative sciolte
-                  // entro 6 giorni sommano al centesimo alla distinta, la
-                  // banca l'ha addebitata in piu' addebiti — aggancio in
-                  // blocco con un click (caso stipendi 69.345,22 in 7 pezzi).
-                  const trancheCand = (() => {
-                    if (collegati.length > 0 || autoMov) return null;
-                    // Candidati: TUTTE le uscite senza distinta entro 6
-                    // giorni (la dicitura "vostra disposizione" e' quella di
-                    // qualsiasi bonifico, non basta a distinguere). Se sono
-                    // troppi, prima quelli con parole da distinta, poi i
-                    // piu' vicini per data — fino a 30.
-                    const kw = /beneficiari|distint|stipend|emolument|salari|disposizione/i;
-                    const giorniDa = (m: SpMovimento) =>
-                      Math.abs(
-                        (new Date(`${m.dataContabile}T00:00:00`).getTime() -
-                          new Date(`${g.data}T00:00:00`).getTime()) /
-                          86400000,
-                      );
-                    const cand = (movimenti ?? [])
-                      .filter((m) => m.importo < 0 && distintaDi(m) == null && giorniDa(m) <= 6)
-                      .sort((a2, b2) => {
-                        const ka = kw.test(`${a2.descrizione} ${a2.causale ?? ""}`) ? 0 : 1;
-                        const kb = kw.test(`${b2.descrizione} ${b2.causale ?? ""}`) ? 0 : 1;
-                        return ka !== kb ? ka - kb : giorniDa(a2) - giorniDa(b2);
-                      })
-                      .slice(0, 30);
-                    if (cand.length < 2) return null;
-                    // SOTTOINSIEME a somma ESATTA (centesimi), meet in the
-                    // middle: meta' candidati enumerati in una mappa, l'altra
-                    // meta' cerca il complemento — 30 elementi senza fatica.
-                    const arr = cand.map((m) => Math.round(-m.importo * 100));
-                    const target = Math.round(g.somma * 100);
-                    const metaN = Math.ceil(cand.length / 2);
-                    const mappaA = new Map<number, number>();
-                    for (let mask = 0; mask < 1 << metaN; mask++) {
-                      let s2 = 0;
-                      for (let i2 = 0; i2 < metaN; i2++) if (mask & (1 << i2)) s2 += arr[i2];
-                      if (s2 <= target && !mappaA.has(s2)) mappaA.set(s2, mask);
-                    }
-                    const nB = cand.length - metaN;
-                    let maskA = -1;
-                    let maskB = -1;
-                    for (let mask = 0; mask < 1 << nB; mask++) {
-                      let s2 = 0;
-                      for (let i2 = 0; i2 < nB; i2++) if (mask & (1 << i2)) s2 += arr[metaN + i2];
-                      if (s2 > target) continue;
-                      const resto2 = mappaA.get(target - s2);
-                      if (resto2 !== undefined && (resto2 !== 0 || mask !== 0)) {
-                        maskA = resto2;
-                        maskB = mask;
-                        break;
-                      }
-                    }
-                    if (maskA < 0) return null;
-                    const scelti = cand.filter((_, i2) =>
-                      i2 < metaN ? maskA & (1 << i2) : maskB & (1 << (i2 - metaN)),
-                    );
-                    return scelti.length >= 2 ? scelti : null;
-                  })();
+                  // Tranche dal motore condiviso: quadratura esatta =
+                  // aggancio automatico (il bottone resta come riserva);
+                  // quasi-quadratura = indizio per l'analisi manuale.
+                  const tr =
+                    collegati.length > 0 || autoMov
+                      ? undefined
+                      : trancheMap.get(`${g.data}|${g.tipo}`);
+                  const trancheCand = tr && tr.diffCent === 0 ? tr.scelti : null;
+                  const trancheQuasi = tr && tr.diffCent > 0 ? tr : null;
                   return (
                     <tr key={`${g.data}|${g.tipo}`} className="border-t border-border/40">
                       <td className="py-1 pr-3 whitespace-nowrap">{fmtData(g.data)}</td>
@@ -1280,6 +1360,17 @@ function FinanzaPage() {
                                   ? t("common.loading")
                                   : `${t("fin.distTrancheBtn")} (${trancheCand.length} × = ${fmtImporto(g.somma)} €)`}
                               </button>
+                            )}
+                            {trancheQuasi && (
+                              <span className="text-[11px] text-muted-foreground">
+                                {t("fin.distQuasi")}: {trancheQuasi.scelti.length} × ={" "}
+                                {fmtImporto(
+                                  Math.round(
+                                    trancheQuasi.scelti.reduce((s2, m) => s2 - m.importo, 0) * 100,
+                                  ) / 100,
+                                )}{" "}
+                                € (Δ {fmtImporto(trancheQuasi.diffCent / 100)} €)
+                              </span>
                             )}
                           </span>
                         )}
