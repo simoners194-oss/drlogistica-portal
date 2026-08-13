@@ -235,7 +235,7 @@ function fmtImportId(id: string, legacyLabel: string): string {
 // Blocchi di upload verso il server (sotto il limite server di 150).
 const CHUNK = 100;
 // Righe per pagina nella tabella movimenti.
-const RIGHE_PAGINA = 500;
+const RIGHE_PAGINA = 50;
 
 type Tab =
   "movimenti" | "overview" | "resoconto" | "attive" | "passive" | "anomalie" | "storico" | "regole";
@@ -3250,7 +3250,7 @@ function FinanzaPage() {
                   title={t("fin.perPagina")}
                   className="rounded-lg border border-border bg-background px-2 py-1 text-xs"
                 >
-                  {[100, 200, 500, 1000].map((nr) => (
+                  {[50, 100, 200, 500, 1000].map((nr) => (
                     <option key={nr} value={nr}>
                       {nr} / {t("fin.page").toLowerCase()}
                     </option>
