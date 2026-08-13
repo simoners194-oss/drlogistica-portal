@@ -898,6 +898,8 @@ const en = {
     "no batch with a similar amount in the archive: import the batch file for this payment",
   "fin.distOrfaniNota":
     "These outgoing movements look like bulk payments but no batch matched (same amount within 1 euro, date within 6 days). If the closest batch is the right one, link it manually from its row above; if none exists, import its Excel file.",
+  "fin.distTrancheBtn": "Link all tranches, exact total",
+  "fin.distTrancheOk": "Tranches linked: the batch now covers its movements",
   "fin.soloDistinte": "Batches only",
   "fin.perPagina": "Rows per page",
   "fin.distAggFuturo": "Future date: the debit has not happened yet — it will link by itself.",
@@ -2116,6 +2118,8 @@ const it: Record<DictKey, string> = {
     "nessuna distinta con somma simile in archivio: importa il file della distinta di questo pagamento",
   "fin.distOrfaniNota":
     "Uscite che dalla descrizione sembrano pagamenti cumulativi ma senza nessuna distinta agganciata (stessa somma ±1 €, data entro 6 giorni). Se la distinta più vicina è quella giusta, agganciala a mano dalla sua riga qui sopra; se non esiste, va importato il suo file Excel.",
+  "fin.distTrancheBtn": "Aggancia tutte le tranche, somma esatta",
+  "fin.distTrancheOk": "Tranche agganciate: la distinta ora copre i suoi movimenti",
   "fin.soloDistinte": "Solo distinte",
   "fin.perPagina": "Righe per pagina",
   "fin.distAggFuturo": "Data futura: l’addebito non è ancora avvenuto — si aggancerà da solo.",

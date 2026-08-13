@@ -274,6 +274,7 @@ function FinanzaPage() {
   const [storico, setStorico] = useState<ImportStoricoRiga[] | null>(null);
   // Distinte / esiti pagamenti: dettaglio dei pagamenti cumulativi.
   const [distinte, setDistinte] = useState<DettaglioDistinta[] | null>(null);
+  const [trancheBusy, setTrancheBusy] = useState(false);
   const [rosterDip, setRosterDip] = useState<DipendenteRoster[] | null>(null);
   const [distPreview, setDistPreview] = useState<
     | {
@@ -1072,6 +1073,28 @@ function FinanzaPage() {
                   // La chiave nuova si salva su una riga della distinta ancora
                   // senza chiave: 70 disposizioni = spazio per 70 tranche.
                   const rigaLibera = g.righe.find((r) => !r.movimentoChiave);
+                  // TRANCHE A SOMMA ESATTA: se le uscite cumulative sciolte
+                  // entro 6 giorni sommano al centesimo alla distinta, la
+                  // banca l'ha addebitata in piu' addebiti — aggancio in
+                  // blocco con un click (caso stipendi 69.345,22 in 7 pezzi).
+                  const trancheCand = (() => {
+                    if (collegati.length > 0 || autoMov) return null;
+                    const cand = (movimenti ?? []).filter(
+                      (m) =>
+                        m.importo < 0 &&
+                        distintaDi(m) == null &&
+                        /beneficiari|distint|stipend|emolument|salari|disposizione/i.test(
+                          `${m.descrizione} ${m.causale ?? ""}`,
+                        ) &&
+                        Math.abs(
+                          (new Date(`${m.dataContabile}T00:00:00`).getTime() -
+                            new Date(`${g.data}T00:00:00`).getTime()) /
+                            86400000,
+                        ) <= 6,
+                    );
+                    const tot = Math.round(cand.reduce((s2, m) => s2 - m.importo, 0) * 100) / 100;
+                    return cand.length >= 2 && Math.abs(tot - g.somma) <= 1 ? cand : null;
+                  })();
                   return (
                     <tr key={`${g.data}|${g.tipo}`} className="border-t border-border/40">
                       <td className="py-1 pr-3 whitespace-nowrap">{fmtData(g.data)}</td>
@@ -1175,6 +1198,52 @@ function FinanzaPage() {
                                   </option>
                                 ))}
                             </select>
+                            {trancheCand && (
+                              <button
+                                type="button"
+                                disabled={trancheBusy}
+                                onClick={() => {
+                                  void (async () => {
+                                    const libere = g.righe.filter((r) => !r.movimentoChiave);
+                                    if (libere.length < trancheCand.length) return;
+                                    setTrancheBusy(true);
+                                    try {
+                                      const fatti: { id: string; chiave: string }[] = [];
+                                      for (let i = 0; i < trancheCand.length; i++) {
+                                        await spSetDistintaMovimento({
+                                          data: { id: libere[i].id, chiave: trancheCand[i].chiave },
+                                        });
+                                        fatti.push({
+                                          id: libere[i].id,
+                                          chiave: trancheCand[i].chiave,
+                                        });
+                                      }
+                                      setDistinte((prev) =>
+                                        (prev ?? []).map((x) => {
+                                          const f = fatti.find((y) => y.id === x.id);
+                                          return f ? { ...x, movimentoChiave: f.chiave } : x;
+                                        }),
+                                      );
+                                      toast.success(t("fin.distTrancheOk"), {
+                                        description: `${trancheCand.length} × = ${fmtImporto(g.somma)} €`,
+                                      });
+                                    } catch (err) {
+                                      toast.error(t("common.error"), {
+                                        description:
+                                          err instanceof Error ? err.message : String(err),
+                                      });
+                                    } finally {
+                                      setTrancheBusy(false);
+                                    }
+                                  })();
+                                }}
+                                className="rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                              >
+                                {trancheBusy
+                                  ? t("common.loading")
+                                  : `${t("fin.distTrancheBtn")} (${trancheCand.length} × = ${fmtImporto(g.somma)} €)`}
+                              </button>
+                            )}
                           </span>
                         )}
                       </td>
@@ -1193,7 +1262,7 @@ function FinanzaPage() {
               .filter(
                 (m) =>
                   m.importo < 0 &&
-                  /beneficiari|distint|stipend|emolument|salari/i.test(
+                  /beneficiari|distint|stipend|emolument|salari|disposizione/i.test(
                     `${m.descrizione} ${m.causale ?? ""}`,
                   ) &&
                   distintaDi(m) == null,
