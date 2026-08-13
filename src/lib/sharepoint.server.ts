@@ -6429,6 +6429,7 @@ export async function ebSincronizza(
   importId: string,
   continuation?: string,
   presidiata = true,
+  recuperaDal?: string,
 ): Promise<EbSyncResult> {
   const cred = await getEbCredenziali();
   const cfg = await discoverSharePoint();
@@ -6456,6 +6457,11 @@ export async function ebSincronizza(
       .slice(0, 10);
     if (ripresa > dal) dal = ripresa;
   }
+  // RECUPERO: finestra forzata indietro per ripescare giorni saltati (es.
+  // contabilizzazioni pubblicate tardi dalla banca, oltre i 7 giorni di
+  // ripresa). Mai sotto la data di taglio: sotto vale l'archivio Excel.
+  if (recuperaDal && /^\d{4}-\d{2}-\d{2}$/.test(recuperaDal) && recuperaDal < dal)
+    dal = recuperaDal < stato.dataTaglio ? stato.dataTaglio : recuperaDal;
 
   const psu = presidiata ? psuContext() : {};
   const pagina = await ebTransazioni(cred, contoUid, dal, continuation, psu);

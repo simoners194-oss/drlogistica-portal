@@ -224,6 +224,7 @@ export function BancaPsd2Panel() {
     }
   };
 
+  const [recuperoDa, setRecuperoDa] = useState("");
   const sincronizza = async () => {
     setBusy("sync");
     const importId = `SYNC-${new Date().toISOString().slice(0, 19)}`;
@@ -235,7 +236,9 @@ export function BancaPsd2Panel() {
       let continuation: string | undefined;
       let guard = 0;
       for (;;) {
-        const r = (await spEbSincronizza({ data: { importId, continuation } })) as EbSyncResult;
+        const r = (await spEbSincronizza({
+          data: { importId, continuation, recuperaDal: recuperoDa || undefined },
+        })) as EbSyncResult;
         scritti += r.scritti;
         doppioni += r.doppioni;
         pendenti += r.pendenti;
@@ -458,6 +461,19 @@ export function BancaPsd2Panel() {
                       {t("fin.ebSync")}
                       {busy === "sync" && progress && ` (${progress})`}
                     </button>
+                  )}
+                  {stato.dataTaglio && stato.contoIban && (
+                    <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                      {t("fin.ebRecuperoDa")}
+                      <input
+                        type="date"
+                        value={recuperoDa}
+                        onChange={(e) => setRecuperoDa(e.target.value)}
+                        min={stato.dataTaglio}
+                        max={new Date().toISOString().slice(0, 10)}
+                        className="rounded border border-border bg-background px-1.5 py-1 text-xs"
+                      />
+                    </label>
                   )}
                   {busy === "completa" && (
                     <span className="text-xs text-muted-foreground inline-flex items-center gap-2">

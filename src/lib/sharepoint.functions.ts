@@ -1803,17 +1803,21 @@ export const spEbCron = createServerFn({ method: "POST" })
   });
 
 export const spEbSincronizza = createServerFn({ method: "POST" })
-  .inputValidator((input: { importId: string; continuation?: string }) => {
+  .inputValidator((input: { importId: string; continuation?: string; recuperaDal?: string }) => {
     const importId = String(input?.importId ?? "").slice(0, 60);
     if (!importId.startsWith("SYNC-")) throw new Error("importId non valido");
     const continuation = input?.continuation
       ? String(input.continuation).slice(0, 2000)
       : undefined;
-    return { importId, continuation };
+    const recuperaDal =
+      input?.recuperaDal && /^\d{4}-\d{2}-\d{2}$/.test(input.recuperaDal)
+        ? input.recuperaDal
+        : undefined;
+    return { importId, continuation, recuperaDal };
   })
   .handler(async ({ data }): Promise<EbSyncResult> => {
     await assertDirettore(await currentUser());
-    return ebSincronizza(data.importId, data.continuation);
+    return ebSincronizza(data.importId, data.continuation, true, data.recuperaDal);
   });
 
 // --- Web Push: chiave pubblica + registrazione dispositivo -----------------

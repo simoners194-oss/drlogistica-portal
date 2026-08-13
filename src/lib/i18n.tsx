@@ -707,6 +707,8 @@ const en = {
   "fin.ebAttiva": "Activate bank sync",
   "fin.ebAttivaConfirm":
     "The transactions of the last day imported from Excel will be deleted and reloaded from the bank (the switch-over day may be incomplete in the file). Continue?",
+  "fin.ebRecuperoDa":
+    "Recover from date (optional): the sync window goes back to this day to re-fetch skipped movements",
   "fin.ebSync": "Sync now",
   "fin.ebSyncDone": "Sync completed",
   "fin.ebNuovi": "new",
@@ -903,7 +905,8 @@ const en = {
   "fin.distAutoTrancheOk": "Batch linked automatically to its tranches",
   "fin.distQuasi": "best combination found (does not balance)",
   "fin.distQuasiBtn": "Link this combination",
-  "fin.distQuasiConfirm": "Link these movements to the batch? The remainder row will absorb the difference. Check the list:",
+  "fin.distQuasiConfirm":
+    "Link these movements to the batch? The remainder row will absorb the difference. Check the list:",
   "fin.distTrancheBtn": "Link all tranches, exact total",
   "fin.distTrancheOk": "Tranches linked: the batch now covers its movements",
   "fin.soloDistinte": "Batches only",
@@ -1933,6 +1936,8 @@ const it: Record<DictKey, string> = {
   "fin.ebAttiva": "Attiva il sync bancario",
   "fin.ebAttivaConfirm":
     "I movimenti dell'ultimo giorno importato da Excel verranno eliminati e ricaricati dalla banca (nel file quel giorno può essere incompleto). Continuare?",
+  "fin.ebRecuperoDa":
+    "Recupero da data (facoltativo): la finestra del sync riparte da questo giorno per ripescare movimenti saltati",
   "fin.ebSync": "Sincronizza ora",
   "fin.ebSyncDone": "Sincronizzazione completata",
   "fin.ebNuovi": "nuovi",
@@ -2129,7 +2134,8 @@ const it: Record<DictKey, string> = {
   "fin.distAutoTrancheOk": "Distinta agganciata in automatico alle sue tranche",
   "fin.distQuasi": "miglior combinazione trovata (non quadra)",
   "fin.distQuasiBtn": "Aggancia questa combinazione",
-  "fin.distQuasiConfirm": "Agganciare questi movimenti alla distinta? La riga di resto assorbirà lo scarto. Controlla l’elenco:",
+  "fin.distQuasiConfirm":
+    "Agganciare questi movimenti alla distinta? La riga di resto assorbirà lo scarto. Controlla l’elenco:",
   "fin.distTrancheBtn": "Aggancia tutte le tranche, somma esatta",
   "fin.distTrancheOk": "Tranche agganciate: la distinta ora copre i suoi movimenti",
   "fin.soloDistinte": "Solo distinte",
