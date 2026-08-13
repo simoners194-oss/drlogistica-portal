@@ -4367,6 +4367,25 @@ export async function annullaImport(
   return { eliminati, rimanenti };
 }
 
+/** Corregge IN POSTO un movimento corrotto da un import x100: aggiorna
+ *  importo e chiave (Title) e nient'altro — classificazioni, note e
+ *  correzioni manuali restano intatte. */
+export async function correggiImportoMovimento(
+  id: string,
+  importo: number,
+  chiave: string,
+): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const F = cfg.movimentiFields;
+  if (!F.Importo) throw new Error('Colonna "Importo" non trovata su MovimentiBancari.');
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${id}/fields`, {
+    method: "PATCH",
+    body: JSON.stringify({ [F.Importo]: importo, Title: chiave.slice(0, 255) }),
+  });
+  logSp("info", "correggi.importo", `Movimento ${id} corretto a ${importo}`);
+}
+
 /** Elimina UN movimento dall'archivio. Chirurgico, per righe corrotte da
  *  import sbagliati (es. importi x100 da virgola letta come migliaia):
  *  annullare l'intero lotto butterebbe via anche le sanature manuali. */

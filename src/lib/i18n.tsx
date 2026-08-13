@@ -921,6 +921,13 @@ const en = {
   "fin.distAggancioNota":
     "A batch not linked usually means the bank debited a different total (e.g. rejected payments) or a date outside the window: check the cumulative transaction amount in Movements.",
   "fin.editMovTip": "Edit this transaction",
+  "fin.previewCorrezioni": "Corrupted amounts to fix (x100)",
+  "fin.previewCorrezioniDesc":
+    "archive rows worth exactly 100 times a file row (same day and description): fixed in place, classifications and manual work stay",
+  "fin.correggiConfirm":
+    "Fix the corrupted amounts in place? Amount and key are updated; classification, notes and manual work stay untouched.",
+  "fin.correggiBtn": "Fix corrupted amounts",
+  "fin.correggiOk": "Amounts fixed in place: manual work preserved",
   "fin.bonificaTitolo": "Corrupted amounts found (x100)",
   "fin.bonificaDesc":
     "These rows come from an import that read the decimal comma as a thousands separator: each is exactly 100 times a real row with the same date and reference. Deleting them fixes the archive; the real rows stay.",
@@ -2163,6 +2170,13 @@ const it: Record<DictKey, string> = {
   "fin.distAggancioNota":
     "Una distinta non agganciata di solito significa che la banca ha addebitato un totale diverso (es. disposizioni rifiutate) o una data fuori finestra: controllare l'importo del movimento cumulativo nei Movimenti.",
   "fin.editMovTip": "Correggi questo movimento",
+  "fin.previewCorrezioni": "Importi corrotti da correggere (\u00d7100)",
+  "fin.previewCorrezioniDesc":
+    "righe d\u2019archivio che valgono esattamente 100 volte una riga del file (stesso giorno e descrizione): si correggono sul posto, classificazioni e lavoro manuale restano",
+  "fin.correggiConfirm":
+    "Correggere gli importi corrotti sul posto? Si aggiornano importo e chiave; classificazione, note e lavoro manuale restano intatti.",
+  "fin.correggiBtn": "Correggi importi corrotti",
+  "fin.correggiOk": "Importi corretti sul posto: lavoro manuale conservato",
   "fin.bonificaTitolo": "Importi corrotti trovati (\u00d7100)",
   "fin.bonificaDesc":
     "Queste righe vengono da un import che ha letto la virgola dei decimali come separatore delle migliaia: ognuna vale esattamente 100 volte una riga vera con stessa data e stesso riferimento. Eliminarle risana l\u2019archivio; le righe vere restano.",

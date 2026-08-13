@@ -600,13 +600,28 @@ export function cellToIsoDate(v: unknown): string | null {
   return null;
 }
 
-/** Converte una cella importo ("1.234,56" | "-48" | numero) in numero. */
+/** Converte una cella importo in numero riconoscendo il SEPARATORE
+ *  DECIMALE riga per riga: "1.234,56" (it), "1,234.56" (en), "5315.55",
+ *  "-48". Il vecchio "togli tutti i punti" leggeva 5315.55 come 531555
+ *  (x100) sui file col punto decimale: MAI piu'. */
 export function cellToImporto(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
-  const s = String(v ?? "")
-    .replace(/\./g, "")
-    .replace(",", ".")
-    .replace(/[^\d.\-+]/g, "");
+  let s = String(v ?? "").replace(/[^\d.,\-+]/g, "");
+  if (!s) return null;
+  const uDot = s.lastIndexOf(".");
+  const uComma = s.lastIndexOf(",");
+  if (uDot >= 0 && uComma >= 0) {
+    // Entrambi presenti: l'ULTIMO e' il decimale, l'altro fa le migliaia.
+    s = uComma > uDot ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  } else if (uComma >= 0) {
+    // Solo virgola: decimale con 1-2 cifre finali, altrimenti migliaia.
+    s = /,\d{1,2}$/.test(s) ? s.replace(/,/g, ".") : s.replace(/,/g, "");
+  } else if (uDot >= 0) {
+    // Solo punto: decimale se unico e con 1-2 cifre finali ("5315.55");
+    // "1.234" o "1.234.567" sono migliaia all'italiana.
+    const unico = s.indexOf(".") === uDot;
+    if (!(unico && /\.\d{1,2}$/.test(s))) s = s.replace(/\./g, "");
+  }
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }

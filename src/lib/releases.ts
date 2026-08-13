@@ -36,6 +36,28 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.42.0",
+    date: "2026-08-13",
+    codename: "Il separatore decimale non fa piu' danni",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "fix",
+        audience: "direzione",
+        title: "Importi letti correttamente con qualsiasi separatore decimale",
+        description:
+          "Il lettore dei file bancari ora riconosce il separatore decimale riga per riga (virgola o punto, con o senza separatore delle migliaia): un file con gli importi col punto decimale non puo' piu' entrare moltiplicato per 100.",
+      },
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Correzione in posto degli importi corrotti, senza perdere il lavoro fatto",
+        description:
+          "Caricando il file corretto della banca, l'anteprima dell'import riconosce le righe d'archivio che valgono esattamente 100 volte una riga del file (stesso giorno e stessa descrizione) e le corregge SUL POSTO: si aggiorna solo l'importo. Classificazioni, note, correzioni manuali e agganci restano intatti \u2014 nessun annullamento, nessuna cancellazione.",
+      },
+    ],
+  },
+  {
     version: "1.41.0",
     date: "2026-08-13",
     codename: "Le tranche si agganciano da sole",

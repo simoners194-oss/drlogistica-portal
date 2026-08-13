@@ -41,6 +41,7 @@ import { readSession, type SessionUser } from "@/lib/session";
 import { isSupervisoreGlobale } from "@/lib/richieste-logic";
 import {
   parseEstratto,
+  normalizeTesto,
   parseMatrice,
   clienteGroupKey,
   LEGACY_IMPORT_ID,
@@ -66,6 +67,7 @@ import {
   spImportDistinta,
   spAnnullaImport,
   spEliminaMovimento,
+  spCorreggiMovimento,
   spGetRegoleFinanza,
   spGetTerminiPagamento,
   spImportTermini,
@@ -251,6 +253,15 @@ interface SheetChoice {
   selected: string;
 }
 
+interface CorrezioneX100 {
+  id: string;
+  dataContabile: string;
+  da: number;
+  a: number;
+  chiave: string;
+  descrizione: string;
+}
+
 interface PreviewImport {
   fileName: string;
   righe: MovimentoParsed[];
@@ -260,6 +271,9 @@ interface PreviewImport {
   anomalie: number;
   dal: string;
   al: string;
+  /** Righe d'archivio corrotte (x100) da correggere IN POSTO col valore
+   *  vero del file: importo e chiave cambiano, il resto resta. */
+  correzioni: CorrezioneX100[];
 }
 
 function FinanzaPage() {
@@ -1815,15 +1829,51 @@ function FinanzaPage() {
       const chiavi = new Set((await spGetMovimentiChiavi()) as string[]);
       const nuove = righe.filter((r) => !chiavi.has(r.chiave));
       const date = righe.map((r) => r.dataContabile).sort();
+      // CORREZIONI x100: una riga del file "nuova" che in archivio esiste
+      // con lo STESSO giorno, stessa descrizione e importo pari a 100 volte
+      // e' il gemello corrotto di un vecchio import col punto decimale.
+      // Si corregge la riga d'archivio IN POSTO (importo + chiave): le
+      // classificazioni e il lavoro manuale fatto sopra NON si toccano.
+      const perTupla = new Map<string, MovimentoParsed[]>();
+      for (const r of nuove) {
+        if (Number.isInteger(r.importo)) continue; // solo importi coi centesimi
+        const k = `${r.dataContabile}|${Math.round(Math.abs(r.importo) * 100)}|${r.importo < 0 ? "-" : "+"}`;
+        const arr = perTupla.get(k) ?? [];
+        arr.push(r);
+        perTupla.set(k, arr);
+      }
+      const usate = new Set<string>();
+      const correzioni: CorrezioneX100[] = [];
+      for (const m of movimenti ?? []) {
+        if (!Number.isInteger(m.importo) || m.importo === 0) continue;
+        const k = `${m.dataContabile}|${Math.abs(m.importo)}|${m.importo < 0 ? "-" : "+"}`;
+        const f = (perTupla.get(k) ?? []).find(
+          (c) =>
+            !usate.has(c.chiave) &&
+            normalizeTesto(c.descrizione).slice(0, 60) ===
+              normalizeTesto(m.descrizione).slice(0, 60),
+        );
+        if (!f) continue;
+        usate.add(f.chiave);
+        correzioni.push({
+          id: m.id,
+          dataContabile: m.dataContabile,
+          da: m.importo,
+          a: f.importo,
+          chiave: f.chiave,
+          descrizione: m.descrizione,
+        });
+      }
       setPreview({
         fileName,
         righe,
-        nuove,
+        nuove: nuove.filter((r) => !usate.has(r.chiave)),
         doppioni: righe.length - nuove.length,
         scartate: res.scartate,
         anomalie: nuove.filter((r) => r.daVerificare).length,
         dal: date[0] ?? "",
         al: date[date.length - 1] ?? "",
+        correzioni,
       });
     } catch (err) {
       toast.error(t("fin.errFile"), {
@@ -3429,8 +3479,84 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                         {preview.anomalie}
                       </b>
                     </li>
+                    {preview.correzioni.length > 0 && (
+                      <li className="text-status-absent">
+                        {t("fin.previewCorrezioni")}: <b>{preview.correzioni.length}</b> —{" "}
+                        {t("fin.previewCorrezioniDesc")}
+                      </li>
+                    )}
                   </ul>
+                  {preview.correzioni.length > 0 && (
+                    <div className="mt-2 max-h-44 overflow-y-auto rounded-lg border border-status-absent/30 bg-status-absent/5 p-2">
+                      <table className="w-full text-[11px]">
+                        <tbody>
+                          {preview.correzioni.map((c) => (
+                            <tr key={c.id} className="border-t border-border/30">
+                              <td className="py-0.5 pr-2 whitespace-nowrap">
+                                {fmtData(c.dataContabile)}
+                              </td>
+                              <td className="py-0.5 pr-2 text-right tabular-nums whitespace-nowrap text-status-absent">
+                                {fmtImporto(c.da)} €
+                              </td>
+                              <td className="py-0.5 pr-2 whitespace-nowrap">→</td>
+                              <td className="py-0.5 pr-2 text-right font-medium tabular-nums whitespace-nowrap text-status-present">
+                                {fmtImporto(c.a)} €
+                              </td>
+                              <td className="max-w-72 truncate py-0.5" title={c.descrizione}>
+                                {c.descrizione}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                   <div className="mt-3 flex items-center gap-3">
+                    {preview.correzioni.length > 0 && (
+                      <button
+                        type="button"
+                        disabled={importing}
+                        onClick={() => {
+                          void (async () => {
+                            if (
+                              !window.confirm(
+                                `${t("fin.correggiConfirm")} (${preview.correzioni.length})`,
+                              )
+                            )
+                              return;
+                            setImporting(true);
+                            try {
+                              let fatte = 0;
+                              for (const c of preview.correzioni) {
+                                await spCorreggiMovimento({
+                                  data: { id: c.id, importo: c.a, chiave: c.chiave },
+                                });
+                                fatte++;
+                                setImportProgress(`${fatte} / ${preview.correzioni.length}`);
+                              }
+                              setMovimenti((prev) =>
+                                (prev ?? []).map((x) => {
+                                  const c = preview.correzioni.find((y) => y.id === x.id);
+                                  return c ? { ...x, importo: c.a, chiave: c.chiave } : x;
+                                }),
+                              );
+                              setPreview((prev) => (prev ? { ...prev, correzioni: [] } : prev));
+                              toast.success(t("fin.correggiOk"), { description: `${fatte}` });
+                            } catch (err) {
+                              toast.error(t("common.error"), {
+                                description: err instanceof Error ? err.message : String(err),
+                              });
+                            } finally {
+                              setImporting(false);
+                              setImportProgress("");
+                            }
+                          })();
+                        }}
+                        className="inline-flex items-center gap-2 rounded-lg bg-status-absent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                      >
+                        {t("fin.correggiBtn")} ({preview.correzioni.length})
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={eseguiImport}
