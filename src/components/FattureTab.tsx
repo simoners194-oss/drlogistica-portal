@@ -698,6 +698,16 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         label: ricevute ? t("ft.colClienteRif") : t("ft.colServizio"),
         get: (x: (typeof conStato)[number]) => classificaDi(x.f).clienteRif || "—",
       },
+      {
+        key: "oggettodoc",
+        label: t("ft.colOggettoDoc"),
+        get: (x: (typeof conStato)[number]) => x.f.causaleDoc ?? "",
+      },
+      {
+        key: "descrizione",
+        label: t("ft.colDescrizione"),
+        get: (x: (typeof conStato)[number]) => x.f.oggetto ?? "",
+      },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ricevute, regoleFatture, classAuto, termini, t],
@@ -2012,6 +2022,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         ...(ricevute
           ? ["Mese competenza", "Tipologia", "Cliente rif", "Class."]
           : ["Mese competenza", "Servizio", "Class."]),
+        "Oggetto fattura",
+        "Descrizione",
       ],
       filtrate.map(({ f, s }) => {
         // Incassato con la stessa regola della colonna: NC compensata =
@@ -2069,6 +2081,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
               ? [cl.mese, cl.tipologia, cl.clienteRif, cl.fonte]
               : [cl.mese, cl.clienteRif, cl.fonte];
           })(),
+          f.causaleDoc ?? "",
+          f.oggetto ?? "",
         ];
       }),
     );
@@ -3210,10 +3224,22 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                           </>
                         );
                       })()}
+                      <td
+                        className="max-w-44 truncate py-1 pr-2 text-[12px] text-muted-foreground"
+                        title={x.f.causaleDoc}
+                      >
+                        {x.f.causaleDoc ?? "—"}
+                      </td>
+                      <td
+                        className="max-w-52 truncate py-1 pr-2 text-[12px] text-muted-foreground"
+                        title={x.f.oggetto}
+                      >
+                        {x.f.oggetto ?? "—"}
+                      </td>
                     </tr>,
                     aperta && (
                       <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
-                        <td colSpan={ricevute ? 13 : 12} className="py-3 px-3 bg-muted/20">
+                        <td colSpan={ricevute ? 15 : 14} className="py-3 px-3 bg-muted/20">
                           <div className="text-xs text-muted-foreground mb-2">
                             {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
                             {termini.length

@@ -1142,6 +1142,8 @@ const en = {
   "ft.colTipologia": "Cost type",
   "ft.colClienteRif": "Ref. client",
   "ft.colServizio": "Service",
+  "ft.colOggettoDoc": "Invoice subject",
+  "ft.colDescrizione": "Description",
   "ft.classServizioPh": "Service (e.g. FUEL)",
   "ft.aggiornatoAl": "Aruba data updated:",
   "ft.aggTip":
@@ -2326,6 +2328,8 @@ const it: Record<DictKey, string> = {
   "ft.colTipologia": "Tipologia",
   "ft.colClienteRif": "Cliente rif",
   "ft.colServizio": "Servizio",
+  "ft.colOggettoDoc": "Oggetto fattura",
+  "ft.colDescrizione": "Descrizione",
   "ft.classServizioPh": "Servizio (es. FUEL)",
   "ft.aggiornatoAl": "Dati Aruba aggiornati al:",
   "ft.aggTip":

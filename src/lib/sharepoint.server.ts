@@ -359,6 +359,9 @@ export const SP_DISPLAY = {
     // Oggetto della fattura (descrizioni righe XML, concatenate): serve alle
     // regole sui termini per parola chiave. OPZIONALE (più righe di testo).
     Oggetto: "Oggetto",
+    // Causale del documento ("oggetto fattura" scritto in testa all'XML).
+    // OPZIONALE (più righe di testo).
+    Causale: "Causale",
   },
   // Termini di pagamento per cliente (giorni). Gestita dal direttore. OPZIONALE.
   terminiPagamento: {
@@ -4835,6 +4838,7 @@ function mapFattura(
     tipologiaCosto: F.TipologiaCosto ? String(f[F.TipologiaCosto] ?? "") || undefined : undefined,
     clienteRif: F.ClienteRif ? String(f[F.ClienteRif] ?? "") || undefined : undefined,
     oggetto: F.Oggetto ? String(f[F.Oggetto] ?? "") || undefined : undefined,
+    causaleDoc: F.Causale ? String(f[F.Causale] ?? "") || undefined : undefined,
     incassatoAruba: F.IncassatoAruba ? numOrUndef(f[F.IncassatoAruba]) : undefined,
     dataIncasso: (() => {
       const d = F.DataIncasso ? iso(f[F.DataIncasso]) : "";
@@ -5555,6 +5559,8 @@ export async function importFatture(
         patch[F.ClienteRif] = r.clienteRif;
       if (F.Oggetto && r.oggetto && r.oggetto !== (prev.oggetto ?? ""))
         patch[F.Oggetto] = r.oggetto;
+      if (F.Causale && r.causaleDoc && r.causaleDoc !== (prev.causaleDoc ?? ""))
+        patch[F.Causale] = r.causaleDoc;
       // NETTO A PAGARE: si aggiorna SOLO quando la fonte lo conosce davvero,
       // cioe' quando dichiara un netto positivo e DIVERSO dal totale (XML con
       // ritenute/bolli). I file che non lo sanno (report, xlsx) portano
@@ -5606,6 +5612,7 @@ export async function importFatture(
     if (F.TipologiaCosto && r.tipologiaCosto) fields[F.TipologiaCosto] = r.tipologiaCosto;
     if (F.ClienteRif && r.clienteRif) fields[F.ClienteRif] = r.clienteRif;
     if (F.Oggetto && r.oggetto) fields[F.Oggetto] = r.oggetto;
+    if (F.Causale && r.causaleDoc) fields[F.Causale] = r.causaleDoc;
     ops.push(async () => {
       await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items`, {
         method: "POST",

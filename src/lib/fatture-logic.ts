@@ -64,6 +64,9 @@ export interface FatturaRaw {
    *  Attiva le regole sui termini di pagamento per parola chiave
    *  (es. IMILE + "locazione" -> pagamento a vista). */
   oggetto?: string;
+  /** Causale del documento (DatiGeneraliDocumento/Causale): l'"oggetto
+   *  fattura" vero e proprio, distinto dalle descrizioni delle righe. */
+  causaleDoc?: string;
 }
 
 export type IncassoAruba = "Incassata" | "Non incassata" | "Non gestita" | "";
@@ -1393,8 +1396,16 @@ export function parseFatturaPA(
       .filter(Boolean)
       .join(" · ")
       .slice(0, 480);
+    // CAUSALE del documento (puo' essere ripetuta): e' l'oggetto fattura
+    // che l'amministrazione scrive in testa, distinto dalle righe.
+    const causaleDoc = figliDi(doc, "Causale")
+      .map((c) => (c.testo ?? "").trim())
+      .filter(Boolean)
+      .join(" · ")
+      .slice(0, 480);
     rows.push({
       oggetto: oggetto || undefined,
+      causaleDoc: causaleDoc || undefined,
       nomeFile: idx === 0 ? nomeFile : `${nomeFile}#${idx + 1}`,
       numero: testoDi(doc, "Numero"),
       idSdi: "",

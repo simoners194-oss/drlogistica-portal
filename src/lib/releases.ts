@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.37.0",
+    date: "2026-08-13",
+    codename: "Fatture che si spiegano",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Oggetto fattura e Descrizione in colonna, su attive e passive",
+        description:
+          "Due colonne nuove nell'archivio fatture: l'Oggetto fattura (la causale scritta in testa al documento) e la Descrizione (le voci delle righe). Filtrabili come tutte le altre, presenti nell'export CSV e alimentate dal sync automatico. Il mese di competenza ha inoltre la regola di ripiego impostabile: giorno 15, mese successivo all'emissione o mese di emissione. E i collegamenti nota di credito registrati su Aruba entrano da soli nell'archivio.",
+      },
+    ],
+  },
+  {
     version: "1.36.0",
     date: "2026-08-13",
     codename: "Le NC si collegano da sole",
