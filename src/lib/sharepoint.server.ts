@@ -6410,6 +6410,9 @@ export interface EbSyncResult {
   scritti: number;
   doppioni: number;
   pendenti: number;
+  /** Scartati perche' contabilizzati PRIMA della data di taglio: la' fa
+   *  fede il vecchio archivio Excel, si recuperano solo con quell'import. */
+  sottoTaglio: number;
   dal: string;
   /** Chiave di continuazione: il client richiama finché non è null. */
   continuation: string | null;
@@ -6472,6 +6475,7 @@ export async function ebSincronizza(
     scritti: 0,
     doppioni: 0,
     pendenti: 0,
+    sottoTaglio: 0,
     dal,
     continuation: pagina.continuation,
     errori: [],
@@ -6484,7 +6488,10 @@ export async function ebSincronizza(
       result.pendenti++;
       continue;
     }
-    if (m.raw.dataContabile < stato.dataTaglio) continue; // mai sotto il taglio
+    if (m.raw.dataContabile < stato.dataTaglio) {
+      result.sottoTaglio++; // mai sotto il taglio: la' fa fede l'Excel
+      continue;
+    }
     if (esistenti.has(m.chiave)) {
       result.doppioni++;
       continue;

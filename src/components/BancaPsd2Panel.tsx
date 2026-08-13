@@ -231,6 +231,8 @@ export function BancaPsd2Panel() {
     let scritti = 0;
     let doppioni = 0;
     let pendenti = 0;
+    let sottoTaglio = 0;
+    let dalUsato = "";
     let sErr: string | undefined;
     try {
       let continuation: string | undefined;
@@ -242,6 +244,8 @@ export function BancaPsd2Panel() {
         scritti += r.scritti;
         doppioni += r.doppioni;
         pendenti += r.pendenti;
+        sottoTaglio += r.sottoTaglio ?? 0;
+        dalUsato = r.dal;
         sErr = r.saldoErrore;
         if (r.errori.length) throw new Error(r.errori[0]);
         setProgress(String(scritti));
@@ -249,7 +253,8 @@ export function BancaPsd2Panel() {
         continuation = r.continuation;
       }
       toast.success(t("fin.ebSyncDone"), {
-        description: `${scritti} ${t("fin.ebNuovi")} · ${doppioni} ${t("fin.ebGiaPresenti")} · ${pendenti} ${t("fin.ebPendenti")}`,
+        description: `${t("fin.ebFinestraDal")} ${dalUsato} · ${scritti} ${t("fin.ebNuovi")} · ${doppioni} ${t("fin.ebGiaPresenti")} · ${pendenti} ${t("fin.ebPendenti")}${sottoTaglio ? ` · ${sottoTaglio} ${t("fin.ebSottoTaglio")}` : ""}`,
+        duration: 12000,
       });
       loadStato();
       if (sErr) {

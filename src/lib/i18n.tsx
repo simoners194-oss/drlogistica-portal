@@ -707,6 +707,8 @@ const en = {
   "fin.ebAttiva": "Activate bank sync",
   "fin.ebAttivaConfirm":
     "The transactions of the last day imported from Excel will be deleted and reloaded from the bank (the switch-over day may be incomplete in the file). Continue?",
+  "fin.ebFinestraDal": "window from",
+  "fin.ebSottoTaglio": "skipped, before the cutover date (only the Excel import covers those days)",
   "fin.ebRecuperoDa":
     "Recover from date (optional): the sync window goes back to this day to re-fetch skipped movements",
   "fin.ebSync": "Sync now",
@@ -1936,6 +1938,9 @@ const it: Record<DictKey, string> = {
   "fin.ebAttiva": "Attiva il sync bancario",
   "fin.ebAttivaConfirm":
     "I movimenti dell'ultimo giorno importato da Excel verranno eliminati e ricaricati dalla banca (nel file quel giorno può essere incompleto). Continuare?",
+  "fin.ebFinestraDal": "finestra dal",
+  "fin.ebSottoTaglio":
+    "scartati perché prima della data di taglio (quei giorni si coprono solo con l’import Excel)",
   "fin.ebRecuperoDa":
     "Recupero da data (facoltativo): la finestra del sync riparte da questo giorno per ripescare movimenti saltati",
   "fin.ebSync": "Sincronizza ora",
