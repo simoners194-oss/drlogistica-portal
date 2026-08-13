@@ -898,6 +898,8 @@ const en = {
     "no batch with a similar amount in the archive: import the batch file for this payment",
   "fin.distOrfaniNota":
     "These outgoing movements look like bulk payments but no batch matched (same amount within 1 euro, date within 6 days). If the closest batch is the right one, link it manually from its row above; if none exists, import its Excel file.",
+  "fin.distNessunCand":
+    "no free outgoing movement within 10 days of the batch: likely a gap in the bank archive",
   "fin.distAutoTrancheOk": "Batch linked automatically to its tranches",
   "fin.distQuasi": "best combination found (does not balance)",
   "fin.distTrancheBtn": "Link all tranches, exact total",
@@ -2120,6 +2122,8 @@ const it: Record<DictKey, string> = {
     "nessuna distinta con somma simile in archivio: importa il file della distinta di questo pagamento",
   "fin.distOrfaniNota":
     "Uscite che dalla descrizione sembrano pagamenti cumulativi ma senza nessuna distinta agganciata (stessa somma ±1 €, data entro 6 giorni). Se la distinta più vicina è quella giusta, agganciala a mano dalla sua riga qui sopra; se non esiste, va importato il suo file Excel.",
+  "fin.distNessunCand":
+    "nessuna uscita libera entro 10 giorni dalla distinta: probabile buco nell’archivio banca",
   "fin.distAutoTrancheOk": "Distinta agganciata in automatico alle sue tranche",
   "fin.distQuasi": "miglior combinazione trovata (non quadra)",
   "fin.distTrancheBtn": "Aggancia tutte le tranche, somma esatta",

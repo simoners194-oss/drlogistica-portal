@@ -817,7 +817,7 @@ function FinanzaPage() {
         return ka !== kb ? ka - kb : giorniDa(a2) - giorniDa(b2);
       })
       .slice(0, 30);
-    if (cand.length < 2) return null;
+    if (!cand.length) return null;
     // Meet in the middle SUL PIU' VICINO: le somme di meta' candidati in
     // un array ordinato, l'altra meta' cerca il complemento migliore.
     const arr = cand.map((m) => Math.round(-m.importo * 100));
@@ -857,7 +857,9 @@ function FinanzaPage() {
     const scelti = cand.filter((_, i2) =>
       i2 < metaN ? scelto.maskA & (1 << i2) : scelto.maskB & (1 << (i2 - metaN)),
     );
-    return scelti.length >= 2 ? { scelti, diffCent: scelto.diff } : null;
+    // Anche UN solo movimento e' una risposta utile (addebito unico
+    // con commissioni): la soglia minima di 2 scartava proprio quel caso.
+    return scelti.length >= 1 ? { scelti, diffCent: scelto.diff } : null;
   };
   const trancheMap = useMemo(() => {
     const out = new Map<string, { scelti: SpMovimento[]; diffCent: number }>();
@@ -1370,6 +1372,11 @@ function FinanzaPage() {
                                   ) / 100,
                                 )}{" "}
                                 € (Δ {fmtImporto(trancheQuasi.diffCent / 100)} €)
+                              </span>
+                            )}
+                            {collegati.length === 0 && !autoMov && !tr && (
+                              <span className="text-[11px] text-muted-foreground">
+                                {t("fin.distNessunCand")}
                               </span>
                             )}
                           </span>
