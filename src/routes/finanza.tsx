@@ -345,6 +345,7 @@ function FinanzaPage() {
   // Elenco regole raggruppato per tipologia: si apre un gruppo al tocco.
   const [catAperta, setCatAperta] = useState<string | null>(null);
   const [uniBusy, setUniBusy] = useState(false);
+  const [bonificaBusy, setBonificaBusy] = useState(false);
   const [rCerca, setRCerca] = useState("");
   // Multi-selezione: spunta le righe e agisci in blocco.
   const [soloDistinte, setSoloDistinte] = useState(false);
@@ -3982,6 +3983,106 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
 
       {/* ------------------------------- Storico import -------------------- */}
       <ScorriFondo />
+      {tab === "storico" &&
+        (() => {
+          // GEMELLI x100: un vecchio import ha letto la virgola dei decimali
+          // come separatore delle migliaia (5.315,55 -> 531555). La riga
+          // corrotta e' sempre INTERA, vale 100 volte una riga vera con i
+          // centesimi, stessa data e stesso riferimento/descrizione.
+          const rifDi = (m: SpMovimento) => {
+            const r = /rif\.?\s*([a-z0-9/]+)/i.exec(m.descrizione);
+            return r
+              ? r[1].toLowerCase()
+              : m.descrizione.toLowerCase().replace(/\s+/g, " ").slice(0, 60);
+          };
+          const gruppi = new Map<string, SpMovimento[]>();
+          for (const m of movimenti ?? []) {
+            const k = `${m.dataContabile}|${rifDi(m)}`;
+            const arr = gruppi.get(k) ?? [];
+            arr.push(m);
+            gruppi.set(k, arr);
+          }
+          const corrotti: SpMovimento[] = [];
+          for (const arr of gruppi.values()) {
+            if (arr.length < 2) continue;
+            for (const x of arr) {
+              if (!Number.isInteger(x.importo)) continue;
+              const gemello = arr.find(
+                (y) =>
+                  y.id !== x.id &&
+                  x.importo * y.importo > 0 &&
+                  Math.abs(y.importo % 1) > 0.001 &&
+                  Math.round(Math.abs(y.importo) * 100) === Math.abs(x.importo),
+              );
+              if (gemello) corrotti.push(x);
+            }
+          }
+          if (!corrotti.length) return null;
+          const totale = Math.round(corrotti.reduce((s2, m) => s2 + m.importo, 0) * 100) / 100;
+          return (
+            <div className="mb-4 rounded-2xl border border-status-absent/40 bg-status-absent/5 p-5">
+              <div className="mb-1 text-sm font-semibold text-status-absent">
+                {t("fin.bonificaTitolo")} ({corrotti.length})
+              </div>
+              <p className="mb-2 text-xs text-muted-foreground">{t("fin.bonificaDesc")}</p>
+              <table className="w-full text-[12px]">
+                <tbody>
+                  {corrotti.slice(0, 20).map((m) => (
+                    <tr key={m.id} className="border-t border-border/40">
+                      <td className="py-1 pr-3 whitespace-nowrap">{fmtData(m.dataContabile)}</td>
+                      <td className="py-1 pr-3 text-right font-medium tabular-nums whitespace-nowrap text-status-absent">
+                        {fmtImporto(m.importo)} €
+                      </td>
+                      <td
+                        className="max-w-96 truncate py-1 pr-3 text-muted-foreground"
+                        title={m.descrizione}
+                      >
+                        {m.descrizione}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <button
+                type="button"
+                disabled={bonificaBusy}
+                onClick={() => {
+                  void (async () => {
+                    if (
+                      !window.confirm(
+                        `${t("fin.bonificaConfirm")} (${corrotti.length} · ${fmtImporto(totale)} €)`,
+                      )
+                    )
+                      return;
+                    setBonificaBusy(true);
+                    try {
+                      let fatti = 0;
+                      for (const m of corrotti) {
+                        await spEliminaMovimento({ data: { id: m.id } });
+                        fatti++;
+                      }
+                      setMovimenti((prev) =>
+                        (prev ?? []).filter((x) => !corrotti.some((c) => c.id === x.id)),
+                      );
+                      toast.success(t("fin.bonificaOk"), { description: `${fatti}` });
+                    } catch (err) {
+                      toast.error(t("common.error"), {
+                        description: err instanceof Error ? err.message : String(err),
+                      });
+                    } finally {
+                      setBonificaBusy(false);
+                    }
+                  })();
+                }}
+                className="mt-3 rounded-lg bg-status-absent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {bonificaBusy
+                  ? t("common.loading")
+                  : `${t("fin.bonificaBtn")} (${corrotti.length})`}
+              </button>
+            </div>
+          );
+        })()}
       {tab === "storico" && distinteCard}
       {tab === "storico" && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">

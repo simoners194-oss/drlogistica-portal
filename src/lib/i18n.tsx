@@ -921,6 +921,12 @@ const en = {
   "fin.distAggancioNota":
     "A batch not linked usually means the bank debited a different total (e.g. rejected payments) or a date outside the window: check the cumulative transaction amount in Movements.",
   "fin.editMovTip": "Edit this transaction",
+  "fin.bonificaTitolo": "Corrupted amounts found (x100)",
+  "fin.bonificaDesc":
+    "These rows come from an import that read the decimal comma as a thousands separator: each is exactly 100 times a real row with the same date and reference. Deleting them fixes the archive; the real rows stay.",
+  "fin.bonificaConfirm": "Delete all the corrupted rows listed?",
+  "fin.bonificaBtn": "Delete all corrupted rows",
+  "fin.bonificaOk": "Archive cleaned: corrupted rows deleted",
   "fin.eliminaMovBtn": "Delete movement",
   "fin.eliminaMovConfirm":
     "Delete this movement from the archive? Use ONLY for corrupted rows from a bad import — real bank movements must stay.",
@@ -2157,6 +2163,12 @@ const it: Record<DictKey, string> = {
   "fin.distAggancioNota":
     "Una distinta non agganciata di solito significa che la banca ha addebitato un totale diverso (es. disposizioni rifiutate) o una data fuori finestra: controllare l'importo del movimento cumulativo nei Movimenti.",
   "fin.editMovTip": "Correggi questo movimento",
+  "fin.bonificaTitolo": "Importi corrotti trovati (\u00d7100)",
+  "fin.bonificaDesc":
+    "Queste righe vengono da un import che ha letto la virgola dei decimali come separatore delle migliaia: ognuna vale esattamente 100 volte una riga vera con stessa data e stesso riferimento. Eliminarle risana l\u2019archivio; le righe vere restano.",
+  "fin.bonificaConfirm": "Eliminare tutte le righe corrotte elencate?",
+  "fin.bonificaBtn": "Elimina tutte le righe corrotte",
+  "fin.bonificaOk": "Archivio risanato: righe corrotte eliminate",
   "fin.eliminaMovBtn": "Elimina movimento",
   "fin.eliminaMovConfirm":
     "Eliminare questo movimento dall’archivio? Da usare SOLO per righe corrotte da un import sbagliato — i movimenti veri della banca devono restare.",
