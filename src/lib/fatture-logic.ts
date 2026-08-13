@@ -590,18 +590,26 @@ export interface RegolaFatturaCompilata {
 }
 
 export function compilaRegoleFatture(regole: readonly RegolaFattura[]): RegolaFatturaCompilata[] {
-  return regole.map((r) => ({
-    r,
-    direzione: r.direzione ?? "Ricevuta",
-    terminiCliente: (r.fornitore ?? "")
-      .split(/[,;\n]/)
-      .map((x) => clienteGroupKey(x.trim()) || normalizeTesto(x.trim()))
-      .filter((x) => x.length >= 3),
-    terminiOggetto: (r.oggettoInclude ?? "")
-      .split(/[,;\n]/)
-      .map((x) => normalizeTesto(x.trim()))
-      .filter((x) => x.length >= 3),
-  }));
+  return (
+    regole
+      .map((r) => ({
+        r,
+        direzione: r.direzione ?? "Ricevuta",
+        terminiCliente: (r.fornitore ?? "")
+          .split(/[,;\n]/)
+          .map((x) => clienteGroupKey(x.trim()) || normalizeTesto(x.trim()))
+          .filter((x) => x.length >= 3),
+        terminiOggetto: (r.oggettoInclude ?? "")
+          .split(/[,;\n]/)
+          .map((x) => normalizeTesto(x.trim()))
+          .filter((x) => x.length >= 3),
+      }))
+      // Le regole con condizione sull'OGGETTO sono piu' specifiche della
+      // regola generica per fornitore: si valutano prima (ordinamento
+      // stabile — a parita' vale l'ordine d'inserimento). Cosi' "UNIVEX +
+      // Locazione -> Affitto" vince sulla generica "UNIVEX -> Danni".
+      .sort((a, b) => (b.terminiOggetto.length ? 1 : 0) - (a.terminiOggetto.length ? 1 : 0))
+  );
 }
 
 /** Match di una regola fatture: cliente include, oggetto/descrizione

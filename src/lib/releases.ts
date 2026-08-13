@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.43.0",
+    date: "2026-08-13",
+    codename: "Le regole si importano da Excel",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Regole delle fatture passive importate in blocco da Excel",
+        description:
+          "Nella scheda delle regole fatture c'e' il nuovo riquadro \"Importa regole da Excel\": caricando il file con l'elenco fornitore -> tipologia/sottocategoria/allocazioni, le regole si creano tutte insieme, comprese quelle di nuovo tipo con la condizione sull'oggetto della fattura (es. fornitore + \"Locazione\" -> Affitto). Le annotazioni della colonna Nota vengono conservate nel campo note della regola senza influenzare il riconoscimento, le regole gia' presenti vengono riconosciute e saltate, e le regole con condizione sull'oggetto ora vincono sempre sulla regola generica dello stesso fornitore.",
+      },
+    ],
+  },
+  {
     version: "1.42.0",
     date: "2026-08-13",
     codename: "Il separatore decimale non fa piu' danni",
