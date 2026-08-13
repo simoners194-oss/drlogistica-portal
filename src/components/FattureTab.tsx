@@ -170,6 +170,11 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   // "" = tutte; "tutte" = solo NC; "sciolte" = solo NC non collegate.
   const [ncFiltro, setNcFiltro] = useState<"" | "tutte" | "sciolte">("");
   const [soloNonClassF, setSoloNonClassF] = useState(false);
+  const [tipSelF, setTipSelF] = useState<string[]>([]);
+  const [meseSelF, setMeseSelF] = useState<string[]>([]);
+  const [sottoSelF, setSottoSelF] = useState<string[]>([]);
+  const [priSelF, setPriSelF] = useState<string[]>([]);
+  const [secSelF, setSecSelF] = useState<string[]>([]);
   // Clienti selezionati nel menu a tendina (vuoto = tutti). Le voci proposte
   // sono i 15 clienti con piu' fatturato, in ordine decrescente.
   const [clientiSel, setClientiSel] = useState<string[]>([]);
@@ -1062,12 +1067,29 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           (ncFiltro === "tutte" || !ncCollegate.has(x.f.numero)),
       );
     if (soloNonClassF) out = out.filter((x) => !classificaDi(x.f).tipologia);
+    // Tendine di classificazione (stile Movimenti): valori dalla catena
+    // risolta manuale > regola > storico, "(non classificata)" = vuoto.
+    const vuoto = "__vuoto__";
+    const filtraClass = (sel: string[], leggi: (x: (typeof out)[number]) => string) => {
+      if (!sel.length) return;
+      out = out.filter((x) => sel.includes(leggi(x) || vuoto));
+    };
+    filtraClass(tipSelF, (x) => classificaDi(x.f).tipologia);
+    filtraClass(meseSelF, (x) => classificaDi(x.f).mese);
+    filtraClass(sottoSelF, (x) => classificaDi(x.f).sottocategoria);
+    filtraClass(priSelF, (x) => classificaDi(x.f).allocPrimaria);
+    filtraClass(secSelF, (x) => classificaDi(x.f).allocSecondaria);
     if (filtriThAttivi) out = out.filter((x) => passaFiltriTh(x));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     conStato,
     soloNonClassF,
+    tipSelF,
+    meseSelF,
+    sottoSelF,
+    priSelF,
+    secSelF,
     regoleFatture,
     classAuto,
     anniF,
@@ -1084,6 +1106,28 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     ncFiltro,
     ncCollegate,
   ]);
+
+  // Opzioni delle tendine di classificazione: valori distinti su TUTTO
+  // l'archivio della direzione corrente (non solo sul filtrato, per non
+  // far sparire le voci quando ci si filtra sopra).
+  const opzClass = useMemo(() => {
+    const vuoto = "__vuoto__";
+    const raccogli = (leggi: (x: (typeof conStato)[number]) => string) => {
+      const set = new Set<string>();
+      for (const x of conStato) set.add(leggi(x) || vuoto);
+      return [...set]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v2) => ({ v: v2, label: v2 === vuoto ? t("ft.classVuota") : v2 }));
+    };
+    return {
+      tip: raccogli((x) => classificaDi(x.f).tipologia),
+      mese: raccogli((x) => classificaDi(x.f).mese),
+      sotto: raccogli((x) => classificaDi(x.f).sottocategoria),
+      pri: raccogli((x) => classificaDi(x.f).allocPrimaria),
+      sec: raccogli((x) => classificaDi(x.f).allocSecondaria),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conStato, regoleFatture, classAuto, meseRegola]);
 
   // Riepilogo (sugli anni filtrati, tutte le fatture non escluse). Gli importi
   // seguono lo stato UFFICIALE (Aruba quando c'è); `confermatoBanca` dice
@@ -2687,6 +2731,46 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
             valori={clientiSel}
             onChange={setClientiSel}
             className="w-56"
+          />
+          <MultiSelect
+            label={t("ft.colTipologia")}
+            tuttiLabel={t("common.allF")}
+            selLabel={t("fin.msSel")}
+            opzioni={opzClass.tip}
+            valori={tipSelF}
+            onChange={setTipSelF}
+          />
+          <MultiSelect
+            label={t("ft.colCompetenza")}
+            tuttiLabel={t("common.all")}
+            selLabel={t("fin.msSel")}
+            opzioni={opzClass.mese}
+            valori={meseSelF}
+            onChange={setMeseSelF}
+          />
+          <MultiSelect
+            label={t("fin.sottocat")}
+            tuttiLabel={t("common.allF")}
+            selLabel={t("fin.msSel")}
+            opzioni={opzClass.sotto}
+            valori={sottoSelF}
+            onChange={setSottoSelF}
+          />
+          <MultiSelect
+            label={t("fin.allocPri")}
+            tuttiLabel={t("common.allF")}
+            selLabel={t("fin.msSel")}
+            opzioni={opzClass.pri}
+            valori={priSelF}
+            onChange={setPriSelF}
+          />
+          <MultiSelect
+            label={t("fin.allocSec")}
+            tuttiLabel={t("common.allF")}
+            selLabel={t("fin.msSel")}
+            opzioni={opzClass.sec}
+            valori={secSelF}
+            onChange={setSecSelF}
           />
           <div>
             <label className="text-xs text-muted-foreground">{t("fin.rangeDate")}</label>

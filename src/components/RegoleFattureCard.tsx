@@ -1,0 +1,323 @@
+// Card AUTONOMA delle regole di classificazione fatture: stessa lista
+// SharePoint della card dentro la tab Fatture, ma vive anche da sola nella
+// tab Regole di Finanze (richiesta direzione: regole movimenti e regole
+// fatture fianco a fianco). Form AND/OR, vocabolario condiviso con le
+// regole dei movimenti, import da Excel, elenco con matita e cestino.
+import { useEffect, useMemo, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { useLang } from "../lib/i18n";
+import type { RegolaFattura } from "../lib/fatture-logic";
+import type { RegolaFinanza } from "../lib/finanza-logic";
+import {
+  spCreateRegolaFattura,
+  spDeleteRegolaFattura,
+  spGetRegoleFatture,
+  spGetRegoleFinanza,
+  spUpdateRegolaFattura,
+} from "../lib/sharepoint.functions";
+import { CampoVocabolario } from "./CampoVocabolario";
+
+export function RegoleFattureCard() {
+  const { t } = useLang();
+  const [regole, setRegole] = useState<RegolaFattura[]>([]);
+  const [regoleFin, setRegoleFin] = useState<RegolaFinanza[]>([]);
+  const [dir, setDir] = useState<"Ricevuta" | "Emessa">("Ricevuta");
+  const [cliente, setCliente] = useState("");
+  const [oggetto, setOggetto] = useState("");
+  const [operatore, setOperatore] = useState<"AND" | "OR">("AND");
+  const [tipologia, setTipologia] = useState("");
+  const [sottocat, setSottocat] = useState("");
+  const [allocPri, setAllocPri] = useState("");
+  const [allocSec, setAllocSec] = useState("");
+  const [servizio, setServizio] = useState("");
+  const [nota, setNota] = useState("");
+  const [editId, setEditId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    spGetRegoleFatture()
+      .then((l) => setRegole(l as RegolaFattura[]))
+      .catch(() => setRegole([]));
+    spGetRegoleFinanza()
+      .then((l) => setRegoleFin(l as RegolaFinanza[]))
+      .catch(() => setRegoleFin([]));
+  }, []);
+
+  const vocab = useMemo(() => {
+    const uniq = (xs: (string | undefined)[]) =>
+      [...new Set(xs.filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b));
+    const tutte = [...regoleFin, ...regole].map((r) => ({
+      tipologia: r.tipologia,
+      sottocategoria: r.sottocategoria,
+      allocPrimaria: r.allocPrimaria,
+      allocSecondaria: r.allocSecondaria,
+    }));
+    const perTip = tipologia.trim()
+      ? tutte.filter((r) => (r.tipologia ?? "") === tipologia.trim())
+      : tutte;
+    const perPri = allocPri.trim()
+      ? tutte.filter((r) => (r.allocPrimaria ?? "") === allocPri.trim())
+      : tutte;
+    const sotto = uniq(perTip.map((r) => r.sottocategoria));
+    const sec = uniq(perPri.map((r) => r.allocSecondaria));
+    return {
+      tipologie: uniq(tutte.map((r) => r.tipologia)),
+      sottocat: sotto.length ? sotto : uniq(tutte.map((r) => r.sottocategoria)),
+      allocPri: uniq(tutte.map((r) => r.allocPrimaria)),
+      allocSec: sec.length ? sec : uniq(tutte.map((r) => r.allocSecondaria)),
+    };
+  }, [regoleFin, regole, tipologia, allocPri]);
+
+  const reset = () => {
+    setCliente("");
+    setOggetto("");
+    setOperatore("AND");
+    setTipologia("");
+    setSottocat("");
+    setAllocPri("");
+    setAllocSec("");
+    setServizio("");
+    setNota("");
+    setEditId(null);
+  };
+
+  const salva = async () => {
+    setBusy(true);
+    try {
+      const payload = {
+        fornitore: cliente.trim(),
+        oggettoInclude: oggetto.trim() || undefined,
+        operatore,
+        direzione: dir,
+        tipologia: tipologia.trim() || undefined,
+        sottocategoria: sottocat.trim() || undefined,
+        allocPrimaria: allocPri.trim() || undefined,
+        allocSecondaria: allocSec.trim() || undefined,
+        clienteRif: servizio.trim() || undefined,
+        note: nota.trim() || undefined,
+      };
+      if (editId) await spUpdateRegolaFattura({ data: { regolaId: editId, ...payload } });
+      else await spCreateRegolaFattura({ data: payload });
+      setRegole((await spGetRegoleFatture()) as RegolaFattura[]);
+      reset();
+      toast.success(t("ft.rfSalvata"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inputCls = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
+  const elenco = regole.filter((r) => (r.direzione ?? "Ricevuta") === dir);
+  return (
+    <div className="mb-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-sm font-semibold text-foreground">
+          {t("ft.rfTitolo")} ({elenco.length})
+        </div>
+        <div className="inline-flex rounded-lg border border-border p-0.5 text-xs">
+          <button
+            type="button"
+            onClick={() => setDir("Ricevuta")}
+            className={`rounded-md px-3 py-1.5 font-semibold ${dir === "Ricevuta" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+          >
+            {t("ft.dirRicevute")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDir("Emessa")}
+            className={`rounded-md px-3 py-1.5 font-semibold ${dir === "Emessa" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+          >
+            {t("ft.dirEmesse")}
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div>
+          <label className="text-xs text-muted-foreground">{t("ft.rfClienteInclude")}</label>
+          <textarea
+            value={cliente}
+            onChange={(e) => setCliente(e.target.value)}
+            rows={2}
+            className={inputCls}
+          />
+        </div>
+        <div className="flex items-end pb-1">
+          <div className="inline-flex rounded-lg border border-border p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setOperatore("AND")}
+              className={`rounded-md px-3 py-1.5 font-semibold ${operatore === "AND" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              AND
+            </button>
+            <button
+              type="button"
+              onClick={() => setOperatore("OR")}
+              className={`rounded-md px-3 py-1.5 font-semibold ${operatore === "OR" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              OR
+            </button>
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">{t("ft.rfOggettoInclude")}</label>
+          <textarea
+            value={oggetto}
+            onChange={(e) => setOggetto(e.target.value)}
+            rows={2}
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <CampoVocabolario
+            label={t("ft.colTipologia")}
+            valore={tipologia}
+            onChange={(v2) => {
+              setTipologia(v2);
+              if (v2.trim() && sottocat.trim() && !vocab.sottocat.includes(sottocat))
+                setSottocat("");
+            }}
+            opzioni={vocab.tipologie}
+            testoNessuno={t("ft.rfNonImpostare")}
+            testoNuova={t("fin.vocNuova")}
+          />
+        </div>
+        <div>
+          <CampoVocabolario
+            label={t("fin.sottocat")}
+            valore={sottocat}
+            onChange={setSottocat}
+            opzioni={vocab.sottocat}
+            testoNessuno={t("ft.rfNonImpostare")}
+            testoNuova={t("fin.vocNuova")}
+          />
+        </div>
+        <div>
+          <CampoVocabolario
+            label={t("fin.allocPri")}
+            valore={allocPri}
+            onChange={setAllocPri}
+            opzioni={vocab.allocPri}
+            testoNessuno={t("ft.rfNonImpostare")}
+            testoNuova={t("fin.vocNuova")}
+          />
+        </div>
+        <div>
+          <CampoVocabolario
+            label={t("fin.allocSec")}
+            valore={allocSec}
+            onChange={setAllocSec}
+            opzioni={vocab.allocSec}
+            testoNessuno={t("ft.rfNonImpostare")}
+            testoNuova={t("fin.vocNuova")}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">
+            {dir === "Ricevuta" ? t("ft.colClienteRif") : t("ft.colServizio")}
+          </label>
+          <input
+            value={servizio}
+            onChange={(e) => setServizio(e.target.value)}
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">{t("fin.note")}</label>
+          <input value={nota} onChange={(e) => setNota(e.target.value)} className={inputCls} />
+        </div>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          disabled={busy || (!cliente.trim() && !oggetto.trim())}
+          onClick={() => void salva()}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+        >
+          {busy ? t("common.loading") : editId ? t("fin.regolaAggiorna") : t("fin.regolaCrea")}
+        </button>
+        {editId && (
+          <button
+            type="button"
+            onClick={reset}
+            className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
+          >
+            {t("common.cancel")}
+          </button>
+        )}
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">{t("fin.rfDoveImport")}</p>
+      <div className="mt-3 space-y-1">
+        {elenco.map((r) => (
+          <div
+            key={r.id}
+            className="flex items-start gap-2 border-t border-border/50 py-1.5 text-[13px]"
+          >
+            <span className="flex-1">
+              {r.fornitore && (
+                <>
+                  {t("ft.rfFraseCliente")} «<b>{r.fornitore}</b>»
+                </>
+              )}
+              {r.fornitore && r.oggettoInclude && (
+                <b className="text-primary"> {r.operatore ?? "AND"} </b>
+              )}
+              {r.oggettoInclude && (
+                <>
+                  {t("ft.rfFraseOggetto")} «<b>{r.oggettoInclude}</b>»
+                </>
+              )}{" "}
+              → {[r.tipologia, r.sottocategoria].filter(Boolean).join(" · ")}
+              {(r.allocPrimaria || r.allocSecondaria) &&
+                ` · ${[r.allocPrimaria, r.allocSecondaria].filter(Boolean).join(" / ")}`}
+              {r.clienteRif && ` · ${r.clienteRif}`}
+              {r.note && <i className="text-muted-foreground"> — {r.note}</i>}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setEditId(r.id ?? null);
+                setCliente(r.fornitore ?? "");
+                setOggetto(r.oggettoInclude ?? "");
+                setOperatore(r.operatore === "OR" ? "OR" : "AND");
+                setDir(r.direzione === "Emessa" ? "Emessa" : "Ricevuta");
+                setTipologia(r.tipologia ?? "");
+                setSottocat(r.sottocategoria ?? "");
+                setAllocPri(r.allocPrimaria ?? "");
+                setAllocSec(r.allocSecondaria ?? "");
+                setServizio(r.clienteRif ?? "");
+                setNota(r.note ?? "");
+              }}
+              className="text-muted-foreground hover:text-foreground"
+              title={t("fin.regolaAggiorna")}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!window.confirm(t("ft.rfDelConfirm"))) return;
+                void spDeleteRegolaFattura({ data: { id: r.id ?? "" } })
+                  .then(() => setRegole((prev) => prev.filter((x) => x.id !== r.id)))
+                  .catch((err) =>
+                    toast.error(t("common.error"), {
+                      description: err instanceof Error ? err.message : String(err),
+                    }),
+                  );
+              }}
+              className="text-muted-foreground hover:text-status-absent"
+              title={t("common.delete")}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

@@ -36,6 +36,28 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.44.0",
+    date: "2026-08-13",
+    codename: "Regole e filtri, stessa lingua ovunque",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "La tab Regole ora contiene anche le regole delle fatture",
+        description:
+          "In Finanze, la tab Regole ha due sezioni affiancate: Regole movimenti (quelle di sempre) e Regole fatture \u2014 lo stesso pannello che vive nella tab Fatture, con form AND/OR, vocabolario condiviso, modifica ed eliminazione. Le regole sono le stesse ovunque: cambiarle da una parte vale anche dall'altra.",
+      },
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Filtri a tendina di classificazione anche sulle fatture",
+        description:
+          "Sopra l'elenco delle fatture (attive e passive) ci sono le stesse tendine dei Movimenti: Tipologia, Mese competenza, Sottocategoria, Allocazione primaria e secondaria, con ricerca incorporata e voce \"(non classificata)\" per isolare al volo cio' che manca. Si combinano con tutti i filtri esistenti.",
+      },
+    ],
+  },
+  {
     version: "1.43.0",
     date: "2026-08-13",
     codename: "Le regole si importano da Excel",

@@ -1212,6 +1212,11 @@ const en = {
   "ft.colFonteClass": "Class. source",
   "ft.colNomeFile": "File name",
   "ft.fNonClass": "Unclassified only",
+  "ft.classVuota": "(unclassified)",
+  "fin.regTabMov": "Movement rules",
+  "fin.regTabFat": "Invoice rules",
+  "fin.rfDoveImport":
+    "The Excel rules import lives in the Invoices tab, inside the same rules panel.",
   "ft.rfImpTitolo": "Import rules from Excel",
   "ft.rfImpDesc":
     'Sheets with a CLIENTE/FORNITORE header become supplier rules; a "Se oggetto o descrizione include" column becomes an AND condition. The Nota column is stored as the rule\u2019s note (it never affects matching). Rules already present are skipped.',
@@ -2478,6 +2483,11 @@ const it: Record<DictKey, string> = {
   "ft.colFonteClass": "Fonte class.",
   "ft.colNomeFile": "Nome file",
   "ft.fNonClass": "Solo non classificate",
+  "ft.classVuota": "(non classificata)",
+  "fin.regTabMov": "Regole movimenti",
+  "fin.regTabFat": "Regole fatture",
+  "fin.rfDoveImport":
+    "L\u2019import delle regole da Excel si trova nella tab Fatture, dentro lo stesso pannello regole.",
   "ft.rfImpTitolo": "Importa regole da Excel",
   "ft.rfImpDesc":
     'I fogli con intestazione CLIENTE/FORNITORE diventano regole per fornitore; la colonna "Se oggetto o descrizione include" diventa condizione AND. La colonna Nota finisce nel campo Note della regola (non influenza mai il riconoscimento). Le regole gi\u00e0 presenti vengono saltate.',

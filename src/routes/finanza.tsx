@@ -35,6 +35,7 @@ import { FattureTab } from "@/components/FattureTab";
 import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
 import { MultiSelect } from "@/components/MultiSelect";
 import { CampoVocabolario } from "@/components/CampoVocabolario";
+import { RegoleFattureCard } from "@/components/RegoleFattureCard";
 import { ResocontoTab } from "@/components/ResocontoTab";
 import { useLang } from "@/lib/i18n";
 import { readSession, type SessionUser } from "@/lib/session";
@@ -364,6 +365,7 @@ function FinanzaPage() {
   // Multi-selezione: spunta le righe e agisci in blocco.
   const [soloDistinte, setSoloDistinte] = useState(false);
   const [soloNonClass, setSoloNonClass] = useState(false);
+  const [regTab, setRegTab] = useState<"movimenti" | "fatture">("movimenti");
   const [selMov, setSelMov] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkTip, setBulkTip] = useState("");
@@ -4457,6 +4459,25 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
 
       {/* ------------------------------- Regole apprese -------------------- */}
       {tab === "regole" && (
+        <div className="mb-3 inline-flex rounded-lg border border-border p-0.5 text-sm">
+          <button
+            type="button"
+            onClick={() => setRegTab("movimenti")}
+            className={`rounded-md px-4 py-1.5 font-semibold ${regTab === "movimenti" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+          >
+            {t("fin.regTabMov")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setRegTab("fatture")}
+            className={`rounded-md px-4 py-1.5 font-semibold ${regTab === "fatture" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+          >
+            {t("fin.regTabFat")}
+          </button>
+        </div>
+      )}
+      {tab === "regole" && regTab === "fatture" && <RegoleFattureCard />}
+      {tab === "regole" && regTab === "movimenti" && (
         <div className="space-y-4">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
             <div className="text-sm font-semibold text-foreground mb-1">{t("fin.regoleTitle")}</div>
