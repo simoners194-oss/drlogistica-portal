@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.36.0",
+    date: "2026-08-13",
+    codename: "Le NC si collegano da sole",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "I collegamenti nota di credito arrivano dal gestionale Aruba",
+        description:
+          "Le associazioni NC-fattura gia' registrate su Aruba (la colonna Documenti collegati) vengono estratte automaticamente e portate nell'archivio del portale: le note di credito ancora scollegate ricevono il riferimento alla fattura rettificata, senza mai toccare i collegamenti gia' fatti. Residui, stato \u201cannullata da NC\u201d ed eccedenze si aggiornano di conseguenza. Nella stessa serie: liste lunghe nelle regole spezzate automaticamente, note e ricerca istantanea sulle regole, filtri con intervalli di date e importi, simulazione dei termini sul Resoconto ed export Excel di regole e ritardi.",
+      },
+    ],
+  },
+  {
     version: "1.35.0",
     date: "2026-08-12",
     codename: "Una distinta, tante tranche",

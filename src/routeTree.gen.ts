@@ -24,6 +24,7 @@ import { Route as FinanzaRouteImport } from './routes/finanza'
 import { Route as DocumentiRouteImport } from './routes/documenti'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CronTurniRouteImport } from './routes/cron-turni'
+import { Route as CronNcRouteImport } from './routes/cron-nc'
 import { Route as CronFattureRouteImport } from './routes/cron-fatture'
 import { Route as CronBancaRouteImport } from './routes/cron-banca'
 import { Route as ComunicazioniRouteImport } from './routes/comunicazioni'
@@ -105,6 +106,11 @@ const CronTurniRoute = CronTurniRouteImport.update({
   path: '/cron-turni',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CronNcRoute = CronNcRouteImport.update({
+  id: '/cron-nc',
+  path: '/cron-nc',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CronFattureRoute = CronFattureRouteImport.update({
   id: '/cron-fatture',
   path: '/cron-fatture',
@@ -137,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/comunicazioni': typeof ComunicazioniRoute
   '/cron-banca': typeof CronBancaRoute
   '/cron-fatture': typeof CronFattureRoute
+  '/cron-nc': typeof CronNcRoute
   '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
@@ -159,6 +166,7 @@ export interface FileRoutesByTo {
   '/comunicazioni': typeof ComunicazioniRoute
   '/cron-banca': typeof CronBancaRoute
   '/cron-fatture': typeof CronFattureRoute
+  '/cron-nc': typeof CronNcRoute
   '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
@@ -182,6 +190,7 @@ export interface FileRoutesById {
   '/comunicazioni': typeof ComunicazioniRoute
   '/cron-banca': typeof CronBancaRoute
   '/cron-fatture': typeof CronFattureRoute
+  '/cron-nc': typeof CronNcRoute
   '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
@@ -206,6 +215,7 @@ export interface FileRouteTypes {
     | '/comunicazioni'
     | '/cron-banca'
     | '/cron-fatture'
+    | '/cron-nc'
     | '/cron-turni'
     | '/dashboard'
     | '/documenti'
@@ -228,6 +238,7 @@ export interface FileRouteTypes {
     | '/comunicazioni'
     | '/cron-banca'
     | '/cron-fatture'
+    | '/cron-nc'
     | '/cron-turni'
     | '/dashboard'
     | '/documenti'
@@ -250,6 +261,7 @@ export interface FileRouteTypes {
     | '/comunicazioni'
     | '/cron-banca'
     | '/cron-fatture'
+    | '/cron-nc'
     | '/cron-turni'
     | '/dashboard'
     | '/documenti'
@@ -273,6 +285,7 @@ export interface RootRouteChildren {
   ComunicazioniRoute: typeof ComunicazioniRoute
   CronBancaRoute: typeof CronBancaRoute
   CronFattureRoute: typeof CronFattureRoute
+  CronNcRoute: typeof CronNcRoute
   CronTurniRoute: typeof CronTurniRoute
   DashboardRoute: typeof DashboardRoute
   DocumentiRoute: typeof DocumentiRoute
@@ -397,6 +410,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CronTurniRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cron-nc': {
+      id: '/cron-nc'
+      path: '/cron-nc'
+      fullPath: '/cron-nc'
+      preLoaderRoute: typeof CronNcRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/cron-fatture': {
       id: '/cron-fatture'
       path: '/cron-fatture'
@@ -441,6 +461,7 @@ const rootRouteChildren: RootRouteChildren = {
   ComunicazioniRoute: ComunicazioniRoute,
   CronBancaRoute: CronBancaRoute,
   CronFattureRoute: CronFattureRoute,
+  CronNcRoute: CronNcRoute,
   CronTurniRoute: CronTurniRoute,
   DashboardRoute: DashboardRoute,
   DocumentiRoute: DocumentiRoute,

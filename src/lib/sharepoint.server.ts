@@ -62,6 +62,7 @@ import {
   type RegolaFinanza,
 } from "./finanza-logic";
 import {
+  normalizzaNomeFile,
   isNotaCredito,
   type RegolaFattura,
   type FatturaRaw,
@@ -4077,6 +4078,49 @@ export async function setIncassiAruba(
  *  l'import: il collegamento vale da subito e sopravvive ai reimport, perché
  *  l'import non sovrascrive un riferimento gia' presente con uno vuoto.
  *  Stringa vuota = scollega. */
+/** Collegamenti NC in BLOCCO, dalla mappa "Doc. coll." del sito Aruba
+ *  (estratta dallo script locale): si scrive RettificaNumero SOLO sulle NC
+ *  ancora scollegate — mai sopra un collegamento esistente. */
+export async function collegaNcBatch(
+  links: { file: string; numero: string; dir: "R" | "E" }[],
+): Promise<{ collegate: number; giaCollegate: number; nonTrovate: number }> {
+  const cfg = await discoverSharePoint();
+  const esiti = { collegate: 0, giaCollegate: 0, nonTrovate: 0 };
+  for (const direzione of ["Ricevuta", "Emessa"] as DirezioneFattura[]) {
+    const gruppo = links.filter((l) => (direzione === "Ricevuta" ? l.dir === "R" : l.dir === "E"));
+    if (!gruppo.length) continue;
+    const listId = requireFattureList(cfg, direzione);
+    const F = fattureListPer(cfg, direzione).fields;
+    if (!F.RettificaNumero)
+      throw new Error(
+        'Colonna "RettificaNumero" assente sulla lista fatture: aggiungerla (testo) e fare Riscopri.',
+      );
+    const archivio = new Map((await fetchFatture(direzione)).map((f) => [f.nomeFile, f]));
+    for (const l of gruppo) {
+      const doc = archivio.get(normalizzaNomeFile(l.file));
+      if (!doc) {
+        esiti.nonTrovate++;
+        continue;
+      }
+      if (doc.rettificaNumero?.trim()) {
+        esiti.giaCollegate++;
+        continue;
+      }
+      await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${doc.id}/fields`, {
+        method: "PATCH",
+        body: JSON.stringify({ [F.RettificaNumero]: l.numero.slice(0, 60) }),
+      });
+      esiti.collegate++;
+    }
+  }
+  logSp(
+    "info",
+    "fatture.rettifica.batch",
+    `Collegamenti NC da Aruba: +${esiti.collegate} (${esiti.giaCollegate} gia' collegate, ${esiti.nonTrovate} non in archivio)`,
+  );
+  return esiti;
+}
+
 export async function setRettificaNumero(
   nomeFile: string,
   numeroFattura: string,

@@ -18,7 +18,9 @@
 # Quando fila liscio: headless=true nel config e via di Utilita' di
 # pianificazione di Windows.
 
+import base64
 import json
+import urllib.parse
 import re
 import sys
 import time
@@ -40,6 +42,7 @@ def carica_config() -> dict:
             "username": "IL_TUO_UTENTE_O_PEC",
             "password": "LA_TUA_PASSWORD",
             "anni": [2025, 2026],
+            "cron_fatture_url": "",
             "headless": False,
         }
         (QUI / "config.esempio.json").write_text(
@@ -192,6 +195,81 @@ def scarica_prima_nota(page, anno: int) -> Path:
     return dest
 
 
+def estrai_nc_links(page, cfg: dict) -> None:
+    """Estrae dal gestionale Aruba la mappa NC -> fattura rettificata
+    (colonna Doc. coll.) chiamando direttamente advancedSearch con la
+    sessione gia' aperta, e la spedisce a /cron-nc del portale (a blocchi).
+    Il portale collega SOLO le NC ancora scollegate."""
+    links = []
+    for anno in cfg.get("anni", [datetime.now().year]):
+        for servizio, dire in (("FatturaRicevutaFrontEnd", "R"), ("FatturaFrontEnd", "E")):
+            print(f"[collegamenti NC] {servizio} {anno}…")
+            try:
+                r = page.request.post(
+                    URL_PORTALE + f"services/{servizio}/advancedSearch",
+                    data=json.dumps({"PageNumber": 1, "PageSize": None, "AnnoFiscale": int(anno)}),
+                    headers={"Content-Type": "application/json"},
+                    timeout=120000,
+                )
+                if r.status != 200:
+                    print(f"  HTTP {r.status} — salto questo servizio")
+                    continue
+                dati = r.json()
+            except Exception as e:
+                print(f"  errore: {e} — salto")
+                continue
+            trovati = 0
+            for it in dati.get("Items", []):
+                tipo = str(it.get("Tipo", "")).upper()
+                docs = it.get("DocumentiCollegati") or []
+                fatture = [
+                    d for d in docs if str(d.get("Tipo", "")) == "Fattura" and d.get("Numero")
+                ]
+                if tipo.startswith("TD04") and fatture and it.get("SdiFileName"):
+                    links.append(
+                        {
+                            "file": it["SdiFileName"],
+                            "numero": str(fatture[0]["Numero"]),
+                            "dir": dire,
+                        }
+                    )
+                    trovati += 1
+            print(f"  {trovati} collegamenti NC trovati")
+    visti = set()
+    unici = []
+    for l in links:
+        if l["file"] in visti:
+            continue
+        visti.add(l["file"])
+        unici.append(l)
+    SCARICATI.mkdir(exist_ok=True)
+    (SCARICATI / "nc-links.json").write_text(
+        json.dumps(unici, indent=1, ensure_ascii=False), encoding="utf-8"
+    )
+    print(f"salvati {len(unici)} collegamenti in {SCARICATI / 'nc-links.json'}")
+    base = str(cfg.get("cron_fatture_url", "")).strip()
+    if not base or "/cron-fatture" not in base:
+        print("cron_fatture_url non configurato nel config.json: spedizione al portale SALTATA.")
+        print("  (incolla li' l'URL del sync programmato dalla card Diagnostica Aruba)")
+        return
+    base_nc = base.replace("/cron-fatture", "/cron-nc")
+    for i in range(0, len(unici), 40):
+        blocco = unici[i : i + 40]
+        payload = base64.b64encode(json.dumps(blocco, ensure_ascii=False).encode("utf-8")).decode(
+            "ascii"
+        )
+        url = base_nc + "&dati=" + urllib.parse.quote(payload, safe="")
+        try:
+            r = page.request.get(url, timeout=120000)
+            esito = r.text()
+            i0 = esito.find("OK:")
+            if i0 < 0:
+                i0 = esito.find("ERRORE:")
+            print(f"  blocco {i // 40 + 1}: HTTP {r.status} — {esito[i0 : i0 + 120] if i0 >= 0 else esito[:120]}")
+        except Exception as e:
+            print(f"  blocco {i // 40 + 1}: errore {e}")
+
+
 def ricognizione_nc(page) -> None:
     """Apre Fatture ricevute CON LE ORECCHIE APERTE: registra l'indice di
     TUTTO il traffico di rete e salva i corpi delle risposte che sembrano
@@ -247,6 +325,9 @@ def main() -> None:
         page = browser.new_page(accept_downloads=True)
         try:
             login(page, cfg)
+            if "nclinks" in sys.argv:
+                estrai_nc_links(page, cfg)
+                return
             if "nc" in sys.argv:
                 ricognizione_nc(page)
                 return
