@@ -592,6 +592,20 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   const [rfImpBusy, setRfImpBusy] = useState(false);
   const [rfImpProg, setRfImpProg] = useState("");
   const rfImpFileRef = useRef<HTMLInputElement>(null);
+  // Barra orizzontale GEMELLA sopra la tabella larga: un binario vuoto
+  // sincronizzato con quello vero, cosi' si scorre senza scendere in fondo.
+  const tblScrollRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const [tblLarghezza, setTblLarghezza] = useState(0);
+  useEffect(() => {
+    const el = tblScrollRef.current;
+    if (!el) return;
+    const misura = () => setTblLarghezza((w) => (w === el.scrollWidth ? w : el.scrollWidth));
+    misura();
+    const ro = new ResizeObserver(misura);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
   useEffect(() => {
     spGetRegoleFinanza()
       .then((l) => setRegoleFin(l as RegolaFinanza[]))
@@ -3117,1101 +3131,1133 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         ) : filtrate.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">{t("ft.empty")}</p>
         ) : (
-          <div className="max-h-[75vh] overflow-auto">
-            {/* Filtri di colonna attivi: conteggio e pulizia a un click. */}
-            {filtriThAttivi && (
-              <div className="mb-2 flex items-center gap-3 text-xs text-muted-foreground">
-                <Filter className="h-3.5 w-3.5 text-primary" fill="currentColor" />
-                <span>
-                  {filtrate.length} / {conStato.filter((x) => !x.escluso && matchAnno(x)).length}
-                </span>
+          <>
+            <div
+              ref={topScrollRef}
+              onScroll={() => {
+                if (tblScrollRef.current && topScrollRef.current)
+                  tblScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+              }}
+              className="overflow-x-auto"
+            >
+              <div style={{ width: tblLarghezza }} className="h-2" />
+            </div>
+            <div
+              ref={tblScrollRef}
+              onScroll={() => {
+                if (tblScrollRef.current && topScrollRef.current)
+                  topScrollRef.current.scrollLeft = tblScrollRef.current.scrollLeft;
+              }}
+              className="max-h-[75vh] overflow-auto"
+            >
+              {/* Filtri di colonna attivi: conteggio e pulizia a un click. */}
+              {filtriThAttivi && (
+                <div className="mb-2 flex items-center gap-3 text-xs text-muted-foreground">
+                  <Filter className="h-3.5 w-3.5 text-primary" fill="currentColor" />
+                  <span>
+                    {filtrate.length} / {conStato.filter((x) => !x.escluso && matchAnno(x)).length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setFiltriTh({})}
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    {t("ft.thPulisci")}
+                  </button>
+                </div>
+              )}
+              <div className="mb-3 rounded-xl border border-border/70 bg-muted/20 p-3">
                 <button
                   type="button"
-                  onClick={() => setFiltriTh({})}
-                  className="underline underline-offset-2 hover:text-foreground"
+                  onClick={() => setShowRegoleFat((x) => !x)}
+                  className="text-sm font-semibold text-foreground"
                 >
-                  {t("ft.thPulisci")}
+                  {showRegoleFat ? "▾" : "▸"} {t("ft.rfTitolo")} (
+                  {regoleFatture.filter((r) => (r.direzione ?? "Ricevuta") === dir).length})
                 </button>
-              </div>
-            )}
-            <div className="mb-3 rounded-xl border border-border/70 bg-muted/20 p-3">
-              <button
-                type="button"
-                onClick={() => setShowRegoleFat((x) => !x)}
-                className="text-sm font-semibold text-foreground"
-              >
-                {showRegoleFat ? "▾" : "▸"} {t("ft.rfTitolo")} (
-                {regoleFatture.filter((r) => (r.direzione ?? "Ricevuta") === dir).length})
-              </button>
-              {showRegoleFat && (
-                <div className="mt-3">
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    <div className="lg:col-span-1">
-                      <label className="text-xs text-muted-foreground">
-                        {t("ft.rfClienteInclude")}
-                      </label>
-                      <textarea
-                        value={rfCliente}
-                        onChange={(e) => setRfCliente(e.target.value)}
-                        rows={2}
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                      />
-                    </div>
-                    <div className="flex items-end pb-1">
-                      <div className="inline-flex rounded-lg border border-border p-0.5 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => setRfOperatore("AND")}
-                          className={`rounded-md px-3 py-1.5 font-semibold ${rfOperatore === "AND" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                        >
-                          AND
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRfOperatore("OR")}
-                          className={`rounded-md px-3 py-1.5 font-semibold ${rfOperatore === "OR" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                        >
-                          OR
-                        </button>
+                {showRegoleFat && (
+                  <div className="mt-3">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="lg:col-span-1">
+                        <label className="text-xs text-muted-foreground">
+                          {t("ft.rfClienteInclude")}
+                        </label>
+                        <textarea
+                          value={rfCliente}
+                          onChange={(e) => setRfCliente(e.target.value)}
+                          rows={2}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div className="flex items-end pb-1">
+                        <div className="inline-flex rounded-lg border border-border p-0.5 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setRfOperatore("AND")}
+                            className={`rounded-md px-3 py-1.5 font-semibold ${rfOperatore === "AND" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                          >
+                            AND
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRfOperatore("OR")}
+                            className={`rounded-md px-3 py-1.5 font-semibold ${rfOperatore === "OR" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                          >
+                            OR
+                          </button>
+                        </div>
+                      </div>
+                      <div className="lg:col-span-1">
+                        <label className="text-xs text-muted-foreground">
+                          {t("ft.rfOggettoInclude")}
+                        </label>
+                        <textarea
+                          value={rfOggetto}
+                          onChange={(e) => setRfOggetto(e.target.value)}
+                          rows={2}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <CampoVocabolario
+                          label={t("ft.colTipologia")}
+                          valore={rfTipologia}
+                          onChange={(v2) => {
+                            setRfTipologia(v2);
+                            if (
+                              v2.trim() &&
+                              rfSottocat.trim() &&
+                              !vocabRf.sottocat.includes(rfSottocat)
+                            )
+                              setRfSottocat("");
+                          }}
+                          opzioni={vocabRf.tipologie}
+                          testoNessuno={t("ft.rfNonImpostare")}
+                          testoNuova={t("fin.vocNuova")}
+                        />
+                      </div>
+                      <div>
+                        <CampoVocabolario
+                          label={t("fin.sottocat")}
+                          valore={rfSottocat}
+                          onChange={setRfSottocat}
+                          opzioni={vocabRf.sottocat}
+                          testoNessuno={t("ft.rfNonImpostare")}
+                          testoNuova={t("fin.vocNuova")}
+                        />
+                      </div>
+                      <div>
+                        <CampoVocabolario
+                          label={t("fin.allocPri")}
+                          valore={rfAllocPri}
+                          onChange={setRfAllocPri}
+                          opzioni={vocabRf.allocPri}
+                          testoNessuno={t("ft.rfNonImpostare")}
+                          testoNuova={t("fin.vocNuova")}
+                        />
+                      </div>
+                      <div>
+                        <CampoVocabolario
+                          label={t("fin.allocSec")}
+                          valore={rfAllocSec}
+                          onChange={setRfAllocSec}
+                          opzioni={vocabRf.allocSec}
+                          testoNessuno={t("ft.rfNonImpostare")}
+                          testoNuova={t("fin.vocNuova")}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">
+                          {ricevute ? t("ft.colClienteRif") : t("ft.colServizio")}
+                        </label>
+                        <input
+                          value={rfServizio}
+                          onChange={(e) => setRfServizio(e.target.value)}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">{t("fin.note")}</label>
+                        <input
+                          value={rfNota}
+                          onChange={(e) => setRfNota(e.target.value)}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                        />
                       </div>
                     </div>
-                    <div className="lg:col-span-1">
-                      <label className="text-xs text-muted-foreground">
-                        {t("ft.rfOggettoInclude")}
-                      </label>
-                      <textarea
-                        value={rfOggetto}
-                        onChange={(e) => setRfOggetto(e.target.value)}
-                        rows={2}
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <CampoVocabolario
-                        label={t("ft.colTipologia")}
-                        valore={rfTipologia}
-                        onChange={(v2) => {
-                          setRfTipologia(v2);
-                          if (
-                            v2.trim() &&
-                            rfSottocat.trim() &&
-                            !vocabRf.sottocat.includes(rfSottocat)
-                          )
-                            setRfSottocat("");
-                        }}
-                        opzioni={vocabRf.tipologie}
-                        testoNessuno={t("ft.rfNonImpostare")}
-                        testoNuova={t("fin.vocNuova")}
-                      />
-                    </div>
-                    <div>
-                      <CampoVocabolario
-                        label={t("fin.sottocat")}
-                        valore={rfSottocat}
-                        onChange={setRfSottocat}
-                        opzioni={vocabRf.sottocat}
-                        testoNessuno={t("ft.rfNonImpostare")}
-                        testoNuova={t("fin.vocNuova")}
-                      />
-                    </div>
-                    <div>
-                      <CampoVocabolario
-                        label={t("fin.allocPri")}
-                        valore={rfAllocPri}
-                        onChange={setRfAllocPri}
-                        opzioni={vocabRf.allocPri}
-                        testoNessuno={t("ft.rfNonImpostare")}
-                        testoNuova={t("fin.vocNuova")}
-                      />
-                    </div>
-                    <div>
-                      <CampoVocabolario
-                        label={t("fin.allocSec")}
-                        valore={rfAllocSec}
-                        onChange={setRfAllocSec}
-                        opzioni={vocabRf.allocSec}
-                        testoNessuno={t("ft.rfNonImpostare")}
-                        testoNuova={t("fin.vocNuova")}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">
-                        {ricevute ? t("ft.colClienteRif") : t("ft.colServizio")}
-                      </label>
-                      <input
-                        value={rfServizio}
-                        onChange={(e) => setRfServizio(e.target.value)}
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">{t("fin.note")}</label>
-                      <input
-                        value={rfNota}
-                        onChange={(e) => setRfNota(e.target.value)}
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      type="button"
-                      disabled={rfBusy || (!rfCliente.trim() && !rfOggetto.trim())}
-                      onClick={() => void salvaRegolaFat()}
-                      className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-                    >
-                      {rfBusy
-                        ? t("common.loading")
-                        : rfEditId
-                          ? t("fin.regolaAggiorna")
-                          : t("fin.regolaCrea")}
-                    </button>
-                    {rfEditId && (
+                    <div className="mt-3 flex gap-2">
                       <button
                         type="button"
-                        onClick={resetFormRf}
+                        disabled={rfBusy || (!rfCliente.trim() && !rfOggetto.trim())}
+                        onClick={() => void salvaRegolaFat()}
+                        className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                      >
+                        {rfBusy
+                          ? t("common.loading")
+                          : rfEditId
+                            ? t("fin.regolaAggiorna")
+                            : t("fin.regolaCrea")}
+                      </button>
+                      {rfEditId && (
+                        <button
+                          type="button"
+                          onClick={resetFormRf}
+                          className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
+                        >
+                          {t("common.cancel")}
+                        </button>
+                      )}
+                    </div>
+                    {dir === "Ricevuta" && (
+                      <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-medium text-foreground">
+                            {t("ft.rfImpTitolo")}
+                          </span>
+                          <input
+                            ref={rfImpFileRef}
+                            type="file"
+                            accept=".xlsx,.xls"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) void leggiRegoleExcel(f);
+                              e.target.value = "";
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => rfImpFileRef.current?.click()}
+                            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+                          >
+                            {t("ft.rfImpScegli")}
+                          </button>
+                        </div>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {t("ft.rfImpDesc")}
+                        </p>
+                        {rfImp && (
+                          <div className="mt-2 flex items-center gap-3 text-[12px]">
+                            <span>
+                              <b className="text-status-present">{rfImp.nuove.length}</b>{" "}
+                              {t("ft.rfImpNuove")} · {rfImp.doppioni} {t("ft.rfImpDoppie")}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={rfImpBusy || rfImp.nuove.length === 0}
+                              onClick={() => void creaRegoleImportate()}
+                              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                            >
+                              {rfImpBusy
+                                ? `${t("common.loading")} ${rfImpProg}`
+                                : `${t("ft.rfImpBtn")} (${rfImp.nuove.length})`}
+                            </button>
+                            {!rfImpBusy && (
+                              <button
+                                type="button"
+                                onClick={() => setRfImp(null)}
+                                className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted"
+                              >
+                                {t("common.cancel")}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-3 space-y-1">
+                      {regoleFatture
+                        .filter((r) => (r.direzione ?? "Ricevuta") === dir)
+                        .map((r) => (
+                          <div
+                            key={r.id}
+                            className="flex items-start gap-2 border-t border-border/50 py-1.5 text-[13px]"
+                          >
+                            <span className="flex-1">
+                              {r.fornitore && (
+                                <>
+                                  {t("ft.rfFraseCliente")} <b>«{r.fornitore}»</b>
+                                </>
+                              )}
+                              {r.fornitore && r.oggettoInclude && (
+                                <b className="text-primary"> {r.operatore ?? "AND"} </b>
+                              )}
+                              {r.oggettoInclude && (
+                                <>
+                                  {t("ft.rfFraseOggetto")} <b>«{r.oggettoInclude}»</b>
+                                </>
+                              )}{" "}
+                              <span className="text-muted-foreground">→</span>{" "}
+                              {[
+                                r.tipologia,
+                                r.sottocategoria,
+                                [r.allocPrimaria, r.allocSecondaria].filter(Boolean).join(" / "),
+                                r.clienteRif,
+                              ]
+                                .filter(Boolean)
+                                .map((chip) => (
+                                  <span
+                                    key={String(chip)}
+                                    className="mr-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
+                                  >
+                                    {chip}
+                                  </span>
+                                ))}
+                              {r.note && (
+                                <span className="text-xs italic text-muted-foreground">
+                                  {" "}
+                                  — {r.note}
+                                </span>
+                              )}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRfEditId(r.id ?? null);
+                                setRfCliente(r.fornitore);
+                                setRfOggetto(r.oggettoInclude ?? "");
+                                setRfOperatore(r.operatore === "OR" ? "OR" : "AND");
+                                setRfTipologia(r.tipologia ?? "");
+                                setRfSottocat(r.sottocategoria ?? "");
+                                setRfAllocPri(r.allocPrimaria ?? "");
+                                setRfAllocSec(r.allocSecondaria ?? "");
+                                setRfServizio(r.clienteRif ?? "");
+                                setRfNota(r.note ?? "");
+                                setShowRegoleFat(true);
+                              }}
+                              className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void (async () => {
+                                  if (!window.confirm(t("ft.rfDelConfirm"))) return;
+                                  try {
+                                    await spDeleteRegolaFattura({ data: { id: r.id ?? "" } });
+                                    setRegoleFatture((prev) => prev.filter((x) => x.id !== r.id));
+                                  } catch (err) {
+                                    toast.error(t("common.error"), {
+                                      description: err instanceof Error ? err.message : String(err),
+                                    });
+                                  }
+                                })();
+                              }}
+                              className="rounded-md p-1 text-muted-foreground hover:text-status-absent"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {selFat.size > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-3 rounded-lg bg-primary/10 px-3 py-2 text-sm">
+                  <b>{selFat.size}</b> {t("fin.selN")}
+                  <button
+                    type="button"
+                    onClick={() => setFbOpen(true)}
+                    className="rounded-lg bg-primary px-3 py-1 text-sm font-medium text-primary-foreground"
+                  >
+                    {t("ft.selClassifica")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelFat(new Set())}
+                    className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-muted"
+                  >
+                    {t("fin.selDeselez")}
+                  </button>
+                </div>
+              )}
+              {fbOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                  <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-elegant)]">
+                    <div className="mb-1 text-[15px] font-semibold text-foreground">
+                      {t("ft.selClassifica")} ({selFat.size})
+                    </div>
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      {t("fin.selVuotoNonCambia")}
+                    </p>
+                    <div className="grid gap-3">
+                      <div>
+                        <label className="text-xs text-muted-foreground">
+                          {t("ft.colCompetenza")}
+                        </label>
+                        <input
+                          value={fbMese}
+                          onChange={(e) => setFbMese(e.target.value)}
+                          placeholder="2026-07"
+                          className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                        />
+                      </div>
+                      {ricevute && (
+                        <div>
+                          <label className="text-xs text-muted-foreground">
+                            {t("ft.colTipologia")}
+                          </label>
+                          <input
+                            list="tipologie-note"
+                            value={fbTip}
+                            onChange={(e) => setFbTip(e.target.value)}
+                            className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-xs text-muted-foreground">
+                          {ricevute ? t("ft.colClienteRif") : t("ft.colServizio")}
+                        </label>
+                        <input
+                          value={fbServ}
+                          onChange={(e) => setFbServ(e.target.value)}
+                          className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-4 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFbOpen(false)}
                         className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
                       >
                         {t("common.cancel")}
                       </button>
-                    )}
-                  </div>
-                  {dir === "Ricevuta" && (
-                    <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-2">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-medium text-foreground">
-                          {t("ft.rfImpTitolo")}
-                        </span>
-                        <input
-                          ref={rfImpFileRef}
-                          type="file"
-                          accept=".xlsx,.xls"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) void leggiRegoleExcel(f);
-                            e.target.value = "";
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => rfImpFileRef.current?.click()}
-                          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
-                        >
-                          {t("ft.rfImpScegli")}
-                        </button>
-                      </div>
-                      <p className="mt-1 text-[11px] text-muted-foreground">{t("ft.rfImpDesc")}</p>
-                      {rfImp && (
-                        <div className="mt-2 flex items-center gap-3 text-[12px]">
-                          <span>
-                            <b className="text-status-present">{rfImp.nuove.length}</b>{" "}
-                            {t("ft.rfImpNuove")} · {rfImp.doppioni} {t("ft.rfImpDoppie")}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={rfImpBusy || rfImp.nuove.length === 0}
-                            onClick={() => void creaRegoleImportate()}
-                            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
-                          >
-                            {rfImpBusy
-                              ? `${t("common.loading")} ${rfImpProg}`
-                              : `${t("ft.rfImpBtn")} (${rfImp.nuove.length})`}
-                          </button>
-                          {!rfImpBusy && (
-                            <button
-                              type="button"
-                              onClick={() => setRfImp(null)}
-                              className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted"
-                            >
-                              {t("common.cancel")}
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      <button
+                        type="button"
+                        disabled={fbBusy}
+                        onClick={() => {
+                          void (async () => {
+                            setFbBusy(true);
+                            try {
+                              const perFile = new Map(
+                                (fatture ?? []).map((f2) => [f2.nomeFile, f2]),
+                              );
+                              let fatti = 0;
+                              for (const nomeFile of selFat) {
+                                const f2 = perFile.get(nomeFile);
+                                if (!f2) continue;
+                                // Vuoto = si conserva il valore attuale.
+                                await spSetClassificazione({
+                                  data: {
+                                    nomeFile,
+                                    direzione: dir,
+                                    meseCompetenza: fbMese.trim() || (f2.meseCompetenza ?? ""),
+                                    tipologiaCosto: fbTip.trim() || (f2.tipologiaCosto ?? ""),
+                                    clienteRif: fbServ.trim() || (f2.clienteRif ?? ""),
+                                  },
+                                });
+                                fatti++;
+                              }
+                              toast.success(t("ft.classSalvata"), { description: `${fatti}` });
+                              setFbOpen(false);
+                              setSelFat(new Set());
+                              setFbMese("");
+                              setFbTip("");
+                              setFbServ("");
+                              load();
+                            } catch (err) {
+                              toast.error(t("common.error"), {
+                                description: err instanceof Error ? err.message : String(err),
+                              });
+                            } finally {
+                              setFbBusy(false);
+                            }
+                          })();
+                        }}
+                        className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                      >
+                        {fbBusy ? t("common.loading") : t("common.save")}
+                      </button>
                     </div>
-                  )}
-                  <div className="mt-3 space-y-1">
-                    {regoleFatture
-                      .filter((r) => (r.direzione ?? "Ricevuta") === dir)
-                      .map((r) => (
-                        <div
-                          key={r.id}
-                          className="flex items-start gap-2 border-t border-border/50 py-1.5 text-[13px]"
-                        >
-                          <span className="flex-1">
-                            {r.fornitore && (
-                              <>
-                                {t("ft.rfFraseCliente")} <b>«{r.fornitore}»</b>
-                              </>
-                            )}
-                            {r.fornitore && r.oggettoInclude && (
-                              <b className="text-primary"> {r.operatore ?? "AND"} </b>
-                            )}
-                            {r.oggettoInclude && (
-                              <>
-                                {t("ft.rfFraseOggetto")} <b>«{r.oggettoInclude}»</b>
-                              </>
-                            )}{" "}
-                            <span className="text-muted-foreground">→</span>{" "}
-                            {[
-                              r.tipologia,
-                              r.sottocategoria,
-                              [r.allocPrimaria, r.allocSecondaria].filter(Boolean).join(" / "),
-                              r.clienteRif,
-                            ]
-                              .filter(Boolean)
-                              .map((chip) => (
-                                <span
-                                  key={String(chip)}
-                                  className="mr-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
-                                >
-                                  {chip}
-                                </span>
-                              ))}
-                            {r.note && (
-                              <span className="text-xs italic text-muted-foreground">
-                                {" "}
-                                — {r.note}
-                              </span>
-                            )}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setRfEditId(r.id ?? null);
-                              setRfCliente(r.fornitore);
-                              setRfOggetto(r.oggettoInclude ?? "");
-                              setRfOperatore(r.operatore === "OR" ? "OR" : "AND");
-                              setRfTipologia(r.tipologia ?? "");
-                              setRfSottocat(r.sottocategoria ?? "");
-                              setRfAllocPri(r.allocPrimaria ?? "");
-                              setRfAllocSec(r.allocSecondaria ?? "");
-                              setRfServizio(r.clienteRif ?? "");
-                              setRfNota(r.note ?? "");
-                              setShowRegoleFat(true);
-                            }}
-                            className="rounded-md p-1 text-muted-foreground hover:text-foreground"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void (async () => {
-                                if (!window.confirm(t("ft.rfDelConfirm"))) return;
-                                try {
-                                  await spDeleteRegolaFattura({ data: { id: r.id ?? "" } });
-                                  setRegoleFatture((prev) => prev.filter((x) => x.id !== r.id));
-                                } catch (err) {
-                                  toast.error(t("common.error"), {
-                                    description: err instanceof Error ? err.message : String(err),
-                                  });
-                                }
-                              })();
-                            }}
-                            className="rounded-md p-1 text-muted-foreground hover:text-status-absent"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
                   </div>
                 </div>
               )}
-            </div>
-            {selFat.size > 0 && (
-              <div className="mb-2 flex flex-wrap items-center gap-3 rounded-lg bg-primary/10 px-3 py-2 text-sm">
-                <b>{selFat.size}</b> {t("fin.selN")}
-                <button
-                  type="button"
-                  onClick={() => setFbOpen(true)}
-                  className="rounded-lg bg-primary px-3 py-1 text-sm font-medium text-primary-foreground"
-                >
-                  {t("ft.selClassifica")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelFat(new Set())}
-                  className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-muted"
-                >
-                  {t("fin.selDeselez")}
-                </button>
-              </div>
-            )}
-            {fbOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-elegant)]">
-                  <div className="mb-1 text-[15px] font-semibold text-foreground">
-                    {t("ft.selClassifica")} ({selFat.size})
-                  </div>
-                  <p className="mb-3 text-xs text-muted-foreground">{t("fin.selVuotoNonCambia")}</p>
-                  <div className="grid gap-3">
-                    <div>
-                      <label className="text-xs text-muted-foreground">
-                        {t("ft.colCompetenza")}
-                      </label>
-                      <input
-                        value={fbMese}
-                        onChange={(e) => setFbMese(e.target.value)}
-                        placeholder="2026-07"
-                        className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
-                      />
-                    </div>
-                    {ricevute && (
-                      <div>
-                        <label className="text-xs text-muted-foreground">
-                          {t("ft.colTipologia")}
-                        </label>
-                        <input
-                          list="tipologie-note"
-                          value={fbTip}
-                          onChange={(e) => setFbTip(e.target.value)}
-                          className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
-                        />
-                      </div>
-                    )}
-                    <div>
-                      <label className="text-xs text-muted-foreground">
-                        {ricevute ? t("ft.colClienteRif") : t("ft.colServizio")}
-                      </label>
-                      <input
-                        value={fbServ}
-                        onChange={(e) => setFbServ(e.target.value)}
-                        className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-4 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setFbOpen(false)}
-                      className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
-                    >
-                      {t("common.cancel")}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={fbBusy}
-                      onClick={() => {
-                        void (async () => {
-                          setFbBusy(true);
-                          try {
-                            const perFile = new Map((fatture ?? []).map((f2) => [f2.nomeFile, f2]));
-                            let fatti = 0;
-                            for (const nomeFile of selFat) {
-                              const f2 = perFile.get(nomeFile);
-                              if (!f2) continue;
-                              // Vuoto = si conserva il valore attuale.
-                              await spSetClassificazione({
-                                data: {
-                                  nomeFile,
-                                  direzione: dir,
-                                  meseCompetenza: fbMese.trim() || (f2.meseCompetenza ?? ""),
-                                  tipologiaCosto: fbTip.trim() || (f2.tipologiaCosto ?? ""),
-                                  clienteRif: fbServ.trim() || (f2.clienteRif ?? ""),
-                                },
-                              });
-                              fatti++;
-                            }
-                            toast.success(t("ft.classSalvata"), { description: `${fatti}` });
-                            setFbOpen(false);
-                            setSelFat(new Set());
-                            setFbMese("");
-                            setFbTip("");
-                            setFbServ("");
-                            load();
-                          } catch (err) {
-                            toast.error(t("common.error"), {
-                              description: err instanceof Error ? err.message : String(err),
-                            });
-                          } finally {
-                            setFbBusy(false);
-                          }
-                        })();
-                      }}
-                      className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-                    >
-                      {fbBusy ? t("common.loading") : t("common.save")}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 z-10 bg-card">
-                {/* Intestazione GENERATA dal modello colonne: l'ordine dei
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 z-10 bg-card">
+                  {/* Intestazione GENERATA dal modello colonne: l'ordine dei
                     th DEVE combaciare con le celle del corpo qui sotto. Ogni
                     colonna ha il suo imbuto: spunte sui valori distinti, a
                     cascata come i filtri di Excel. */}
-                <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                  <th className="py-1.5 pr-1">
-                    <input
-                      type="checkbox"
-                      className="accent-primary"
-                      checked={
-                        filtrate.length > 0 &&
-                        filtrate.slice(0, 400).every((x) => selFat.has(x.f.nomeFile))
-                      }
-                      onChange={(e) => {
-                        const ns = new Set(selFat);
-                        for (const x of filtrate.slice(0, 400))
-                          if (e.target.checked) ns.add(x.f.nomeFile);
-                          else ns.delete(x.f.nomeFile);
-                        setSelFat(ns);
-                      }}
-                    />
-                  </th>
-                  {colonneTh.map((c) => {
-                    const sel = filtriTh[c.key];
-                    const attivo = (sel?.size ?? 0) > 0;
-                    const aperto = thAperto === c.key;
-                    return (
-                      <th key={c.key} className="py-1.5 pr-2 whitespace-nowrap relative">
-                        <span className="inline-flex items-center gap-1">
-                          {c.label}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setThAperto(aperto ? null : c.key);
-                              setThCerca("");
-                            }}
-                            className={
-                              attivo
-                                ? "text-primary"
-                                : "text-muted-foreground/50 hover:text-foreground"
-                            }
-                            title={t("ft.thFiltra")}
-                          >
-                            <Filter className="h-3 w-3" fill={attivo ? "currentColor" : "none"} />
-                          </button>
-                        </span>
-                        {aperto &&
-                          (() => {
-                            // Valori distinti A CASCATA: contano tutti i
-                            // filtri attivi TRANNE quello di questa colonna.
-                            const base = conStato.filter(
-                              (x) =>
-                                x.escluso === soloScartate &&
-                                matchAnno(x) &&
-                                (soloScartate || matchStato(x)) &&
-                                passaFiltriTh(x, c.key),
-                            );
-                            const conteggi = new Map<string, number>();
-                            for (const x of base) {
-                              const v = c.get(x);
-                              conteggi.set(v, (conteggi.get(v) ?? 0) + 1);
-                            }
-                            const q = thCerca.trim().toLowerCase();
-                            const valori = [...conteggi.entries()]
-                              .sort((a, b) => {
-                                const ka = c.ord ? c.ord(a[0]) : a[0];
-                                const kb = c.ord ? c.ord(b[0]) : b[0];
-                                return typeof ka === "number" && typeof kb === "number"
-                                  ? ka - kb
-                                  : String(ka).localeCompare(String(kb));
-                              })
-                              .filter(([v]) => !q || v.toLowerCase().includes(q));
-                            const scelte = sel ?? new Set<string>();
-                            const setSel = (ns: Set<string>) =>
-                              setFiltriTh({ ...filtriTh, [c.key]: ns });
-                            return (
-                              <>
-                                <div
-                                  className="fixed inset-0 z-30"
-                                  onClick={() => setThAperto(null)}
-                                />
-                                <div
-                                  className="absolute left-0 top-full z-40 mt-1 w-64 rounded-lg border border-border bg-card p-2 shadow-[var(--shadow-elegant)] font-normal"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <input
-                                    autoFocus
-                                    value={thCerca}
-                                    onChange={(e) => setThCerca(e.target.value)}
-                                    placeholder={t("ft.cerca")}
-                                    className="mb-1.5 w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                  <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                    <th className="py-1.5 pr-1">
+                      <input
+                        type="checkbox"
+                        className="accent-primary"
+                        checked={
+                          filtrate.length > 0 &&
+                          filtrate.slice(0, 400).every((x) => selFat.has(x.f.nomeFile))
+                        }
+                        onChange={(e) => {
+                          const ns = new Set(selFat);
+                          for (const x of filtrate.slice(0, 400))
+                            if (e.target.checked) ns.add(x.f.nomeFile);
+                            else ns.delete(x.f.nomeFile);
+                          setSelFat(ns);
+                        }}
+                      />
+                    </th>
+                    {colonneTh.map((c) => {
+                      const sel = filtriTh[c.key];
+                      const attivo = (sel?.size ?? 0) > 0;
+                      const aperto = thAperto === c.key;
+                      return (
+                        <th key={c.key} className="py-1.5 pr-2 whitespace-nowrap relative">
+                          <span className="inline-flex items-center gap-1">
+                            {c.label}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setThAperto(aperto ? null : c.key);
+                                setThCerca("");
+                              }}
+                              className={
+                                attivo
+                                  ? "text-primary"
+                                  : "text-muted-foreground/50 hover:text-foreground"
+                              }
+                              title={t("ft.thFiltra")}
+                            >
+                              <Filter className="h-3 w-3" fill={attivo ? "currentColor" : "none"} />
+                            </button>
+                          </span>
+                          {aperto &&
+                            (() => {
+                              // Valori distinti A CASCATA: contano tutti i
+                              // filtri attivi TRANNE quello di questa colonna.
+                              const base = conStato.filter(
+                                (x) =>
+                                  x.escluso === soloScartate &&
+                                  matchAnno(x) &&
+                                  (soloScartate || matchStato(x)) &&
+                                  passaFiltriTh(x, c.key),
+                              );
+                              const conteggi = new Map<string, number>();
+                              for (const x of base) {
+                                const v = c.get(x);
+                                conteggi.set(v, (conteggi.get(v) ?? 0) + 1);
+                              }
+                              const q = thCerca.trim().toLowerCase();
+                              const valori = [...conteggi.entries()]
+                                .sort((a, b) => {
+                                  const ka = c.ord ? c.ord(a[0]) : a[0];
+                                  const kb = c.ord ? c.ord(b[0]) : b[0];
+                                  return typeof ka === "number" && typeof kb === "number"
+                                    ? ka - kb
+                                    : String(ka).localeCompare(String(kb));
+                                })
+                                .filter(([v]) => !q || v.toLowerCase().includes(q));
+                              const scelte = sel ?? new Set<string>();
+                              const setSel = (ns: Set<string>) =>
+                                setFiltriTh({ ...filtriTh, [c.key]: ns });
+                              return (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-30"
+                                    onClick={() => setThAperto(null)}
                                   />
-                                  <div className="mb-1.5 flex gap-3 text-[11px]">
-                                    <button
-                                      type="button"
-                                      className="underline underline-offset-2"
-                                      onClick={() => setSel(new Set())}
-                                    >
-                                      {t("ft.thTutti")}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="underline underline-offset-2"
-                                      onClick={() => setSel(new Set(valori.map(([v]) => v)))}
-                                    >
-                                      {t("ft.thSoloVisibili")}
-                                    </button>
-                                  </div>
-                                  <div className="max-h-60 overflow-auto">
-                                    {valori.map(([v, n]) => (
-                                      <label
-                                        key={v || "__vuoto__"}
-                                        className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs text-foreground hover:bg-muted"
+                                  <div
+                                    className="absolute left-0 top-full z-40 mt-1 w-64 rounded-lg border border-border bg-card p-2 shadow-[var(--shadow-elegant)] font-normal"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <input
+                                      autoFocus
+                                      value={thCerca}
+                                      onChange={(e) => setThCerca(e.target.value)}
+                                      placeholder={t("ft.cerca")}
+                                      className="mb-1.5 w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                                    />
+                                    <div className="mb-1.5 flex gap-3 text-[11px]">
+                                      <button
+                                        type="button"
+                                        className="underline underline-offset-2"
+                                        onClick={() => setSel(new Set())}
                                       >
-                                        <input
-                                          type="checkbox"
-                                          className="accent-primary"
-                                          checked={scelte.size === 0 || scelte.has(v)}
-                                          onChange={() => {
-                                            const ns = new Set(
-                                              scelte.size === 0
-                                                ? [...conteggi.keys()]
-                                                : [...scelte],
-                                            );
-                                            if (ns.has(v)) ns.delete(v);
-                                            else ns.add(v);
-                                            setSel(ns.size === conteggi.size ? new Set() : ns);
-                                          }}
-                                        />
-                                        <span className="flex-1 truncate">
-                                          {v || t("ft.thVuoto")}
-                                        </span>
-                                        <span className="text-muted-foreground tabular-nums">
-                                          {n}
-                                        </span>
-                                      </label>
-                                    ))}
+                                        {t("ft.thTutti")}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="underline underline-offset-2"
+                                        onClick={() => setSel(new Set(valori.map(([v]) => v)))}
+                                      >
+                                        {t("ft.thSoloVisibili")}
+                                      </button>
+                                    </div>
+                                    <div className="max-h-60 overflow-auto">
+                                      {valori.map(([v, n]) => (
+                                        <label
+                                          key={v || "__vuoto__"}
+                                          className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs text-foreground hover:bg-muted"
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            className="accent-primary"
+                                            checked={scelte.size === 0 || scelte.has(v)}
+                                            onChange={() => {
+                                              const ns = new Set(
+                                                scelte.size === 0
+                                                  ? [...conteggi.keys()]
+                                                  : [...scelte],
+                                              );
+                                              if (ns.has(v)) ns.delete(v);
+                                              else ns.add(v);
+                                              setSel(ns.size === conteggi.size ? new Set() : ns);
+                                            }}
+                                          />
+                                          <span className="flex-1 truncate">
+                                            {v || t("ft.thVuoto")}
+                                          </span>
+                                          <span className="text-muted-foreground tabular-nums">
+                                            {n}
+                                          </span>
+                                        </label>
+                                      ))}
+                                    </div>
                                   </div>
-                                </div>
-                              </>
-                            );
-                          })()}
-                      </th>
+                                </>
+                              );
+                            })()}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtrate.slice(0, 400).map((x) => {
+                    const abbFat = (abbinamenti ?? []).filter(
+                      (a) => a.fatturaFile === x.f.nomeFile,
                     );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {filtrate.slice(0, 400).map((x) => {
-                  const abbFat = (abbinamenti ?? []).filter((a) => a.fatturaFile === x.f.nomeFile);
-                  const aperta = openFile === x.f.nomeFile;
-                  return [
-                    <tr
-                      key={x.f.nomeFile}
-                      onClick={() => {
-                        setOpenFile(aperta ? null : x.f.nomeFile);
-                        setAbbMov("");
-                        setAbbImporto("");
-                      }}
-                      className={`border-b border-border/50 cursor-pointer hover:bg-muted/40 ${isNotaCredito(x.f.tipoDocumento) ? "bg-amber-500/10" : ""} ${aperta ? "bg-muted/30" : ""}`}
-                      title={x.f.nomeFile}
-                    >
-                      <td className="py-1 pr-1" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          className="accent-primary"
-                          checked={selFat.has(x.f.nomeFile)}
-                          onChange={() => {
-                            const ns = new Set(selFat);
-                            if (ns.has(x.f.nomeFile)) ns.delete(x.f.nomeFile);
-                            else ns.add(x.f.nomeFile);
-                            setSelFat(ns);
-                          }}
-                        />
-                      </td>
-                      <td className="py-1 pr-2 whitespace-nowrap font-medium">{x.f.numero}</td>
-                      <td className="py-1 pr-2 whitespace-nowrap">{fmtData(x.f.dataDocumento)}</td>
-                      <td className="py-1 pr-2 max-w-40 truncate">{x.f.cliente}</td>
-                      <td
-                        className={`py-1 pr-2 text-right whitespace-nowrap ${isNotaCredito(x.f.tipoDocumento) ? "text-status-absent" : ""}`}
+                    const aperta = openFile === x.f.nomeFile;
+                    return [
+                      <tr
+                        key={x.f.nomeFile}
+                        onClick={() => {
+                          setOpenFile(aperta ? null : x.f.nomeFile);
+                          setAbbMov("");
+                          setAbbImporto("");
+                        }}
+                        className={`border-b border-border/50 cursor-pointer hover:bg-muted/40 ${isNotaCredito(x.f.tipoDocumento) ? "bg-amber-500/10" : ""} ${aperta ? "bg-muted/30" : ""}`}
+                        title={x.f.nomeFile}
                       >
-                        {/* Il numero GRANDE e' quello che si paga davvero: sulle
+                        <td className="py-1 pr-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="accent-primary"
+                            checked={selFat.has(x.f.nomeFile)}
+                            onChange={() => {
+                              const ns = new Set(selFat);
+                              if (ns.has(x.f.nomeFile)) ns.delete(x.f.nomeFile);
+                              else ns.add(x.f.nomeFile);
+                              setSelFat(ns);
+                            }}
+                          />
+                        </td>
+                        <td className="py-1 pr-2 whitespace-nowrap font-medium">{x.f.numero}</td>
+                        <td className="py-1 pr-2 whitespace-nowrap">
+                          {fmtData(x.f.dataDocumento)}
+                        </td>
+                        <td className="py-1 pr-2 max-w-40 truncate">{x.f.cliente}</td>
+                        <td
+                          className={`py-1 pr-2 text-right whitespace-nowrap ${isNotaCredito(x.f.tipoDocumento) ? "text-status-absent" : ""}`}
+                        >
+                          {/* Il numero GRANDE e' quello che si paga davvero: sulle
                             passive con netto dichiarato diverso dal totale
                             (ritenute, bolli) e' il netto — cosi' le somme a
                             colpo d'occhio tornano. Il totale documento resta
                             leggibile sotto, in blu (caso Nolvex 123:
                             da pagare 879,95, documento 1.774,90). */}
-                        {fmtImporto(
-                          x.f.direzione === "Ricevuta" &&
+                          {fmtImporto(
+                            x.f.direzione === "Ricevuta" &&
+                              x.f.netto > 0 &&
+                              x.f.netto < x.f.totale - 0.01
+                              ? x.f.netto
+                              : x.f.totale,
+                          )}
+                          {x.f.direzione === "Ricevuta" &&
                             x.f.netto > 0 &&
-                            x.f.netto < x.f.totale - 0.01
-                            ? x.f.netto
-                            : x.f.totale,
-                        )}
-                        {x.f.direzione === "Ricevuta" &&
-                          x.f.netto > 0 &&
-                          x.f.netto < x.f.totale - 0.01 && (
-                            <div className="text-[11px] font-medium text-primary whitespace-nowrap">
-                              {t("ft.totDoc")} {fmtImporto(x.f.totale)}
+                            x.f.netto < x.f.totale - 0.01 && (
+                              <div className="text-[11px] font-medium text-primary whitespace-nowrap">
+                                {t("ft.totDoc")} {fmtImporto(x.f.totale)}
+                              </div>
+                            )}
+                          {noteCredito.has(x.f.nomeFile) && (
+                            <div
+                              className="text-[11px] text-muted-foreground"
+                              title={`${t("ft.ncCollegate")}: ${noteCredito.get(x.f.nomeFile)!.numeri.join(", ")}`}
+                            >
+                              −{fmtImporto(noteCredito.get(x.f.nomeFile)!.importo)} NC
                             </div>
                           )}
-                        {noteCredito.has(x.f.nomeFile) && (
-                          <div
-                            className="text-[11px] text-muted-foreground"
-                            title={`${t("ft.ncCollegate")}: ${noteCredito.get(x.f.nomeFile)!.numeri.join(", ")}`}
-                          >
-                            −{fmtImporto(noteCredito.get(x.f.nomeFile)!.importo)} NC
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-1 pr-2 text-right whitespace-nowrap text-status-present">
-                        {x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""}
-                      </td>
-                      <td
-                        className={`py-1.5 pr-3 whitespace-nowrap ${x.s.inRitardo ? "text-status-absent font-medium" : "text-muted-foreground"}`}
-                      >
-                        {x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)}
-                      </td>
-                      <td
-                        className={`py-1.5 pr-3 text-right tabular-nums whitespace-nowrap ${x.s.giorniRitardo > 0 ? "text-status-absent font-medium" : "text-muted-foreground"}`}
-                      >
-                        {x.s.giorniRitardo > 0 ? x.s.giorniRitardo : "—"}
-                      </td>
-                      {/* Le due letture, affiancate: nessuna prevale. */}
-                      <td className="py-1 pr-2 whitespace-nowrap">
-                        {badgeStato(x, x.s.statoFatturazione, true)}
-                        {x.f.dataIncasso && (
-                          <span className="ml-1 text-[11px] text-muted-foreground">
-                            {fmtData(x.f.dataIncasso)}
-                          </span>
-                        )}
-                      </td>
-                      {/* Incassi REGISTRATI su Aruba: stato + importo, con i
-                          parziali quantificati (report movimenti). */}
-                      <td className="py-1 pr-2 whitespace-nowrap">
-                        {x.s.statoIncassi == null ? (
-                          <span
-                            className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
-                            title={t("ft.senzaMovimentiTip")}
-                          >
-                            {t("ft.senzaMovimenti")}
-                          </span>
-                        ) : (
-                          <>
-                            {badgeStato(x, x.s.statoIncassi, false)}
-                            <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
-                              {fmtImporto(x.s.incassatoIncassi ?? 0)}
+                        </td>
+                        <td className="py-1 pr-2 text-right whitespace-nowrap text-status-present">
+                          {x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""}
+                        </td>
+                        <td
+                          className={`py-1.5 pr-3 whitespace-nowrap ${x.s.inRitardo ? "text-status-absent font-medium" : "text-muted-foreground"}`}
+                        >
+                          {x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)}
+                        </td>
+                        <td
+                          className={`py-1.5 pr-3 text-right tabular-nums whitespace-nowrap ${x.s.giorniRitardo > 0 ? "text-status-absent font-medium" : "text-muted-foreground"}`}
+                        >
+                          {x.s.giorniRitardo > 0 ? x.s.giorniRitardo : "—"}
+                        </td>
+                        {/* Le due letture, affiancate: nessuna prevale. */}
+                        <td className="py-1 pr-2 whitespace-nowrap">
+                          {badgeStato(x, x.s.statoFatturazione, true)}
+                          {x.f.dataIncasso && (
+                            <span className="ml-1 text-[11px] text-muted-foreground">
+                              {fmtData(x.f.dataIncasso)}
                             </span>
-                          </>
-                        )}
-                      </td>
-                      <td className="py-1 pr-2 whitespace-nowrap">
-                        {/* Zero movimenti collegati NON significa "non pagata":
+                          )}
+                        </td>
+                        {/* Incassi REGISTRATI su Aruba: stato + importo, con i
+                          parziali quantificati (report movimenti). */}
+                        <td className="py-1 pr-2 whitespace-nowrap">
+                          {x.s.statoIncassi == null ? (
+                            <span
+                              className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                              title={t("ft.senzaMovimentiTip")}
+                            >
+                              {t("ft.senzaMovimenti")}
+                            </span>
+                          ) : (
+                            <>
+                              {badgeStato(x, x.s.statoIncassi, false)}
+                              <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
+                                {fmtImporto(x.s.incassatoIncassi ?? 0)}
+                              </span>
+                            </>
+                          )}
+                        </td>
+                        <td className="py-1 pr-2 whitespace-nowrap">
+                          {/* Zero movimenti collegati NON significa "non pagata":
                             significa che nessun bonifico e' stato abbinato.
                             Sulle passive è la norma — molti costi non passano
                             dal c/c aziendale — e lo si dice apertamente. */}
-                        {x.s.statoBanca === "Non incassata" && x.s.incassatoBanca === 0 ? (
-                          <span
-                            className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
-                            title={ricevute ? t("ft.fuoriBancaTip") : undefined}
-                          >
-                            {tp("ft.nessunAbbinamento", "ft.fuoriBanca")}
-                          </span>
-                        ) : (
-                          <>
-                            {badgeStato(x, x.s.statoBanca, false)}
-                            {/* Importo abbinato, come per la colonna incassi:
-                                le due letture si confrontano a colpo d'occhio. */}
-                            <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
-                              {fmtImporto(x.s.incassatoBanca)}
-                            </span>
-                          </>
-                        )}
-                        {x.s.discordante && (
-                          <span
-                            className="ml-1 text-[11px] text-status-absent"
-                            title={tp("ft.discordante", "ft.discordantePassiva")}
-                          >
-                            ⚠
-                          </span>
-                        )}
-                      </td>
-                      {(() => {
-                        const cl = classificaDi(x.f);
-                        const stile =
-                          cl.fonte === "manuale"
-                            ? "text-foreground"
-                            : "text-muted-foreground italic";
-                        const tipTitle =
-                          cl.fonte === "regola"
-                            ? t("ft.classFonteRegola")
-                            : cl.fonte === "auto"
-                              ? t("ft.classFonteAuto")
-                              : undefined;
-                        // Cella modificabile: doppio click apre l'input,
-                        // prefillato col valore risolto (confermare una
-                        // proposta = doppio click + Invio).
-                        const cella = (
-                          campo: "mese" | "tip" | "cli",
-                          mostrato: string,
-                          classi: string,
-                          prefill: string,
-                        ) => {
-                          const inEdit =
-                            cellaEdit?.file === x.f.nomeFile && cellaEdit.campo === campo;
-                          return (
-                            <td
-                              className={`py-1 pr-2 ${classi}`}
-                              title={inEdit ? undefined : (tipTitle ?? t("ft.cellaTip"))}
-                              onDoubleClick={(e) => {
-                                e.stopPropagation();
-                                setCellaEdit({ file: x.f.nomeFile, campo });
-                                setCellaVal(prefill);
-                              }}
-                              onClick={(e) => {
-                                if (inEdit) e.stopPropagation();
-                              }}
+                          {x.s.statoBanca === "Non incassata" && x.s.incassatoBanca === 0 ? (
+                            <span
+                              className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                              title={ricevute ? t("ft.fuoriBancaTip") : undefined}
                             >
-                              {inEdit ? (
-                                <input
-                                  autoFocus
-                                  list={campo === "tip" ? "tipologie-note" : undefined}
-                                  value={cellaVal}
-                                  onChange={(e) => setCellaVal(e.target.value)}
-                                  onBlur={() => void salvaCella(x.f)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") void salvaCella(x.f);
-                                    if (e.key === "Escape") setCellaEdit(null);
-                                  }}
-                                  className="w-full min-w-24 rounded border border-primary bg-background px-1 py-0.5 text-[12px] text-foreground"
-                                />
-                              ) : (
-                                mostrato
+                              {tp("ft.nessunAbbinamento", "ft.fuoriBanca")}
+                            </span>
+                          ) : (
+                            <>
+                              {badgeStato(x, x.s.statoBanca, false)}
+                              {/* Importo abbinato, come per la colonna incassi:
+                                le due letture si confrontano a colpo d'occhio. */}
+                              <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
+                                {fmtImporto(x.s.incassatoBanca)}
+                              </span>
+                            </>
+                          )}
+                          {x.s.discordante && (
+                            <span
+                              className="ml-1 text-[11px] text-status-absent"
+                              title={tp("ft.discordante", "ft.discordantePassiva")}
+                            >
+                              ⚠
+                            </span>
+                          )}
+                        </td>
+                        {(() => {
+                          const cl = classificaDi(x.f);
+                          const stile =
+                            cl.fonte === "manuale"
+                              ? "text-foreground"
+                              : "text-muted-foreground italic";
+                          const tipTitle =
+                            cl.fonte === "regola"
+                              ? t("ft.classFonteRegola")
+                              : cl.fonte === "auto"
+                                ? t("ft.classFonteAuto")
+                                : undefined;
+                          // Cella modificabile: doppio click apre l'input,
+                          // prefillato col valore risolto (confermare una
+                          // proposta = doppio click + Invio).
+                          const cella = (
+                            campo: "mese" | "tip" | "cli",
+                            mostrato: string,
+                            classi: string,
+                            prefill: string,
+                          ) => {
+                            const inEdit =
+                              cellaEdit?.file === x.f.nomeFile && cellaEdit.campo === campo;
+                            return (
+                              <td
+                                className={`py-1 pr-2 ${classi}`}
+                                title={inEdit ? undefined : (tipTitle ?? t("ft.cellaTip"))}
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  setCellaEdit({ file: x.f.nomeFile, campo });
+                                  setCellaVal(prefill);
+                                }}
+                                onClick={(e) => {
+                                  if (inEdit) e.stopPropagation();
+                                }}
+                              >
+                                {inEdit ? (
+                                  <input
+                                    autoFocus
+                                    list={campo === "tip" ? "tipologie-note" : undefined}
+                                    value={cellaVal}
+                                    onChange={(e) => setCellaVal(e.target.value)}
+                                    onBlur={() => void salvaCella(x.f)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") void salvaCella(x.f);
+                                      if (e.key === "Escape") setCellaEdit(null);
+                                    }}
+                                    className="w-full min-w-24 rounded border border-primary bg-background px-1 py-0.5 text-[12px] text-foreground"
+                                  />
+                                ) : (
+                                  mostrato
+                                )}
+                              </td>
+                            );
+                          };
+                          return (
+                            <>
+                              {cella(
+                                "mese",
+                                cl.mese,
+                                "whitespace-nowrap tabular-nums text-muted-foreground",
+                                x.f.meseCompetenza ?? cl.mese,
                               )}
-                            </td>
+                              {ricevute &&
+                                cella(
+                                  "tip",
+                                  cl.tipologia,
+                                  `max-w-40 truncate ${stile}`,
+                                  cl.tipologia,
+                                )}
+                              {cella(
+                                "cli",
+                                cl.clienteRif,
+                                `whitespace-nowrap ${stile}`,
+                                cl.clienteRif,
+                              )}
+                            </>
                           );
-                        };
-                        return (
-                          <>
-                            {cella(
-                              "mese",
-                              cl.mese,
-                              "whitespace-nowrap tabular-nums text-muted-foreground",
-                              x.f.meseCompetenza ?? cl.mese,
-                            )}
-                            {ricevute &&
-                              cella(
-                                "tip",
-                                cl.tipologia,
-                                `max-w-40 truncate ${stile}`,
-                                cl.tipologia,
-                              )}
-                            {cella(
-                              "cli",
-                              cl.clienteRif,
-                              `whitespace-nowrap ${stile}`,
-                              cl.clienteRif,
-                            )}
-                          </>
-                        );
-                      })()}
-                      <td
-                        className="max-w-44 truncate py-1 pr-2 text-[12px] text-muted-foreground"
-                        title={x.f.causaleDoc}
-                      >
-                        {x.f.causaleDoc ?? "—"}
-                      </td>
-                      <td
-                        className="max-w-52 truncate py-1 pr-2 text-[12px] text-muted-foreground"
-                        title={x.f.oggetto}
-                      >
-                        {x.f.oggetto ?? "—"}
-                      </td>
-                      <td className="whitespace-nowrap py-1 pr-2 text-[12px] text-muted-foreground">
-                        {x.f.tipoDocumento}
-                      </td>
-                      <td className="whitespace-nowrap py-1 pr-2 text-right tabular-nums">
-                        {fmtImporto(daIncassareDi(x))}
-                      </td>
-                      <td className="whitespace-nowrap py-1 pr-2 text-muted-foreground">
-                        {fmtData(x.f.dataIncasso)}
-                      </td>
-                      <td className="whitespace-nowrap py-1 pr-2 text-[12px] text-muted-foreground">
-                        {x.f.statoSdI || "—"}
-                      </td>
-                      <td className="py-1 pr-2 text-[12px] text-status-absent">
-                        {x.s.discordante ? "Sì" : ""}
-                      </td>
-                      <td className="py-1 pr-2 text-[12px] text-muted-foreground">
-                        {classificaDi(x.f).fonte || "—"}
-                      </td>
-                      <td
-                        className="max-w-44 truncate py-1 pr-2 font-mono text-[10px] text-muted-foreground"
-                        title={x.f.nomeFile}
-                      >
-                        {x.f.nomeFile}
-                      </td>
-                    </tr>,
-                    aperta && (
-                      <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
-                        <td colSpan={ricevute ? 22 : 21} className="py-3 px-3 bg-muted/20">
-                          <div className="text-xs text-muted-foreground mb-2">
-                            {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
-                            {termini.length
-                              ? `${(x.s.scadenza && x.f.dataDocumento && Math.round((new Date(x.s.scadenza).getTime() - new Date(x.f.dataDocumento).getTime()) / 86400000)) || TERMINI_DEFAULT_GIORNI}gg`
-                              : `${TERMINI_DEFAULT_GIORNI}gg (default)`}
-                          </div>
-                          {/* Correzione manuale dello stato d'incasso: per la
+                        })()}
+                        <td
+                          className="max-w-44 truncate py-1 pr-2 text-[12px] text-muted-foreground"
+                          title={x.f.causaleDoc}
+                        >
+                          {x.f.causaleDoc ?? "—"}
+                        </td>
+                        <td
+                          className="max-w-52 truncate py-1 pr-2 text-[12px] text-muted-foreground"
+                          title={x.f.oggetto}
+                        >
+                          {x.f.oggetto ?? "—"}
+                        </td>
+                        <td className="whitespace-nowrap py-1 pr-2 text-[12px] text-muted-foreground">
+                          {x.f.tipoDocumento}
+                        </td>
+                        <td className="whitespace-nowrap py-1 pr-2 text-right tabular-nums">
+                          {fmtImporto(daIncassareDi(x))}
+                        </td>
+                        <td className="whitespace-nowrap py-1 pr-2 text-muted-foreground">
+                          {fmtData(x.f.dataIncasso)}
+                        </td>
+                        <td className="whitespace-nowrap py-1 pr-2 text-[12px] text-muted-foreground">
+                          {x.f.statoSdI || "—"}
+                        </td>
+                        <td className="py-1 pr-2 text-[12px] text-status-absent">
+                          {x.s.discordante ? "Sì" : ""}
+                        </td>
+                        <td className="py-1 pr-2 text-[12px] text-muted-foreground">
+                          {classificaDi(x.f).fonte || "—"}
+                        </td>
+                        <td
+                          className="max-w-44 truncate py-1 pr-2 font-mono text-[10px] text-muted-foreground"
+                          title={x.f.nomeFile}
+                        >
+                          {x.f.nomeFile}
+                        </td>
+                      </tr>,
+                      aperta && (
+                        <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
+                          <td colSpan={ricevute ? 22 : 21} className="py-3 px-3 bg-muted/20">
+                            <div className="text-xs text-muted-foreground mb-2">
+                              {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
+                              {termini.length
+                                ? `${(x.s.scadenza && x.f.dataDocumento && Math.round((new Date(x.s.scadenza).getTime() - new Date(x.f.dataDocumento).getTime()) / 86400000)) || TERMINI_DEFAULT_GIORNI}gg`
+                                : `${TERMINI_DEFAULT_GIORNI}gg (default)`}
+                            </div>
+                            {/* Correzione manuale dello stato d'incasso: per la
                               fattura che si SA incassata, senza aspettare il
                               prossimo report. */}
-                          {!isNotaCredito(x.f.tipoDocumento) && (
-                            <div
-                              className="flex flex-wrap items-center gap-2 mb-3 text-[13px]"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <span className="text-muted-foreground">{t("ft.incManLabel")}</span>
-                              <select
-                                value={incFile === x.f.nomeFile ? incStato : x.s.aruba || ""}
-                                onChange={(e) => {
-                                  setIncFile(x.f.nomeFile);
-                                  setIncStato(e.target.value as "Incassata" | "Non incassata");
-                                  if (!incData) setIncData(oggiISO);
-                                }}
-                                className="rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                            {!isNotaCredito(x.f.tipoDocumento) && (
+                              <div
+                                className="flex flex-wrap items-center gap-2 mb-3 text-[13px]"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                {!x.s.aruba && <option value="">{t("ft.nonGestita")}</option>}
-                                <option value="Incassata">
-                                  {ricevute ? t("ft.pagato") : t("ft.pagata")}
-                                </option>
-                                <option value="Non incassata">
-                                  {ricevute ? t("ft.nonPagata") : t("ft.nonIncassata")}
-                                </option>
-                              </select>
-                              {incFile === x.f.nomeFile && incStato === "Incassata" && (
-                                <input
-                                  type="date"
-                                  value={incData || oggiISO}
-                                  onChange={(e) => setIncData(e.target.value)}
+                                <span className="text-muted-foreground">{t("ft.incManLabel")}</span>
+                                <select
+                                  value={incFile === x.f.nomeFile ? incStato : x.s.aruba || ""}
+                                  onChange={(e) => {
+                                    setIncFile(x.f.nomeFile);
+                                    setIncStato(e.target.value as "Incassata" | "Non incassata");
+                                    if (!incData) setIncData(oggiISO);
+                                  }}
                                   className="rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
-                                />
-                              )}
-                              <button
-                                type="button"
-                                disabled={
-                                  incSaving || incFile !== x.f.nomeFile || incStato === x.s.aruba
-                                }
-                                onClick={() => void salvaIncassoManuale(x.f)}
-                                className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"
-                              >
-                                {incSaving ? "…" : t("common.save")}
-                              </button>
-                              <span className="text-[11px] text-muted-foreground">
-                                {t("ft.incManHint")}
-                              </span>
-                            </div>
-                          )}
-                          {/* Classificazione della passiva: competenza,
+                                >
+                                  {!x.s.aruba && <option value="">{t("ft.nonGestita")}</option>}
+                                  <option value="Incassata">
+                                    {ricevute ? t("ft.pagato") : t("ft.pagata")}
+                                  </option>
+                                  <option value="Non incassata">
+                                    {ricevute ? t("ft.nonPagata") : t("ft.nonIncassata")}
+                                  </option>
+                                </select>
+                                {incFile === x.f.nomeFile && incStato === "Incassata" && (
+                                  <input
+                                    type="date"
+                                    value={incData || oggiISO}
+                                    onChange={(e) => setIncData(e.target.value)}
+                                    className="rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                                  />
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={
+                                    incSaving || incFile !== x.f.nomeFile || incStato === x.s.aruba
+                                  }
+                                  onClick={() => void salvaIncassoManuale(x.f)}
+                                  className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"
+                                >
+                                  {incSaving ? "…" : t("common.save")}
+                                </button>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {t("ft.incManHint")}
+                                </span>
+                              </div>
+                            )}
+                            {/* Classificazione della passiva: competenza,
                               tipologia, cliente di riferimento. Il manuale
                               vince su regole e proposte. */}
-                          {
-                            <div
-                              className="flex flex-wrap items-center gap-2 mb-3 text-[13px]"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <span className="text-muted-foreground">{t("ft.classModifica")}</span>
-                              <input
-                                value={
-                                  clFile === x.f.nomeFile ? clMese : (x.f.meseCompetenza ?? "")
-                                }
-                                onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
-                                onChange={(e) => setClMese(e.target.value)}
-                                placeholder={t("ft.classMesePh")}
-                                className="w-44 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
-                              />
-                              {ricevute && (
+                            {
+                              <div
+                                className="flex flex-wrap items-center gap-2 mb-3 text-[13px]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span className="text-muted-foreground">
+                                  {t("ft.classModifica")}
+                                </span>
                                 <input
-                                  list="tipologie-note"
                                   value={
-                                    clFile === x.f.nomeFile ? clTip : (x.f.tipologiaCosto ?? "")
+                                    clFile === x.f.nomeFile ? clMese : (x.f.meseCompetenza ?? "")
                                   }
                                   onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
-                                  onChange={(e) => setClTip(e.target.value)}
-                                  placeholder={t("ft.classPh")}
-                                  className="w-64 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                                  onChange={(e) => setClMese(e.target.value)}
+                                  placeholder={t("ft.classMesePh")}
+                                  className="w-44 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
                                 />
-                              )}
-                              <input
-                                value={clFile === x.f.nomeFile ? clCli : (x.f.clienteRif ?? "")}
-                                onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
-                                onChange={(e) => setClCli(e.target.value)}
-                                placeholder={
-                                  ricevute ? t("ft.classCliPh") : t("ft.classServizioPh")
-                                }
-                                className="w-36 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
-                              />
-                              <datalist id="tipologie-note">
-                                {tipologieNote.map((tp2) => (
-                                  <option key={tp2} value={tp2} />
-                                ))}
-                              </datalist>
-                              <button
-                                type="button"
-                                disabled={clSaving || clFile !== x.f.nomeFile}
-                                onClick={() => void salvaClassifica(x.f)}
-                                className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"
-                              >
-                                {clSaving ? "…" : t("common.save")}
-                              </button>
-                            </div>
-                          }
-                          {/* Nota di credito: collegamento alla fattura che
+                                {ricevute && (
+                                  <input
+                                    list="tipologie-note"
+                                    value={
+                                      clFile === x.f.nomeFile ? clTip : (x.f.tipologiaCosto ?? "")
+                                    }
+                                    onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
+                                    onChange={(e) => setClTip(e.target.value)}
+                                    placeholder={t("ft.classPh")}
+                                    className="w-64 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                                  />
+                                )}
+                                <input
+                                  value={clFile === x.f.nomeFile ? clCli : (x.f.clienteRif ?? "")}
+                                  onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
+                                  onChange={(e) => setClCli(e.target.value)}
+                                  placeholder={
+                                    ricevute ? t("ft.classCliPh") : t("ft.classServizioPh")
+                                  }
+                                  className="w-36 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                                />
+                                <datalist id="tipologie-note">
+                                  {tipologieNote.map((tp2) => (
+                                    <option key={tp2} value={tp2} />
+                                  ))}
+                                </datalist>
+                                <button
+                                  type="button"
+                                  disabled={clSaving || clFile !== x.f.nomeFile}
+                                  onClick={() => void salvaClassifica(x.f)}
+                                  className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"
+                                >
+                                  {clSaving ? "…" : t("common.save")}
+                                </button>
+                              </div>
+                            }
+                            {/* Nota di credito: collegamento alla fattura che
                               rettifica. Quando lo storno è stato fatto dentro
                               Aruba il riferimento non arriva nell'XML, e senza
                               di esso la NC resta uno storno sospeso che sballa
                               il netto del cliente. */}
-                          {isNotaCredito(x.f.tipoDocumento) && (
-                            <div
-                              className="flex flex-wrap items-center gap-2 mb-3 text-[13px]"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                              <span className="text-muted-foreground">{t("ft.collegaA")}</span>
-                              <select
-                                value={
-                                  ncFile === x.f.nomeFile ? ncNumero : (x.f.rettificaNumero ?? "")
-                                }
-                                onChange={(e) => {
-                                  setNcFile(x.f.nomeFile);
-                                  setNcNumero(e.target.value);
-                                }}
-                                className="rounded-lg border border-border bg-background px-2 py-1 text-[13px] max-w-72"
+                            {isNotaCredito(x.f.tipoDocumento) && (
+                              <div
+                                className="flex flex-wrap items-center gap-2 mb-3 text-[13px]"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                <option value="">{t("ft.collegaNessuna")}</option>
-                                {fattureCollegabili(x.f).map((c) => (
-                                  <option key={c.nomeFile} value={c.numero}>
-                                    {c.numero} · {fmtData(c.dataDocumento)} · {fmtImporto(c.totale)}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                disabled={
-                                  ncSaving ||
-                                  ncFile !== x.f.nomeFile ||
-                                  ncNumero === (x.f.rettificaNumero ?? "")
-                                }
-                                onClick={() => void salvaRettifica(x.f)}
-                                className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"
-                              >
-                                {ncSaving ? "…" : t("common.save")}
-                              </button>
-                              {x.f.rettificaNumero && (
-                                <span className="text-[12px] text-muted-foreground">
-                                  {t("ft.collegataOra")} <b>{x.f.rettificaNumero}</b>
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {abbFat.length > 0 ? (
-                            <ul className="space-y-1 mb-3">
-                              {abbFat.map((a) => {
-                                const mov = (movimenti ?? []).find(
-                                  (m) => m.chiave === a.movimentoChiave,
-                                );
-                                return (
-                                  <li key={a.id} className="flex items-center gap-3 text-[13px]">
-                                    <Link2 className="h-3.5 w-3.5 text-status-present shrink-0" />
-                                    <span className="tabular-nums font-medium">
-                                      {fmtImporto(a.importo)} €
-                                    </span>
-                                    <span className="text-muted-foreground truncate">
-                                      {mov
-                                        ? `${fmtData(mov.dataContabile)} · ${mov.cliente || mov.descrizione.slice(0, 50)}`
-                                        : a.movimentoChiave.slice(0, 60)}
-                                    </span>
-                                    <span className="text-[11px] rounded-full bg-muted px-1.5">
-                                      {a.origine}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        void rimuoviAbbinamento(a);
-                                      }}
-                                      className="ml-auto rounded-md p-1 text-muted-foreground hover:text-status-absent"
-                                      title={t("ft.abbDelete")}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          ) : (
-                            <p className="text-[13px] text-muted-foreground mb-3">
-                              {t("ft.abbNone")}
-                            </p>
-                          )}
-                          {x.s.stato !== "NC" && x.s.residuo > 0.01 && (
-                            <div
-                              className="flex flex-wrap items-end gap-2"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <div className="min-w-72 flex-1">
-                                <label className="text-xs text-muted-foreground">
-                                  {ricevute ? t("ft.abbPagamento") : t("ft.abbMovimento")}
-                                </label>
+                                <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <span className="text-muted-foreground">{t("ft.collegaA")}</span>
                                 <select
-                                  value={abbMov}
+                                  value={
+                                    ncFile === x.f.nomeFile ? ncNumero : (x.f.rettificaNumero ?? "")
+                                  }
                                   onChange={(e) => {
-                                    setAbbMov(e.target.value);
-                                    const inc = incassiDisponibili.find(
-                                      (i) => i.m.chiave === e.target.value,
-                                    );
-                                    if (inc)
-                                      setAbbImporto(
-                                        String(Math.min(inc.residuo, x.s.residuo)).replace(
-                                          ".",
-                                          ",",
-                                        ),
-                                      );
+                                    setNcFile(x.f.nomeFile);
+                                    setNcNumero(e.target.value);
                                   }}
-                                  className={inputCls}
+                                  className="rounded-lg border border-border bg-background px-2 py-1 text-[13px] max-w-72"
                                 >
-                                  <option value="">{t("common.select")}</option>
-                                  {incassiDisponibili.slice(0, 200).map((i) => (
-                                    <option key={i.m.chiave} value={i.m.chiave}>
-                                      {fmtData(i.m.dataContabile)} · {fmtImporto(i.residuo)} € ·{" "}
-                                      {(i.m.cliente || i.m.descrizione).slice(0, 60)}
+                                  <option value="">{t("ft.collegaNessuna")}</option>
+                                  {fattureCollegabili(x.f).map((c) => (
+                                    <option key={c.nomeFile} value={c.numero}>
+                                      {c.numero} · {fmtData(c.dataDocumento)} ·{" "}
+                                      {fmtImporto(c.totale)}
                                     </option>
                                   ))}
                                 </select>
-                              </div>
-                              <div className="w-32">
-                                <label className="text-xs text-muted-foreground">
-                                  {t("common.amount")}
-                                </label>
-                                <input
-                                  value={abbImporto}
-                                  onChange={(e) => setAbbImporto(e.target.value)}
-                                  className={inputCls}
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => void abbinaManuale(x.f.nomeFile, x.s.residuo)}
-                                disabled={abbBusy || !abbMov}
-                                className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                              >
-                                {abbBusy ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Link2 className="h-4 w-4" />
+                                <button
+                                  type="button"
+                                  disabled={
+                                    ncSaving ||
+                                    ncFile !== x.f.nomeFile ||
+                                    ncNumero === (x.f.rettificaNumero ?? "")
+                                  }
+                                  onClick={() => void salvaRettifica(x.f)}
+                                  className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"
+                                >
+                                  {ncSaving ? "…" : t("common.save")}
+                                </button>
+                                {x.f.rettificaNumero && (
+                                  <span className="text-[12px] text-muted-foreground">
+                                    {t("ft.collegataOra")} <b>{x.f.rettificaNumero}</b>
+                                  </span>
                                 )}
-                                {t("ft.abbina")}
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ),
-                  ];
-                })}
-              </tbody>
-            </table>
-            {filtrate.length > 400 && (
-              <div className="mt-2 text-xs text-muted-foreground">
-                {t("fin.first500")} {filtrate.length}
-              </div>
-            )}
-          </div>
+                              </div>
+                            )}
+                            {abbFat.length > 0 ? (
+                              <ul className="space-y-1 mb-3">
+                                {abbFat.map((a) => {
+                                  const mov = (movimenti ?? []).find(
+                                    (m) => m.chiave === a.movimentoChiave,
+                                  );
+                                  return (
+                                    <li key={a.id} className="flex items-center gap-3 text-[13px]">
+                                      <Link2 className="h-3.5 w-3.5 text-status-present shrink-0" />
+                                      <span className="tabular-nums font-medium">
+                                        {fmtImporto(a.importo)} €
+                                      </span>
+                                      <span className="text-muted-foreground truncate">
+                                        {mov
+                                          ? `${fmtData(mov.dataContabile)} · ${mov.cliente || mov.descrizione.slice(0, 50)}`
+                                          : a.movimentoChiave.slice(0, 60)}
+                                      </span>
+                                      <span className="text-[11px] rounded-full bg-muted px-1.5">
+                                        {a.origine}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void rimuoviAbbinamento(a);
+                                        }}
+                                        className="ml-auto rounded-md p-1 text-muted-foreground hover:text-status-absent"
+                                        title={t("ft.abbDelete")}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            ) : (
+                              <p className="text-[13px] text-muted-foreground mb-3">
+                                {t("ft.abbNone")}
+                              </p>
+                            )}
+                            {x.s.stato !== "NC" && x.s.residuo > 0.01 && (
+                              <div
+                                className="flex flex-wrap items-end gap-2"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="min-w-72 flex-1">
+                                  <label className="text-xs text-muted-foreground">
+                                    {ricevute ? t("ft.abbPagamento") : t("ft.abbMovimento")}
+                                  </label>
+                                  <select
+                                    value={abbMov}
+                                    onChange={(e) => {
+                                      setAbbMov(e.target.value);
+                                      const inc = incassiDisponibili.find(
+                                        (i) => i.m.chiave === e.target.value,
+                                      );
+                                      if (inc)
+                                        setAbbImporto(
+                                          String(Math.min(inc.residuo, x.s.residuo)).replace(
+                                            ".",
+                                            ",",
+                                          ),
+                                        );
+                                    }}
+                                    className={inputCls}
+                                  >
+                                    <option value="">{t("common.select")}</option>
+                                    {incassiDisponibili.slice(0, 200).map((i) => (
+                                      <option key={i.m.chiave} value={i.m.chiave}>
+                                        {fmtData(i.m.dataContabile)} · {fmtImporto(i.residuo)} € ·{" "}
+                                        {(i.m.cliente || i.m.descrizione).slice(0, 60)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="w-32">
+                                  <label className="text-xs text-muted-foreground">
+                                    {t("common.amount")}
+                                  </label>
+                                  <input
+                                    value={abbImporto}
+                                    onChange={(e) => setAbbImporto(e.target.value)}
+                                    className={inputCls}
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => void abbinaManuale(x.f.nomeFile, x.s.residuo)}
+                                  disabled={abbBusy || !abbMov}
+                                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                                >
+                                  {abbBusy ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Link2 className="h-4 w-4" />
+                                  )}
+                                  {t("ft.abbina")}
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ),
+                    ];
+                  })}
+                </tbody>
+              </table>
+              {filtrate.length > 400 && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {t("fin.first500")} {filtrate.length}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 
