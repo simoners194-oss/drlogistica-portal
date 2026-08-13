@@ -78,6 +78,7 @@ def clicca(page, descrizione: str, *selettori: str, timeout: int = 15000) -> Non
 def chiudi_cookie(page) -> None:
     """Banner Cookiebot: si rifiutano i non necessari (best-effort)."""
     for sel in (
+        "text=Rifiuta tutti",
         "#CybotCookiebotDialogBodyButtonDecline",
         "#CybotCookiebotDialogBodyLevelButtonLevelOptinDeclineAll",
         "text=Rifiuta",
@@ -97,6 +98,7 @@ def login(page, cfg: dict) -> None:
     print("Apro Aruba Fatturazione…")
     page.goto(URL_PORTALE)
     page.wait_for_load_state("networkidle", timeout=45000)
+    chiudi_cookie(page)
     # Login Keycloak (loginfatturazione.aruba.it): campi standard.
     try:
         page.fill('input[name="username"], #username', cfg["username"], timeout=20000)
@@ -149,7 +151,13 @@ def scarica_prima_nota(page, anno: int) -> Path:
         # la barra con "Seleziona tutti (N)".
         "div.x-checkcell:visible",
     )
-    clicca(page, "clic su Seleziona tutti", "text=Seleziona tutti")
+    clicca(
+        page,
+        "clic su Seleziona tutti (N)",
+        "text=/Seleziona tutti \(\d+\)/",
+        "a:has-text('Seleziona tutti'):visible",
+        "span:has-text('Seleziona tutti'):visible",
+    )
     clicca(page, "apro il box Azioni", "text=Azioni", '[placeholder="Azioni"]')
     clicca(page, "flag su Scarica Report Excel", "text=Scarica Report Excel")
     with page.expect_download(timeout=120000) as attesa:
