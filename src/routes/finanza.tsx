@@ -34,6 +34,7 @@ import {
 import { FattureTab } from "@/components/FattureTab";
 import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
 import { MultiSelect } from "@/components/MultiSelect";
+import { CampoVocabolario } from "@/components/CampoVocabolario";
 import { ResocontoTab } from "@/components/ResocontoTab";
 import { useLang } from "@/lib/i18n";
 import { readSession, type SessionUser } from "@/lib/session";
@@ -157,76 +158,6 @@ function stralcioDescr(descrizione: string, cerca: string): string {
   const da = Math.max(0, i - 15);
   const a = Math.min(descrizione.length, i + q.length + 25);
   return `${da > 0 ? "…" : ""}${descrizione.slice(da, a)}${a < descrizione.length ? "…" : ""}`;
-}
-
-// Campo a VOCABOLARIO: menu a discesa con le sole voci gia' usate nelle
-// regole (in ordine alfabetico) + "Nuova voce" che apre il campo libero.
-// Un valore fuori elenco (regola vecchia in modifica) apre direttamente
-// il campo libero, cosi' non si perde niente.
-function CampoVocabolario({
-  label,
-  valore,
-  onChange,
-  opzioni,
-  testoNessuno,
-  testoNuova,
-}: {
-  label: string;
-  valore: string;
-  onChange: (v: string) => void;
-  opzioni: string[];
-  testoNessuno: string;
-  testoNuova: string;
-}) {
-  const [libero, setLibero] = useState(false);
-  const fuoriElenco = valore !== "" && !opzioni.includes(valore);
-  const modoLibero = libero || fuoriElenco;
-  return (
-    <>
-      <label className="text-xs text-muted-foreground">{label}</label>
-      {modoLibero ? (
-        <div className="flex gap-1.5">
-          <input
-            value={valore}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={testoNuova}
-            autoFocus={libero}
-            className={inputCls}
-          />
-          <button
-            type="button"
-            onClick={() => {
-              setLibero(false);
-              onChange("");
-            }}
-            title={testoNessuno}
-            className="shrink-0 rounded-lg border border-border px-2 text-xs hover:bg-muted"
-          >
-            ↩
-          </button>
-        </div>
-      ) : (
-        <select
-          value={valore}
-          onChange={(e) => {
-            if (e.target.value === "__nuova__") {
-              setLibero(true);
-              onChange("");
-            } else onChange(e.target.value);
-          }}
-          className={inputCls}
-        >
-          <option value="">{testoNessuno}</option>
-          {opzioni.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-          <option value="__nuova__">{testoNuova}</option>
-        </select>
-      )}
-    </>
-  );
 }
 
 // Il campo Pattern di una regola regge 240 caratteri (margine sotto il

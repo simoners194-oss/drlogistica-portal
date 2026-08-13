@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.38.0",
+    date: "2026-08-13",
+    codename: "Regole anche per le fatture",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Le fatture si classificano con le regole, come i movimenti",
+        description:
+          "Nell'archivio fatture (attive e passive, separate) c'e' la sezione Regole di classificazione: “se il cliente include … E/O l'oggetto include … allora tipologia, sottocategoria, allocazioni, servizio” — con l'operatore AND/OR a scelta e lo stesso vocabolario a cascata delle regole dei movimenti. Le regole si modificano sul posto e valgono subito su colonne, filtri ed export.",
+      },
+    ],
+  },
+  {
     version: "1.37.0",
     date: "2026-08-13",
     codename: "Fatture che si spiegano",

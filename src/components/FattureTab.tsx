@@ -21,9 +21,11 @@ import {
   Upload,
   Wand2,
   RefreshCw,
+  Pencil,
 } from "lucide-react";
 import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
 import { MultiSelect } from "@/components/MultiSelect";
+import { CampoVocabolario } from "@/components/CampoVocabolario";
 import { useLang } from "@/lib/i18n";
 import {
   computeStatoFattura,
@@ -59,7 +61,7 @@ import {
   type TerminePagamento,
   type StatoIncasso,
 } from "@/lib/fatture-logic";
-import { clienteGroupKey, normalizeTesto } from "@/lib/finanza-logic";
+import { type RegolaFinanza, clienteGroupKey, normalizeTesto } from "@/lib/finanza-logic";
 import {
   spGetFatture,
   spImportFatture,
@@ -78,6 +80,10 @@ import {
   spImportTermini,
   spGetAggiornamentoFatture,
   spGetRegoleFatture,
+  spCreateRegolaFattura,
+  spUpdateRegolaFattura,
+  spDeleteRegolaFattura,
+  spGetRegoleFinanza,
   spSetClassificazione,
   spEliminaFatture,
 } from "@/lib/sharepoint.functions";
@@ -552,7 +558,25 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
 
   // Regole di classificazione impostate nella tab Regole di Finanza.
   const [regoleFatture, setRegoleFatture] = useState<RegolaFattura[]>([]);
+  // Vocabolario CONDIVISO con le regole movimenti (tipologie, sottocategorie,
+  // allocazioni): stesse voci in tutto il portale.
+  const [regoleFin, setRegoleFin] = useState<RegolaFinanza[]>([]);
+  const [showRegoleFat, setShowRegoleFat] = useState(false);
+  const [rfCliente, setRfCliente] = useState("");
+  const [rfOggetto, setRfOggetto] = useState("");
+  const [rfOperatore, setRfOperatore] = useState<"AND" | "OR">("AND");
+  const [rfTipologia, setRfTipologia] = useState("");
+  const [rfSottocat, setRfSottocat] = useState("");
+  const [rfAllocPri, setRfAllocPri] = useState("");
+  const [rfAllocSec, setRfAllocSec] = useState("");
+  const [rfServizio, setRfServizio] = useState("");
+  const [rfNota, setRfNota] = useState("");
+  const [rfEditId, setRfEditId] = useState<string | null>(null);
+  const [rfBusy, setRfBusy] = useState(false);
   useEffect(() => {
+    spGetRegoleFinanza()
+      .then((l) => setRegoleFin(l as RegolaFinanza[]))
+      .catch(() => setRegoleFin([]));
     spGetRegoleFatture()
       .then((l) => setRegoleFatture(l as RegolaFattura[]))
       .catch(() => setRegoleFatture([]));
@@ -575,6 +599,82 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
       /* niente storage: vale solo per la sessione */
     }
   };
+  const vocabRf = useMemo(() => {
+    const uniq = (xs: (string | undefined)[]) =>
+      [...new Set(xs.filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b));
+    const tutte = [
+      ...regoleFin.map((r) => ({
+        tipologia: r.tipologia,
+        sottocategoria: r.sottocategoria,
+        allocPrimaria: r.allocPrimaria,
+        allocSecondaria: r.allocSecondaria,
+      })),
+      ...regoleFatture.map((r) => ({
+        tipologia: r.tipologia,
+        sottocategoria: r.sottocategoria,
+        allocPrimaria: r.allocPrimaria,
+        allocSecondaria: r.allocSecondaria,
+      })),
+    ];
+    const perTip = rfTipologia.trim()
+      ? tutte.filter((r) => (r.tipologia ?? "") === rfTipologia.trim())
+      : tutte;
+    const perPri = rfAllocPri.trim()
+      ? tutte.filter((r) => (r.allocPrimaria ?? "") === rfAllocPri.trim())
+      : tutte;
+    const sotto = uniq(perTip.map((r) => r.sottocategoria));
+    const sec = uniq(perPri.map((r) => r.allocSecondaria));
+    return {
+      tipologie: uniq(tutte.map((r) => r.tipologia)),
+      sottocat: sotto.length ? sotto : uniq(tutte.map((r) => r.sottocategoria)),
+      allocPri: uniq(tutte.map((r) => r.allocPrimaria)),
+      allocSec: sec.length ? sec : uniq(tutte.map((r) => r.allocSecondaria)),
+    };
+  }, [regoleFin, regoleFatture, rfTipologia, rfAllocPri]);
+
+  const resetFormRf = () => {
+    setRfCliente("");
+    setRfOggetto("");
+    setRfOperatore("AND");
+    setRfTipologia("");
+    setRfSottocat("");
+    setRfAllocPri("");
+    setRfAllocSec("");
+    setRfServizio("");
+    setRfNota("");
+    setRfEditId(null);
+  };
+
+  const salvaRegolaFat = async () => {
+    setRfBusy(true);
+    try {
+      const payload = {
+        fornitore: rfCliente.trim(),
+        oggettoInclude: rfOggetto.trim() || undefined,
+        operatore: rfOperatore,
+        direzione: dir,
+        tipologia: rfTipologia.trim() || undefined,
+        sottocategoria: rfSottocat.trim() || undefined,
+        allocPrimaria: rfAllocPri.trim() || undefined,
+        allocSecondaria: rfAllocSec.trim() || undefined,
+        clienteRif: rfServizio.trim() || undefined,
+        note: rfNota.trim() || undefined,
+      };
+      if (rfEditId) await spUpdateRegolaFattura({ data: { regolaId: rfEditId, ...payload } });
+      else await spCreateRegolaFattura({ data: payload });
+      const agg = (await spGetRegoleFatture()) as RegolaFattura[];
+      setRegoleFatture(agg);
+      resetFormRf();
+      toast.success(t("ft.rfSalvata"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setRfBusy(false);
+    }
+  };
+
   const classMap = useMemo(
     () => risolviClassificazioneTutte(fattureRic ?? [], regoleFatture, classAuto, meseRegola),
     [fattureRic, regoleFatture, classAuto, meseRegola],
@@ -582,14 +682,14 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   // Le ATTIVE hanno la loro mappa: niente regole-fornitore ne' proposte
   // dallo storico passivo — vale il dichiarato (o la regola del giorno 15).
   const classMapEm = useMemo(
-    () => risolviClassificazioneTutte(fattureEm ?? [], [], new Map(), meseRegola),
-    [fattureEm, meseRegola],
+    () => risolviClassificazioneTutte(fattureEm ?? [], regoleFatture, new Map(), meseRegola),
+    [fattureEm, regoleFatture, meseRegola],
   );
   const classificaDi = (f: FatturaRaw) =>
     (f.direzione === "Emessa" ? classMapEm : classMap).get(f.nomeFile) ??
     risolviClassificazione(
       f,
-      f.direzione === "Emessa" ? [] : regoleFatture,
+      regoleFatture,
       f.direzione === "Emessa" ? new Map() : classAuto,
       meseRegola,
     );
@@ -2742,6 +2842,237 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                 </button>
               </div>
             )}
+            <div className="mb-3 rounded-xl border border-border/70 bg-muted/20 p-3">
+              <button
+                type="button"
+                onClick={() => setShowRegoleFat((x) => !x)}
+                className="text-sm font-semibold text-foreground"
+              >
+                {showRegoleFat ? "▾" : "▸"} {t("ft.rfTitolo")} (
+                {regoleFatture.filter((r) => (r.direzione ?? "Ricevuta") === dir).length})
+              </button>
+              {showRegoleFat && (
+                <div className="mt-3">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="lg:col-span-1">
+                      <label className="text-xs text-muted-foreground">
+                        {t("ft.rfClienteInclude")}
+                      </label>
+                      <textarea
+                        value={rfCliente}
+                        onChange={(e) => setRfCliente(e.target.value)}
+                        rows={2}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="flex items-end pb-1">
+                      <div className="inline-flex rounded-lg border border-border p-0.5 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setRfOperatore("AND")}
+                          className={`rounded-md px-3 py-1.5 font-semibold ${rfOperatore === "AND" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                        >
+                          AND
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRfOperatore("OR")}
+                          className={`rounded-md px-3 py-1.5 font-semibold ${rfOperatore === "OR" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                        >
+                          OR
+                        </button>
+                      </div>
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="text-xs text-muted-foreground">
+                        {t("ft.rfOggettoInclude")}
+                      </label>
+                      <textarea
+                        value={rfOggetto}
+                        onChange={(e) => setRfOggetto(e.target.value)}
+                        rows={2}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <CampoVocabolario
+                        label={t("ft.colTipologia")}
+                        valore={rfTipologia}
+                        onChange={(v2) => {
+                          setRfTipologia(v2);
+                          if (
+                            v2.trim() &&
+                            rfSottocat.trim() &&
+                            !vocabRf.sottocat.includes(rfSottocat)
+                          )
+                            setRfSottocat("");
+                        }}
+                        opzioni={vocabRf.tipologie}
+                        testoNessuno={t("ft.rfNonImpostare")}
+                        testoNuova={t("fin.vocNuova")}
+                      />
+                    </div>
+                    <div>
+                      <CampoVocabolario
+                        label={t("fin.sottocat")}
+                        valore={rfSottocat}
+                        onChange={setRfSottocat}
+                        opzioni={vocabRf.sottocat}
+                        testoNessuno={t("ft.rfNonImpostare")}
+                        testoNuova={t("fin.vocNuova")}
+                      />
+                    </div>
+                    <div>
+                      <CampoVocabolario
+                        label={t("fin.allocPri")}
+                        valore={rfAllocPri}
+                        onChange={setRfAllocPri}
+                        opzioni={vocabRf.allocPri}
+                        testoNessuno={t("ft.rfNonImpostare")}
+                        testoNuova={t("fin.vocNuova")}
+                      />
+                    </div>
+                    <div>
+                      <CampoVocabolario
+                        label={t("fin.allocSec")}
+                        valore={rfAllocSec}
+                        onChange={setRfAllocSec}
+                        opzioni={vocabRf.allocSec}
+                        testoNessuno={t("ft.rfNonImpostare")}
+                        testoNuova={t("fin.vocNuova")}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">
+                        {ricevute ? t("ft.colClienteRif") : t("ft.colServizio")}
+                      </label>
+                      <input
+                        value={rfServizio}
+                        onChange={(e) => setRfServizio(e.target.value)}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">{t("fin.note")}</label>
+                      <input
+                        value={rfNota}
+                        onChange={(e) => setRfNota(e.target.value)}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      disabled={rfBusy || (!rfCliente.trim() && !rfOggetto.trim())}
+                      onClick={() => void salvaRegolaFat()}
+                      className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                    >
+                      {rfBusy
+                        ? t("common.loading")
+                        : rfEditId
+                          ? t("fin.regolaAggiorna")
+                          : t("fin.regolaCrea")}
+                    </button>
+                    {rfEditId && (
+                      <button
+                        type="button"
+                        onClick={resetFormRf}
+                        className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
+                      >
+                        {t("common.cancel")}
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    {regoleFatture
+                      .filter((r) => (r.direzione ?? "Ricevuta") === dir)
+                      .map((r) => (
+                        <div
+                          key={r.id}
+                          className="flex items-start gap-2 border-t border-border/50 py-1.5 text-[13px]"
+                        >
+                          <span className="flex-1">
+                            {r.fornitore && (
+                              <>
+                                {t("ft.rfFraseCliente")} <b>«{r.fornitore}»</b>
+                              </>
+                            )}
+                            {r.fornitore && r.oggettoInclude && (
+                              <b className="text-primary"> {r.operatore ?? "AND"} </b>
+                            )}
+                            {r.oggettoInclude && (
+                              <>
+                                {t("ft.rfFraseOggetto")} <b>«{r.oggettoInclude}»</b>
+                              </>
+                            )}{" "}
+                            <span className="text-muted-foreground">→</span>{" "}
+                            {[
+                              r.tipologia,
+                              r.sottocategoria,
+                              [r.allocPrimaria, r.allocSecondaria].filter(Boolean).join(" / "),
+                              r.clienteRif,
+                            ]
+                              .filter(Boolean)
+                              .map((chip) => (
+                                <span
+                                  key={String(chip)}
+                                  className="mr-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
+                                >
+                                  {chip}
+                                </span>
+                              ))}
+                            {r.note && (
+                              <span className="text-xs italic text-muted-foreground">
+                                {" "}
+                                — {r.note}
+                              </span>
+                            )}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRfEditId(r.id ?? null);
+                              setRfCliente(r.fornitore);
+                              setRfOggetto(r.oggettoInclude ?? "");
+                              setRfOperatore(r.operatore === "OR" ? "OR" : "AND");
+                              setRfTipologia(r.tipologia ?? "");
+                              setRfSottocat(r.sottocategoria ?? "");
+                              setRfAllocPri(r.allocPrimaria ?? "");
+                              setRfAllocSec(r.allocSecondaria ?? "");
+                              setRfServizio(r.clienteRif ?? "");
+                              setRfNota(r.note ?? "");
+                              setShowRegoleFat(true);
+                            }}
+                            className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void (async () => {
+                                if (!window.confirm(t("ft.rfDelConfirm"))) return;
+                                try {
+                                  await spDeleteRegolaFattura({ data: { id: r.id ?? "" } });
+                                  setRegoleFatture((prev) => prev.filter((x) => x.id !== r.id));
+                                } catch (err) {
+                                  toast.error(t("common.error"), {
+                                    description: err instanceof Error ? err.message : String(err),
+                                  });
+                                }
+                              })();
+                            }}
+                            className="rounded-md p-1 text-muted-foreground hover:text-status-absent"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
             {selFat.size > 0 && (
               <div className="mb-2 flex flex-wrap items-center gap-3 rounded-lg bg-primary/10 px-3 py-2 text-sm">
                 <b>{selFat.size}</b> {t("fin.selN")}
