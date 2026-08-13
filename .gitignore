@@ -34,3 +34,8 @@ dist-ssr
 # Dati bancari locali del probe e chiavi private — MAI nel repo
 enablebanking-*.json
 *.pem
+
+# Script Aruba prima nota: credenziali e scaricati SOLO locali
+scripts/aruba-prima-nota/config.json
+scripts/aruba-prima-nota/scaricati/
+scripts/aruba-prima-nota/errori/
