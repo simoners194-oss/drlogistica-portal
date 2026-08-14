@@ -4742,7 +4742,21 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                     let tot = 0;
                     let errori = 0;
                     try {
-                      for (const r of regole ?? []) {
+                      // L'applicazione retroattiva SOVRASCRIVE: si parte
+                      // dalle regole meno specifiche (jolly, poi descrizione,
+                      // poi cliente-contiene) e si chiude con le piu'
+                      // specifiche (cliente esatto), cosi' l'ultimo tocco e'
+                      // sempre della regola che vincerebbe sui nuovi import.
+                      const rango = (r2: RegolaFinanza) =>
+                        r2.pattern.trim() === "*"
+                          ? 0
+                          : r2.campo === "descrizione"
+                            ? 1
+                            : r2.modo === "contiene"
+                              ? 2
+                              : 3;
+                      const inOrdine = [...(regole ?? [])].sort((a, b) => rango(a) - rango(b));
+                      for (const r of inOrdine) {
                         const payload = {
                           pattern: r.pattern,
                           campo: r.campo,
@@ -4752,6 +4766,9 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                           allocPrimaria: r.allocPrimaria,
                           allocSecondaria: r.allocSecondaria,
                           cliente: r.cliente,
+                          // Senza il segno il jolly "*" retroattivo avrebbe
+                          // classificato anche i negativi: mai piu'.
+                          segno: r.segno,
                         };
                         let ultimoRimanenti = Number.POSITIVE_INFINITY;
                         try {
