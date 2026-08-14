@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.50.0",
+    date: "2026-08-14",
+    codename: "Cosa succedera' entro il...",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Proiezione a data nel Resoconto",
+        description:
+          "Sotto il resoconto c'e' il nuovo pannello \"Cosa succedera' entro il...\" (chiuso, si apre al bisogno): scelta una data, mostra fianco a fianco le fatture attive e passive in scadenza entro quel giorno, con il totale ancora aperto in grande (da incassare a sinistra, da pagare a destra), i totali di pagato e stornato accanto, e per ogni fattura l'esito — Pagato, Stornato o ancora aperto. Sostituisce la vecchia simulazione dei termini a giorni.",
+      },
+    ],
+  },
+  {
     version: "1.49.0",
     date: "2026-08-14",
     codename: "Gli incassi si aggiornano da soli",

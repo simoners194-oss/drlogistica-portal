@@ -97,7 +97,10 @@ export function ResocontoTab() {
   const [pfNote, setPfNote] = useState("");
   const [pfBusy, setPfBusy] = useState(false);
   // "" = solo ritardi (default); un numero = anche le scadenze future entro N giorni.
-  const [scadEntro, setScadEntro] = useState("");
+  // Proiezione a data ("cosa succedera' entro il..."): sostituisce la
+  // vecchia simulazione dei termini a giorni, giudicata inutile.
+  const [dataProiezione, setDataProiezione] = useState("");
+  const [proiezioneAperta, setProiezioneAperta] = useState(false);
 
   useEffect(() => {
     spGetFatture({ data: { direzione: "Emessa" } })
@@ -260,6 +263,58 @@ export function ResocontoTab() {
   const inSelezione = (nome: string, sel: string[]) =>
     sel.length === 0 || sel.includes(clienteGroupKey(nome) || nome);
 
+  // PROIEZIONE A DATA: per ciascun lato, le fatture con scadenza entro la
+  // data scelta e il loro esito — Pagato (residuo saldato), Stornato
+  // (annullata da NC), oppure ancora aperto (Da incassare/Da pagare).
+  const proiezione = useMemo(() => {
+    if (!dataProiezione) return null;
+    const cliNessuno = clientiSel.includes(NESSUNO);
+    const forNessuno = fornitoriSel.includes(NESSUNO);
+    const cliSel = espandiGruppi(
+      clientiSel.filter((x) => x !== NESSUNO),
+      opzioniClienti,
+    );
+    const forSel = espandiGruppi(
+      fornitoriSel.filter((x) => x !== NESSUNO),
+      opzioniFornitori,
+    );
+    const r2 = (x: number) => Math.round(x * 100) / 100;
+    const lato = (righe: typeof attive, sel: string[], nessuno: boolean) => {
+      const inData = nessuno
+        ? []
+        : righe.filter(
+            (x) =>
+              inSelezione(x.f.cliente, sel) &&
+              !isNotaCredito(x.f.tipoDocumento) &&
+              x.s.scadenza &&
+              x.s.scadenza <= dataProiezione,
+          );
+      let pagato = 0;
+      let stornato = 0;
+      let aperto = 0;
+      const dettagli = inData
+        .map((x) => {
+          const residuo = residuoDi(x);
+          const stato: "pagato" | "stornato" | "aperto" = x.s.annullataDaNC
+            ? "stornato"
+            : residuo <= 1
+              ? "pagato"
+              : "aperto";
+          if (stato === "pagato") pagato += x.f.totale;
+          else if (stato === "stornato") stornato += x.f.totale;
+          else aperto += residuo;
+          return { x, residuo, stato };
+        })
+        .sort((a, b) => (a.x.s.scadenza < b.x.s.scadenza ? -1 : 1));
+      return { dettagli, pagato: r2(pagato), stornato: r2(stornato), aperto: r2(aperto) };
+    };
+    return {
+      att: lato(attive, cliSel, cliNessuno),
+      pas: lato(passive, forSel, forNessuno),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataProiezione, attive, passive, clientiSel, fornitoriSel, opzioniClienti, opzioniFornitori]);
+
   // --- Riconciliazione: Estratto conto vs Attive vs Passive -----------------
   const quadro = useMemo(() => {
     const cliNessuno = clientiSel.includes(NESSUNO);
@@ -355,7 +410,7 @@ export function ResocontoTab() {
   // SIMULAZIONE TERMINI (il "giochino" della direzione): con N scritto, il
   // ritardo si calcola su una scadenza FITTIZIA = data documento + N giorni.
   // I termini veri (regole/termini di pagamento) non vengono toccati.
-  const simTermini = Number(scadEntro) || 0;
+  const simTermini = 0; // simulazione a giorni rimossa (resta il codice spento)
   const ggRitardoVis = (x: (typeof attive)[number]): number => {
     if (simTermini <= 0) return x.s.giorniRitardo;
     if (!x.f.dataDocumento) return 0;
@@ -931,32 +986,109 @@ export function ResocontoTab() {
             <p className="mt-2 text-[11px] text-muted-foreground">{t("rt.nota")}</p>
           </div>
 
-          {/* SIMULAZIONE termini, accanto ai riquadri dei numeri. */}
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card px-5 py-3 shadow-[var(--shadow-card)]">
-            <label className="text-sm font-medium text-foreground">{t("rt.scadEntro")}</label>
-            <input
-              value={scadEntro}
-              onChange={(e) => setScadEntro(e.target.value.replace(/[^0-9]/g, ""))}
-              placeholder={t("rt.scadEntroPh")}
-              className="w-24 rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
-            />
-            <span className="text-xs text-muted-foreground">{t("rt.scadEntroNota")}</span>
-            {simTermini > 0 && (
+          {/* PROIEZIONE A DATA (chiusa di default) + export. */}
+          <div className="rounded-2xl border border-border bg-card px-5 py-3 shadow-[var(--shadow-card)]">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={() => setScadEntro("")}
-                className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-muted"
+                onClick={() => setProiezioneAperta((x) => !x)}
+                className="text-sm font-semibold text-foreground"
               >
-                {t("rt.scadEntroReset")}
+                {proiezioneAperta ? "▾" : "▸"} {t("rt.prTitolo")}
               </button>
+              <input
+                type="date"
+                value={dataProiezione}
+                onChange={(e) => {
+                  setDataProiezione(e.target.value);
+                  if (e.target.value) setProiezioneAperta(true);
+                }}
+                className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+              />
+              <span className="text-xs text-muted-foreground">{t("rt.prNota")}</span>
+              <button
+                type="button"
+                onClick={esportaResoconto}
+                className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+              >
+                {t("rt.esporta")}
+              </button>
+            </div>
+            {proiezioneAperta && proiezione && (
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                {(
+                  [
+                    ["att", t("rt.prAttive"), t("rt.prDaInc")],
+                    ["pas", t("rt.prPassive"), t("rt.prDaPag")],
+                  ] as const
+                ).map(([k, titolo, apertaLbl]) => {
+                  const latoP = proiezione[k];
+                  return (
+                    <div key={k} className="rounded-xl border border-border p-4">
+                      <div className="text-sm font-semibold text-foreground">{titolo}</div>
+                      {/* Totali nello stile degli specchietti in alto. */}
+                      <div
+                        className={`mt-1 text-2xl font-bold tabular-nums ${k === "att" ? "text-status-present" : "text-status-absent"}`}
+                      >
+                        {fmtImporto(latoP.aperto)} €
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {apertaLbl} {t("rt.prEntro")} {fmtData(dataProiezione)} · {t("rt.prPagato")}{" "}
+                        {fmtImporto(latoP.pagato)} € · {t("rt.prStornato")}{" "}
+                        {fmtImporto(latoP.stornato)} €
+                      </div>
+                      <div className="mt-2 max-h-80 overflow-auto">
+                        <table className="w-full text-[12px]">
+                          <tbody>
+                            {latoP.dettagli.map(({ x, residuo, stato }) => (
+                              <tr key={x.f.nomeFile} className="border-t border-border/40">
+                                <td className="whitespace-nowrap py-1 pr-2 font-medium">
+                                  {x.f.numero}
+                                </td>
+                                <td
+                                  className="max-w-40 truncate py-1 pr-2 text-muted-foreground"
+                                  title={x.f.cliente}
+                                >
+                                  {x.f.cliente}
+                                </td>
+                                <td className="whitespace-nowrap py-1 pr-2 text-muted-foreground">
+                                  {fmtData(x.s.scadenza)}
+                                </td>
+                                <td className="whitespace-nowrap py-1 pr-2 text-right tabular-nums">
+                                  {fmtImporto(stato === "aperto" ? residuo : x.f.totale)} €
+                                </td>
+                                <td className="py-1 text-right">
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                      stato === "pagato"
+                                        ? "bg-status-present/10 text-status-present"
+                                        : stato === "stornato"
+                                          ? "bg-amber-500/10 text-amber-600"
+                                          : "bg-status-absent/10 text-status-absent"
+                                    }`}
+                                  >
+                                    {stato === "pagato"
+                                      ? t("rt.prPagato")
+                                      : stato === "stornato"
+                                        ? t("rt.prStornato")
+                                        : apertaLbl}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                            {latoP.dettagli.length === 0 && (
+                              <tr>
+                                <td className="py-2 text-muted-foreground">{t("rt.prVuoto")}</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
-            <button
-              type="button"
-              onClick={esportaResoconto}
-              className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
-            >
-              {t("rt.esporta")}
-            </button>
           </div>
           {/* I ritardi, nelle due direzioni, con le fatture in chiaro. */}
           <div className="grid gap-4 lg:grid-cols-2">
