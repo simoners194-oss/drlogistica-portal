@@ -4389,6 +4389,48 @@ export async function correggiImportoMovimento(
   logSp("info", "correggi.importo", `Movimento ${id} corretto a ${importo}`);
 }
 
+/** FORZA INCASSI retroattivo: ogni movimento POSITIVO con tipologia da
+ *  spesa (non Incasso/Storno/Giroconto) diventa Incasso/Incasso regolare,
+ *  con le allocazioni di spesa azzerate. Un blocco per chiamata. */
+export async function forzaIncassiPositivi(): Promise<{ aggiornati: number; rimanenti: number }> {
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const F = cfg.movimentiFields;
+  const all = await fetchMovimenti();
+  const target = all.filter((m) => {
+    if (m.importo <= 0) return false;
+    const tip = (m.tipologia ?? "").toLowerCase();
+    return !(tip.startsWith("incasso") || tip.startsWith("storno") || tip.startsWith("giroconto"));
+  });
+  const batch = target.slice(0, APPLICA_MAX_PER_CALL);
+  let aggiornati = 0;
+  const BATCH = 4;
+  for (let i = 0; i < batch.length; i += BATCH) {
+    const esiti = await Promise.allSettled(
+      batch.slice(i, i + BATCH).map((m) => {
+        const patch: Record<string, unknown> = {};
+        if (F.Tipologia) patch[F.Tipologia] = "Incasso";
+        if (F.Sottocategoria) patch[F.Sottocategoria] = "Incasso regolare";
+        if (F.AllocPrimaria) patch[F.AllocPrimaria] = "";
+        if (F.AllocSecondaria) patch[F.AllocSecondaria] = "";
+        if (F.DaVerificare) patch[F.DaVerificare] = false;
+        return gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${m.id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        });
+      }),
+    );
+    aggiornati += esiti.filter((e) => e.status === "fulfilled").length;
+  }
+  const rimanenti = target.length - aggiornati;
+  logSp(
+    "info",
+    "forza.incassi",
+    `Positivi convertiti a Incasso: ${aggiornati}, rimanenti ${rimanenti}`,
+  );
+  return { aggiornati, rimanenti };
+}
+
 /** Elimina UN movimento dall'archivio. Chirurgico, per righe corrotte da
  *  import sbagliati (es. importi x100 da virgola letta come migliaia):
  *  annullare l'intero lotto butterebbe via anche le sanature manuali. */

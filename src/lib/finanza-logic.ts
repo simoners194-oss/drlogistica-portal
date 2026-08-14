@@ -263,7 +263,26 @@ export function applicaRegole<
     allocSecondaria?: string;
   },
 >(mov: T, regole: readonly RegolaFinanza[]): T {
-  if (!regole.length) return mov;
+  // INVARIANTE DI FORZA (richiesta direzione): un POSITIVO non puo' mai
+  // restare etichettato come spesa. Dopo le regole, se la tipologia non e'
+  // da entrata (Incasso/Storno/Giroconto) si converte d'ufficio e si
+  // azzerano le allocazioni di spesa rimaste.
+  const forzaIncasso = (x: T): T => {
+    const imp = x.importo ?? 0;
+    const tip = (x.tipologia ?? "").toLowerCase();
+    const daEntrata =
+      tip.startsWith("incasso") || tip.startsWith("storno") || tip.startsWith("giroconto");
+    if (imp <= 0 || daEntrata) return x;
+    return {
+      ...x,
+      tipologia: "Incasso",
+      sottocategoria: "Incasso regolare",
+      allocPrimaria: "",
+      allocSecondaria: "",
+      daVerificare: false,
+    };
+  };
+  if (!regole.length) return forzaIncasso(mov);
   const priorita = (r: RegolaFinanza) =>
     r.pattern.trim() === "*"
       ? 9
@@ -276,8 +295,8 @@ export function applicaRegole<
           : 3;
   const ordinate = [...regole].sort((a, b) => priorita(a) - priorita(b));
   const r = ordinate.find((x) => matchRegola(mov, x));
-  if (!r) return mov;
-  return {
+  if (!r) return forzaIncasso(mov);
+  return forzaIncasso({
     ...mov,
     tipologia: r.tipologia?.trim() ? r.tipologia.trim() : mov.tipologia,
     sottocategoria: r.sottocategoria?.trim() ? r.sottocategoria.trim() : mov.sottocategoria,
@@ -285,7 +304,7 @@ export function applicaRegole<
     allocSecondaria: r.allocSecondaria?.trim() ? r.allocSecondaria.trim() : mov.allocSecondaria,
     cliente: r.cliente?.trim() ? r.cliente.trim() : mov.cliente,
     daVerificare: r.tipologia?.trim() ? false : mov.daVerificare,
-  };
+  });
 }
 
 // --- Regola unica DIPENDENTI -------------------------------------------------

@@ -81,6 +81,7 @@ import {
   spCreateRegolaFinanza,
   spDeleteRegolaFinanza,
   spApplicaRegolaFinanza,
+  spForzaIncassi,
   spUpdateRegolaFinanza,
   spApplicaRegolaDipendenti,
   spAssegnaContoLotto,
@@ -4811,8 +4812,20 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                           errori++;
                         }
                       }
+                      // PASSO FINALE HARDCODED: un positivo non puo' essere
+                      // una spesa — quello che le regole non hanno coperto
+                      // viene convertito d'ufficio in Incasso.
+                      let forzati = 0;
+                      for (;;) {
+                        const f2 = (await spForzaIncassi()) as {
+                          aggiornati: number;
+                          rimanenti: number;
+                        };
+                        forzati += f2.aggiornati;
+                        if (f2.rimanenti <= 0 || f2.aggiornati === 0) break;
+                      }
                       toast.success(
-                        `${tot} ${t("fin.regolaApplicati")}${errori ? ` · ${errori} regole con errori` : ""}`,
+                        `${tot} ${t("fin.regolaApplicati")}${forzati ? ` · ${forzati} ${t("fin.forzatiIncasso")}` : ""}${errori ? ` · ${errori} regole con errori` : ""}`,
                       );
                       loadMovimenti(anni);
                       loadAnomalie();
