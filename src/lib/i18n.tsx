@@ -1217,6 +1217,8 @@ const en = {
   "fin.pivotDettaglio": "Detail pivot (classification \u00d7 month)",
   "fin.pivotColonne": "Columns:",
   "fin.pivotTotale": "Total",
+  "fin.pivotComprimi": "Collapse all",
+  "fin.pivotEspandi": "Expand all",
   "fin.regTabMov": "Movement rules",
   "fin.regTabFat": "Invoice rules",
   "fin.rfDoveImport":
@@ -2501,6 +2503,8 @@ const it: Record<DictKey, string> = {
   "fin.pivotDettaglio": "Pivot di dettaglio (classificazione \u00d7 mese)",
   "fin.pivotColonne": "Colonne:",
   "fin.pivotTotale": "Totale",
+  "fin.pivotComprimi": "Comprimi tutto",
+  "fin.pivotEspandi": "Espandi tutto",
   "fin.regTabMov": "Regole movimenti",
   "fin.regTabFat": "Regole fatture",
   "fin.rfDoveImport":

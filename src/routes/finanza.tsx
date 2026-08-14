@@ -2904,7 +2904,7 @@ function FinanzaPage() {
       {tab === "resoconto" && <ResocontoTab />}
 
       {/* ------------------------------- Movimenti ------------------------- */}
-      {tab === "movimenti" && <PivotClassificazione righe={righePivotMov} />}
+      {tab === "movimenti" && <PivotClassificazione righe={righePivotMov} nome="movimenti" />}
       {tab === "movimenti" && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="flex flex-wrap items-end gap-3 mb-4">

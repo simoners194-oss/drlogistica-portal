@@ -3175,7 +3175,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           </div>
         )}
 
-        {ricevute && <PivotClassificazione righe={righePivotFt} />}
+        {ricevute && <PivotClassificazione righe={righePivotFt} nome="fatture-passive" />}
         {/* Elenco */}
         {loading ? (
           <div className="py-10 text-center text-sm text-muted-foreground">
