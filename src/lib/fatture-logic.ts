@@ -661,54 +661,37 @@ export function risolviClassificazione(
   fallbackMese: RegolaMeseFallback = "g15",
 ): ClassificazioneRisolta {
   const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza, f.oggetto, fallbackMese);
-  if (f.tipologiaCosto || f.clienteRif)
-    return {
-      mese,
-      tipologia: f.tipologiaCosto ?? "",
-      clienteRif: f.clienteRif ?? "",
-      sottocategoria: "",
-      allocPrimaria: "",
-      allocSecondaria: "",
-      fonte: "manuale",
-    };
-  const chiave = clienteGroupKey(f.cliente) || f.cliente;
+  // CAMPO PER CAMPO: il manuale vince SOLO sui campi che ha davvero.
+  // Prima il ramo era tutto-o-niente: bastava un Cliente rif manuale del
+  // vecchio report per zittire la regola su tipologia, sottocategoria e
+  // allocazioni — fatture "(non classificata)" con la regola pronta li' accanto.
   const regola = compilaRegoleFatture(regole).find((rc) => matchRegolaFattura(f, rc))?.r;
-  if (
-    regola &&
-    (regola.tipologia ||
-      regola.clienteRif ||
-      regola.sottocategoria ||
-      regola.allocPrimaria ||
-      regola.allocSecondaria)
-  )
-    return {
-      mese,
-      tipologia: regola.tipologia ?? "",
-      clienteRif: regola.clienteRif ?? "",
-      sottocategoria: regola.sottocategoria ?? "",
-      allocPrimaria: regola.allocPrimaria ?? "",
-      allocSecondaria: regola.allocSecondaria ?? "",
-      fonte: "regola",
-    };
-  const proposta = auto.get(chiave);
-  if (proposta && (proposta.tipologia || proposta.clienteRif))
-    return {
-      mese,
-      tipologia: proposta.tipologia ?? "",
-      clienteRif: proposta.clienteRif ?? "",
-      sottocategoria: "",
-      allocPrimaria: "",
-      allocSecondaria: "",
-      fonte: "auto",
-    };
+  const proposta = auto.get(clienteGroupKey(f.cliente) || f.cliente);
+  const manTip = (f.tipologiaCosto ?? "").trim();
+  const manCli = (f.clienteRif ?? "").trim();
+  const tipologia = manTip || regola?.tipologia || proposta?.tipologia || "";
+  const clienteRif = manCli || regola?.clienteRif || proposta?.clienteRif || "";
+  const fonte: ClassificazioneRisolta["fonte"] =
+    manTip || manCli
+      ? "manuale"
+      : regola &&
+          (regola.tipologia ||
+            regola.clienteRif ||
+            regola.sottocategoria ||
+            regola.allocPrimaria ||
+            regola.allocSecondaria)
+        ? "regola"
+        : proposta && (proposta.tipologia || proposta.clienteRif)
+          ? "auto"
+          : "";
   return {
     mese,
-    tipologia: "",
-    clienteRif: "",
-    sottocategoria: "",
-    allocPrimaria: "",
-    allocSecondaria: "",
-    fonte: "",
+    tipologia,
+    clienteRif,
+    sottocategoria: regola?.sottocategoria ?? "",
+    allocPrimaria: regola?.allocPrimaria ?? "",
+    allocSecondaria: regola?.allocSecondaria ?? "",
+    fonte,
   };
 }
 
@@ -726,48 +709,31 @@ export function risolviClassificazioneTutte(
   const out = new Map<string, ClassificazioneRisolta>();
   for (const f of fatture) {
     const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza, f.oggetto, fallbackMese);
-    if (f.tipologiaCosto || f.clienteRif) {
-      out.set(f.nomeFile, {
-        mese,
-        tipologia: f.tipologiaCosto ?? "",
-        clienteRif: f.clienteRif ?? "",
-        sottocategoria: "",
-        allocPrimaria: "",
-        allocSecondaria: "",
-        fonte: "manuale",
-      });
-      continue;
-    }
-    const chiave = clienteGroupKey(f.cliente) || f.cliente;
+    // CAMPO PER CAMPO, come la versione singola (vedi commento la').
     const regola = compilate.find((rc) => matchRegolaFattura(f, rc))?.r;
-    if (
-      regola &&
-      (regola.tipologia ||
-        regola.clienteRif ||
-        regola.sottocategoria ||
-        regola.allocPrimaria ||
-        regola.allocSecondaria)
-    ) {
-      out.set(f.nomeFile, {
-        mese,
-        tipologia: regola.tipologia ?? "",
-        clienteRif: regola.clienteRif ?? "",
-        sottocategoria: regola.sottocategoria ?? "",
-        allocPrimaria: regola.allocPrimaria ?? "",
-        allocSecondaria: regola.allocSecondaria ?? "",
-        fonte: "regola",
-      });
-      continue;
-    }
-    const proposta = auto.get(chiave);
+    const proposta = auto.get(clienteGroupKey(f.cliente) || f.cliente);
+    const manTip = (f.tipologiaCosto ?? "").trim();
+    const manCli = (f.clienteRif ?? "").trim();
     out.set(f.nomeFile, {
       mese,
-      tipologia: proposta?.tipologia ?? "",
-      clienteRif: proposta?.clienteRif ?? "",
-      sottocategoria: "",
-      allocPrimaria: "",
-      allocSecondaria: "",
-      fonte: proposta && (proposta.tipologia || proposta.clienteRif) ? "auto" : "",
+      tipologia: manTip || regola?.tipologia || proposta?.tipologia || "",
+      clienteRif: manCli || regola?.clienteRif || proposta?.clienteRif || "",
+      sottocategoria: regola?.sottocategoria ?? "",
+      allocPrimaria: regola?.allocPrimaria ?? "",
+      allocSecondaria: regola?.allocSecondaria ?? "",
+      fonte:
+        manTip || manCli
+          ? "manuale"
+          : regola &&
+              (regola.tipologia ||
+                regola.clienteRif ||
+                regola.sottocategoria ||
+                regola.allocPrimaria ||
+                regola.allocSecondaria)
+            ? "regola"
+            : proposta && (proposta.tipologia || proposta.clienteRif)
+              ? "auto"
+              : "",
     });
   }
   return out;
