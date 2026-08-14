@@ -1213,6 +1213,10 @@ const en = {
   "ft.colNomeFile": "File name",
   "ft.fNonClass": "Unclassified only",
   "ft.classVuota": "(unclassified)",
+  "ft.migraBtn": "Rules replace legacy types",
+  "ft.migraConfirm":
+    "Clear the legacy manual type on every invoice covered by a rule? The rule takes over with the new type, subcategory and allocations. Invoices without a matching rule keep their value. It can take a few minutes.",
+  "ft.migraOk": "Legacy types cleared: rules now classify these invoices",
   "fin.pivotSintesi": "Summary pivot (primary allocation \u00d7 type, with subtotals)",
   "fin.pivotDettaglio": "Detail pivot (classification \u00d7 month)",
   "fin.pivotColonne": "Columns:",
@@ -2499,6 +2503,10 @@ const it: Record<DictKey, string> = {
   "ft.colNomeFile": "Nome file",
   "ft.fNonClass": "Solo non classificate",
   "ft.classVuota": "(non classificata)",
+  "ft.migraBtn": "Le regole sostituiscono le tipologie storiche",
+  "ft.migraConfirm":
+    "Azzerare la tipologia manuale storica su ogni fattura coperta da una regola? La regola subentra con tipologia nuova, sottocategoria e allocazioni. Le fatture senza regola conservano il valore. Pu\u00f2 richiedere qualche minuto.",
+  "ft.migraOk": "Tipologie storiche azzerate: ora classificano le regole",
   "fin.pivotSintesi": "Pivot di sintesi (allocazione primaria \u00d7 tipologia, con subtotali)",
   "fin.pivotDettaglio": "Pivot di dettaglio (classificazione \u00d7 mese)",
   "fin.pivotColonne": "Colonne:",

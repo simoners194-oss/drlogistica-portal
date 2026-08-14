@@ -45,6 +45,8 @@ import {
   meseCompetenza,
   classificazioneAuto,
   risolviClassificazione,
+  compilaRegoleFatture,
+  matchRegolaFattura,
   risolviClassificazioneTutte,
   type RegolaMeseFallback,
   type RegolaFattura,
@@ -171,6 +173,8 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
   // "" = tutte; "tutte" = solo NC; "sciolte" = solo NC non collegate.
   const [ncFiltro, setNcFiltro] = useState<"" | "tutte" | "sciolte">("");
   const [soloNonClassF, setSoloNonClassF] = useState(false);
+  const [migraBusy, setMigraBusy] = useState(false);
+  const [migraProg, setMigraProg] = useState("");
   const [tipSelF, setTipSelF] = useState<string[]>([]);
   const [meseSelF, setMeseSelF] = useState<string[]>([]);
   const [sottoSelF, setSottoSelF] = useState<string[]>([]);
@@ -1141,6 +1145,50 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     ncFiltro,
     ncCollegate,
   ]);
+
+  // MIGRAZIONE TIPOLOGIE STORICHE: le fatture col vecchio valore manuale
+  // (report di luglio, vocabolario vecchio in maiuscolo) coperte da una
+  // regola nuova. Azzerando il manuale, la regola subentra con tutto il
+  // pacchetto; dove non c'e' regola il valore storico resta al suo posto.
+  const candidatiMigra = useMemo(() => {
+    if (!ricevute) return [];
+    const comp = compilaRegoleFatture(regoleFatture).filter((rc) => rc.direzione === "Ricevuta");
+    if (!comp.length) return [];
+    return (fattureRic ?? []).filter(
+      (f) => (f.tipologiaCosto ?? "").trim() !== "" && comp.some((rc) => matchRegolaFattura(f, rc)),
+    );
+  }, [ricevute, fattureRic, regoleFatture]);
+
+  const migraTipologie = async () => {
+    if (!candidatiMigra.length) return;
+    if (!window.confirm(`${t("ft.migraConfirm")} (${candidatiMigra.length})`)) return;
+    setMigraBusy(true);
+    try {
+      let fatte = 0;
+      for (const f of candidatiMigra) {
+        await spSetClassificazione({
+          data: { nomeFile: f.nomeFile, direzione: "Ricevuta", tipologiaCosto: "" },
+        });
+        fatte++;
+        if (fatte % 5 === 0 || fatte === candidatiMigra.length)
+          setMigraProg(`${fatte} / ${candidatiMigra.length}`);
+      }
+      const nomi = new Set(candidatiMigra.map((f) => f.nomeFile));
+      setFattureRic((prev) =>
+        prev
+          ? prev.map((r) => (nomi.has(r.nomeFile) ? { ...r, tipologiaCosto: undefined } : r))
+          : prev,
+      );
+      toast.success(t("ft.migraOk"), { description: `${fatte}` });
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setMigraBusy(false);
+      setMigraProg("");
+    }
+  };
 
   // Opzioni delle tendine di classificazione: valori distinti su TUTTO
   // l'archivio della direzione corrente (non solo sul filtrato, per non
@@ -2792,6 +2840,18 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
               >
                 {t("ft.fNonClass")}
               </button>
+              {ricevute && candidatiMigra.length > 0 && (
+                <button
+                  type="button"
+                  disabled={migraBusy}
+                  onClick={() => void migraTipologie()}
+                  className="rounded-full border border-primary/40 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+                >
+                  {migraBusy
+                    ? `${t("common.loading")} ${migraProg}`
+                    : `${t("ft.migraBtn")} (${candidatiMigra.length})`}
+                </button>
+              )}
             </div>
           </div>
           <MultiSelect
