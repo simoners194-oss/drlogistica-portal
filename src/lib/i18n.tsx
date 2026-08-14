@@ -1213,6 +1213,11 @@ const en = {
   "ft.colNomeFile": "File name",
   "ft.fNonClass": "Unclassified only",
   "ft.classVuota": "(unclassified)",
+  "ft.editFtTitolo": "Fix classification",
+  "ft.editFtTip": "Fix month/type/reference client",
+  "ft.editFtNota": "Empty field = the manual value is removed and rules/history take over again.",
+  "ft.regolaDaFtTip": "Create a rule from this invoice",
+  "ft.regolaPrecompilata": "Rule pre-filled from the invoice: check it and press Save",
   "ft.migraBtn": "Rules replace legacy types",
   "ft.migraConfirm":
     "Clear the legacy manual type on every invoice covered by a rule? The rule takes over with the new type, subcategory and allocations. Invoices without a matching rule keep their value. It can take a few minutes.",
@@ -2506,6 +2511,12 @@ const it: Record<DictKey, string> = {
   "ft.colNomeFile": "Nome file",
   "ft.fNonClass": "Solo non classificate",
   "ft.classVuota": "(non classificata)",
+  "ft.editFtTitolo": "Correggi classificazione",
+  "ft.editFtTip": "Correggi mese/tipologia/cliente rif",
+  "ft.editFtNota":
+    "Campo vuoto = il valore manuale viene rimosso e tornano a valere regole e storico.",
+  "ft.regolaDaFtTip": "Crea una regola da questa fattura",
+  "ft.regolaPrecompilata": "Regola precompilata dalla fattura: controlla e premi Salva",
   "ft.migraBtn": "Le regole sostituiscono le tipologie storiche",
   "ft.migraConfirm":
     "Azzerare la tipologia manuale storica su ogni fattura coperta da una regola? La regola subentra con tipologia nuova, sottocategoria e allocazioni. Le fatture senza regola conservano il valore. Pu\u00f2 richiedere qualche minuto.",

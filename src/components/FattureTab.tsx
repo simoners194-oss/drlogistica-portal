@@ -180,6 +180,11 @@ export function FattureTab({
   // "" = tutte; "tutte" = solo NC; "sciolte" = solo NC non collegate.
   const [ncFiltro, setNcFiltro] = useState<"" | "tutte" | "sciolte">("");
   const [soloNonClassF, setSoloNonClassF] = useState(false);
+  const [editFt, setEditFt] = useState<FatturaRaw | null>(null);
+  const [efMese, setEfMese] = useState("");
+  const [efTip, setEfTip] = useState("");
+  const [efCli, setEfCli] = useState("");
+  const [efBusy, setEfBusy] = useState(false);
   const [migraBusy, setMigraBusy] = useState(false);
   const [migraProg, setMigraProg] = useState("");
   const [tipSelF, setTipSelF] = useState<string[]>([]);
@@ -1681,6 +1686,71 @@ export function FattureTab({
     campo: "mese" | "tip" | "cli";
   } | null>(null);
   const [cellaVal, setCellaVal] = useState("");
+
+  const apriEditFt = (f: FatturaRaw) => {
+    setEditFt(f);
+    setEfMese(f.meseCompetenza ?? "");
+    setEfTip(f.tipologiaCosto ?? "");
+    setEfCli(f.clienteRif ?? "");
+  };
+
+  const salvaEditFt = async () => {
+    if (!editFt) return;
+    setEfBusy(true);
+    try {
+      await spSetClassificazione({
+        data: {
+          nomeFile: editFt.nomeFile,
+          direzione: dir,
+          meseCompetenza: efMese.trim(),
+          tipologiaCosto: efTip.trim(),
+          clienteRif: efCli.trim(),
+        },
+      });
+      const nome = editFt.nomeFile;
+      const aggiorna = (l: SpFattura[] | null) =>
+        l
+          ? l.map((r) =>
+              r.nomeFile === nome
+                ? {
+                    ...r,
+                    meseCompetenza: efMese.trim() || undefined,
+                    tipologiaCosto: efTip.trim() || undefined,
+                    clienteRif: efCli.trim() || undefined,
+                  }
+                : r,
+            )
+          : l;
+      (dir === "Emessa" ? setFattureEm : setFattureRic)(aggiorna);
+      setEditFt(null);
+      toast.success(t("ft.classSalvata"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setEfBusy(false);
+    }
+  };
+
+  // BACCHETTA: precompila una regola fatture dal documento — fornitore +
+  // esiti della classificazione attuale come punto di partenza.
+  const creaRegolaDaFt = (f: FatturaRaw) => {
+    const cl = classificaDi(f);
+    setRfEditId(null);
+    setRfCliente(f.cliente);
+    setRfOggetto("");
+    setRfOperatore("AND");
+    setRfTipologia(cl.tipologia);
+    setRfSottocat(cl.sottocategoria);
+    setRfAllocPri(cl.allocPrimaria);
+    setRfAllocSec(cl.allocSecondaria);
+    setRfServizio(cl.clienteRif);
+    setRfNota("");
+    setShowRegoleFat(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    toast.info(t("ft.regolaPrecompilata"), { description: f.cliente });
+  };
 
   const salvaCella = async (f: FatturaRaw) => {
     if (!cellaEdit) return;
@@ -3868,6 +3938,7 @@ export function FattureTab({
                         </th>
                       );
                     })}
+                    <th className="py-1.5" />
                   </tr>
                 </thead>
                 <tbody>
@@ -4143,10 +4214,31 @@ export function FattureTab({
                         >
                           {x.f.nomeFile}
                         </td>
+                        <td
+                          className="whitespace-nowrap py-1 pl-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => apriEditFt(x.f)}
+                            title={t("ft.editFtTip")}
+                            className="mr-1 text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => creaRegolaDaFt(x.f)}
+                            title={t("ft.regolaDaFtTip")}
+                            className="text-muted-foreground hover:text-primary"
+                          >
+                            <Wand2 className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
                       </tr>,
                       aperta && (
                         <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
-                          <td colSpan={ricevute ? 25 : 21} className="py-3 px-3 bg-muted/20">
+                          <td colSpan={ricevute ? 26 : 22} className="py-3 px-3 bg-muted/20">
                             <div className="text-xs text-muted-foreground mb-2">
                               {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
                               {termini.length
@@ -4421,6 +4513,70 @@ export function FattureTab({
               )}
             </div>
           </>
+        )}
+        {editFt && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setEditFt(null)}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-1 text-sm font-semibold text-foreground">
+                {t("ft.editFtTitolo")} — {editFt.numero}
+              </div>
+              <p className="mb-3 text-xs text-muted-foreground">{editFt.cliente}</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-muted-foreground">{t("ft.colCompetenza")}</label>
+                  <input
+                    value={efMese}
+                    onChange={(e) => setEfMese(e.target.value)}
+                    placeholder="YYYY-MM"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">{t("ft.colTipologia")}</label>
+                  <input
+                    list="tipologie-note"
+                    value={efTip}
+                    onChange={(e) => setEfTip(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">
+                    {ricevute ? t("ft.colClienteRif") : t("ft.colServizio")}
+                  </label>
+                  <input
+                    value={efCli}
+                    onChange={(e) => setEfCli(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">{t("ft.editFtNota")}</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditFt(null)}
+                  className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  disabled={efBusy}
+                  onClick={() => void salvaEditFt()}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                >
+                  {efBusy ? t("common.loading") : t("common.save")}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
