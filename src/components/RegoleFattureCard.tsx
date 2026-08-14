@@ -49,6 +49,7 @@ export function RegoleFattureCard() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [cerca, setCerca] = useState("");
   const [uniBusy, setUniBusy] = useState(false);
+  const [gruppiChiusi, setGruppiChiusi] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     spGetRegoleFatture()
@@ -570,71 +571,119 @@ export function RegoleFattureCard() {
           {uniBusy ? t("common.loading") : t("ft.rfUniBtn")}
         </button>
       </div>
-      <div className="mt-3 space-y-1">
-        {elenco.map((r) => (
-          <div
-            key={r.id}
-            className="flex items-start gap-2 border-t border-border/50 py-1.5 text-[13px]"
-          >
-            <span className="flex-1">
-              {r.fornitore && (
-                <>
-                  {t("ft.rfFraseCliente")} «<b>{r.fornitore}</b>»
-                </>
-              )}
-              {r.fornitore && r.oggettoInclude && (
-                <b className="text-primary"> {r.operatore ?? "AND"} </b>
-              )}
-              {r.oggettoInclude && (
-                <>
-                  {t("ft.rfFraseOggetto")} «<b>{r.oggettoInclude}</b>»
-                </>
-              )}{" "}
-              → {[r.tipologia, r.sottocategoria].filter(Boolean).join(" · ")}
-              {(r.allocPrimaria || r.allocSecondaria) &&
-                ` · ${[r.allocPrimaria, r.allocSecondaria].filter(Boolean).join(" / ")}`}
-              {r.clienteRif && ` · ${r.clienteRif}`}
-              {r.note && <i className="text-muted-foreground"> — {r.note}</i>}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setEditId(r.id ?? null);
-                setCliente(r.fornitore ?? "");
-                setOggetto(r.oggettoInclude ?? "");
-                setOperatore(r.operatore === "OR" ? "OR" : "AND");
-                setDir(r.direzione === "Emessa" ? "Emessa" : "Ricevuta");
-                setTipologia(r.tipologia ?? "");
-                setSottocat(r.sottocategoria ?? "");
-                setAllocPri(r.allocPrimaria ?? "");
-                setAllocSec(r.allocSecondaria ?? "");
-                setServizio(r.clienteRif ?? "");
-                setNota(r.note ?? "");
-              }}
-              className="text-muted-foreground hover:text-foreground"
-              title={t("fin.regolaAggiorna")}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!window.confirm(t("ft.rfDelConfirm"))) return;
-                void spDeleteRegolaFattura({ data: { id: r.id ?? "" } })
-                  .then(() => setRegole((prev) => prev.filter((x) => x.id !== r.id)))
-                  .catch((err) =>
-                    toast.error(t("common.error"), {
-                      description: err instanceof Error ? err.message : String(err),
-                    }),
-                  );
-              }}
-              className="text-muted-foreground hover:text-status-absent"
-              title={t("common.delete")}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
+      {/* ELENCO IN STILE REGOLE MOVIMENTI: gruppi per tipologia
+          richiudibili, frase leggibile, esiti come chip. */}
+      <div className="mt-3 space-y-2">
+        {(() => {
+          const perTip = new Map<string, typeof elenco>();
+          for (const r of elenco) {
+            const k = r.tipologia?.trim() || t("ft.classVuota");
+            const arr = perTip.get(k) ?? [];
+            arr.push(r);
+            perTip.set(k, arr);
+          }
+          return [...perTip.entries()]
+            .sort((x, y) => x[0].localeCompare(y[0]))
+            .map(([tip, rs]) => {
+              const chiuso = gruppiChiusi.has(tip);
+              return (
+                <div key={tip} className="rounded-xl border border-border/60 p-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setGruppiChiusi((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(tip)) next.delete(tip);
+                        else next.add(tip);
+                        return next;
+                      })
+                    }
+                    className="text-sm font-semibold text-primary"
+                  >
+                    {chiuso ? "▸" : "▾"} {tip}{" "}
+                    <span className="font-normal text-muted-foreground">({rs.length})</span>
+                  </button>
+                  {!chiuso &&
+                    rs.map((r) => (
+                      <div
+                        key={r.id}
+                        className="flex items-start gap-2 border-t border-border/40 py-1.5 text-[13px]"
+                      >
+                        <span className="flex-1 leading-relaxed">
+                          {r.fornitore && (
+                            <>
+                              {t("ft.rfFraseCliente")} «<b>{r.fornitore}</b>»
+                            </>
+                          )}
+                          {r.fornitore && r.oggettoInclude && (
+                            <b className="text-primary"> {r.operatore ?? "AND"} </b>
+                          )}
+                          {r.oggettoInclude && (
+                            <>
+                              {t("ft.rfFraseOggetto")} «<b>{r.oggettoInclude}</b>»
+                            </>
+                          )}{" "}
+                          →{" "}
+                          {r.sottocategoria && (
+                            <span className="mr-1 rounded bg-primary/10 px-1.5 py-0.5 text-primary">
+                              {t("fin.sottocat")} → {r.sottocategoria}
+                            </span>
+                          )}
+                          {(r.allocPrimaria || r.allocSecondaria) && (
+                            <span className="mr-1 rounded bg-muted px-1.5 py-0.5">
+                              {[r.allocPrimaria, r.allocSecondaria].filter(Boolean).join(" / ")}
+                            </span>
+                          )}
+                          {r.clienteRif && (
+                            <span className="mr-1 rounded bg-primary/10 px-1.5 py-0.5 text-primary">
+                              {t("ft.colClienteRif")} → {r.clienteRif}
+                            </span>
+                          )}
+                          {r.note && <i className="text-muted-foreground"> — {r.note}</i>}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditId(r.id ?? null);
+                            setCliente(r.fornitore ?? "");
+                            setOggetto(r.oggettoInclude ?? "");
+                            setOperatore(r.operatore === "OR" ? "OR" : "AND");
+                            setDir(r.direzione === "Emessa" ? "Emessa" : "Ricevuta");
+                            setTipologia(r.tipologia ?? "");
+                            setSottocat(r.sottocategoria ?? "");
+                            setAllocPri(r.allocPrimaria ?? "");
+                            setAllocSec(r.allocSecondaria ?? "");
+                            setServizio(r.clienteRif ?? "");
+                            setNota(r.note ?? "");
+                          }}
+                          className="text-muted-foreground hover:text-foreground"
+                          title={t("fin.regolaAggiorna")}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!window.confirm(t("ft.rfDelConfirm"))) return;
+                            void spDeleteRegolaFattura({ data: { id: r.id ?? "" } })
+                              .then(() => setRegole((prev) => prev.filter((x) => x.id !== r.id)))
+                              .catch((err) =>
+                                toast.error(t("common.error"), {
+                                  description: err instanceof Error ? err.message : String(err),
+                                }),
+                              );
+                          }}
+                          className="text-muted-foreground hover:text-status-absent"
+                          title={t("common.delete")}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              );
+            });
+        })()}
       </div>
     </div>
   );

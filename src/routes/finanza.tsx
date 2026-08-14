@@ -5083,85 +5083,9 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
             )}
           </div>
 
-          {/* Regole di classificazione delle fatture passive: per fornitore
-              fissano tipologia e cliente di riferimento (immagine del
-              direttore: Nolvex → sanzioni/franchigie, cliente NOLVEX). */}
-          <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-            <div className="text-sm font-semibold text-foreground mb-1">
-              {t("fin.rfTitle")}
-              {regoleFat != null && (
-                <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                  ({regoleFat.length})
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground mb-4">{t("fin.rfDesc")}</p>
-            <div className="flex flex-wrap items-end gap-3 mb-4">
-              <div className="flex-1 min-w-48">
-                <label className="text-xs text-muted-foreground">{t("fin.rfFornitore")}</label>
-                <input
-                  value={rfFornitore}
-                  onChange={(e) => setRfFornitore(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
-              <div className="flex-1 min-w-56">
-                <label className="text-xs text-muted-foreground">{t("fin.rfTipologia")}</label>
-                <input
-                  value={rfTipologia}
-                  onChange={(e) => setRfTipologia(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
-              <div className="w-44">
-                <label className="text-xs text-muted-foreground">{t("fin.rfCliente")}</label>
-                <input
-                  value={rfCliente}
-                  onChange={(e) => setRfCliente(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
-              <button
-                type="button"
-                disabled={rfBusy}
-                onClick={() => void salvaRegolaFat()}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-              >
-                {t("common.save")}
-              </button>
-            </div>
-            {regoleFat == null ? (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            ) : regoleFat.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("fin.rfEmpty")}</p>
-            ) : (
-              <ul className="divide-y divide-border/60">
-                {[...regoleFat]
-                  .sort((a, b) => a.fornitore.localeCompare(b.fornitore))
-                  .map((r) => (
-                    <li
-                      key={r.id ?? r.fornitore}
-                      className="flex items-center gap-3 py-1.5 text-sm"
-                    >
-                      <span className="w-56 truncate font-medium">{r.fornitore}</span>
-                      <span className="flex-1 truncate text-muted-foreground">
-                        {r.tipologia ?? "—"}
-                      </span>
-                      <span className="w-40 truncate">{r.clienteRif ?? ""}</span>
-                      <button
-                        type="button"
-                        disabled={rfBusy}
-                        onClick={() => void eliminaRegolaFat(r)}
-                        className="rounded-md p-1 text-muted-foreground hover:text-status-absent"
-                        title={t("common.delete")}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            )}
-          </div>
+          {/* Le regole fatture vivono nella sezione 'Regole fatture' di
+              questa stessa tab (e nella tab Fatture): il vecchio pannello a
+              tre campi e' stato rimosso. */}
 
           {/* Termini d'incasso per cliente: i giorni contrattuali da cui
               partono scadenze e ritardi delle fatture attive. Si impostano
