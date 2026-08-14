@@ -582,7 +582,15 @@ def main() -> None:
                 ultimo_errore = e
         if browser is None:
             raise RuntimeError(f"Nessun browser avviabile: {ultimo_errore}")
-        page = browser.new_page(accept_downloads=True)
+        # In headless il WAF di Aruba blocca l'impronta di default ("Web
+        # Page Blocked"): user-agent da browser normale, senza 'Headless'.
+        page = browser.new_page(
+            accept_downloads=True,
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0"
+            ),
+        )
         try:
             login(page, cfg)
             if "nclinks" in sys.argv:
