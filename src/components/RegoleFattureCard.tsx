@@ -47,6 +47,8 @@ export function RegoleFattureCard() {
   const [impBusy, setImpBusy] = useState(false);
   const [impProg, setImpProg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [cerca, setCerca] = useState("");
+  const [uniBusy, setUniBusy] = useState(false);
 
   useEffect(() => {
     spGetRegoleFatture()
@@ -251,8 +253,114 @@ export function RegoleFattureCard() {
     }
   };
 
+  // UNIFICA (come le regole movimenti): regole con gli STESSI esiti e
+  // stessa condizione sull'oggetto si fondono in una sola con l'elenco dei
+  // fornitori separato da virgole; oltre i 240 caratteri si spezza in
+  // regole gemelle (limite della colonna SharePoint a riga singola).
+  const unifica = async () => {
+    const daDir = regole.filter((r) => (r.direzione ?? "Ricevuta") === dir);
+    const gruppi = new Map<string, RegolaFattura[]>();
+    for (const r of daDir) {
+      const k = [
+        (r.oggettoInclude ?? "").trim().toLowerCase(),
+        r.operatore ?? "AND",
+        (r.tipologia ?? "").trim().toLowerCase(),
+        (r.sottocategoria ?? "").trim().toLowerCase(),
+        (r.allocPrimaria ?? "").trim().toLowerCase(),
+        (r.allocSecondaria ?? "").trim().toLowerCase(),
+        (r.clienteRif ?? "").trim().toLowerCase(),
+        (r.note ?? "").trim().toLowerCase(),
+      ].join("\u0001");
+      const arr = gruppi.get(k) ?? [];
+      arr.push(r);
+      gruppi.set(k, arr);
+    }
+    const daFondere = [...gruppi.values()].filter((g) => g.length > 1);
+    if (!daFondere.length) {
+      toast.success(t("ft.rfUniNiente"));
+      return;
+    }
+    if (!window.confirm(`${t("ft.rfUniConfirm")} (${daDir.length} → ?)`)) return;
+    setUniBusy(true);
+    try {
+      let finali = daDir.length - daFondere.reduce((s2, g) => s2 + g.length, 0);
+      for (const g of daFondere) {
+        const termini = [
+          ...new Set(
+            g.flatMap((r) =>
+              (r.fornitore ?? "")
+                .split(/[,;\n]/)
+                .map((x) => x.trim())
+                .filter(Boolean),
+            ),
+          ),
+        ];
+        const blocchi: string[] = [];
+        let cur = "";
+        for (const t2 of termini) {
+          const next = cur ? `${cur}, ${t2}` : t2;
+          if (next.length > 240 && cur) {
+            blocchi.push(cur);
+            cur = t2;
+          } else cur = next;
+        }
+        if (cur) blocchi.push(cur);
+        finali += blocchi.length;
+        const base = g[0];
+        const payload = {
+          oggettoInclude: base.oggettoInclude,
+          operatore: base.operatore === "OR" ? ("OR" as const) : ("AND" as const),
+          direzione: dir,
+          tipologia: base.tipologia,
+          sottocategoria: base.sottocategoria,
+          allocPrimaria: base.allocPrimaria,
+          allocSecondaria: base.allocSecondaria,
+          clienteRif: base.clienteRif,
+          note: base.note,
+        };
+        for (let i = 0; i < blocchi.length; i++) {
+          const target = g[i];
+          if (target)
+            await spUpdateRegolaFattura({
+              data: { regolaId: target.id ?? "", fornitore: blocchi[i], ...payload },
+            });
+          else await spCreateRegolaFattura({ data: { fornitore: blocchi[i], ...payload } });
+        }
+        for (let i = blocchi.length; i < g.length; i++)
+          await spDeleteRegolaFattura({ data: { id: g[i].id ?? "" } });
+      }
+      setRegole((await spGetRegoleFatture()) as RegolaFattura[]);
+      toast.success(t("ft.rfUniOk"), { description: `${daDir.length} → ${finali}` });
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setUniBusy(false);
+    }
+  };
+
   const inputCls = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
-  const elenco = regole.filter((r) => (r.direzione ?? "Ricevuta") === dir);
+  const elenco = regole
+    .filter((r) => (r.direzione ?? "Ricevuta") === dir)
+    .filter((r) => {
+      const q = cerca.trim().toLowerCase();
+      if (!q) return true;
+      return [
+        r.fornitore,
+        r.oggettoInclude,
+        r.tipologia,
+        r.sottocategoria,
+        r.allocPrimaria,
+        r.allocSecondaria,
+        r.clienteRif,
+        r.note,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+    });
   return (
     <div className="mb-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
       <div className="mb-2 flex items-center justify-between">
@@ -446,6 +554,22 @@ export function RegoleFattureCard() {
           )}
         </div>
       )}
+      <div className="mt-3 flex items-center gap-2">
+        <input
+          value={cerca}
+          onChange={(e) => setCerca(e.target.value)}
+          placeholder={t("ft.rfCerca")}
+          className="w-64 rounded-lg border border-border bg-background px-3 py-1.5 text-xs"
+        />
+        <button
+          type="button"
+          disabled={uniBusy}
+          onClick={() => void unifica()}
+          className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+        >
+          {uniBusy ? t("common.loading") : t("ft.rfUniBtn")}
+        </button>
+      </div>
       <div className="mt-3 space-y-1">
         {elenco.map((r) => (
           <div

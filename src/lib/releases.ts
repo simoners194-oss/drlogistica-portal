@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.46.0",
+    date: "2026-08-14",
+    codename: "Regole fatture in ordine",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Le regole delle fatture si unificano e si cercano come quelle dei movimenti",
+        description:
+          "Nel pannello delle regole fatture ci sono il bottone \"Unifica regole uguali\" — le regole con gli stessi esiti diventano una sola, con l'elenco dei fornitori separato da virgole (spezzato in regole gemelle oltre i 240 caratteri) — e la ricerca istantanea nell'elenco. Il riconoscimento non cambia: un elenco unito vale esattamente quanto le regole separate.",
+      },
+    ],
+  },
+  {
     version: "1.45.0",
     date: "2026-08-14",
     codename: "La pivot in casa",

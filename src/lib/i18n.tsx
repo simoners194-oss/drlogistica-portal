@@ -1225,6 +1225,12 @@ const en = {
   "ft.rfImpDesc":
     'Sheets with a CLIENTE/FORNITORE header become supplier rules; a "Se oggetto o descrizione include" column becomes an AND condition. The Nota column is stored as the rule\u2019s note (it never affects matching). Rules already present are skipped.',
   "ft.rfImpScegli": "Choose the Excel file…",
+  "ft.rfCerca": "Search rules…",
+  "ft.rfUniBtn": "Merge equal rules",
+  "ft.rfUniConfirm":
+    "Merge rules with identical outcomes into one rule per outcome (supplier lists joined, split at 240 characters)?",
+  "ft.rfUniOk": "Rules merged",
+  "ft.rfUniNiente": "No rules to merge: every outcome already has a single rule.",
   "ft.rfImpLettura": "Reading the file… a few seconds for large workbooks",
   "ft.rfImpPronta": "Preview ready: check the numbers, then press Create rules",
   "ft.rfImpNuove": "new rules to create",
@@ -2221,7 +2227,8 @@ const it: Record<DictKey, string> = {
   "fin.editMovTitolo": "Correggi movimento",
   "fin.editMovSvuota": "Svuotare un campo e salvare cancella quel valore dal movimento.",
   "fin.spiegaTitolo": "Perché questa classificazione? Regole che colpiscono questo movimento:",
-  "fin.spiegaNessuna": "Euristica delle causali ABI — nessuna regola impostata (oppure valore inserito a mano).",
+  "fin.spiegaNessuna":
+    "Euristica delle causali ABI — nessuna regola impostata (oppure valore inserito a mano).",
   "fin.conto": "Conto",
   "fin.contoNonAssegnato": "— non assegnato —",
   "fin.contoPh": "es. Qonto",
@@ -2502,6 +2509,12 @@ const it: Record<DictKey, string> = {
   "ft.rfImpDesc":
     'I fogli con intestazione CLIENTE/FORNITORE diventano regole per fornitore; la colonna "Se oggetto o descrizione include" diventa condizione AND. La colonna Nota finisce nel campo Note della regola (non influenza mai il riconoscimento). Le regole gi\u00e0 presenti vengono saltate.',
   "ft.rfImpScegli": "Scegli il file Excel…",
+  "ft.rfCerca": "Cerca nelle regole…",
+  "ft.rfUniBtn": "Unifica regole uguali",
+  "ft.rfUniConfirm":
+    "Fondere le regole con gli stessi esiti in una sola per esito (elenchi fornitori uniti, spezzati a 240 caratteri)?",
+  "ft.rfUniOk": "Regole unificate",
+  "ft.rfUniNiente": "Niente da unificare: ogni esito ha già una sola regola.",
   "ft.rfImpLettura": "Sto leggendo il file… qualche secondo se il foglio è grande",
   "ft.rfImpPronta": "Anteprima pronta: controlla i numeri e premi Crea le regole",
   "ft.rfImpNuove": "regole nuove da creare",
