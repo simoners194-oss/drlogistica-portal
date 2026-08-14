@@ -8,5 +8,6 @@ REM Il log di ogni corsa finisce in log_esecuzioni.txt qui accanto.
 cd /d "%~dp0"
 echo ================= %date% %time% ================= >> log_esecuzioni.txt
 python scarica_aruba.py >> log_esecuzioni.txt 2>&1
+python scarica_aruba.py incassi >> log_esecuzioni.txt 2>&1
 python scarica_aruba.py nclinks >> log_esecuzioni.txt 2>&1
 echo (fine corsa) >> log_esecuzioni.txt

@@ -4083,6 +4083,85 @@ export async function setIncassiAruba(
   return result;
 }
 
+/** CRON INCASSI — SOLO AUMENTI, per costruzione. Riceve gli aggregati per
+ *  fattura (somma rate + ultima data) calcolati dallo script locale sui
+ *  ReportMovimenti e li applica con tre guardie: (1) una riduzione
+ *  dell'incassato NON viene mai applicata, solo contata; (2) nessun
+ *  azzeramento: le fatture assenti dal blocco non si toccano; (3) il
+ *  matching e' lo stesso del flusso manuale (numero+controparte, ripiego
+ *  sul numero), niente euristiche nuove. */
+export async function cronIncassiBatch(
+  righe: readonly {
+    numero: string;
+    cliente: string;
+    flusso: "INCASSO" | "PAGAMENTO";
+    incassato: number;
+    ultimaData?: string;
+  }[],
+): Promise<{
+  aggiornate: number;
+  invariate: number;
+  riduzioniIgnorate: number;
+  nonTrovate: number;
+}> {
+  const esito = { aggiornate: 0, invariate: 0, riduzioniIgnorate: 0, nonTrovate: 0 };
+  for (const direzione of ["Emessa", "Ricevuta"] as const) {
+    const flusso = direzione === "Emessa" ? "INCASSO" : "PAGAMENTO";
+    const gruppo = righe.filter((r) => r.flusso === flusso);
+    if (!gruppo.length) continue;
+    const fatture = await fetchFatture(direzione);
+    const perChiave = new Map<string, (typeof fatture)[number]>();
+    const perNumero = new Map<string, (typeof fatture)[number]>();
+    for (const f of fatture) {
+      perChiave.set(`${clienteGroupKey(f.cliente)}|${normalizeTesto(f.numero)}`, f);
+      const k = normalizeTesto(f.numero);
+      if (!perNumero.has(k)) perNumero.set(k, f);
+    }
+    const daScrivere: {
+      nomeFile: string;
+      id: string;
+      incassato: number;
+      ultimaData?: string;
+    }[] = [];
+    for (const r of gruppo) {
+      const f =
+        perChiave.get(`${clienteGroupKey(r.cliente)}|${normalizeTesto(r.numero)}`) ??
+        perNumero.get(normalizeTesto(r.numero));
+      if (!f) {
+        esito.nonTrovate++;
+        continue;
+      }
+      const attuale = f.incassatoAruba;
+      const nuovo = Math.round(r.incassato * 100) / 100;
+      if (attuale != null && nuovo < attuale - 0.005) {
+        esito.riduzioniIgnorate++; // MAI applicate: restano all'import manuale
+        continue;
+      }
+      const stessaData = !r.ultimaData || r.ultimaData === (f.dataIncasso ?? "");
+      if (attuale != null && Math.abs(nuovo - attuale) <= 0.005 && stessaData) {
+        esito.invariate++;
+        continue;
+      }
+      daScrivere.push({
+        nomeFile: f.nomeFile,
+        id: f.id,
+        incassato: nuovo,
+        ultimaData: r.ultimaData,
+      });
+    }
+    if (daScrivere.length) {
+      const res = await setIncassiAruba(daScrivere, direzione);
+      esito.aggiornate += res.aggiornate;
+    }
+  }
+  logSp(
+    "info",
+    "cron.incassi",
+    `Cron incassi: ${esito.aggiornate} aggiornate, ${esito.invariate} invariate, ${esito.riduzioniIgnorate} riduzioni IGNORATE, ${esito.nonTrovate} non trovate`,
+  );
+  return esito;
+}
+
 /** Collega una NOTA DI CREDITO alla fattura che rettifica, quando l'XML non lo
  *  dichiara (storno fatto a mano dentro Aruba: il riferimento resta lì e non
  *  arriva nel file). Scrive su RettificaNumero, la stessa colonna che riempie

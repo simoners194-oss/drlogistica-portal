@@ -377,8 +377,157 @@ def ricognizione_nc(page) -> None:
     print(f"salvate {len(catture)} risposte dati + indice.txt in {RICOGNIZIONE}")
 
 
+def spedisci_incassi(cfg: dict) -> None:
+    """Aggrega le rate dei ReportMovimenti GIA' SCARICATI (l'ultimo zip per
+    anno in scaricati/) e le spedisce a /cron-incassi. Niente browser.
+    Il server applica SOLO AUMENTI: le riduzioni le conta e le ignora."""
+    import urllib.request
+    import zipfile
+    from datetime import date, timedelta
+
+    base = str(cfg.get("cron_fatture_url", "")).strip()
+    if not base or "/cron-fatture" not in base:
+        print("cron_fatture_url non configurato: spedizione incassi SALTATA.")
+        return
+    url_cron = base.replace("/cron-fatture", "/cron-incassi")
+    per_anno = {}
+    for f in sorted(SCARICATI.glob("*ExportMovimenti*.zip")):
+        m = re.search(r"-(\d{4})-", f.name)
+        per_anno[m.group(1) if m else "0000"] = f  # ordinati: l'ultimo vince
+    if not per_anno:
+        print("nessun ExportMovimenti in scaricati/: esegui prima lo scarico (modalita' default).")
+        return
+    NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+
+    def leggi_xlsx(percorso):
+        from xml.etree import ElementTree as ET
+        import io as _io
+
+        z = zipfile.ZipFile(percorso)
+        interni = [x for x in z.namelist() if x.lower().endswith(".xlsx")]
+        zz = zipfile.ZipFile(_io.BytesIO(z.read(interni[0]))) if interni else z
+        shared = []
+        if "xl/sharedStrings.xml" in zz.namelist():
+            root = ET.fromstring(zz.read("xl/sharedStrings.xml"))
+            for si in root.iter(NS + "si"):
+                shared.append("".join(t.text or "" for t in si.iter(NS + "t")))
+        fogli = sorted(x for x in zz.namelist() if re.match(r"xl/worksheets/sheet\d+\.xml", x))
+        root = ET.fromstring(zz.read(fogli[0]))
+        righe = []
+        for row in root.iter(NS + "row"):
+            vals = {}
+            for c in row:
+                ref = c.get("r") or ""
+                mcol = re.match(r"[A-Z]+", ref)
+                if not mcol:
+                    continue
+                t = c.get("t")
+                v2 = c.find(NS + "v")
+                txt = v2.text if v2 is not None else ""
+                if t == "s" and txt:
+                    txt = shared[int(txt)]
+                vals[mcol.group(0)] = txt
+            righe.append(vals)
+        return righe
+
+    def norm(x):
+        return re.sub(r"\s+", " ", str(x).strip().lower())
+
+    def data_iso(v):
+        v = str(v).strip()
+        if re.match(r"^\d+(\.\d+)?$", v):  # seriale Excel
+            return (date(1899, 12, 30) + timedelta(days=int(float(v)))).isoformat()
+        m2 = re.match(r"^(\d{4})-(\d{2})-(\d{2})", v)
+        if m2:
+            return v[:10]
+        m2 = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})", v)
+        if m2:
+            return f"{m2.group(3)}-{int(m2.group(2)):02d}-{int(m2.group(1)):02d}"
+        return ""
+
+    aggregati = {}
+    for anno, percorso in sorted(per_anno.items()):
+        print(f"[incassi {anno}] {percorso.name}")
+        righe = leggi_xlsx(percorso)
+        hdr = None
+        mappa = {}
+        for r in righe:
+            normv = {k: norm(v2) for k, v2 in r.items()}
+            if "numero fattura" in normv.values() and "flusso" in normv.values():
+                hdr = r
+                for col, v2 in normv.items():
+                    mappa[v2] = col
+                break
+        if hdr is None:
+            print("  intestazioni non riconosciute — salto questo file")
+            continue
+        cD = mappa.get("data")
+        cC = mappa.get("cliente/fornitore") or mappa.get("cliente")
+        cN = mappa.get("numero fattura")
+        cF = mappa.get("flusso")
+        cI = mappa.get("importo")
+        oltre = False
+        contate = 0
+        for r in righe:
+            if r is hdr:
+                oltre = True
+                continue
+            if not oltre:
+                continue
+            numero = str(r.get(cN, "")).strip()
+            flusso = norm(r.get(cF, "")).upper()
+            if not numero or flusso not in ("INCASSO", "PAGAMENTO"):
+                continue
+            try:
+                importo = abs(float(str(r.get(cI, "0")).replace(",", ".")))
+            except ValueError:
+                continue
+            cliente = str(r.get(cC, "")).strip()
+            k = (numero.lower(), norm(cliente), flusso)
+            agg = aggregati.setdefault(
+                k,
+                {
+                    "numero": numero,
+                    "cliente": cliente,
+                    "flusso": flusso,
+                    "incassato": 0.0,
+                    "ultimaData": "",
+                },
+            )
+            agg["incassato"] = round(agg["incassato"] + importo, 2)
+            d = data_iso(r.get(cD, ""))
+            if d > agg["ultimaData"]:
+                agg["ultimaData"] = d
+            contate += 1
+        print(f"  {contate} rate lette")
+    lista = [
+        {**a, "ultimaData": a["ultimaData"] or None} for a in aggregati.values() if a["incassato"] > 0
+    ]
+    for a in lista:
+        if a["ultimaData"] is None:
+            del a["ultimaData"]
+    print(f"aggregati {len(lista)} totali per fattura — spedizione a blocchi da 60")
+    for i in range(0, len(lista), 60):
+        blocco = lista[i : i + 60]
+        payload = base64.b64encode(json.dumps(blocco, ensure_ascii=False).encode("utf-8")).decode(
+            "ascii"
+        )
+        url = url_cron + "&dati=" + urllib.parse.quote(payload, safe="")
+        try:
+            with urllib.request.urlopen(url, timeout=300) as resp:
+                corpo = resp.read().decode("utf-8", "replace").replace("<!-- -->", "")
+            m2 = re.search(r"(OK|ERRORE):[^<]*", corpo)
+            print(f"  blocco {i // 60 + 1}: {m2.group(0)[:200] if m2 else corpo[:120]}")
+        except Exception as e:
+            print(f"  blocco {i // 60 + 1}: errore {e}")
+
+
 def main() -> None:
     cfg = carica_config()
+    # La modalita' "incassi" lavora sui file gia' scaricati: niente browser.
+    if "incassi" in sys.argv:
+        spedisci_incassi(cfg)
+        return
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:

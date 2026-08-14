@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.49.0",
+    date: "2026-08-14",
+    codename: "Gli incassi si aggiornano da soli",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Incassi e pagamenti registrati aggiornati automaticamente ogni mattina",
+        description:
+          "L'ultimo passaggio manuale della catena e' stato automatizzato: lo script del mattino, dopo aver scaricato la prima nota da Aruba, somma le rate per fattura e aggiorna il portale da solo. Per sicurezza il canale automatico applica SOLO gli aumenti dell'incassato: una riduzione o un azzeramento non vengono mai applicati automaticamente \u2014 vengono contati e lasciati all'import manuale, che continua a chiedere conferma esplicita. Nessun dato puo' diminuire senza una decisione umana.",
+      },
+    ],
+  },
+  {
     version: "1.47.0",
     date: "2026-08-14",
     codename: "La tab Pivot",

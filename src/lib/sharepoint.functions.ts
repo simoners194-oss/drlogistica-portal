@@ -91,6 +91,7 @@ import {
   annullaImport,
   eliminaMovimento,
   azzeraTipologieBatch,
+  cronIncassiBatch,
   forzaIncassiPositivi,
   riapplicaRegoleTotale,
   correggiImportoMovimento,
@@ -599,6 +600,46 @@ export const spArubaCron = createServerFn({ method: "POST" })
 
 // Cron NC: riceve la mappa NC->fattura (base64 di un JSON) estratta dal
 // sito Aruba dallo script locale. Stesso token del cron fatture.
+export const spCronIncassi = createServerFn({ method: "POST" })
+  .inputValidator((input: { token: string; dati: string }) => {
+    const token = String(input?.token ?? "").trim();
+    if (!token || token.length > 100) throw new Error("Token mancante.");
+    const dati = String(input?.dati ?? "");
+    if (!dati || dati.length > 200_000) throw new Error("Dati mancanti o troppo grandi.");
+    return { token, dati };
+  })
+  .handler(async ({ data }) => {
+    await verificaTokenCronFatture(data.token);
+    let grezzi: unknown;
+    try {
+      grezzi = JSON.parse(atob(data.dati));
+    } catch {
+      throw new Error("Dati non decodificabili (atteso base64 di un JSON).");
+    }
+    if (!Array.isArray(grezzi) || grezzi.length > 200)
+      throw new Error("Elenco incassi non valido (max 200 per blocco).");
+    const righe = grezzi
+      .map((x) => {
+        const o = x as Record<string, unknown>;
+        return {
+          numero: String(o?.numero ?? "")
+            .trim()
+            .slice(0, 60),
+          cliente: String(o?.cliente ?? "")
+            .trim()
+            .slice(0, 160),
+          flusso: (o?.flusso === "PAGAMENTO" ? "PAGAMENTO" : "INCASSO") as "INCASSO" | "PAGAMENTO",
+          incassato: Number(o?.incassato),
+          ultimaData:
+            typeof o?.ultimaData === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.ultimaData)
+              ? o.ultimaData
+              : undefined,
+        };
+      })
+      .filter((r) => r.numero && Number.isFinite(r.incassato) && r.incassato >= 0);
+    return cronIncassiBatch(righe);
+  });
+
 export const spCronNc = createServerFn({ method: "POST" })
   .inputValidator((input: { token: string; dati: string }) => {
     const token = String(input?.token ?? "").trim();
