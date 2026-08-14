@@ -487,6 +487,7 @@ function FinanzaPage() {
     }
   };
   const [dipBusy, setDipBusy] = useState(false);
+  const [riapplProg, setRiapplProg] = useState("");
   // Filtro conto sui movimenti + assegnazione conto per lotto (storico).
   const [contoF, setContoF] = useState("");
   const [contoLotto, setContoLotto] = useState<Record<string, string>>({});
@@ -4782,7 +4783,12 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                               ? 2
                               : 3;
                       const inOrdine = [...(regole ?? [])].sort((a, b) => rango(a) - rango(b));
+                      let idxRegola = 0;
                       for (const r of inOrdine) {
+                        idxRegola++;
+                        setRiapplProg(
+                          `${idxRegola} / ${inOrdine.length} · ${r.pattern.slice(0, 24)}`,
+                        );
                         const payload = {
                           pattern: r.pattern,
                           campo: r.campo,
@@ -4815,6 +4821,7 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                       // PASSO FINALE HARDCODED: un positivo non puo' essere
                       // una spesa — quello che le regole non hanno coperto
                       // viene convertito d'ufficio in Incasso.
+                      setRiapplProg(t("fin.riapplForza"));
                       let forzati = 0;
                       for (;;) {
                         const f2 = (await spForzaIncassi()) as {
@@ -4824,19 +4831,23 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                         forzati += f2.aggiornati;
                         if (f2.rimanenti <= 0 || f2.aggiornati === 0) break;
                       }
-                      toast.success(
-                        `${tot} ${t("fin.regolaApplicati")}${forzati ? ` · ${forzati} ${t("fin.forzatiIncasso")}` : ""}${errori ? ` · ${errori} regole con errori` : ""}`,
-                      );
+                      toast.success(t("fin.riapplFatto"), {
+                        description: `${tot} ${t("fin.regolaApplicati")}${forzati ? ` · ${forzati} ${t("fin.forzatiIncasso")}` : ""}${errori ? ` · ${errori} regole con errori` : ""}`,
+                        duration: 12000,
+                      });
                       loadMovimenti(anni);
                       loadAnomalie();
                     } finally {
                       setDipBusy(false);
+                      setRiapplProg("");
                     }
                   })();
                 }}
                 className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
               >
-                {t("fin.riapplicaBtn")}
+                {dipBusy && riapplProg
+                  ? `${t("fin.riapplicaBtn")} — ${riapplProg}`
+                  : t("fin.riapplicaBtn")}
               </button>
               <button
                 type="button"
