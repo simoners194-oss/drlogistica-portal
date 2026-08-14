@@ -4389,6 +4389,70 @@ export async function correggiImportoMovimento(
   logSp("info", "correggi.importo", `Movimento ${id} corretto a ${importo}`);
 }
 
+/** RIAPPLICA TUTTO in una passata: legge l'archivio UNA volta, calcola per
+ *  ogni movimento l'esito di TUTTE le regole (stesso applicaRegole
+ *  dell'import, forza-incassi compreso) e aggiorna solo le righe che
+ *  cambiano. Un blocco per chiamata: il client ripete finche' rimanenti=0. */
+export async function riapplicaRegoleTotale(): Promise<{
+  aggiornati: number;
+  rimanenti: number;
+}> {
+  const cfg = await discoverSharePoint();
+  const listId = requireMovimentiList(cfg);
+  const F = cfg.movimentiFields;
+  const regole = await fetchRegoleFinanza();
+  const all = await fetchMovimenti();
+  const target: { id: string; patch: Record<string, unknown> }[] = [];
+  for (const m of all) {
+    const dopo = applicaRegole(
+      {
+        cliente: m.cliente,
+        descrizione: m.descrizione,
+        importo: m.importo,
+        tipologia: m.tipologia ?? "",
+        daVerificare: m.daVerificare,
+        sottocategoria: m.sottocategoria ?? "",
+        allocPrimaria: m.allocPrimaria ?? "",
+        allocSecondaria: m.allocSecondaria ?? "",
+      },
+      regole,
+    );
+    const patch: Record<string, unknown> = {};
+    if (F.Tipologia && dopo.tipologia !== (m.tipologia ?? "")) patch[F.Tipologia] = dopo.tipologia;
+    if (F.Sottocategoria && (dopo.sottocategoria ?? "") !== (m.sottocategoria ?? ""))
+      patch[F.Sottocategoria] = dopo.sottocategoria ?? "";
+    if (F.AllocPrimaria && (dopo.allocPrimaria ?? "") !== (m.allocPrimaria ?? ""))
+      patch[F.AllocPrimaria] = dopo.allocPrimaria ?? "";
+    if (F.AllocSecondaria && (dopo.allocSecondaria ?? "") !== (m.allocSecondaria ?? ""))
+      patch[F.AllocSecondaria] = dopo.allocSecondaria ?? "";
+    if (F.Cliente && dopo.cliente !== m.cliente) patch[F.Cliente] = dopo.cliente;
+    if (F.DaVerificare && dopo.daVerificare !== m.daVerificare)
+      patch[F.DaVerificare] = dopo.daVerificare;
+    if (Object.keys(patch).length) target.push({ id: m.id, patch });
+  }
+  const batch = target.slice(0, APPLICA_MAX_PER_CALL);
+  let aggiornati = 0;
+  const BATCH = 4;
+  for (let i = 0; i < batch.length; i += BATCH) {
+    const esiti = await Promise.allSettled(
+      batch.slice(i, i + BATCH).map((x) =>
+        gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${x.id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify(x.patch),
+        }),
+      ),
+    );
+    aggiornati += esiti.filter((e) => e.status === "fulfilled").length;
+  }
+  const rimanenti = target.length - aggiornati;
+  logSp(
+    "info",
+    "riapplica.totale",
+    `Riapplicazione totale: ${aggiornati} aggiornati, ${rimanenti} rimanenti`,
+  );
+  return { aggiornati, rimanenti };
+}
+
 /** FORZA INCASSI retroattivo: ogni movimento POSITIVO con tipologia da
  *  spesa (non Incasso/Storno/Giroconto) diventa Incasso/Incasso regolare,
  *  con le allocazioni di spesa azzerate. Un blocco per chiamata. */

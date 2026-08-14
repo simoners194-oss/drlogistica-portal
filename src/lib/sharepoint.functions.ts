@@ -92,6 +92,7 @@ import {
   eliminaMovimento,
   azzeraTipologieBatch,
   forzaIncassiPositivi,
+  riapplicaRegoleTotale,
   correggiImportoMovimento,
   LEGACY_IMPORT_ID,
   fetchRegoleFinanza,
@@ -1056,6 +1057,11 @@ export const spCorreggiMovimento = createServerFn({ method: "POST" })
     await correggiImportoMovimento(data.id, data.importo, data.chiave);
     return { ok: true };
   });
+
+export const spRiapplicaTotale = createServerFn({ method: "POST" }).handler(async () => {
+  await assertDirettore(await currentUser());
+  return riapplicaRegoleTotale();
+});
 
 export const spForzaIncassi = createServerFn({ method: "POST" }).handler(async () => {
   await assertDirettore(await currentUser());

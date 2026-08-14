@@ -82,6 +82,7 @@ import {
   spDeleteRegolaFinanza,
   spApplicaRegolaFinanza,
   spForzaIncassi,
+  spRiapplicaTotale,
   spUpdateRegolaFinanza,
   spApplicaRegolaDipendenti,
   spAssegnaContoLotto,
@@ -4767,72 +4768,24 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                   setDipBusy(true);
                   void (async () => {
                     let tot = 0;
-                    let errori = 0;
                     try {
-                      // L'applicazione retroattiva SOVRASCRIVE: si parte
-                      // dalle regole meno specifiche (jolly, poi descrizione,
-                      // poi cliente-contiene) e si chiude con le piu'
-                      // specifiche (cliente esatto), cosi' l'ultimo tocco e'
-                      // sempre della regola che vincerebbe sui nuovi import.
-                      const rango = (r2: RegolaFinanza) =>
-                        r2.pattern.trim() === "*"
-                          ? 0
-                          : r2.campo === "descrizione"
-                            ? 1
-                            : r2.modo === "contiene"
-                              ? 2
-                              : 3;
-                      const inOrdine = [...(regole ?? [])].sort((a, b) => rango(a) - rango(b));
-                      let idxRegola = 0;
-                      for (const r of inOrdine) {
-                        idxRegola++;
-                        setRiapplProg(
-                          `${idxRegola} / ${inOrdine.length} · ${r.pattern.slice(0, 24)}`,
-                        );
-                        const payload = {
-                          pattern: r.pattern,
-                          campo: r.campo,
-                          modo: r.modo,
-                          tipologia: r.tipologia,
-                          sottocategoria: r.sottocategoria,
-                          allocPrimaria: r.allocPrimaria,
-                          allocSecondaria: r.allocSecondaria,
-                          cliente: r.cliente,
-                          // Senza il segno il jolly "*" retroattivo avrebbe
-                          // classificato anche i negativi: mai piu'.
-                          segno: r.segno,
-                        };
-                        let ultimoRimanenti = Number.POSITIVE_INFINITY;
-                        try {
-                          for (;;) {
-                            const esito = (await spApplicaRegolaFinanza({ data: payload })) as {
-                              aggiornati: number;
-                              rimanenti: number;
-                            };
-                            tot += esito.aggiornati;
-                            if (esito.rimanenti <= 0 || esito.aggiornati === 0) break;
-                            if (esito.rimanenti >= ultimoRimanenti) break;
-                            ultimoRimanenti = esito.rimanenti;
-                          }
-                        } catch {
-                          errori++;
-                        }
-                      }
-                      // PASSO FINALE HARDCODED: un positivo non puo' essere
-                      // una spesa — quello che le regole non hanno coperto
-                      // viene convertito d'ufficio in Incasso.
-                      setRiapplProg(t("fin.riapplForza"));
-                      let forzati = 0;
+                      // PASSATA UNICA server-side: archivio letto una volta
+                      // per blocco, tutte le regole + forza incassi in
+                      // memoria, PATCH solo delle righe che cambiano.
+                      setRiapplProg(t("fin.riapplAnalisi"));
                       for (;;) {
-                        const f2 = (await spForzaIncassi()) as {
+                        const esito = (await spRiapplicaTotale()) as {
                           aggiornati: number;
                           rimanenti: number;
                         };
-                        forzati += f2.aggiornati;
-                        if (f2.rimanenti <= 0 || f2.aggiornati === 0) break;
+                        tot += esito.aggiornati;
+                        setRiapplProg(
+                          `${tot} ${t("fin.regolaApplicati")} · ~${esito.rimanenti} ${t("fin.riapplRimanenti")}`,
+                        );
+                        if (esito.rimanenti <= 0 || esito.aggiornati === 0) break;
                       }
                       toast.success(t("fin.riapplFatto"), {
-                        description: `${tot} ${t("fin.regolaApplicati")}${forzati ? ` · ${forzati} ${t("fin.forzatiIncasso")}` : ""}${errori ? ` · ${errori} regole con errori` : ""}`,
+                        description: `${tot} ${t("fin.regolaApplicati")}`,
                         duration: 12000,
                       });
                       loadMovimenti(anni);
