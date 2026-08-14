@@ -379,11 +379,10 @@ export function ResocontoTab() {
           const gg = ggRitardoVis(x);
           return gg > 0 && inFascia(gg);
         }
-        return (
-          x.s.inRitardo &&
-          (x.s.statoIncassi != null || x.s.statoFatturazione != null) &&
-          inFascia(x.s.giorniRitardo)
-        );
+        // In ritardo con residuo = IN LISTA, senza pretendere una lettura
+        // Aruba: il requisito storico nascondeva le scadute NUOVE (mai
+        // passate da un import manuale; il cron per design non scrive zeri).
+        return x.s.inRitardo && inFascia(x.s.giorniRitardo);
       })
       .sort((a, b) => ggRitardoVis(b) - ggRitardoVis(a));
   };

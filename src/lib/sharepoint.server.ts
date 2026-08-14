@@ -3938,7 +3938,16 @@ export async function importMovimenti(
   // Chiave e classificazione ricalcolate QUI dai campi grezzi: il client può
   // aver già fatto lo stesso lavoro per l'anteprima, ma la verità è del server.
   // Le regole apprese si applicano DOPO la classificazione automatica.
-  const regole = await fetchRegoleFinanza().catch(() => [] as RegolaFinanza[]);
+  // MAI classificare con zero regole per un errore transitorio (successo:
+  // 503 di SharePoint durante il sync -> movimenti a euristica nonostante
+  // le regole esistessero). Un ritento; se fallisce ancora si INTERROMPE
+  // con errore chiaro e si riprova al giro successivo.
+  const regole = await fetchRegoleFinanza().catch(async () => {
+    await new Promise((r) => setTimeout(r, 1500));
+    return fetchRegoleFinanza().catch(() => {
+      throw new Error("Regole non caricabili in questo momento: operazione rimandata (ritenta).");
+    });
+  });
   const nomiRoster = await nomiDipendenti();
   const daScrivere: { fields: Record<string, unknown>; chiave: string }[] = [];
   for (const r of rows) {
@@ -6721,7 +6730,16 @@ export async function ebSincronizza(
   const psu = presidiata ? psuContext() : {};
   const pagina = await ebTransazioni(cred, contoUid, dal, continuation, psu);
   const esistenti = new Set(await fetchMovimentiChiavi());
-  const regole = await fetchRegoleFinanza().catch(() => [] as RegolaFinanza[]);
+  // MAI classificare con zero regole per un errore transitorio (successo:
+  // 503 di SharePoint durante il sync -> movimenti a euristica nonostante
+  // le regole esistessero). Un ritento; se fallisce ancora si INTERROMPE
+  // con errore chiaro e si riprova al giro successivo.
+  const regole = await fetchRegoleFinanza().catch(async () => {
+    await new Promise((r) => setTimeout(r, 1500));
+    return fetchRegoleFinanza().catch(() => {
+      throw new Error("Regole non caricabili in questo momento: operazione rimandata (ritenta).");
+    });
+  });
   const nomiRoster = await nomiDipendenti();
   const result: EbSyncResult = {
     scritti: 0,
