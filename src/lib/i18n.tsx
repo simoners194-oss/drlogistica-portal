@@ -946,7 +946,7 @@ const en = {
   "fin.editMovTitolo": "Edit transaction",
   "fin.editMovSvuota": "Clearing a field and saving removes that value from the transaction.",
   "fin.spiegaTitolo": "Why this classification? Rules matching this transaction:",
-  "fin.spiegaNessuna": "No rule matches now (value set manually or by an old/edited rule).",
+  "fin.spiegaNessuna": "ABI reason-code heuristic — no rule set (or value entered manually).",
   "fin.conto": "Account",
   "fin.contoNonAssegnato": "— not assigned —",
   "fin.contoPh": "e.g. Qonto",
@@ -2221,8 +2221,7 @@ const it: Record<DictKey, string> = {
   "fin.editMovTitolo": "Correggi movimento",
   "fin.editMovSvuota": "Svuotare un campo e salvare cancella quel valore dal movimento.",
   "fin.spiegaTitolo": "Perché questa classificazione? Regole che colpiscono questo movimento:",
-  "fin.spiegaNessuna":
-    "Nessuna regola fa match ora (valore messo a mano o da una regola vecchia/modificata).",
+  "fin.spiegaNessuna": "Euristica delle causali ABI — nessuna regola impostata (oppure valore inserito a mano).",
   "fin.conto": "Conto",
   "fin.contoNonAssegnato": "— non assegnato —",
   "fin.contoPh": "es. Qonto",
