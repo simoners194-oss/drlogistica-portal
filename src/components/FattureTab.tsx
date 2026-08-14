@@ -3244,7 +3244,21 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
             <Loader2 className="h-5 w-5 animate-spin inline-block" />
           </div>
         ) : filtrate.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">{t("ft.empty")}</p>
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            <p>{t("ft.empty")}</p>
+            {/* TRAPPOLA CHIUSA: con la lista vuota la tabella sparisce e con
+                lei gli imbuti — senza questo tasto un filtro di colonna che
+                azzera i risultati non si poteva piu' togliere. */}
+            {filtriThAttivi && (
+              <button
+                type="button"
+                onClick={() => setFiltriTh({})}
+                className="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+              >
+                {t("ft.thPulisci")}
+              </button>
+            )}
+          </div>
         ) : (
           <>
             <div
