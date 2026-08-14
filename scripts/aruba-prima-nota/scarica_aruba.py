@@ -321,7 +321,25 @@ def main() -> None:
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=bool(cfg.get("headless", False)))
+        # Smart App Control puo' bloccare il Chromium scaricato da Playwright
+        # (DLL senza firma "di reputazione", errore 0x11C7): si prova prima
+        # con Edge/Chrome DI SISTEMA, firmati e sempre ammessi; il Chromium
+        # interno resta come ultimo ripiego.
+        headless = bool(cfg.get("headless", False))
+        browser = None
+        ultimo_errore = None
+        for canale in ("msedge", "chrome", None):
+            try:
+                if canale:
+                    browser = p.chromium.launch(channel=canale, headless=headless)
+                else:
+                    browser = p.chromium.launch(headless=headless)
+                print(f"Browser avviato ({canale or 'chromium interno'}).")
+                break
+            except Exception as e:  # noqa: BLE001 — si tenta il canale successivo
+                ultimo_errore = e
+        if browser is None:
+            raise RuntimeError(f"Nessun browser avviabile: {ultimo_errore}")
         page = browser.new_page(accept_downloads=True)
         try:
             login(page, cfg)
