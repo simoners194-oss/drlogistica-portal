@@ -97,10 +97,13 @@ export function ResocontoTab() {
   const [pfNote, setPfNote] = useState("");
   const [pfBusy, setPfBusy] = useState(false);
   // "" = solo ritardi (default); un numero = anche le scadenze future entro N giorni.
-  // Proiezione a data ("cosa succedera' entro il..."): sostituisce la
-  // vecchia simulazione dei termini a giorni, giudicata inutile.
-  const [dataProiezione, setDataProiezione] = useState("");
-  const [proiezioneAperta, setProiezioneAperta] = useState(false);
+  // "Situazione al ...": la data guida le card dei ritardi (cosa sara'
+  // scaduto entro quel giorno). L'elenco totale attive/passive sotto e'
+  // indipendente: chiuso di default, filtrabile per anno e mese.
+  const [dataRiferimento, setDataRiferimento] = useState("");
+  const [elencoAperto, setElencoAperto] = useState(false);
+  const [elencoAnni, setElencoAnni] = useState<string[]>([]);
+  const [elencoMesi, setElencoMesi] = useState<string[]>([]);
 
   useEffect(() => {
     spGetFatture({ data: { direzione: "Emessa" } })
@@ -263,11 +266,10 @@ export function ResocontoTab() {
   const inSelezione = (nome: string, sel: string[]) =>
     sel.length === 0 || sel.includes(clienteGroupKey(nome) || nome);
 
-  // PROIEZIONE A DATA: per ciascun lato, le fatture con scadenza entro la
-  // data scelta e il loro esito — Pagato (residuo saldato), Stornato
-  // (annullata da NC), oppure ancora aperto (Da incassare/Da pagare).
-  const proiezione = useMemo(() => {
-    if (!dataProiezione) return null;
+  // ELENCO TOTALE attive/passive: TUTTE le fatture (niente data), con
+  // filtri per anno e mese del documento e l'esito di ciascuna — Pagato,
+  // Stornato (annullata da NC) o ancora aperto.
+  const elencoTot = useMemo(() => {
     const cliNessuno = clientiSel.includes(NESSUNO);
     const forNessuno = fornitoriSel.includes(NESSUNO);
     const cliSel = espandiGruppi(
@@ -280,19 +282,19 @@ export function ResocontoTab() {
     );
     const r2 = (x: number) => Math.round(x * 100) / 100;
     const lato = (righe: typeof attive, sel: string[], nessuno: boolean) => {
-      const inData = nessuno
+      const inSel = nessuno
         ? []
         : righe.filter(
             (x) =>
               inSelezione(x.f.cliente, sel) &&
               !isNotaCredito(x.f.tipoDocumento) &&
-              x.s.scadenza &&
-              x.s.scadenza <= dataProiezione,
+              (!elencoAnni.length || elencoAnni.includes(x.f.dataDocumento.slice(0, 4))) &&
+              (!elencoMesi.length || elencoMesi.includes(x.f.dataDocumento.slice(0, 7))),
           );
       let pagato = 0;
       let stornato = 0;
       let aperto = 0;
-      const dettagli = inData
+      const dettagli = inSel
         .map((x) => {
           const residuo = residuoDi(x);
           const stato: "pagato" | "stornato" | "aperto" = x.s.annullataDaNC
@@ -305,7 +307,7 @@ export function ResocontoTab() {
           else aperto += residuo;
           return { x, residuo, stato };
         })
-        .sort((a, b) => (a.x.s.scadenza < b.x.s.scadenza ? -1 : 1));
+        .sort((a2, b2) => (a2.x.f.dataDocumento < b2.x.f.dataDocumento ? 1 : -1));
       return { dettagli, pagato: r2(pagato), stornato: r2(stornato), aperto: r2(aperto) };
     };
     return {
@@ -313,7 +315,29 @@ export function ResocontoTab() {
       pas: lato(passive, forSel, forNessuno),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataProiezione, attive, passive, clientiSel, fornitoriSel, opzioniClienti, opzioniFornitori]);
+  }, [
+    attive,
+    passive,
+    clientiSel,
+    fornitoriSel,
+    opzioniClienti,
+    opzioniFornitori,
+    elencoAnni,
+    elencoMesi,
+  ]);
+
+  // Opzioni anno/mese per i filtri dell'elenco (dal documento).
+  const elencoOpzioni = useMemo(() => {
+    const anni = new Set<string>();
+    const mesi = new Set<string>();
+    for (const x of [...attive, ...passive]) {
+      if (!x.f.dataDocumento) continue;
+      anni.add(x.f.dataDocumento.slice(0, 4));
+      mesi.add(x.f.dataDocumento.slice(0, 7));
+    }
+    const ord = (xs: Set<string>) => [...xs].sort().map((v2) => ({ v: v2, label: v2 }));
+    return { anni: ord(anni), mesi: ord(mesi) };
+  }, [attive, passive]);
 
   // --- Riconciliazione: Estratto conto vs Attive vs Passive -----------------
   const quadro = useMemo(() => {
@@ -407,19 +431,17 @@ export function ResocontoTab() {
         86400000,
     );
   };
-  // SIMULAZIONE TERMINI (il "giochino" della direzione): con N scritto, il
-  // ritardo si calcola su una scadenza FITTIZIA = data documento + N giorni.
-  // I termini veri (regole/termini di pagamento) non vengono toccati.
-  const simTermini = 0; // simulazione a giorni rimossa (resta il codice spento)
+  // SITUAZIONE AL ... : con una data (anche futura) scelta, le card dei
+  // ritardi mostrano cio' che sara' SCADUTO ENTRO quel giorno e ancora
+  // aperto oggi; i giorni si contano rispetto alla data scelta. Senza
+  // data vale oggi (comportamento classico).
+  const oggiRif = /^\d{4}-\d{2}-\d{2}$/.test(dataRiferimento) ? dataRiferimento : oggiISO;
   const ggRitardoVis = (x: (typeof attive)[number]): number => {
-    if (simTermini <= 0) return x.s.giorniRitardo;
-    if (!x.f.dataDocumento) return 0;
-    return (
-      Math.round(
-        (new Date(`${oggiISO}T00:00:00`).getTime() -
-          new Date(`${x.f.dataDocumento.slice(0, 10)}T00:00:00`).getTime()) /
-          86400000,
-      ) - simTermini
+    if (!x.s.scadenza) return 0;
+    return Math.round(
+      (new Date(`${oggiRif}T00:00:00`).getTime() -
+        new Date(`${x.s.scadenza.slice(0, 10)}T00:00:00`).getTime()) /
+        86400000,
     );
   };
   const ritardi = (righe: typeof attive, sel: string[]) => {
@@ -427,17 +449,10 @@ export function ResocontoTab() {
       .filter((x) => {
         if (residuoDi(x) <= 1) return false;
         if (!inSelezione(x.f.cliente, sel)) return false;
-        if (simTermini > 0) {
-          // Modalita' simulazione: in ritardo chi ha superato i giorni
-          // simulati dall'emissione. Niente requisito report incassi: la
-          // simulazione deve vedere TUTTO l'aperto.
-          const gg = ggRitardoVis(x);
-          return gg > 0 && inFascia(gg);
-        }
-        // In ritardo con residuo = IN LISTA, senza pretendere una lettura
-        // Aruba: il requisito storico nascondeva le scadute NUOVE (mai
-        // passate da un import manuale; il cron per design non scrive zeri).
-        return x.s.inRitardo && inFascia(x.s.giorniRitardo);
+        // In ritardo (alla data di riferimento) con residuo = IN LISTA,
+        // senza pretendere una lettura Aruba.
+        const gg = ggRitardoVis(x);
+        return gg > 0 && inFascia(gg);
       })
       .sort((a, b) => ggRitardoVis(b) - ggRitardoVis(a));
   };
@@ -580,7 +595,7 @@ export function ResocontoTab() {
         : "",
     ];
     esportaCsvFile(
-      `resoconto-ritardi${simTermini > 0 ? `-sim${simTermini}gg` : ""}`,
+      `resoconto-ritardi${dataRiferimento ? `-al-${dataRiferimento}` : ""}`,
       [
         "Direzione",
         "Numero",
@@ -636,7 +651,7 @@ export function ResocontoTab() {
                     {fmtData(x.s.scadenza)}
                   </td>
                   <td
-                    className={`py-0.5 pr-2 text-right tabular-nums whitespace-nowrap ${simTermini > 0 ? "text-primary" : "text-status-absent"}`}
+                    className={`py-0.5 pr-2 text-right tabular-nums whitespace-nowrap ${dataRiferimento ? "text-primary" : "text-status-absent"}`}
                   >
                     {ggRitardoVis(x)}
                   </td>
@@ -986,35 +1001,83 @@ export function ResocontoTab() {
             <p className="mt-2 text-[11px] text-muted-foreground">{t("rt.nota")}</p>
           </div>
 
-          {/* PROIEZIONE A DATA (chiusa di default) + export. */}
+          {/* SITUAZIONE AL ... : la data guida le card dei ritardi sotto. */}
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card px-5 py-3 shadow-[var(--shadow-card)]">
+            <label className="text-sm font-semibold text-foreground">{t("rt.alData")}</label>
+            <input
+              type="date"
+              value={dataRiferimento}
+              onChange={(e) => setDataRiferimento(e.target.value)}
+              className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+            />
+            {dataRiferimento && (
+              <button
+                type="button"
+                onClick={() => setDataRiferimento("")}
+                className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-muted"
+              >
+                {t("rt.alDataOggi")}
+              </button>
+            )}
+            <span className="text-xs text-muted-foreground">{t("rt.alDataNota")}</span>
+            <button
+              type="button"
+              onClick={esportaResoconto}
+              className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+            >
+              {t("rt.esporta")}
+            </button>
+          </div>
+          {/* I ritardi, nelle due direzioni, alla data di riferimento. */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {cardRitardi(
+              `${t("rt.ritardiIncassare")}${dataRiferimento ? ` — ${t("rt.prEntro")} ${fmtData(dataRiferimento)}` : ""}`,
+              ritardiAtt,
+              t("rt.nessunoIncassare"),
+              true,
+            )}
+            {cardRitardi(
+              `${t("rt.ritardiPagare")}${dataRiferimento ? ` — ${t("rt.prEntro")} ${fmtData(dataRiferimento)}` : ""}`,
+              ritardiPas,
+              t("rt.nessunoPagare"),
+            )}
+          </div>
+
+          {/* ELENCO TOTALE attive/passive: chiuso di default, senza data,
+              filtrabile per anno e mese del documento. */}
           <div className="rounded-2xl border border-border bg-card px-5 py-3 shadow-[var(--shadow-card)]">
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={() => setProiezioneAperta((x) => !x)}
+                onClick={() => setElencoAperto((x) => !x)}
                 className="text-sm font-semibold text-foreground"
               >
-                {proiezioneAperta ? "▾" : "▸"} {t("rt.prTitolo")}
+                {elencoAperto ? "▾" : "▸"} {t("rt.elTitolo")}
               </button>
-              <input
-                type="date"
-                value={dataProiezione}
-                onChange={(e) => {
-                  setDataProiezione(e.target.value);
-                  if (e.target.value) setProiezioneAperta(true);
-                }}
-                className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
-              />
-              <span className="text-xs text-muted-foreground">{t("rt.prNota")}</span>
-              <button
-                type="button"
-                onClick={esportaResoconto}
-                className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
-              >
-                {t("rt.esporta")}
-              </button>
+              {elencoAperto && (
+                <div className="flex flex-wrap items-end gap-2">
+                  <MultiSelect
+                    label={t("rt.elAnno")}
+                    tuttiLabel={t("common.allF")}
+                    selLabel={t("fin.msSel")}
+                    opzioni={elencoOpzioni.anni}
+                    valori={elencoAnni}
+                    onChange={setElencoAnni}
+                    className="w-32"
+                  />
+                  <MultiSelect
+                    label={t("rt.elMese")}
+                    tuttiLabel={t("common.allF")}
+                    selLabel={t("fin.msSel")}
+                    opzioni={elencoOpzioni.mesi}
+                    valori={elencoMesi}
+                    onChange={setElencoMesi}
+                    className="w-40"
+                  />
+                </div>
+              )}
             </div>
-            {proiezioneAperta && proiezione && (
+            {elencoAperto && (
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 {(
                   [
@@ -1022,7 +1085,7 @@ export function ResocontoTab() {
                     ["pas", t("rt.prPassive"), t("rt.prDaPag")],
                   ] as const
                 ).map(([k, titolo, apertaLbl]) => {
-                  const latoP = proiezione[k];
+                  const latoP = elencoTot[k];
                   return (
                     <div key={k} className="rounded-xl border border-border p-4">
                       <div className="text-sm font-semibold text-foreground">{titolo}</div>
@@ -1033,9 +1096,8 @@ export function ResocontoTab() {
                         {fmtImporto(latoP.aperto)} €
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {apertaLbl} {t("rt.prEntro")} {fmtData(dataProiezione)} · {t("rt.prPagato")}{" "}
-                        {fmtImporto(latoP.pagato)} € · {t("rt.prStornato")}{" "}
-                        {fmtImporto(latoP.stornato)} €
+                        {apertaLbl} · {t("rt.prPagato")} {fmtImporto(latoP.pagato)} € ·{" "}
+                        {t("rt.prStornato")} {fmtImporto(latoP.stornato)} €
                       </div>
                       <div className="mt-2 max-h-80 overflow-auto">
                         <table className="w-full text-[12px]">
@@ -1052,7 +1114,7 @@ export function ResocontoTab() {
                                   {x.f.cliente}
                                 </td>
                                 <td className="whitespace-nowrap py-1 pr-2 text-muted-foreground">
-                                  {fmtData(x.s.scadenza)}
+                                  {fmtData(x.f.dataDocumento)}
                                 </td>
                                 <td className="whitespace-nowrap py-1 pr-2 text-right tabular-nums">
                                   {fmtImporto(stato === "aperto" ? residuo : x.f.totale)} €
@@ -1089,11 +1151,6 @@ export function ResocontoTab() {
                 })}
               </div>
             )}
-          </div>
-          {/* I ritardi, nelle due direzioni, con le fatture in chiaro. */}
-          <div className="grid gap-4 lg:grid-cols-2">
-            {cardRitardi(t("rt.ritardiIncassare"), ritardiAtt, t("rt.nessunoIncassare"), true)}
-            {cardRitardi(t("rt.ritardiPagare"), ritardiPas, t("rt.nessunoPagare"))}
           </div>
 
           {/* PREVISIONE: quanto si incassa e si paga nei prossimi mesi,

@@ -273,7 +273,10 @@ export function PivotClassificazione({
     (): RigaEstesa[] =>
       righe.map((r) => ({
         ...r,
-        anno: r.data.slice(0, 4) || "—",
+        // L'ANNO segue il MESE mostrato in colonna (per le fatture e' la
+        // competenza): con l'anno del documento, filtrare 2026 lasciava
+        // in vista colonne 2025 — incoerenza segnalata dalla direzione.
+        anno: (r.mese || r.data).slice(0, 4) || "—",
         fw: fiscalWeek(r.data),
         contoV: r.conto ?? "",
       })),
