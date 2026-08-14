@@ -27,6 +27,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# Console senza UTF-8 (pipe, Utilita' di pianificazione): mai piu' crash
+# sulle frecce nei messaggi di avanzamento.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 QUI = Path(__file__).parent
 CONFIG = QUI / "config.json"
 SCARICATI = QUI / "scaricati"
@@ -204,62 +212,88 @@ def estrai_nc_links(page, cfg: dict) -> None:
     # PRIMA la griglia "Fatture ricevute" e si INTERCETTANO gli header veri
     # (token di sessione compresi) della advancedSearch che fa il sito — poi
     # si riusano quelli per le nostre richieste a tutto-anno.
-    intestazioni: dict = {}
+    # NIENTE chiamate nostre (token a firma per-richiesta, 401 garantito):
+    # si naviga la griglia via UI e si CATTURANO le risposte advancedSearch
+    # che fa il sito stesso — la griglia scarica l'anno intero in un colpo.
+    catture: dict = {}
 
-    def on_request(req):
-        if "advancedsearch" in req.url.lower() and not intestazioni:
-            for k, v in req.headers.items():
-                if k.lower() not in ("content-length", "host", "content-type"):
-                    intestazioni[k] = v
-
-    page.on("request", on_request)
-    clicca(page, "apro Fatture ricevute", "text=Fatture ricevute")
-    page.wait_for_load_state("networkidle", timeout=45000)
-    time.sleep(4)
-    if not intestazioni:
-        print("  → ricarico la pagina per forzare la chiamata della griglia")
-        page.reload()
-        page.wait_for_load_state("networkidle", timeout=45000)
-        time.sleep(6)
-    if intestazioni:
-        print("  header di sessione intercettati dalla griglia")
-    else:
-        print("  ATTENZIONE: nessuna advancedSearch intercettata, provo senza header")
-    links = []
-    for anno in cfg.get("anni", [datetime.now().year]):
-        for servizio, dire in (("FatturaRicevutaFrontEnd", "R"), ("FatturaFrontEnd", "E")):
-            print(f"[collegamenti NC] {servizio} {anno}…")
+    def on_response(res):
+        try:
+            if "advancedsearch" not in res.url.lower() or res.status != 200:
+                return
+            m = re.search(r"services/([^/]+)/advancedSearch", res.url, re.I)
+            srv = m.group(1) if m else ""
+            anno_req = None
             try:
-                r = page.request.post(
-                    URL_PORTALE + f"services/{servizio}/advancedSearch",
-                    data=json.dumps({"PageNumber": 1, "PageSize": None, "AnnoFiscale": int(anno)}),
-                    headers={**intestazioni, "Content-Type": "application/json"},
-                    timeout=120000,
+                anno_req = json.loads(res.request.post_data or "{}").get("AnnoFiscale")
+            except Exception:
+                pass
+            corpo = res.json()
+            if isinstance(corpo, dict) and corpo.get("Items") is not None:
+                catture[(srv, anno_req)] = corpo
+                print(f"    catturata {srv} anno {anno_req}: {len(corpo.get('Items') or [])} righe")
+        except Exception:
+            pass
+
+    page.on("response", on_response)
+
+    def attendi(srv, anno, sec=25):
+        fine = time.time() + sec
+        while time.time() < fine:
+            if (srv, anno) in catture:
+                return True
+            time.sleep(0.5)
+        return False
+
+    def imposta_anno(anno):
+        try:
+            page.get_by_role("button", name=re.compile(r"Anno")).first.click(timeout=8000)
+            time.sleep(1)
+            page.get_by_text(str(anno), exact=True).first.click(timeout=8000)
+            time.sleep(2.5)
+            return True
+        except Exception:
+            print(f"    (filtro anno {anno} non impostabile: resto sull'anno di default)")
+            return False
+
+    anni_cfg = [int(a) for a in cfg.get("anni", [datetime.now().year])]
+    for servizio, voce in (
+        ("FatturaRicevutaFrontEnd", "Fatture ricevute"),
+        ("FatturaFrontEnd", "Fatture inviate"),
+    ):
+        try:
+            clicca(page, f"apro {voce}", f"text={voce}")
+            page.wait_for_load_state("networkidle", timeout=45000)
+            time.sleep(3)
+        except Exception:
+            print(f"  sezione {voce} non raggiungibile — salto")
+            continue
+        for anno in anni_cfg:
+            if (servizio, anno) not in catture:
+                imposta_anno(anno)
+                attendi(servizio, anno, 40)
+    # margine per le risposte ritardatarie, poi si legge TUTTO il catturato
+    time.sleep(5)
+    links = []
+    for (srv, anno), dati in sorted(catture.items(), key=lambda x: (x[0][0], str(x[0][1]))):
+        dire = "R" if srv.startswith("FatturaRicevuta") else "E"
+        trovati = 0
+        for it in dati.get("Items", []):
+            tipo = str(it.get("Tipo", "")).upper()
+            docs = it.get("DocumentiCollegati") or []
+            fatture = [
+                d for d in docs if str(d.get("Tipo", "")) == "Fattura" and d.get("Numero")
+            ]
+            if tipo.startswith("TD04") and fatture and it.get("SdiFileName"):
+                links.append(
+                    {
+                        "file": it["SdiFileName"],
+                        "numero": str(fatture[0]["Numero"]),
+                        "dir": dire,
+                    }
                 )
-                if r.status != 200:
-                    print(f"  HTTP {r.status} — salto questo servizio")
-                    continue
-                dati = r.json()
-            except Exception as e:
-                print(f"  errore: {e} — salto")
-                continue
-            trovati = 0
-            for it in dati.get("Items", []):
-                tipo = str(it.get("Tipo", "")).upper()
-                docs = it.get("DocumentiCollegati") or []
-                fatture = [
-                    d for d in docs if str(d.get("Tipo", "")) == "Fattura" and d.get("Numero")
-                ]
-                if tipo.startswith("TD04") and fatture and it.get("SdiFileName"):
-                    links.append(
-                        {
-                            "file": it["SdiFileName"],
-                            "numero": str(fatture[0]["Numero"]),
-                            "dir": dire,
-                        }
-                    )
-                    trovati += 1
-            print(f"  {trovati} collegamenti NC trovati")
+                trovati += 1
+        print(f"[collegamenti NC] {srv} {anno}: {trovati} trovati")
     visti = set()
     unici = []
     for l in links:
@@ -286,7 +320,9 @@ def estrai_nc_links(page, cfg: dict) -> None:
         url = base_nc + "&dati=" + urllib.parse.quote(payload, safe="")
         try:
             r = page.request.get(url, timeout=120000)
-            esito = r.text()
+            # React SSR infila commenti tra i pezzi di testo (OK<!-- -->: …):
+            # si tolgono prima di cercare l'esito.
+            esito = r.text().replace("<!-- -->", "")
             i0 = esito.find("OK:")
             if i0 < 0:
                 i0 = esito.find("ERRORE:")
