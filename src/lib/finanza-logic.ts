@@ -200,6 +200,12 @@ export function matchRegola(
   // viceversa). Il pattern jolly "*" prende TUTTO cio' che passa il segno.
   if (r.segno === "entrate" && (mov.importo ?? 0) <= 0) return false;
   if (r.segno === "uscite" && (mov.importo ?? 0) >= 0) return false;
+  // INVARIANTE HARDCODED (richiesta direzione): un movimento POSITIVO non
+  // puo' mai essere una spesa. Sui positivi valgono SOLO le regole "Solo
+  // entrate": quelle senza segno (le storiche dei fornitori) qui non
+  // esistono — cosi' un rimborso da un fornitore non prende mai la sua
+  // regola di spesa, nemmeno se e' la piu' specifica.
+  if ((mov.importo ?? 0) > 0 && r.segno !== "entrate") return false;
   if (r.pattern.trim() === "*") return true;
   // PATTERN MULTIPLI: "aereo, treno, dirigibile" = basta che UNO dei
   // termini corrisponda (separatori virgola e punto e virgola).
