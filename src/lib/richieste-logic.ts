@@ -331,6 +331,20 @@ export function isSupervisoreGlobale(codice: string): boolean {
   return (codice ?? "").trim().toUpperCase() === "DR005";
 }
 
+// VISTA DIREZIONE: codici che vedono le SCHERMATE della direzione (Finanze,
+// Fatture, Novita' riservate) SENZA alcun potere autorizzativo — ferie,
+// permessi, acquisti e supervisione restano governati da Autorizza e
+// supervisionaSede, che NON leggono questo elenco. Richiesta direzione:
+// Diego Gabelli con le stesse viste di Francesco Romano, zero autorizzazioni.
+const CODICI_VISTA_DIREZIONE = new Set<string>([
+  // "DRxxx", // Diego Gabelli — inserire il codice e fare push
+]);
+
+export function haVistaDirezione(codice: string): boolean {
+  const c = (codice ?? "").trim().toUpperCase();
+  return isSupervisoreGlobale(c) || CODICI_VISTA_DIREZIONE.has(c);
+}
+
 // Un autorizzatore (identificato dal suo Codice) è competente sulla richiesta di
 // quella sede? Confronto case-insensitive sul codice.
 // GEMELLI di DR000: stessi poteri sulla stessa platea (tutte le sedi non

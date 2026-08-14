@@ -5,7 +5,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { normalizeRuolo } from "./session";
-import { isSupervisoreGlobale } from "./richieste-logic";
+import { haVistaDirezione } from "./richieste-logic";
 import {
   arubaProvaConnessione,
   arubaProvaDownload,
@@ -1020,7 +1020,9 @@ export const spDecideAcquisto = createServerFn({ method: "POST" })
 async function assertDirettore(me: ServerSessionUser): Promise<void> {
   if (isAdmin(me)) return;
   const codice = await getCodiceDipendente(me.id);
-  assertCap(isSupervisoreGlobale(codice));
+  // Vista direzione: stesse schermate del direttore, nessun potere
+  // autorizzativo (quelli passano da Autorizza/supervisionaSede).
+  assertCap(haVistaDirezione(codice));
 }
 
 export const spGetMovimenti = createServerFn({ method: "GET" })

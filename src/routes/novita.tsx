@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Sparkles, ShieldCheck, Wrench, TrendingUp } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
-import { isSupervisoreGlobale } from "@/lib/richieste-logic";
+import { haVistaDirezione } from "@/lib/richieste-logic";
 import { APP_INFO, formatReleaseDate } from "@/lib/version";
 import { RELEASES, type ReleaseAudience, type ReleaseTag } from "@/lib/releases";
 import { useLang } from "@/lib/i18n";
@@ -54,7 +54,7 @@ function NovitaPage() {
     const admin = session?.ruolo === "amministratore_sistema";
     const gestione =
       admin || session?.ruolo === "responsabile" || session?.operatore || session?.autorizza;
-    const direzione = admin || isSupervisoreGlobale(session?.codice ?? "");
+    const direzione = admin || haVistaDirezione(session?.codice ?? "");
     const visibile = (a?: ReleaseAudience) =>
       a === "direzione" ? direzione : a === "gestione" ? Boolean(gestione) : true;
     return [...RELEASES]

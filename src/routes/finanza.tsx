@@ -40,7 +40,7 @@ import { PivotClassificazione, type RigaPivot } from "@/components/PivotClassifi
 import { ResocontoTab } from "@/components/ResocontoTab";
 import { useLang } from "@/lib/i18n";
 import { readSession, type SessionUser } from "@/lib/session";
-import { isSupervisoreGlobale } from "@/lib/richieste-logic";
+import { haVistaDirezione } from "@/lib/richieste-logic";
 import {
   parseEstratto,
   normalizeTesto,
@@ -647,7 +647,7 @@ function FinanzaPage() {
 
   const isDirettore =
     session != null &&
-    (session.ruolo === "amministratore_sistema" || isSupervisoreGlobale(session.codice ?? ""));
+    (session.ruolo === "amministratore_sistema" || haVistaDirezione(session.codice ?? ""));
 
   const loadMovimenti = (a: number[]) => {
     setMovimenti(null);
@@ -1829,7 +1829,7 @@ function FinanzaPage() {
       return;
     }
     setSession(s);
-    const dir = s.ruolo === "amministratore_sistema" || isSupervisoreGlobale(s.codice ?? "");
+    const dir = s.ruolo === "amministratore_sistema" || haVistaDirezione(s.codice ?? "");
     if (!dir) return;
     refreshAll(anni);
     loadEbStato(); // serve al tasto Aggiorna per sapere se il sync è attivo

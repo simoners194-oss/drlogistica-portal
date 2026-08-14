@@ -19,7 +19,7 @@ import logoTrim from "@/assets/dr-logistica-logo.png";
 import { MODULES } from "@/lib/modules";
 import { canAccess, readSession, type Ruolo, type SessionSede } from "@/lib/session";
 import { sedeTimbra, anySedeTimbra } from "@/lib/mock-data";
-import { isSedeStorica, isSupervisoreGlobale } from "@/lib/richieste-logic";
+import { isSedeStorica, haVistaDirezione } from "@/lib/richieste-logic";
 import { useLang } from "@/lib/i18n";
 
 export function AppSidebar() {
@@ -73,7 +73,7 @@ export function AppSidebar() {
       return false;
     const roleOk = ruolo ? canAccess(m, ruolo) : canAccess(m, "dipendente");
     // Moduli riservati al direttore (DR005): visibili anche all'admin (ruolo).
-    if (m.soloDirettore) return roleOk || isSupervisoreGlobale(codice);
+    if (m.soloDirettore) return roleOk || haVistaDirezione(codice);
     // Capability alternative: visibile se ruolo ammesso OPPURE capability.
     if (m.orCapabilities && m.orCapabilities.length) {
       const capOk = m.orCapabilities.some(
