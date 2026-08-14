@@ -337,7 +337,7 @@ export function isSupervisoreGlobale(codice: string): boolean {
 // supervisionaSede, che NON leggono questo elenco. Richiesta direzione:
 // Diego Gabelli con le stesse viste di Francesco Romano, zero autorizzazioni.
 const CODICI_VISTA_DIREZIONE = new Set<string>([
-  // "DRxxx", // Diego Gabelli — inserire il codice e fare push
+  "DR007", // Diego Gabelli
 ]);
 
 export function haVistaDirezione(codice: string): boolean {
