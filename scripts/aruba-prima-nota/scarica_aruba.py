@@ -200,6 +200,31 @@ def estrai_nc_links(page, cfg: dict) -> None:
     (colonna Doc. coll.) chiamando direttamente advancedSearch con la
     sessione gia' aperta, e la spedisce a /cron-nc del portale (a blocchi).
     Il portale collega SOLO le NC ancora scollegate."""
+    # La chiamata diretta senza gli header della webapp risponde 401: si apre
+    # PRIMA la griglia "Fatture ricevute" e si INTERCETTANO gli header veri
+    # (token di sessione compresi) della advancedSearch che fa il sito — poi
+    # si riusano quelli per le nostre richieste a tutto-anno.
+    intestazioni: dict = {}
+
+    def on_request(req):
+        if "advancedsearch" in req.url.lower() and not intestazioni:
+            for k, v in req.headers.items():
+                if k.lower() not in ("content-length", "host", "content-type"):
+                    intestazioni[k] = v
+
+    page.on("request", on_request)
+    clicca(page, "apro Fatture ricevute", "text=Fatture ricevute")
+    page.wait_for_load_state("networkidle", timeout=45000)
+    time.sleep(4)
+    if not intestazioni:
+        print("  → ricarico la pagina per forzare la chiamata della griglia")
+        page.reload()
+        page.wait_for_load_state("networkidle", timeout=45000)
+        time.sleep(6)
+    if intestazioni:
+        print("  header di sessione intercettati dalla griglia")
+    else:
+        print("  ATTENZIONE: nessuna advancedSearch intercettata, provo senza header")
     links = []
     for anno in cfg.get("anni", [datetime.now().year]):
         for servizio, dire in (("FatturaRicevutaFrontEnd", "R"), ("FatturaFrontEnd", "E")):
@@ -208,7 +233,7 @@ def estrai_nc_links(page, cfg: dict) -> None:
                 r = page.request.post(
                     URL_PORTALE + f"services/{servizio}/advancedSearch",
                     data=json.dumps({"PageNumber": 1, "PageSize": None, "AnnoFiscale": int(anno)}),
-                    headers={"Content-Type": "application/json"},
+                    headers={**intestazioni, "Content-Type": "application/json"},
                     timeout=120000,
                 )
                 if r.status != 200:
