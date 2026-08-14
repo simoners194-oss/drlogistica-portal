@@ -36,6 +36,7 @@ import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
 import { MultiSelect } from "@/components/MultiSelect";
 import { CampoVocabolario } from "@/components/CampoVocabolario";
 import { RegoleFattureCard } from "@/components/RegoleFattureCard";
+import { PivotClassificazione, type RigaPivot } from "@/components/PivotClassificazione";
 import { ResocontoTab } from "@/components/ResocontoTab";
 import { useLang } from "@/lib/i18n";
 import { readSession, type SessionUser } from "@/lib/session";
@@ -2526,6 +2527,23 @@ function FinanzaPage() {
     impMinF,
     impMaxF,
   ]);
+  // Righe per la vista PIVOT dei movimenti: mese contabile, importo con
+  // segno. Parte dai FILTRATI: la pivot fotografa la selezione corrente
+  // (anni, tendine, imbuti, ricerca, distinte, non classificate).
+  const righePivotMov = useMemo(
+    (): RigaPivot[] =>
+      filtrati.map((m) => ({
+        allocPrimaria: m.allocPrimaria ?? "",
+        allocSecondaria: m.allocSecondaria ?? "",
+        tipologia: m.tipologia ?? "",
+        sottocategoria: m.sottocategoria ?? "",
+        cliente: m.cliente,
+        mese: m.dataContabile.slice(0, 7),
+        importo: m.importo,
+      })),
+    [filtrati],
+  );
+
   const pagineMovTot = Math.max(1, Math.ceil(filtrati.length / righePagina));
   const pagMov = Math.min(paginaMov, pagineMovTot);
   const inizioMov = (pagMov - 1) * righePagina;
@@ -2886,6 +2904,7 @@ function FinanzaPage() {
       {tab === "resoconto" && <ResocontoTab />}
 
       {/* ------------------------------- Movimenti ------------------------- */}
+      {tab === "movimenti" && <PivotClassificazione righe={righePivotMov} />}
       {tab === "movimenti" && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="flex flex-wrap items-end gap-3 mb-4">

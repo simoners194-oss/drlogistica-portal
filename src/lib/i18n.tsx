@@ -1213,6 +1213,10 @@ const en = {
   "ft.colNomeFile": "File name",
   "ft.fNonClass": "Unclassified only",
   "ft.classVuota": "(unclassified)",
+  "fin.pivotSintesi": "Summary pivot (primary allocation \u00d7 type, with subtotals)",
+  "fin.pivotDettaglio": "Detail pivot (classification \u00d7 month)",
+  "fin.pivotColonne": "Columns:",
+  "fin.pivotTotale": "Total",
   "fin.regTabMov": "Movement rules",
   "fin.regTabFat": "Invoice rules",
   "fin.rfDoveImport":
@@ -2487,6 +2491,10 @@ const it: Record<DictKey, string> = {
   "ft.colNomeFile": "Nome file",
   "ft.fNonClass": "Solo non classificate",
   "ft.classVuota": "(non classificata)",
+  "fin.pivotSintesi": "Pivot di sintesi (allocazione primaria \u00d7 tipologia, con subtotali)",
+  "fin.pivotDettaglio": "Pivot di dettaglio (classificazione \u00d7 mese)",
+  "fin.pivotColonne": "Colonne:",
+  "fin.pivotTotale": "Totale",
   "fin.regTabMov": "Regole movimenti",
   "fin.regTabFat": "Regole fatture",
   "fin.rfDoveImport":

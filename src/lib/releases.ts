@@ -36,6 +36,28 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.45.0",
+    date: "2026-08-14",
+    codename: "La pivot in casa",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Viste pivot su Movimenti e Fatture passive",
+        description:
+          "Sopra i Movimenti e sopra le Fatture passive ci sono due viste riassuntive stile tabella pivot: la SINTESI (allocazione primaria \u00d7 tipologia, coi subtotali per allocazione e il totale generale) e il DETTAGLIO (allocazioni, tipologia, sottocategoria e cliente in riga, mesi in colonna \u2014 per le fatture il mese di competenza). Nel dettaglio le colonne di raggruppamento si attivano e disattivano con un click. Entrambe partono chiuse per non rallentare l'apertura e fotografano la selezione corrente: cambiando filtri cambia la pivot.",
+      },
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Sottocategoria e allocazioni visibili sulle fatture passive",
+        description:
+          "La tabella delle fatture passive (e il suo export) ora mostra anche Sottocategoria, Allocazione primaria e Allocazione secondaria accanto alla tipologia, con i filtri a imbuto su ogni colonna.",
+      },
+    ],
+  },
+  {
     version: "1.44.0",
     date: "2026-08-13",
     codename: "Regole e filtri, stessa lingua ovunque",

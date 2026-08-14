@@ -26,6 +26,7 @@ import {
 import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
 import { MultiSelect } from "@/components/MultiSelect";
 import { CampoVocabolario } from "@/components/CampoVocabolario";
+import { PivotClassificazione, type RigaPivot } from "./PivotClassificazione";
 import { useLang } from "@/lib/i18n";
 import {
   computeStatoFattura,
@@ -970,6 +971,21 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
               label: t("ft.colTipologia"),
               get: (x: (typeof conStato)[number]) => classificaDi(x.f).tipologia || "—",
             },
+            {
+              key: "sottocategoria",
+              label: t("fin.sottocat"),
+              get: (x: (typeof conStato)[number]) => classificaDi(x.f).sottocategoria || "—",
+            },
+            {
+              key: "allocpri",
+              label: t("fin.allocPri"),
+              get: (x: (typeof conStato)[number]) => classificaDi(x.f).allocPrimaria || "—",
+            },
+            {
+              key: "allocsec",
+              label: t("fin.allocSec"),
+              get: (x: (typeof conStato)[number]) => classificaDi(x.f).allocSecondaria || "—",
+            },
           ]
         : []),
       {
@@ -1147,6 +1163,26 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conStato, regoleFatture, classAuto, meseRegola]);
+
+  // Righe per la vista PIVOT delle passive: mese = MESE DI COMPETENZA,
+  // importo = totale (le note di credito pesano in negativo). Segue i
+  // filtri attivi: la pivot fotografa quello che l'elenco mostra.
+  const righePivotFt = useMemo((): RigaPivot[] => {
+    if (!ricevute) return [];
+    return filtrate.map((x) => {
+      const cl = classificaDi(x.f);
+      return {
+        allocPrimaria: cl.allocPrimaria,
+        allocSecondaria: cl.allocSecondaria,
+        tipologia: cl.tipologia,
+        sottocategoria: cl.sottocategoria,
+        cliente: x.f.cliente,
+        mese: cl.mese,
+        importo: isNotaCredito(x.f.tipoDocumento) ? -Math.abs(x.f.totale) : x.f.totale,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ricevute, filtrate, regoleFatture, classAuto, meseRegola]);
 
   // Riepilogo (sugli anni filtrati, tutte le fatture non escluse). Gli importi
   // seguono lo stato UFFICIALE (Aruba quando c'è); `confermatoBanca` dice
@@ -2379,7 +2415,15 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         // (dichiarata se c'e', altrimenti regola del giorno 15), tipologia e
         // cliente di riferimento (dallo storico se non dichiarati).
         ...(ricevute
-          ? ["Mese competenza", "Tipologia", "Cliente rif", "Class."]
+          ? [
+              "Mese competenza",
+              "Tipologia",
+              "Sottocategoria",
+              "Allocazione primaria",
+              "Allocazione secondaria",
+              "Cliente rif",
+              "Class.",
+            ]
           : ["Mese competenza", "Servizio", "Class."]),
         "Oggetto fattura",
         "Descrizione",
@@ -2437,7 +2481,15 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           ...(() => {
             const cl = classificaDi(f);
             return ricevute
-              ? [cl.mese, cl.tipologia, cl.clienteRif, cl.fonte]
+              ? [
+                  cl.mese,
+                  cl.tipologia,
+                  cl.sottocategoria,
+                  cl.allocPrimaria,
+                  cl.allocSecondaria,
+                  cl.clienteRif,
+                  cl.fonte,
+                ]
               : [cl.mese, cl.clienteRif, cl.fonte];
           })(),
           f.causaleDoc ?? "",
@@ -3123,6 +3175,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           </div>
         )}
 
+        {ricevute && <PivotClassificazione righe={righePivotFt} />}
         {/* Elenco */}
         {loading ? (
           <div className="py-10 text-center text-sm text-muted-foreground">
@@ -3935,6 +3988,25 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                                   `max-w-40 truncate ${stile}`,
                                   cl.tipologia,
                                 )}
+                              {ricevute && (
+                                <>
+                                  <td
+                                    className="max-w-36 truncate py-1 pr-2 text-[12px] text-muted-foreground"
+                                    title={cl.sottocategoria}
+                                  >
+                                    {cl.sottocategoria || "—"}
+                                  </td>
+                                  <td className="whitespace-nowrap py-1 pr-2 text-[12px] text-muted-foreground">
+                                    {cl.allocPrimaria || "—"}
+                                  </td>
+                                  <td
+                                    className="max-w-36 truncate py-1 pr-2 text-[12px] text-muted-foreground"
+                                    title={cl.allocSecondaria}
+                                  >
+                                    {cl.allocSecondaria || "—"}
+                                  </td>
+                                </>
+                              )}
                               {cella(
                                 "cli",
                                 cl.clienteRif,
@@ -3983,7 +4055,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
                       </tr>,
                       aperta && (
                         <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
-                          <td colSpan={ricevute ? 22 : 21} className="py-3 px-3 bg-muted/20">
+                          <td colSpan={ricevute ? 25 : 21} className="py-3 px-3 bg-muted/20">
                             <div className="text-xs text-muted-foreground mb-2">
                               {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
                               {termini.length
