@@ -7,7 +7,7 @@
 #   → download aaaammgg_ExportMovimenti.zip.  Ripetuto per ogni anno.
 #
 # PRIMA VOLTA:
-#   pip install playwright
+#   pip install playwright xlrd
 #   playwright install chromium
 #   copia config.esempio.json in config.json e compila (credenziali SOLO qui,
 #   il file e' escluso da git)
@@ -399,13 +399,37 @@ def spedisci_incassi(cfg: dict) -> None:
         return
     NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 
-    def leggi_xlsx(percorso):
+    def leggi_report(percorso):
+        """Estrae le righe dal file dentro lo zip: Aruba consegna un VERO
+        .xls binario (OLE2) — si legge con xlrd; se un domani tornasse
+        xlsx, c'e' il ramo zip/xml. Righe come dict {colonna: testo}."""
         from xml.etree import ElementTree as ET
         import io as _io
 
         z = zipfile.ZipFile(percorso)
-        interni = [x for x in z.namelist() if x.lower().endswith(".xlsx")]
-        zz = zipfile.ZipFile(_io.BytesIO(z.read(interni[0]))) if interni else z
+        nome = z.namelist()[0]
+        dati = z.read(nome)
+        if dati[:4].hex() == "d0cf11e0":  # OLE2 = .xls binario
+            import xlrd
+
+            wb = xlrd.open_workbook(file_contents=dati)
+            sh = wb.sheet_by_index(0)
+            righe = []
+            for ri in range(sh.nrows):
+                vals = {}
+                for ci in range(sh.ncols):
+                    cel = sh.cell(ri, ci)
+                    v2 = cel.value
+                    if cel.ctype == 3:  # data: seriale excel, lo capisce data_iso
+                        v2 = str(v2)
+                    elif isinstance(v2, float) and v2 == int(v2):
+                        v2 = str(int(v2))
+                    else:
+                        v2 = str(v2)
+                    vals[str(ci)] = v2
+                righe.append(vals)
+            return righe
+        zz = zipfile.ZipFile(_io.BytesIO(dati))
         shared = []
         if "xl/sharedStrings.xml" in zz.namelist():
             root = ET.fromstring(zz.read("xl/sharedStrings.xml"))
@@ -448,7 +472,7 @@ def spedisci_incassi(cfg: dict) -> None:
     aggregati = {}
     for anno, percorso in sorted(per_anno.items()):
         print(f"[incassi {anno}] {percorso.name}")
-        righe = leggi_xlsx(percorso)
+        righe = leggi_report(percorso)
         hdr = None
         mappa = {}
         for r in righe:
@@ -514,7 +538,15 @@ def spedisci_incassi(cfg: dict) -> None:
         )
         url = url_cron + "&dati=" + urllib.parse.quote(payload, safe="")
         try:
-            with urllib.request.urlopen(url, timeout=300) as resp:
+            # Cloudflare rifiuta lo User-Agent di python-urllib (403):
+            # ci si presenta come un browser qualunque.
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) DRPortalCron/1.0"
+                },
+            )
+            with urllib.request.urlopen(req, timeout=300) as resp:
                 corpo = resp.read().decode("utf-8", "replace").replace("<!-- -->", "")
             m2 = re.search(r"(OK|ERRORE):[^<]*", corpo)
             print(f"  blocco {i // 60 + 1}: {m2.group(0)[:200] if m2 else corpo[:120]}")
