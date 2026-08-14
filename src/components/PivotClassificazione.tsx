@@ -9,6 +9,7 @@
 import { useMemo, useState } from "react";
 import { useLang } from "../lib/i18n";
 import { esportaCsvFile } from "../lib/csv";
+import { MultiSelect } from "./MultiSelect";
 
 export interface RigaPivot {
   allocPrimaria: string;
@@ -18,7 +19,23 @@ export interface RigaPivot {
   cliente: string;
   /** "YYYY-MM" (mese contabile o mese di competenza). */
   mese: string;
+  /** Data ISO del documento/movimento: alimenta i filtri anno e fiscal week. */
+  data: string;
   importo: number;
+}
+
+/** Settimana ISO 8601 ("2026-W33"): lunedi'-domenica, la W1 e' quella che
+ *  contiene il primo giovedi' dell'anno — la "fiscal week" del direttore. */
+export function fiscalWeek(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "—";
+  const t2 = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const giorno = t2.getUTCDay() || 7;
+  t2.setUTCDate(t2.getUTCDate() + 4 - giorno);
+  const anno = t2.getUTCFullYear();
+  const inizio = new Date(Date.UTC(anno, 0, 1));
+  const w = Math.ceil(((t2.getTime() - inizio.getTime()) / 86400000 + 1) / 7);
+  return `${anno}-W${String(w).padStart(2, "0")}`;
 }
 
 const TUTTI_CAMPI = [
@@ -220,6 +237,36 @@ export function PivotClassificazione({
   nome?: string;
 }) {
   const { t } = useLang();
+  // FILTRI PIVOT (richiesta direzione: "tutto filtrabile"): anno, mese e
+  // fiscal week, ognuno multi-selezione. Vuoto = nessun filtro.
+  const [anniSel, setAnniSel] = useState<string[]>([]);
+  const [mesiSel, setMesiSel] = useState<string[]>([]);
+  const [fwSel, setFwSel] = useState<string[]>([]);
+  const conFw = useMemo(() => righe.map((r) => ({ r, fw: fiscalWeek(r.data) })), [righe]);
+  const opzioni = useMemo(() => {
+    const anni = new Set<string>();
+    const mesi = new Set<string>();
+    const fw = new Set<string>();
+    for (const { r, fw: w } of conFw) {
+      anni.add(r.data.slice(0, 4) || "—");
+      mesi.add(r.mese || "—");
+      fw.add(w);
+    }
+    const ord = (xs: Set<string>) => [...xs].sort().map((v2) => ({ v: v2, label: v2 }));
+    return { anni: ord(anni), mesi: ord(mesi), fw: ord(fw) };
+  }, [conFw]);
+  const righeFiltrate = useMemo(
+    () =>
+      conFw
+        .filter(
+          ({ r, fw: w }) =>
+            (!anniSel.length || anniSel.includes(r.data.slice(0, 4) || "—")) &&
+            (!mesiSel.length || mesiSel.includes(r.mese || "—")) &&
+            (!fwSel.length || fwSel.includes(w)),
+        )
+        .map(({ r }) => r),
+    [conFw, anniSel, mesiSel, fwSel],
+  );
   const [sintesiAperta, setSintesiAperta] = useState(false);
   // Il DETTAGLIO parte aperto (richiesta direzione: i dati subito in
   // vista); la SINTESI parte chiusa per velocizzare l'apertura.
@@ -237,7 +284,7 @@ export function PivotClassificazione({
   // Export CSV di una sezione: stesse righe della tabella, subtotali del
   // primo livello e Totale compresi; numeri con la virgola per Excel.
   const esporta = (livelli: readonly Campo[], suffisso: string) => {
-    const { mesi, gruppi, sub, totale, totMese } = aggrega(righe, livelli);
+    const { mesi, gruppi, sub, totale, totMese } = aggrega(righeFiltrate, livelli);
     const num = (v: number | undefined) =>
       v == null || Math.abs(v) < 0.005 ? "" : v.toFixed(2).replace(".", ",");
     const out: (string | number)[][] = [];
@@ -290,6 +337,35 @@ export function PivotClassificazione({
 
   return (
     <div className="mb-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+      <div className="mb-3 flex flex-wrap items-end gap-3">
+        <MultiSelect
+          label={t("fin.pivotAnno")}
+          tuttiLabel={t("common.all")}
+          selLabel={t("fin.msSel")}
+          opzioni={opzioni.anni}
+          valori={anniSel}
+          onChange={setAnniSel}
+          className="w-36"
+        />
+        <MultiSelect
+          label={t("fin.month")}
+          tuttiLabel={t("common.all")}
+          selLabel={t("fin.msSel")}
+          opzioni={opzioni.mesi}
+          valori={mesiSel}
+          onChange={setMesiSel}
+          className="w-40"
+        />
+        <MultiSelect
+          label={t("fin.pivotFw")}
+          tuttiLabel={t("common.all")}
+          selLabel={t("fin.msSel")}
+          opzioni={opzioni.fw}
+          valori={fwSel}
+          onChange={setFwSel}
+          className="w-40"
+        />
+      </div>
       <div className="flex items-center">
         <button
           type="button"
@@ -303,7 +379,7 @@ export function PivotClassificazione({
       {sintesiAperta && (
         <div className="mt-2">
           <Tabella
-            righe={righe}
+            righe={righeFiltrate}
             livelli={["allocPrimaria", "tipologia"]}
             etichette={etichette}
             vuotaLabel={t("ft.classVuota")}
@@ -351,7 +427,7 @@ export function PivotClassificazione({
             </div>
             <div className="mt-2">
               <Tabella
-                righe={righe}
+                righe={righeFiltrate}
                 livelli={livelliAttivi}
                 etichette={etichette}
                 vuotaLabel={t("ft.classVuota")}

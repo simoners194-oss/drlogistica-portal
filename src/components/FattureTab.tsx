@@ -145,7 +145,13 @@ const CHUNK = 100;
 type StatoFiltro =
   "tutte" | "ritardo" | "nonIncassata" | "parziale" | "pagata" | "discordante" | "nonGestita";
 
-export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
+export function FattureTab({
+  direzione,
+  soloPivot = false,
+}: {
+  direzione: DirezioneFattura;
+  soloPivot?: boolean;
+}) {
   const { t } = useLang();
   // Attive (emesse, crediti) e passive (ricevute, debiti) vivono in due
   // schede distinte: la direzione arriva da lì, non si commuta qui dentro.
@@ -1228,6 +1234,7 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
         sottocategoria: cl.sottocategoria,
         cliente: x.f.cliente,
         mese: cl.mese,
+        data: x.f.dataDocumento,
         importo: isNotaCredito(x.f.tipoDocumento) ? -Math.abs(x.f.totale) : x.f.totale,
       };
     });
@@ -2640,6 +2647,15 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
 
   const loading = fatture == null || abbinamenti == null || movimenti == null;
 
+  if (soloPivot)
+    return loading ? (
+      <div className="py-10 text-center text-sm text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin inline-block" />
+      </div>
+    ) : (
+      <PivotClassificazione righe={righePivotFt} nome="fatture-passive" />
+    );
+
   return (
     <div className="space-y-4">
       {/* Riepilogo */}
@@ -3237,7 +3253,6 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
           </div>
         )}
 
-        {ricevute && <PivotClassificazione righe={righePivotFt} nome="fatture-passive" />}
         {/* Elenco */}
         {loading ? (
           <div className="py-10 text-center text-sm text-muted-foreground">

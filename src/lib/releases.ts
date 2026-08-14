@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.47.0",
+    date: "2026-08-14",
+    codename: "La tab Pivot",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Le pivot hanno la loro tab, con filtri per anno, mese e fiscal week",
+        description:
+          "Le viste pivot di movimenti e fatture passive escono dalle tab d'origine e vivono nella nuova tab Pivot di Finanze. In cima ci sono i filtri multi-selezione per anno, mese e fiscal week (settimana ISO), combinabili tra loro; le colonne di raggruppamento restano attivabili e disattivabili come in Excel. Gli incassi ora compaiono sotto l'allocazione primaria \"Incasso\" invece che tra i non classificati.",
+      },
+    ],
+  },
+  {
     version: "1.46.0",
     date: "2026-08-14",
     codename: "Regole fatture in ordine",

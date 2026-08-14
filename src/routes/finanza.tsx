@@ -243,7 +243,15 @@ const CHUNK = 100;
 const RIGHE_PAGINA = 50;
 
 type Tab =
-  "movimenti" | "overview" | "resoconto" | "attive" | "passive" | "anomalie" | "storico" | "regole";
+  | "movimenti"
+  | "overview"
+  | "resoconto"
+  | "pivot"
+  | "attive"
+  | "passive"
+  | "anomalie"
+  | "storico"
+  | "regole";
 
 interface SheetInfo {
   name: string;
@@ -2532,16 +2540,24 @@ function FinanzaPage() {
   // (anni, tendine, imbuti, ricerca, distinte, non classificate).
   const righePivotMov = useMemo(
     (): RigaPivot[] =>
-      filtrati.map((m) => ({
-        allocPrimaria: m.allocPrimaria ?? "",
-        allocSecondaria: m.allocSecondaria ?? "",
-        tipologia: m.tipologia ?? "",
-        sottocategoria: m.sottocategoria ?? "",
-        cliente: m.cliente,
-        mese: m.dataContabile.slice(0, 7),
-        importo: m.importo,
-      })),
-    [filtrati],
+      (movimentiVista ?? []).map((m) => {
+        const tip = m.tipologia ?? "";
+        return {
+          // Gli INCASSI senza allocazione vanno nel secchio "Incasso" anche
+          // sull'allocazione primaria (richiesta direzione): la sintesi
+          // non li mostra piu' come "(non classificata)".
+          allocPrimaria:
+            (m.allocPrimaria ?? "") || (tip.toLowerCase().startsWith("incasso") ? "Incasso" : ""),
+          allocSecondaria: m.allocSecondaria ?? "",
+          tipologia: tip,
+          sottocategoria: m.sottocategoria ?? "",
+          cliente: m.cliente,
+          mese: m.dataContabile.slice(0, 7),
+          data: m.dataContabile,
+          importo: m.importo,
+        };
+      }),
+    [movimentiVista],
   );
 
   const pagineMovTot = Math.max(1, Math.ceil(filtrati.length / righePagina));
@@ -2873,6 +2889,7 @@ function FinanzaPage() {
           {tabBtn("movimenti", <Table2 className="h-4 w-4" />, t("fin.tabMovimenti"))}
           {tabBtn("overview", <TrendingUp className="h-4 w-4" />, t("fin.tabOverview"))}
           {tabBtn("resoconto", <Users className="h-4 w-4" />, t("fin.tabResoconto"))}
+          {tabBtn("pivot", <TrendingUp className="h-4 w-4" />, t("fin.tabPivot"))}
           {tabBtn("attive", <Receipt className="h-4 w-4" />, t("fin.tabAttive"))}
           {tabBtn("passive", <ReceiptText className="h-4 w-4" />, t("fin.tabPassive"))}
           {tabBtn(
@@ -2904,7 +2921,14 @@ function FinanzaPage() {
       {tab === "resoconto" && <ResocontoTab />}
 
       {/* ------------------------------- Movimenti ------------------------- */}
-      {tab === "movimenti" && <PivotClassificazione righe={righePivotMov} nome="movimenti" />}
+      {tab === "pivot" && (
+        <>
+          <div className="mb-2 text-sm font-semibold text-foreground">{t("fin.tabMovimenti")}</div>
+          <PivotClassificazione righe={righePivotMov} nome="movimenti" />
+          <div className="mb-2 text-sm font-semibold text-foreground">{t("fin.tabPassive")}</div>
+          <FattureTab direzione="Ricevuta" soloPivot />
+        </>
+      )}
       {tab === "movimenti" && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="flex flex-wrap items-end gap-3 mb-4">
