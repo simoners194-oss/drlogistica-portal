@@ -90,6 +90,7 @@ import {
   fetchImportStorico,
   annullaImport,
   eliminaMovimento,
+  azzeraTipologieBatch,
   correggiImportoMovimento,
   LEGACY_IMPORT_ID,
   fetchRegoleFinanza,
@@ -1053,6 +1054,22 @@ export const spCorreggiMovimento = createServerFn({ method: "POST" })
     await assertDirettore(await currentUser());
     await correggiImportoMovimento(data.id, data.importo, data.chiave);
     return { ok: true };
+  });
+
+export const spAzzeraTipologie = createServerFn({ method: "POST" })
+  .inputValidator((input: { nomiFile: string[]; direzione: "Emessa" | "Ricevuta" }) => {
+    const nomiFile = Array.isArray(input?.nomiFile)
+      ? input.nomiFile.map((x) => String(x)).slice(0, 200)
+      : [];
+    if (!nomiFile.length) throw new Error("Nessuna fattura indicata");
+    return {
+      nomiFile,
+      direzione: (input?.direzione === "Emessa" ? "Emessa" : "Ricevuta") as "Emessa" | "Ricevuta",
+    };
+  })
+  .handler(async ({ data }) => {
+    await assertDirettore(await currentUser());
+    return azzeraTipologieBatch(data.nomiFile, data.direzione);
   });
 
 export const spEliminaMovimento = createServerFn({ method: "POST" })

@@ -88,6 +88,7 @@ import {
   spDeleteRegolaFattura,
   spGetRegoleFinanza,
   spSetClassificazione,
+  spAzzeraTipologie,
   spEliminaFatture,
 } from "@/lib/sharepoint.functions";
 import type { SpFattura, SpMovimento, ArubaStato } from "@/lib/sharepoint.server";
@@ -1165,18 +1166,19 @@ export function FattureTab({ direzione }: { direzione: DirezioneFattura }) {
     setMigraBusy(true);
     try {
       let fatte = 0;
-      for (const f of candidatiMigra) {
-        await spSetClassificazione({
-          data: { nomeFile: f.nomeFile, direzione: "Ricevuta", tipologiaCosto: "" },
-        });
-        fatte++;
-        if (fatte % 5 === 0 || fatte === candidatiMigra.length)
-          setMigraProg(`${fatte} / ${candidatiMigra.length}`);
+      const nomi = candidatiMigra.map((f) => f.nomeFile);
+      const BLOCCO = 150;
+      for (let i2 = 0; i2 < nomi.length; i2 += BLOCCO) {
+        const r = (await spAzzeraTipologie({
+          data: { nomiFile: nomi.slice(i2, i2 + BLOCCO), direzione: "Ricevuta" },
+        })) as { aggiornate: number };
+        fatte += r.aggiornate;
+        setMigraProg(`${Math.min(i2 + BLOCCO, nomi.length)} / ${nomi.length}`);
       }
-      const nomi = new Set(candidatiMigra.map((f) => f.nomeFile));
+      const set = new Set(nomi);
       setFattureRic((prev) =>
         prev
-          ? prev.map((r) => (nomi.has(r.nomeFile) ? { ...r, tipologiaCosto: undefined } : r))
+          ? prev.map((r) => (set.has(r.nomeFile) ? { ...r, tipologiaCosto: undefined } : r))
           : prev,
       );
       toast.success(t("ft.migraOk"), { description: `${fatte}` });

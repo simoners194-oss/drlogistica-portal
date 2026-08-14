@@ -5591,6 +5591,37 @@ export async function setClassificazione(
   logSp("info", "fatture.classifica", `${doc.numero}: classificazione aggiornata (manuale)`);
 }
 
+/** Azzera la TipologiaCosto su un BLOCCO di fatture: una sola lettura
+ *  dell'archivio per chiamata e PATCH in parallelo — la versione una-per-
+ *  volta rileggeva 3.300 righe a fattura (minuti che diventavano ore). */
+export async function azzeraTipologieBatch(
+  nomiFile: string[],
+  direzione: DirezioneFattura,
+): Promise<{ aggiornate: number }> {
+  const cfg = await discoverSharePoint();
+  const listId = requireFattureList(cfg, direzione);
+  const F = fattureListPer(cfg, direzione).fields;
+  if (!F.TipologiaCosto) throw new Error('Colonna "TipologiaCosto" assente sulla lista fatture.');
+  const tutte = await fetchFatture(direzione);
+  const perNome = new Map(tutte.map((f) => [f.nomeFile, f.id]));
+  const ids = nomiFile.map((nf) => perNome.get(nf)).filter((x): x is string => Boolean(x));
+  let aggiornate = 0;
+  const BATCH = 4;
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const esiti = await Promise.allSettled(
+      ids.slice(i, i + BATCH).map((id) =>
+        gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify({ [F.TipologiaCosto as string]: "" }),
+        }),
+      ),
+    );
+    aggiornate += esiti.filter((e) => e.status === "fulfilled").length;
+  }
+  logSp("info", "fatture.migra", `Tipologie storiche azzerate: ${aggiornate}/${nomiFile.length}`);
+  return { aggiornate };
+}
+
 /** Quando i dati fatture sono stati toccati l'ultima volta (import dei
  *  report/XML o correzioni): il massimo lastModifiedDateTime della lista.
  *  Query leggerissima (1 elemento); se l'ordinamento non è supportato si
