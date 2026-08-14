@@ -2554,6 +2554,7 @@ function FinanzaPage() {
           cliente: m.cliente,
           mese: m.dataContabile.slice(0, 7),
           data: m.dataContabile,
+          conto: m.conto ?? "",
           importo: m.importo,
         };
       }),

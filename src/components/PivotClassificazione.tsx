@@ -1,11 +1,10 @@
-// Vista PIVOT stile Excel richiesta dalla direzione: righe raggruppate per
-// classificazione, colonne = mesi, valori = somma importi. Due sezioni:
-// SINTESI (allocazione primaria × tipologia, con subtotali) chiusa di
-// default — tenerla chiusa velocizza l'apertura — e DETTAGLIO (tutti i
-// livelli, con colonne attivabili) aperto. Subtotali sul primo livello in
-// ENTRAMBE, comprimibili con un click (e comprimi/espandi tutto). Export
-// CSV di ogni sezione, subtotali compresi. Usata da Movimenti e Fatture
-// passive (dove il mese è quello di competenza).
+// Vista PIVOT stile Excel richiesta dalla direzione — versione completa:
+// TUTTI i campi sono filtrabili (multi-selezione con ricerca) e TUTTI sono
+// usabili come colonne di raggruppamento, aggiungibili e togliibili con un
+// click: allocazioni, tipologia, sottocategoria, cliente, anno, mese,
+// fiscal week e conto. Le colonne dei valori restano i mesi + Totale.
+// Due sezioni: SINTESI (allocazione × tipologia, subtotali) chiusa di
+// default e DETTAGLIO aperto; subtotali comprimibili; export CSV.
 import { useMemo, useState } from "react";
 import { useLang } from "../lib/i18n";
 import { esportaCsvFile } from "../lib/csv";
@@ -19,8 +18,10 @@ export interface RigaPivot {
   cliente: string;
   /** "YYYY-MM" (mese contabile o mese di competenza). */
   mese: string;
-  /** Data ISO del documento/movimento: alimenta i filtri anno e fiscal week. */
+  /** Data ISO del documento/movimento: alimenta anno e fiscal week. */
   data: string;
+  /** Conto bancario (solo movimenti; vuoto per le fatture). */
+  conto?: string;
   importo: number;
 }
 
@@ -38,14 +39,33 @@ export function fiscalWeek(iso: string): string {
   return `${anno}-W${String(w).padStart(2, "0")}`;
 }
 
+/** Riga arricchita: i campi derivati diventano dimensioni a tutti gli
+ *  effetti, filtrabili e raggruppabili come gli altri. */
+interface RigaEstesa extends RigaPivot {
+  anno: string;
+  fw: string;
+  contoV: string;
+}
+
 const TUTTI_CAMPI = [
   "allocPrimaria",
   "allocSecondaria",
   "tipologia",
   "sottocategoria",
   "cliente",
+  "anno",
+  "mese",
+  "fw",
+  "contoV",
 ] as const;
 type Campo = (typeof TUTTI_CAMPI)[number];
+const CAMPI_DEFAULT: Campo[] = [
+  "allocPrimaria",
+  "allocSecondaria",
+  "tipologia",
+  "sottocategoria",
+  "cliente",
+];
 
 function fmtN(x: number): string {
   return x.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -58,7 +78,7 @@ interface Gruppo {
 }
 
 /** Aggregazione pura: la usano sia la tabella sia l'export CSV. */
-function aggrega(righe: RigaPivot[], livelli: readonly Campo[]) {
+function aggrega(righe: RigaEstesa[], livelli: readonly Campo[]) {
   const mesiSet = new Set<string>();
   const map = new Map<string, Gruppo>();
   const totMese = new Map<string, number>();
@@ -82,7 +102,6 @@ function aggrega(righe: RigaPivot[], livelli: readonly Campo[]) {
     }
     return 0;
   });
-  // Subtotali per PRIMO livello, nell'ordine dei gruppi.
   const sub = new Map<string, Gruppo>();
   for (const g of gruppi) {
     const k = g.vals[0];
@@ -103,7 +122,7 @@ function Tabella({
   comprimiLabel,
   espandiLabel,
 }: {
-  righe: RigaPivot[];
+  righe: RigaEstesa[];
   livelli: readonly Campo[];
   etichette: Record<Campo, string>;
   vuotaLabel: string;
@@ -237,48 +256,59 @@ export function PivotClassificazione({
   nome?: string;
 }) {
   const { t } = useLang();
-  // FILTRI PIVOT (richiesta direzione: "tutto filtrabile"): anno, mese e
-  // fiscal week, ognuno multi-selezione. Vuoto = nessun filtro.
-  const [anniSel, setAnniSel] = useState<string[]>([]);
-  const [mesiSel, setMesiSel] = useState<string[]>([]);
-  const [fwSel, setFwSel] = useState<string[]>([]);
-  const conFw = useMemo(() => righe.map((r) => ({ r, fw: fiscalWeek(r.data) })), [righe]);
-  const opzioni = useMemo(() => {
-    const anni = new Set<string>();
-    const mesi = new Set<string>();
-    const fw = new Set<string>();
-    for (const { r, fw: w } of conFw) {
-      anni.add(r.data.slice(0, 4) || "—");
-      mesi.add(r.mese || "—");
-      fw.add(w);
-    }
-    const ord = (xs: Set<string>) => [...xs].sort().map((v2) => ({ v: v2, label: v2 }));
-    return { anni: ord(anni), mesi: ord(mesi), fw: ord(fw) };
-  }, [conFw]);
-  const righeFiltrate = useMemo(
-    () =>
-      conFw
-        .filter(
-          ({ r, fw: w }) =>
-            (!anniSel.length || anniSel.includes(r.data.slice(0, 4) || "—")) &&
-            (!mesiSel.length || mesiSel.includes(r.mese || "—")) &&
-            (!fwSel.length || fwSel.includes(w)),
-        )
-        .map(({ r }) => r),
-    [conFw, anniSel, mesiSel, fwSel],
-  );
-  const [sintesiAperta, setSintesiAperta] = useState(false);
-  // Il DETTAGLIO parte aperto (richiesta direzione: i dati subito in
-  // vista); la SINTESI parte chiusa per velocizzare l'apertura.
-  const [dettaglioAperto, setDettaglioAperto] = useState(true);
-  const [attivi, setAttivi] = useState<Campo[]>([...TUTTI_CAMPI]);
+  const VUOTO = "__vuoto__";
   const etichette: Record<Campo, string> = {
     allocPrimaria: t("fin.allocPri"),
     allocSecondaria: t("fin.allocSec"),
     tipologia: t("ft.colTipologia"),
     sottocategoria: t("fin.sottocat"),
     cliente: t("fin.cliente"),
+    anno: t("fin.pivotAnno"),
+    mese: t("fin.month"),
+    fw: t("fin.pivotFw"),
+    contoV: t("fin.conto"),
   };
+  // Arricchimento: anno/fw/conto diventano campi pieni della riga.
+  const estese = useMemo(
+    (): RigaEstesa[] =>
+      righe.map((r) => ({
+        ...r,
+        anno: r.data.slice(0, 4) || "—",
+        fw: fiscalWeek(r.data),
+        contoV: r.conto ?? "",
+      })),
+    [righe],
+  );
+  // FILTRI SU TUTTI I CAMPI (richiesta direzione): multi-selezione con
+  // ricerca incorporata, "(non classificata)" per i vuoti, combinabili.
+  const [filtri, setFiltri] = useState<Partial<Record<Campo, string[]>>>({});
+  const opzioni = useMemo(() => {
+    const out = {} as Record<Campo, { v: string; label: string }[]>;
+    for (const c of TUTTI_CAMPI) {
+      const set = new Set<string>();
+      for (const r of estese) set.add(r[c] || VUOTO);
+      out[c] = [...set]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ v, label: v === VUOTO ? t("ft.classVuota") : v }));
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estese]);
+  const righeFiltrate = useMemo(
+    () =>
+      estese.filter((r) =>
+        TUTTI_CAMPI.every((c) => {
+          const sel = filtri[c];
+          return !sel?.length || sel.includes(r[c] || VUOTO);
+        }),
+      ),
+    [estese, filtri],
+  );
+  const [sintesiAperta, setSintesiAperta] = useState(false);
+  // Il DETTAGLIO parte aperto (richiesta direzione: i dati subito in
+  // vista); la SINTESI parte chiusa per velocizzare l'apertura.
+  const [dettaglioAperto, setDettaglioAperto] = useState(true);
+  const [attivi, setAttivi] = useState<Campo[]>([...CAMPI_DEFAULT]);
   const livelliAttivi = TUTTI_CAMPI.filter((c) => attivi.includes(c));
 
   // Export CSV di una sezione: stesse righe della tabella, subtotali del
@@ -335,36 +365,31 @@ export function PivotClassificazione({
     </button>
   );
 
+  const filtriAttivi = TUTTI_CAMPI.some((c) => filtri[c]?.length);
   return (
     <div className="mb-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-      <div className="mb-3 flex flex-wrap items-end gap-3">
-        <MultiSelect
-          label={t("fin.pivotAnno")}
-          tuttiLabel={t("common.all")}
-          selLabel={t("fin.msSel")}
-          opzioni={opzioni.anni}
-          valori={anniSel}
-          onChange={setAnniSel}
-          className="w-36"
-        />
-        <MultiSelect
-          label={t("fin.month")}
-          tuttiLabel={t("common.all")}
-          selLabel={t("fin.msSel")}
-          opzioni={opzioni.mesi}
-          valori={mesiSel}
-          onChange={setMesiSel}
-          className="w-40"
-        />
-        <MultiSelect
-          label={t("fin.pivotFw")}
-          tuttiLabel={t("common.all")}
-          selLabel={t("fin.msSel")}
-          opzioni={opzioni.fw}
-          valori={fwSel}
-          onChange={setFwSel}
-          className="w-40"
-        />
+      <div className="mb-3 flex flex-wrap items-end gap-2">
+        {TUTTI_CAMPI.map((c) => (
+          <MultiSelect
+            key={c}
+            label={etichette[c]}
+            tuttiLabel={t("common.all")}
+            selLabel={t("fin.msSel")}
+            opzioni={opzioni[c]}
+            valori={filtri[c] ?? []}
+            onChange={(v) => setFiltri((prev) => ({ ...prev, [c]: v }))}
+            className="w-36"
+          />
+        ))}
+        {filtriAttivi && (
+          <button
+            type="button"
+            onClick={() => setFiltri({})}
+            className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-muted"
+          >
+            {t("fin.pivotPulisciFiltri")}
+          </button>
+        )}
       </div>
       <div className="flex items-center">
         <button
