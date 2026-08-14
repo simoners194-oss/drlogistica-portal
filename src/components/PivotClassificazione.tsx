@@ -163,7 +163,9 @@ function Tabella({
 export function PivotClassificazione({ righe }: { righe: RigaPivot[] }) {
   const { t } = useLang();
   const [sintesiAperta, setSintesiAperta] = useState(false);
-  const [dettaglioAperto, setDettaglioAperto] = useState(false);
+  // Il DETTAGLIO parte aperto (richiesta direzione: i dati subito in
+  // vista); la SINTESI parte chiusa per velocizzare l'apertura.
+  const [dettaglioAperto, setDettaglioAperto] = useState(true);
   const [attivi, setAttivi] = useState<Campo[]>([...TUTTI_CAMPI]);
   const etichette: Record<Campo, string> = {
     allocPrimaria: t("fin.allocPri"),
