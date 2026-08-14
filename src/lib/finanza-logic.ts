@@ -212,15 +212,29 @@ export function matchRegola(
     .map((x) => x.trim())
     .filter((x) => x.length >= minLen);
   if (!termini.length) return false;
+  // ORDINE LIBERO (richiesta direzione): un termine di piu' parole (es.
+  // "riccardo carlone") corrisponde anche se il testo le ha invertite
+  // ("carlone riccardo"): basta che TUTTE le parole del termine ci siano.
+  const ordineLibero = (testo: string, patt: string): boolean => {
+    const parole = normalizeTesto(patt)
+      .split(" ")
+      .filter((w) => w.length >= 2);
+    if (parole.length < 2) return false;
+    const t2 = normalizeTesto(testo);
+    return parole.every((w) => t2.includes(w));
+  };
   return termini.some((pattern) => {
-    const inDescrizione = normalizeTesto(mov.descrizione).includes(normalizeTesto(pattern));
+    const inDescrizione =
+      normalizeTesto(mov.descrizione).includes(normalizeTesto(pattern)) ||
+      ordineLibero(mov.descrizione, pattern);
     if (r.campo === "descrizione") return inDescrizione;
     const key = clienteGroupKey(mov.cliente);
     const inCliente = key
       ? r.modo === "esatto"
         ? key === clienteGroupKey(pattern)
         : key.includes(normalizeTesto(pattern)) ||
-          canonicalCliente(mov.cliente).includes(normalizeTesto(pattern))
+          canonicalCliente(mov.cliente).includes(normalizeTesto(pattern)) ||
+          ordineLibero(mov.cliente, pattern)
       : false;
     // "entrambi": nel nome O nella descrizione.
     if (r.campo === "entrambi") return inCliente || inDescrizione;
