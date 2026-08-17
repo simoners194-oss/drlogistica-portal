@@ -257,11 +257,24 @@ export function ResocontoTab() {
   // combinata, ma TOTALE − INCASSATO — la stessa colonna "Da incassare"
   // dell'archivio fatture, dove note di credito e storni pesano dentro
   // l'incassato (NC compensata = negativo). Prima bozza: si rivede insieme.
-  const residuoDi = (x: (typeof attive)[number]) =>
+  const residuoDi = (x: (typeof attive)[number]) => {
     // Le NC non sono mai "da incassare": il loro effetto passa gia' dentro
     // l'incassato (compensata = negativo). Senza questo azzeramento, una NC
     // compensata varrebbe DUE volte il suo importo nel "da incassare".
-    isNotaCredito(x.f.tipoDocumento) ? 0 : Math.round((x.f.totale - incassatoDi(x)) * 100) / 100;
+    if (isNotaCredito(x.f.tipoDocumento)) return 0;
+    // Fattura STORNATA (coperta da nota di credito collegata): niente da
+    // incassare/pagare, anche se l'incasso non e' mai stato gestito su
+    // Aruba — richiesta direzione 17/08. Le NC collegate abbattono il
+    // residuo anche quando coprono solo una parte.
+    if (x.s.annullataDaNC) return 0;
+    const inc = incassatoDi(x);
+    // Se l'incassato arriva dal fallback "Incassata su Aruba" la NC e' gia'
+    // dentro (totale − NC): sottrarla di nuovo la conterebbe due volte.
+    const fallbackAruba =
+      x.s.incassatoIncassi == null && parseIncassoAruba(x.f.incassoAruba) === "Incassata";
+    const nc = fallbackAruba ? 0 : x.s.notaCredito;
+    return Math.max(0, Math.round((x.f.totale - nc - inc) * 100) / 100);
+  };
 
   const inSelezione = (nome: string, sel: string[]) =>
     sel.length === 0 || sel.includes(clienteGroupKey(nome) || nome);
@@ -507,17 +520,21 @@ export function ResocontoTab() {
         x.s.statoIncassi !== "Pagata" &&
         x.s.statoFatturazione !== "Pagata",
     );
-    const loroAperte = (fattureRic ?? []).filter(
-      (f) =>
-        (clienteGroupKey(f.cliente) || f.cliente) === chiave &&
-        !isNotaCredito(f.tipoDocumento) &&
-        f.totale > 0 &&
-        parseIncassoAruba(f.incassoAruba) !== "Incassata",
+    // Le LORO fatture da portare in compensazione: solo quelle con un
+    // RESIDUO vero (totale − pagato − NC), con la stessa lettura del
+    // resoconto. Prima bastava "non incassata su Aruba" e finivano nel
+    // sollecito anche fatture gia' saldate (segnalazione direzione 17/08).
+    const loroAperte = passive.filter(
+      (x) =>
+        (clienteGroupKey(x.f.cliente) || x.f.cliente) === chiave &&
+        !isNotaCredito(x.f.tipoDocumento) &&
+        x.f.totale > 0 &&
+        residuoDi(x) > 1,
     );
     const totale = scadute.reduce((s2, x) => s2 + residuoDi(x), 0);
     const daScalare =
       ncAperte.reduce((s2, x) => s2 + Math.abs(x.f.totale), 0) +
-      loroAperte.reduce((s2, f) => s2 + f.totale, 0);
+      loroAperte.reduce((s2, x) => s2 + residuoDi(x), 0);
     const r: string[] = [];
     r.push(`Spett.le ${nome},`);
     r.push("");
@@ -536,8 +553,8 @@ export function ResocontoTab() {
       r.push("Da portare eventualmente in compensazione:");
       for (const x of ncAperte)
         r.push(`- ns. nota di credito ${x.f.numero}: € ${fmtImporto(Math.abs(x.f.totale))}`);
-      for (const f of loroAperte)
-        r.push(`- vs. fattura ${f.numero} nei nostri confronti: € ${fmtImporto(f.totale)}`);
+      for (const x of loroAperte)
+        r.push(`- vs. fattura ${x.f.numero} nei nostri confronti: € ${fmtImporto(residuoDi(x))}`);
       r.push(`Saldo netto richiesto: € ${fmtImporto(Math.max(0, totale - daScalare))}`);
     }
     r.push("");

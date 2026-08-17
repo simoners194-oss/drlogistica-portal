@@ -2929,6 +2929,8 @@ function FinanzaPage() {
         <>
           <div className="mb-2 text-sm font-semibold text-foreground">{t("fin.tabMovimenti")}</div>
           <PivotClassificazione righe={righePivotMov} nome="movimenti" />
+          <div className="mb-2 text-sm font-semibold text-foreground">{t("fin.tabAttive")}</div>
+          <FattureTab direzione="Emessa" soloPivot />
           <div className="mb-2 text-sm font-semibold text-foreground">{t("fin.tabPassive")}</div>
           <FattureTab direzione="Ricevuta" soloPivot />
         </>

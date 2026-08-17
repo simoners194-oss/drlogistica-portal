@@ -10,15 +10,18 @@
 #   I token si leggono in Amministrazione (pannello Banca e card Diagnostica
 #   Aruba). Un secret assente = quel sync viene semplicemente saltato.
 #
-# NB: gli orari di "schedule" sono in UTC. 05:30/11:30 UTC = 07:30/13:30
-# in Italia d'estate (06:30/12:30 d'inverno) — per il nostro uso va bene
-# così, senza inseguire l'ora legale.
+# NB: gli orari di "schedule" sono in UTC. 07:00/10:00/13:00/14:30 UTC =
+# 09:00/12:00/15:00/16:30 in Italia d'estate (un'ora prima d'inverno) — per
+# il nostro uso va bene così, senza inseguire l'ora legale. GitHub inoltre
+# non garantisce il minuto esatto: qualche minuto di ritardo è normale.
 name: Sync programmato
 
 on:
   schedule:
-    - cron: "30 5 * * 1-6" # mattina, lun-sab
-    - cron: "30 11 * * 1-6" # primo pomeriggio, lun-sab
+    - cron: "0 7 * * 1-6" # ore 9 italiane, lun-sab
+    - cron: "0 10 * * 1-6" # ore 12 italiane, lun-sab
+    - cron: "0 13 * * 1-6" # ore 15 italiane, lun-sab
+    - cron: "30 14 * * 1-6" # ore 16:30 italiane, lun-sab
   workflow_dispatch: {} # lancio manuale dalla pagina Actions, per prova
 
 jobs:

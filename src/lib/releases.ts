@@ -36,6 +36,35 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.51.0",
+    date: "2026-08-17",
+    codename: "Pivot attive e imponibile",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Pivot anche sulle fatture attive, con scelta totale/imponibile",
+        description:
+          "Nella tab Pivot ora ci sono tre sezioni: movimenti, fatture attive e fatture passive. Sulle pivot delle fatture si sceglie se leggere gli importi al totale (con IVA) oppure all'imponibile (senza IVA): imponibile e imposta arrivano dall'XML di ogni fattura.",
+      },
+      {
+        tag: "fix",
+        audience: "direzione",
+        title: "Le fatture stornate non pesano piu' nel Resoconto",
+        description:
+          "Una fattura coperta da nota di credito collegata e' stornata: non compare piu' tra le cose da incassare o da pagare, anche se l'incasso non e' mai stato gestito sulla fatturazione. Le note di credito parziali abbattono il residuo per la loro parte. Sistemato anche il sollecito: tra le fatture da portare in compensazione non finiscono piu' quelle gia' saldate.",
+      },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Aggiornamenti automatici alle 9, 12, 15 e 16:30",
+        description:
+          "Banca e fatturazione si sincronizzano quattro volte al giorno (lun-sab): alle 9, alle 12, alle 15 e alle 16:30. Pochi minuti dopo passa anche l'aggiornamento di prima nota, incassi e note di credito.",
+      },
+    ],
+  },
+  {
     version: "1.50.0",
     date: "2026-08-14",
     codename: "Cosa succedera' entro il...",

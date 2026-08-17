@@ -163,6 +163,8 @@ export function FattureTab({
     t(ricevute ? passiva : attiva);
   const [fattureEm, setFattureEm] = useState<SpFattura[] | null>(null);
   const [fattureRic, setFattureRic] = useState<SpFattura[] | null>(null);
+  // Vista pivot: importi al TOTALE (con IVA) o all'IMPONIBILE (senza IVA).
+  const [pivotImponibile, setPivotImponibile] = useState(false);
   const fatture = dir === "Emessa" ? fattureEm : fattureRic;
   const [termini, setTermini] = useState<TerminePagamento[]>([]);
   const [abbinamenti, setAbbinamenti] = useState<AbbinamentoIncasso[] | null>(null);
@@ -1229,9 +1231,12 @@ export function FattureTab({
   // importo = totale (le note di credito pesano in negativo). Segue i
   // filtri attivi: la pivot fotografa quello che l'elenco mostra.
   const righePivotFt = useMemo((): RigaPivot[] => {
-    if (!ricevute) return [];
     return filtrate.map((x) => {
       const cl = classificaDi(x.f);
+      // Imponibile quando richiesto; se la fattura non lo dichiara (righe
+      // storiche senza colonna, esenti) si resta sul totale: meglio un
+      // importo lordo che una riga sparita dal conteggio.
+      const val = pivotImponibile ? x.f.imponibile || x.f.totale : x.f.totale;
       return {
         allocPrimaria: cl.allocPrimaria,
         allocSecondaria: cl.allocSecondaria,
@@ -1240,11 +1245,11 @@ export function FattureTab({
         cliente: x.f.cliente,
         mese: cl.mese,
         data: x.f.dataDocumento,
-        importo: isNotaCredito(x.f.tipoDocumento) ? -Math.abs(x.f.totale) : x.f.totale,
+        importo: isNotaCredito(x.f.tipoDocumento) ? -Math.abs(val) : val,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ricevute, filtrate, regoleFatture, classAuto, meseRegola]);
+  }, [filtrate, regoleFatture, classAuto, meseRegola, pivotImponibile]);
 
   // Riepilogo (sugli anni filtrati, tutte le fatture non escluse). Gli importi
   // seguono lo stato UFFICIALE (Aruba quando c'è); `confermatoBanca` dice
@@ -2723,7 +2728,35 @@ export function FattureTab({
         <Loader2 className="h-5 w-5 animate-spin inline-block" />
       </div>
     ) : (
-      <PivotClassificazione righe={righePivotFt} nome="fatture-passive" />
+      <div className="space-y-2">
+        {/* Totale con IVA oppure imponibile: la scelta vale per tutta la pivot. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">{t("ft.pvImporti")}</span>
+          {(
+            [
+              [false, t("ft.pvTotale")],
+              [true, t("ft.pvImponibile")],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={String(v)}
+              type="button"
+              onClick={() => setPivotImponibile(v)}
+              className={`rounded-full border px-3 py-1 text-xs ${
+                pivotImponibile === v
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <PivotClassificazione
+          righe={righePivotFt}
+          nome={ricevute ? "fatture-passive" : "fatture-attive"}
+        />
+      </div>
     );
 
   return (
