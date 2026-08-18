@@ -486,6 +486,10 @@ def spedisci_incassi(cfg: dict) -> None:
             print("  intestazioni non riconosciute — salto questo file")
             continue
         cD = mappa.get("data")
+        # La DATA FATTURA distingue gli omonimi: lo stesso numero puo'
+        # ripetersi su anni diversi (Leonardi 214, Fuel 10FA) e senza data
+        # le rate finivano tutte sulla stessa fattura.
+        cDF = mappa.get("data fattura")
         cC = mappa.get("cliente/fornitore") or mappa.get("cliente")
         cN = mappa.get("numero fattura")
         cF = mappa.get("flusso")
@@ -507,7 +511,8 @@ def spedisci_incassi(cfg: dict) -> None:
             except ValueError:
                 continue
             cliente = str(r.get(cC, "")).strip()
-            k = (numero.lower(), norm(cliente), flusso)
+            data_fattura = data_iso(r.get(cDF, "")) if cDF else ""
+            k = (numero.lower(), norm(cliente), flusso, data_fattura)
             agg = aggregati.setdefault(
                 k,
                 {
@@ -516,6 +521,7 @@ def spedisci_incassi(cfg: dict) -> None:
                     "flusso": flusso,
                     "incassato": 0.0,
                     "ultimaData": "",
+                    "dataFattura": data_fattura,
                 },
             )
             agg["incassato"] = round(agg["incassato"] + importo, 2)
@@ -530,6 +536,8 @@ def spedisci_incassi(cfg: dict) -> None:
     for a in lista:
         if a["ultimaData"] is None:
             del a["ultimaData"]
+        if not a.get("dataFattura"):
+            a.pop("dataFattura", None)
     print(f"aggregati {len(lista)} totali per fattura — spedizione a blocchi da 60")
     for i in range(0, len(lista), 60):
         blocco = lista[i : i + 60]

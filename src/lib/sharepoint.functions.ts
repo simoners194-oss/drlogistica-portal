@@ -635,6 +635,12 @@ export const spCronIncassi = createServerFn({ method: "POST" })
             typeof o?.ultimaData === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.ultimaData)
               ? o.ultimaData
               : undefined,
+          // Data documento della fattura: scioglie gli omonimi (stesso
+          // numero su anni diversi).
+          dataFattura:
+            typeof o?.dataFattura === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.dataFattura)
+              ? o.dataFattura
+              : undefined,
         };
       })
       .filter((r) => r.numero && Number.isFinite(r.incassato) && r.incassato >= 0);

@@ -4106,6 +4106,9 @@ export async function cronIncassiBatch(
     flusso: "INCASSO" | "PAGAMENTO";
     incassato: number;
     ultimaData?: string;
+    /** Data documento della fattura (dal report): scioglie gli OMONIMI —
+     *  lo stesso numero puo' ripetersi su anni diversi. */
+    dataFattura?: string;
   }[],
 ): Promise<{
   aggiornate: number;
@@ -4119,12 +4122,20 @@ export async function cronIncassiBatch(
     const gruppo = righe.filter((r) => r.flusso === flusso);
     if (!gruppo.length) continue;
     const fatture = await fetchFatture(direzione);
-    const perChiave = new Map<string, (typeof fatture)[number]>();
-    const perNumero = new Map<string, (typeof fatture)[number]>();
+    // Mappe a LISTA di candidati: lo stesso numero puo' esistere su anni
+    // diversi (Leonardi 214, Fuel 10FA) — con la mappa a valore singolo le
+    // rate di due anni si sommavano tutte sull'omonima piu' vecchia.
+    const perChiave = new Map<string, (typeof fatture)[number][]>();
+    const perNumero = new Map<string, (typeof fatture)[number][]>();
     for (const f of fatture) {
-      perChiave.set(`${clienteGroupKey(f.cliente)}|${normalizeTesto(f.numero)}`, f);
-      const k = normalizeTesto(f.numero);
-      if (!perNumero.has(k)) perNumero.set(k, f);
+      const kc = `${clienteGroupKey(f.cliente)}|${normalizeTesto(f.numero)}`;
+      const lc = perChiave.get(kc) ?? [];
+      lc.push(f);
+      perChiave.set(kc, lc);
+      const kn = normalizeTesto(f.numero);
+      const ln = perNumero.get(kn) ?? [];
+      ln.push(f);
+      perNumero.set(kn, ln);
     }
     const daScrivere: {
       nomeFile: string;
@@ -4133,9 +4144,19 @@ export async function cronIncassiBatch(
       ultimaData?: string;
     }[] = [];
     for (const r of gruppo) {
-      const f =
+      const candidati =
         perChiave.get(`${clienteGroupKey(r.cliente)}|${normalizeTesto(r.numero)}`) ??
-        perNumero.get(normalizeTesto(r.numero));
+        perNumero.get(normalizeTesto(r.numero)) ??
+        [];
+      // La data fattura del report sceglie tra gli omonimi; senza data (o
+      // senza corrispondenza) si accetta SOLO il candidato unico — mai una
+      // scelta arbitraria, che accreditava rate alla fattura sbagliata.
+      const f = r.dataFattura
+        ? (candidati.find((c) => c.dataDocumento === r.dataFattura) ??
+          (candidati.length === 1 ? candidati[0] : undefined))
+        : candidati.length === 1
+          ? candidati[0]
+          : undefined;
       if (!f) {
         esito.nonTrovate++;
         continue;
