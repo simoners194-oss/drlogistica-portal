@@ -258,25 +258,42 @@ export function aggregaIncassiAruba(
   esclusi: ReadonlySet<string> = new Set(),
 ): Map<string, { incassato: number; ultimaData: string; rate: number }> {
   const valide = fatture.filter((f) => !esclusi.has(f.nomeFile));
-  const perChiave = new Map<string, FatturaRaw>();
-  // Indice per il fallback (stesso numero, controparte scritta diversamente):
-  // PRECALCOLATO, mai una scansione lineare. La versione con `find` dentro il
-  // ciclo rinormalizzava ogni numero a ogni rata — migliaia di rate per
-  // migliaia di fatture = decine di milioni di regex, e il browser si
-  // bloccava per ore sull'import del report movimenti.
-  const perNumero = new Map<string, FatturaRaw>();
+  // Mappe a LISTA di candidati: lo stesso numero puo' ripetersi su anni
+  // diversi (Leonardi 214, Fuel 10FA) — con la mappa a valore singolo le
+  // rate di due anni si sommavano tutte sull'omonima piu' vecchia. La DATA
+  // FATTURA della rata sceglie l'omonima giusta; senza data (o senza
+  // corrispondenza) si accetta SOLO il candidato unico, mai una scelta
+  // arbitraria.
+  // Indici PRECALCOLATI, mai una scansione lineare. La versione con `find`
+  // dentro il ciclo rinormalizzava ogni numero a ogni rata — migliaia di
+  // rate per migliaia di fatture = decine di milioni di regex, e il browser
+  // si bloccava per ore sull'import del report movimenti.
+  const perChiave = new Map<string, FatturaRaw[]>();
+  const perNumero = new Map<string, FatturaRaw[]>();
   for (const f of valide) {
-    perChiave.set(`${f.direzione}|${clienteGroupKey(f.cliente)}|${normalizeTesto(f.numero)}`, f);
-    const kNum = `${f.direzione}|${normalizeTesto(f.numero)}`;
-    if (!perNumero.has(kNum)) perNumero.set(kNum, f);
+    const kc = `${f.direzione}|${clienteGroupKey(f.cliente)}|${normalizeTesto(f.numero)}`;
+    const lc = perChiave.get(kc) ?? [];
+    lc.push(f);
+    perChiave.set(kc, lc);
+    const kn = `${f.direzione}|${normalizeTesto(f.numero)}`;
+    const ln = perNumero.get(kn) ?? [];
+    ln.push(f);
+    perNumero.set(kn, ln);
   }
   const out = new Map<string, { incassato: number; ultimaData: string; rate: number }>();
   for (const m of movimenti) {
     const direzione: DirezioneFattura = m.flusso === "INCASSO" ? "Emessa" : "Ricevuta";
     const numero = normalizeTesto(m.numeroFattura);
-    const f =
+    const candidati =
       perChiave.get(`${direzione}|${clienteGroupKey(m.cliente)}|${numero}`) ??
-      perNumero.get(`${direzione}|${numero}`);
+      perNumero.get(`${direzione}|${numero}`) ??
+      [];
+    const f = m.dataFattura
+      ? (candidati.find((c) => c.dataDocumento === m.dataFattura) ??
+        (candidati.length === 1 ? candidati[0] : undefined))
+      : candidati.length === 1
+        ? candidati[0]
+        : undefined;
     if (!f) continue;
     const v = out.get(f.nomeFile) ?? { incassato: 0, ultimaData: "", rate: 0 };
     v.incassato = Math.round((v.incassato + m.importo) * 100) / 100;
