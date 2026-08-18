@@ -971,6 +971,11 @@ export function FattureTab({
         ord: ordImporto,
       },
       {
+        key: "metodo",
+        label: t("ft.colMetodo"),
+        get: (x) => x.f.metodoPagamento || "—",
+      },
+      {
         key: "incassato",
         label: ricevute ? t("ft.pagato") : t("ft.incassato"),
         get: (x) => (x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""),
@@ -2610,6 +2615,7 @@ export function FattureTab({
         "Totale",
         "Imponibile",
         "IVA",
+        "Metodo pagamento",
         ricevute ? "Pagato" : "Incassato",
         "Residuo",
         // Le colonne chieste dal direttore: il residuo "da formula" che regge
@@ -2674,6 +2680,7 @@ export function FattureTab({
           csvNum(f.totale),
           csvNum(f.imponibile),
           csvNum(f.iva),
+          f.metodoPagamento ?? "",
           // NC compensata = negativo (denaro non entrato), NC aperta = 0.
           csvNum(incassatoCsv),
           csvNum(s.residuo),
@@ -4148,6 +4155,12 @@ export function FattureTab({
                         <td className="py-1 pr-2 text-right whitespace-nowrap tabular-nums text-muted-foreground">
                           {x.f.iva ? fmtImporto(x.f.iva) : "—"}
                         </td>
+                        <td
+                          className="max-w-36 truncate py-1 pr-2 text-[12px] text-muted-foreground"
+                          title={x.f.metodoPagamento}
+                        >
+                          {x.f.metodoPagamento || "—"}
+                        </td>
                         <td className="py-1 pr-2 text-right whitespace-nowrap text-status-present">
                           {x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""}
                         </td>
@@ -4378,7 +4391,7 @@ export function FattureTab({
                       </tr>,
                       aperta && (
                         <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
-                          <td colSpan={ricevute ? 28 : 24} className="py-3 px-3 bg-muted/20">
+                          <td colSpan={ricevute ? 29 : 25} className="py-3 px-3 bg-muted/20">
                             <div className="text-xs text-muted-foreground mb-2">
                               {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
                               {termini.length
