@@ -628,6 +628,83 @@ async function arubaScaricaXml(docType: "out" | "in", filename: string): Promise
   return xml;
 }
 
+export interface ArubaCompletaResult {
+  richieste: number;
+  aggiornate: number;
+  senzaXml: number;
+  errori: string[];
+}
+
+/** COMPLETA DAGLI XML fatture GIA' in archivio: scarica il dettaglio via
+ *  API, riparsa l'XML e ripassa da importFatture, che sulle righe esistenti
+ *  aggiorna solo i campi mancanti o evoluti (oggetto, causale, scadenza
+ *  dichiarata, imponibile/IVA a zero). Serve alle righe entrate senza XML
+ *  (report xlsx, sync precedente alla lettura dell'oggetto). Il numero
+ *  atteso fa da CONTROPROVA: getByFilename fa match lasco e non deve mai
+ *  finire per scrivere il contenuto di un ALTRO documento. */
+export async function arubaCompletaDettagli(
+  richieste: { nomeFile: string; numero: string }[],
+  direzione: DirezioneFattura,
+): Promise<ArubaCompletaResult> {
+  await arubaSignin();
+  const docType = direzione === "Emessa" ? "out" : "in";
+  const attesa = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+  const esito: ArubaCompletaResult = {
+    richieste: richieste.length,
+    aggiornate: 0,
+    senzaXml: 0,
+    errori: [],
+  };
+  const normNum = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const righe: FatturaRaw[] = [];
+  for (const r of richieste.slice(0, 30)) {
+    let xml: string | null = null;
+    let limite = false;
+    // In archivio il nome e' normalizzato (senza estensioni), su Aruba il
+    // filename le ha: si provano le varianti finche' una risponde.
+    for (const cand of [`${r.nomeFile}.xml.p7m`, `${r.nomeFile}.xml`, r.nomeFile]) {
+      try {
+        xml = await arubaScaricaXml(docType, cand);
+      } catch (err) {
+        if (err instanceof ArubaError && err.status === 429) {
+          limite = true;
+          break;
+        }
+        xml = null;
+      }
+      if (xml) break;
+    }
+    if (limite) {
+      esito.errori.push(
+        "Limite richieste Aruba raggiunto: ripremere tra qualche minuto per le restanti.",
+      );
+      break;
+    }
+    if (!xml) {
+      esito.senzaXml++;
+      continue;
+    }
+    const parsed = parseFatturaPA(xml, r.nomeFile);
+    const buone = parsed.rows.filter(
+      (p) => p.direzione === direzione && normNum(p.numero) === normNum(r.numero),
+    );
+    if (!buone.length) {
+      esito.errori.push(
+        `${r.nomeFile}: il dettaglio restituito non corrisponde (atteso ${r.numero}) — saltata`,
+      );
+      continue;
+    }
+    righe.push(...buone);
+    await attesa(400);
+  }
+  for (let i = 0; i < righe.length; i += 100) {
+    const res = await importFatture(righe.slice(i, i + 100), direzione);
+    esito.aggiornate += res.aggiornate;
+    esito.errori.push(...res.errori);
+  }
+  return esito;
+}
+
 export async function arubaSyncFatture(giorniIndietro?: number): Promise<ArubaSyncResult> {
   await arubaSignin();
   const now = new Date();

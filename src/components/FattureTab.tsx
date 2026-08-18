@@ -77,6 +77,7 @@ import {
   spGetArubaStato,
   spSetArubaCredenziali,
   spArubaSincronizza,
+  spArubaCompletaDettagli,
   spSetRettificaNumero,
   spSetIncassoManuale,
   spTrovaFattureSenzaCliente,
@@ -227,6 +228,9 @@ export function FattureTab({
   const [arubaUser, setArubaUser] = useState("");
   const [arubaPass, setArubaPass] = useState("");
   const [arubaSaving, setArubaSaving] = useState(false);
+  // "Completa dagli XML": avanzamento ("12/40") mentre l'API rilegge i
+  // dettagli delle fatture in archivio senza oggetto/causale.
+  const [completaBusy, setCompletaBusy] = useState<string | null>(null);
   const [arubaTesting, setArubaTesting] = useState(false);
   const [syncEsito, setSyncEsito] = useState<ArubaSyncResult | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
@@ -2541,6 +2545,55 @@ export function FattureTab({
     }
   };
 
+  // COMPLETA DAGLI XML: per le fatture in vista senza oggetto ne' causale,
+  // chiede al server di riscaricare il dettaglio via API Aruba e riparsare
+  // l'XML (riempie oggetto, causale, scadenza dichiarata, imponibile a zero).
+  const completaXml = async () => {
+    const candidati = filtrate
+      .filter(
+        (x) =>
+          !isNotaCredito(x.f.tipoDocumento) &&
+          !(x.f.causaleDoc ?? "").trim() &&
+          !(x.f.oggetto ?? "").trim() &&
+          x.f.nomeFile.trim() &&
+          x.f.numero.trim(),
+      )
+      .map((x) => ({ nomeFile: x.f.nomeFile, numero: x.f.numero }));
+    if (!candidati.length) {
+      toast(t("ft.cxNessuna"));
+      return;
+    }
+    setCompletaBusy(`0/${candidati.length}`);
+    let aggiornate = 0;
+    let senzaXml = 0;
+    const errori: string[] = [];
+    try {
+      for (let i = 0; i < candidati.length; i += 25) {
+        const res = await spArubaCompletaDettagli({
+          data: { direzione: dir, fatture: candidati.slice(i, i + 25) },
+        });
+        aggiornate += res.aggiornate;
+        senzaXml += res.senzaXml;
+        errori.push(...res.errori);
+        setCompletaBusy(`${Math.min(i + 25, candidati.length)}/${candidati.length}`);
+        // Rate limit Aruba: inutile insistere ora, si riprende dopo.
+        if (res.errori.some((e2) => e2.includes("Limite richieste"))) break;
+      }
+      toast.success(t("ft.cxFatto"), {
+        description: `${aggiornate} ${t("ft.arSyncAggiornate")} · ${senzaXml} ${t("ft.cxSenzaXml")}${
+          errori.length ? ` · ${errori.length} ${t("ft.cxErrori")}: ${errori[0]}` : ""
+        }`,
+      });
+      load();
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setCompletaBusy(null);
+    }
+  };
+
   const esporta = () => {
     esportaCsvFile(
       `fatture-${dir === "Ricevuta" ? "ricevute" : "emesse"}-${anniF.length ? [...anniF].sort().join("-") : "tutte"}`,
@@ -3358,6 +3411,20 @@ export function FattureTab({
                       <RefreshCw className="h-4 w-4" />
                     )}
                     {t("ft.arSync")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void completaXml()}
+                    disabled={completaBusy != null || syncBusy || !aruba.configurato}
+                    title={t("ft.cxTip")}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50"
+                  >
+                    {completaBusy != null ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-4 w-4" />
+                    )}
+                    {completaBusy ?? t("ft.cx")}
                   </button>
                 </div>
               </div>

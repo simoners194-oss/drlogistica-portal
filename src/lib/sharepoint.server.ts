@@ -5921,6 +5921,12 @@ export async function importFatture(
         patch[F.Oggetto] = r.oggetto;
       if (F.Causale && r.causaleDoc && r.causaleDoc !== (prev.causaleDoc ?? ""))
         patch[F.Causale] = r.causaleDoc;
+      // Imponibile/IVA: dato contabile immutabile, ma le righe entrate da
+      // report senza XML possono averlo a zero — si COMPLETA soltanto, mai
+      // si sovrascrive un valore gia' presente.
+      if (F.Imponibile && r.imponibile && Math.abs(prev.imponibile ?? 0) < 0.005)
+        patch[F.Imponibile] = r.imponibile;
+      if (F.Iva && r.iva && Math.abs(prev.iva ?? 0) < 0.005) patch[F.Iva] = r.iva;
       // NETTO A PAGARE: si aggiorna SOLO quando la fonte lo conosce davvero,
       // cioe' quando dichiara un netto positivo e DIVERSO dal totale (XML con
       // ritenute/bolli). I file che non lo sanno (report, xlsx) portano

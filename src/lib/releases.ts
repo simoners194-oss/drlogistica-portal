@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.52.0",
+    date: "2026-08-17",
+    codename: "Completa dagli XML",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Le fatture senza descrizione si completano da sole",
+        description:
+          'Nuovo bottone "Completa dagli XML" accanto a Sincronizza (attive e passive): per le fatture in archivio senza oggetto/descrizione — tipicamente entrate da report senza XML — il portale riscarica il dettaglio via API Aruba e riempie oggetto, descrizione, scadenza dichiarata e imponibile mancante. Il numero della fattura fa da controprova: se Aruba risponde con un documento diverso, la riga viene saltata e segnalata. Rispetta i filtri attivi: filtra prima, completa poi.',
+      },
+    ],
+  },
+  {
     version: "1.51.0",
     date: "2026-08-17",
     codename: "Pivot attive e imponibile",

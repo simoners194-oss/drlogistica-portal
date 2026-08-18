@@ -10,6 +10,7 @@ import {
   arubaProvaConnessione,
   arubaProvaDownload,
   arubaSyncFatture,
+  arubaCompletaDettagli,
   arubaProvaIncassi,
   type ArubaProbeResult,
   type ArubaDownloadProbe,
@@ -1769,6 +1770,26 @@ export const spArubaSincronizza = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<ArubaSyncResult> => {
     await assertDirettore(await currentUser());
     return arubaSyncFatture(data.giorni || undefined);
+  });
+
+// Completa dagli XML (via API) le fatture GIA' in archivio senza oggetto:
+// il numero atteso accompagna ogni nome file come controprova del match.
+export const spArubaCompletaDettagli = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input?: { direzione?: string; fatture?: { nomeFile?: string; numero?: string }[] }) => ({
+      direzione: input?.direzione === "Emessa" ? ("Emessa" as const) : ("Ricevuta" as const),
+      fatture: (Array.isArray(input?.fatture) ? input.fatture : [])
+        .map((x) => ({
+          nomeFile: String(x?.nomeFile ?? "").trim(),
+          numero: String(x?.numero ?? "").trim(),
+        }))
+        .filter((x) => x.nomeFile && x.numero)
+        .slice(0, 30),
+    }),
+  )
+  .handler(async ({ data }) => {
+    await assertDirettore(await currentUser());
+    return arubaCompletaDettagli(data.fatture, data.direzione);
   });
 
 // --- Collegamento banca Enable Banking / PSD2 (solo direttore) ---------------
