@@ -575,8 +575,64 @@ function decodeBase64(b64: string): Uint8Array | null {
   }
 }
 
+/** Legge una busta CMS/p7m PER STRUTTURA (walk DER/BER) e concatena i
+ *  contenuti degli OCTET STRING primitivi: e' li' che vive l'XML firmato,
+ *  eventualmente spezzato in piu' blocchi ANCHE a meta' tag. Il vecchio
+ *  ritaglio a caratteri di controllo perdeva i pezzi caduti sui confini
+ *  dei blocchi (descrizioni vuote sulle fatture solo-p7m); ricomponendo i
+ *  blocchi l'XML torna identico al byte. I digest della firma (altri OCTET
+ *  STRING, fuori dal contenuto) restano oltre il tag di chiusura e il
+ *  ritaglio finale li esclude. */
+function estraiOctetsDaP7m(buf: Uint8Array): Uint8Array | null {
+  const out: number[] = [];
+  const leggi = (da: number, a: number): void => {
+    let i = da;
+    while (i < a - 1) {
+      const tag = buf[i];
+      // End-of-contents delle lunghezze indefinite BER.
+      if (tag === 0x00 && buf[i + 1] === 0x00) {
+        i += 2;
+        continue;
+      }
+      let j = i + 1;
+      let len = buf[j];
+      j++;
+      let indefinita = false;
+      if (len === 0x80) {
+        indefinita = true;
+      } else if (len & 0x80) {
+        const n = len & 0x7f;
+        if (n > 4 || j + n > a) return; // lunghezza malformata: ci si ferma
+        len = 0;
+        for (let k = 0; k < n; k++) {
+          len = len * 256 + buf[j];
+          j++;
+        }
+      }
+      const costruito = (tag & 0x20) !== 0;
+      if (indefinita || costruito) {
+        // Nodo contenitore: si scende nel contenuto, i figli si leggono
+        // nello stesso passaggio.
+        i = j;
+        continue;
+      }
+      const fine = Math.min(a, j + len);
+      if ((tag & 0x1f) === 0x04) {
+        for (let k = j; k < fine; k++) out.push(buf[k]);
+      }
+      i = fine;
+    }
+  };
+  try {
+    leggi(0, buf.length);
+  } catch {
+    return null;
+  }
+  return out.length ? Uint8Array.from(out) : null;
+}
+
 /** Scarica l'XML di una fattura: preferisce unsignedFile (gia' senza firma);
- *  dal p7m l'XML si ritaglia dalla busta firmata. */
+ *  dal p7m l'XML si ricompone dalla busta firmata. */
 async function arubaScaricaXml(docType: "out" | "in", filename: string): Promise<string | null> {
   const r = await arubaGetRaw(`/services/invoice/${docType}/getByFilename`, { filename });
   if (r.status < 200 || r.status >= 300)
@@ -608,6 +664,19 @@ async function arubaScaricaXml(docType: "out" | "in", filename: string): Promise
   }
   let xml = new TextDecoder("utf-8").decode(bytes).replace(/^﻿/, "");
   if (!xml.trimStart().startsWith("<")) {
+    // Primo tentativo: busta letta PER STRUTTURA — ricompone l'XML al byte
+    // anche quando la firma lo spezza a meta' tag. Se non produce un XML
+    // riconoscibile si passa al ritaglio storico qui sotto.
+    const octs = estraiOctetsDaP7m(bytes);
+    if (octs) {
+      const testo = new TextDecoder("utf-8").decode(octs);
+      const k0xml = testo.indexOf("<?xml");
+      const kTag = /<[A-Za-z0-9]*:?FatturaElettronica[\s>]/.exec(testo);
+      const k0 = k0xml >= 0 ? k0xml : (kTag?.index ?? -1);
+      const chiusura = "FatturaElettronica>";
+      const k1 = testo.lastIndexOf(chiusura);
+      if (k0 >= 0 && k1 > k0) return testo.slice(k0, k1 + chiusura.length);
+    }
     // Busta p7m (o payload sporco): si ritaglia dall'inizio dell'XML —
     // dichiarazione <?xml oppure direttamente il tag FatturaElettronica
     // (alcuni XML non hanno la dichiarazione), fino al tag di chiusura.
