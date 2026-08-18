@@ -955,6 +955,18 @@ export function FattureTab({
           ),
       },
       {
+        key: "imponibile",
+        label: t("ft.colImponibile"),
+        get: (x) => (x.f.imponibile ? fmtImporto(x.f.imponibile) : ""),
+        ord: ordImporto,
+      },
+      {
+        key: "iva",
+        label: t("ft.colIva"),
+        get: (x) => (x.f.iva ? fmtImporto(x.f.iva) : ""),
+        ord: ordImporto,
+      },
+      {
         key: "incassato",
         label: ricevute ? t("ft.pagato") : t("ft.incassato"),
         get: (x) => (x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""),
@@ -1832,13 +1844,29 @@ export function FattureTab({
     );
     // …e loro fatture verso di noi non ancora saldate.
     const chiave = clienteAperto;
-    const loroAperte = (dir === "Emessa" ? (fattureRic ?? []) : (fattureEm ?? [])).filter(
-      (f) =>
-        (clienteGroupKey(f.cliente) || f.cliente) === chiave &&
-        !isNotaCredito(f.tipoDocumento) &&
-        f.totale > 0 &&
-        parseIncassoAruba(f.incassoAruba) !== "Incassata",
-    );
+    // Residuo VERO dell'altra direzione: dovuto (netto quando dichiarato
+    // più basso) meno l'incassato del report movimenti. Il solo stato
+    // testuale di Aruba resta indietro e metteva nel sollecito anche
+    // fatture già saldate (segnalazione direzione 17/08).
+    const residuoAltraDir = (f: SpFattura): number => {
+      const dovuto = f.netto > 0 && f.netto < f.totale - 0.01 ? f.netto : f.totale;
+      const incassato =
+        typeof f.incassatoAruba === "number"
+          ? f.incassatoAruba
+          : parseIncassoAruba(f.incassoAruba) === "Incassata"
+            ? dovuto
+            : 0;
+      return Math.max(0, Math.round((dovuto - incassato) * 100) / 100);
+    };
+    const loroAperte = (dir === "Emessa" ? (fattureRic ?? []) : (fattureEm ?? []))
+      .filter(
+        (f) =>
+          (clienteGroupKey(f.cliente) || f.cliente) === chiave &&
+          !isNotaCredito(f.tipoDocumento) &&
+          f.totale > 0 &&
+          residuoAltraDir(f) > TOLLERANZA_SALDO,
+      )
+      .map((f) => ({ f, residuo: residuoAltraDir(f) }));
     return { nome, scadute, ncAperte, loroAperte };
   };
 
@@ -1848,7 +1876,7 @@ export function FattureTab({
     const totale = scadute.reduce((s2, x) => s2 + x.s.residuo, 0);
     const daScalare =
       ncAperte.reduce((s2, x) => s2 + Math.abs(x.f.totale), 0) +
-      loroAperte.reduce((s2, f) => s2 + f.totale, 0);
+      loroAperte.reduce((s2, x) => s2 + x.residuo, 0);
     const r: string[] = [];
     r.push(`Spett.le ${nome},`);
     r.push("");
@@ -1867,8 +1895,8 @@ export function FattureTab({
       r.push("Da portare eventualmente in compensazione:");
       for (const x of ncAperte)
         r.push(`- ns. nota di credito ${x.f.numero}: € ${fmtImporto(Math.abs(x.f.totale))}`);
-      for (const f of loroAperte)
-        r.push(`- vs. fattura ${f.numero} nei nostri confronti: € ${fmtImporto(f.totale)}`);
+      for (const x of loroAperte)
+        r.push(`- vs. fattura ${x.f.numero} nei nostri confronti: € ${fmtImporto(x.residuo)}`);
       r.push(`Saldo netto richiesto: € ${fmtImporto(Math.max(0, totale - daScalare))}`);
     }
     r.push("");
@@ -2527,6 +2555,8 @@ export function FattureTab({
         ricevute ? "Fornitore" : "Cliente",
         "Tipo",
         "Totale",
+        "Imponibile",
+        "IVA",
         ricevute ? "Pagato" : "Incassato",
         "Residuo",
         // Le colonne chieste dal direttore: il residuo "da formula" che regge
@@ -2589,6 +2619,8 @@ export function FattureTab({
           f.cliente,
           f.tipoDocumento,
           csvNum(f.totale),
+          csvNum(f.imponibile),
+          csvNum(f.iva),
           // NC compensata = negativo (denaro non entrato), NC aperta = 0.
           csvNum(incassatoCsv),
           csvNum(s.residuo),
@@ -4041,6 +4073,14 @@ export function FattureTab({
                             </div>
                           )}
                         </td>
+                        {/* Imponibile e IVA come dichiarati nell'XML della
+                          fattura (per le NC restano col segno del documento). */}
+                        <td className="py-1 pr-2 text-right whitespace-nowrap tabular-nums text-muted-foreground">
+                          {x.f.imponibile ? fmtImporto(x.f.imponibile) : "—"}
+                        </td>
+                        <td className="py-1 pr-2 text-right whitespace-nowrap tabular-nums text-muted-foreground">
+                          {x.f.iva ? fmtImporto(x.f.iva) : "—"}
+                        </td>
                         <td className="py-1 pr-2 text-right whitespace-nowrap text-status-present">
                           {x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""}
                         </td>
@@ -4271,7 +4311,7 @@ export function FattureTab({
                       </tr>,
                       aperta && (
                         <tr key={`${x.f.nomeFile}-det`} className="border-b border-border/50">
-                          <td colSpan={ricevute ? 26 : 22} className="py-3 px-3 bg-muted/20">
+                          <td colSpan={ricevute ? 28 : 24} className="py-3 px-3 bg-muted/20">
                             <div className="text-xs text-muted-foreground mb-2">
                               {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
                               {termini.length
