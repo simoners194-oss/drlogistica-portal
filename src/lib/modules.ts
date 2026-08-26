@@ -22,6 +22,7 @@ import {
   Megaphone,
   ShoppingCart,
   Landmark,
+  Truck,
   type LucideIcon,
 } from "lucide-react";
 import type { Ruolo } from "./session";
@@ -183,6 +184,16 @@ export const MODULES: readonly AppModule[] = [
     ready: true,
     description: "Estratto conto: incassi, movimenti e anomalie (direttore).",
     roles: ["amministratore_sistema"],
+    soloDirettore: true,
+  },
+  {
+    id: "mezzi",
+    title: "Mezzi",
+    url: "/mezzi",
+    icon: Truck,
+    ready: true,
+    description: "Parco mezzi: scadenze, affidamenti, contratti, multe, ZTL, officina.",
+    roles: ["responsabile", "amministratore_sistema"],
     soloDirettore: true,
   },
   {

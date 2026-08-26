@@ -681,7 +681,8 @@ export class SpHttpError extends Error {
   }
 }
 
-async function gatewayJson<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+// Esportato: usato anche dal modulo Mezzi (mezzi.server.ts).
+export async function gatewayJson<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   // Retry transitorio su 5xx/429: il gateway a volte risponde 503
   // "upstream connect error" per pochi secondi. Ritentiamo con backoff
   // esponenziale prima di propagare l'errore alla UI.
@@ -1083,7 +1084,8 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
 }
 
 // Retry helper: su 404 invalida cache e riprova UNA sola volta.
-async function withDiscoveryRetry<T>(op: () => Promise<T>): Promise<T> {
+// Esportato: usato anche dal modulo Mezzi (mezzi.server.ts).
+export async function withDiscoveryRetry<T>(op: () => Promise<T>): Promise<T> {
   try {
     return await op();
   } catch (err) {

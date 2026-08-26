@@ -36,6 +36,28 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.53.0",
+    date: "2026-08-26",
+    codename: "Gestione Mezzi",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Nuovo modulo Mezzi: tutto il parco in un posto solo",
+        description:
+          "Parco completo (noleggio e proprietà, operativi e dismessi/dirigenziali) con dati del libretto, link ai documenti, stato e appalto. Scadenze con semafori 90/60/30 giorni e alert email automatici a Diego e Francesco (destinatari e soglie parametrizzabili), affidamenti mezzo–autista con storico, contratti di noleggio con segnalazione dei canoni fuori mercato rispetto alla mediana di categoria, registro multe con match automatico dell'autista dallo storico e workflow di contestazione/detrazione, permessi ZTL per comune con verifica giro, officina con storico interventi e costi, letture km con proiezione degli sforamenti contrattuali, rifornimenti carburante. Export CSV per Excel e backup JSON.",
+      },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Utenza Proprietà (ADM002)",
+        description:
+          "Nuova utenza per la proprietà con la stessa vista dell'amministratore di sistema — Finanza e Mezzi compresi — ma senza la tab Amministrazione.",
+      },
+    ],
+  },
+  {
     version: "1.52.0",
     date: "2026-08-17",
     codename: "Completa dagli XML",

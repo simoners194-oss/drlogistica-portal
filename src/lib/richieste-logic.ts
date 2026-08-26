@@ -338,6 +338,10 @@ export function isSupervisoreGlobale(codice: string): boolean {
 // Diego Gabelli con le stesse viste di Francesco Romano, zero autorizzazioni.
 const CODICI_VISTA_DIREZIONE = new Set<string>([
   "DR007", // Diego Gabelli
+  // Proprietà: utenza con la stessa vista dell'amministratore di sistema
+  // (Finanza, Mezzi e moduli direzione) ma SENZA la tab Amministrazione,
+  // che resta riservata al ruolo amministratore_sistema (ADM001).
+  "ADM002",
 ]);
 
 export function haVistaDirezione(codice: string): boolean {

@@ -18,6 +18,7 @@ import { Route as ProcurementRouteImport } from './routes/procurement'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PresenzeRouteImport } from './routes/presenze'
 import { Route as NovitaRouteImport } from './routes/novita'
+import { Route as MezziRouteImport } from './routes/mezzi'
 import { Route as LeMieOreRouteImport } from './routes/le-mie-ore'
 import { Route as GestioneTimbratureRouteImport } from './routes/gestione-timbrature'
 import { Route as FinanzaRouteImport } from './routes/finanza'
@@ -25,6 +26,7 @@ import { Route as DocumentiRouteImport } from './routes/documenti'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CronTurniRouteImport } from './routes/cron-turni'
 import { Route as CronNcRouteImport } from './routes/cron-nc'
+import { Route as CronMezziRouteImport } from './routes/cron-mezzi'
 import { Route as CronIncassiRouteImport } from './routes/cron-incassi'
 import { Route as CronFattureRouteImport } from './routes/cron-fatture'
 import { Route as CronBancaRouteImport } from './routes/cron-banca'
@@ -77,6 +79,11 @@ const NovitaRoute = NovitaRouteImport.update({
   path: '/novita',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MezziRoute = MezziRouteImport.update({
+  id: '/mezzi',
+  path: '/mezzi',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LeMieOreRoute = LeMieOreRouteImport.update({
   id: '/le-mie-ore',
   path: '/le-mie-ore',
@@ -110,6 +117,11 @@ const CronTurniRoute = CronTurniRouteImport.update({
 const CronNcRoute = CronNcRouteImport.update({
   id: '/cron-nc',
   path: '/cron-nc',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CronMezziRoute = CronMezziRouteImport.update({
+  id: '/cron-mezzi',
+  path: '/cron-mezzi',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CronIncassiRoute = CronIncassiRouteImport.update({
@@ -150,6 +162,7 @@ export interface FileRoutesByFullPath {
   '/cron-banca': typeof CronBancaRoute
   '/cron-fatture': typeof CronFattureRoute
   '/cron-incassi': typeof CronIncassiRoute
+  '/cron-mezzi': typeof CronMezziRoute
   '/cron-nc': typeof CronNcRoute
   '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
@@ -157,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/le-mie-ore': typeof LeMieOreRoute
+  '/mezzi': typeof MezziRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/privacy': typeof PrivacyRoute
@@ -174,6 +188,7 @@ export interface FileRoutesByTo {
   '/cron-banca': typeof CronBancaRoute
   '/cron-fatture': typeof CronFattureRoute
   '/cron-incassi': typeof CronIncassiRoute
+  '/cron-mezzi': typeof CronMezziRoute
   '/cron-nc': typeof CronNcRoute
   '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
@@ -181,6 +196,7 @@ export interface FileRoutesByTo {
   '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/le-mie-ore': typeof LeMieOreRoute
+  '/mezzi': typeof MezziRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/privacy': typeof PrivacyRoute
@@ -199,6 +215,7 @@ export interface FileRoutesById {
   '/cron-banca': typeof CronBancaRoute
   '/cron-fatture': typeof CronFattureRoute
   '/cron-incassi': typeof CronIncassiRoute
+  '/cron-mezzi': typeof CronMezziRoute
   '/cron-nc': typeof CronNcRoute
   '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
@@ -206,6 +223,7 @@ export interface FileRoutesById {
   '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/le-mie-ore': typeof LeMieOreRoute
+  '/mezzi': typeof MezziRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
   '/privacy': typeof PrivacyRoute
@@ -225,6 +243,7 @@ export interface FileRouteTypes {
     | '/cron-banca'
     | '/cron-fatture'
     | '/cron-incassi'
+    | '/cron-mezzi'
     | '/cron-nc'
     | '/cron-turni'
     | '/dashboard'
@@ -232,6 +251,7 @@ export interface FileRouteTypes {
     | '/finanza'
     | '/gestione-timbrature'
     | '/le-mie-ore'
+    | '/mezzi'
     | '/novita'
     | '/presenze'
     | '/privacy'
@@ -249,6 +269,7 @@ export interface FileRouteTypes {
     | '/cron-banca'
     | '/cron-fatture'
     | '/cron-incassi'
+    | '/cron-mezzi'
     | '/cron-nc'
     | '/cron-turni'
     | '/dashboard'
@@ -256,6 +277,7 @@ export interface FileRouteTypes {
     | '/finanza'
     | '/gestione-timbrature'
     | '/le-mie-ore'
+    | '/mezzi'
     | '/novita'
     | '/presenze'
     | '/privacy'
@@ -273,6 +295,7 @@ export interface FileRouteTypes {
     | '/cron-banca'
     | '/cron-fatture'
     | '/cron-incassi'
+    | '/cron-mezzi'
     | '/cron-nc'
     | '/cron-turni'
     | '/dashboard'
@@ -280,6 +303,7 @@ export interface FileRouteTypes {
     | '/finanza'
     | '/gestione-timbrature'
     | '/le-mie-ore'
+    | '/mezzi'
     | '/novita'
     | '/presenze'
     | '/privacy'
@@ -298,6 +322,7 @@ export interface RootRouteChildren {
   CronBancaRoute: typeof CronBancaRoute
   CronFattureRoute: typeof CronFattureRoute
   CronIncassiRoute: typeof CronIncassiRoute
+  CronMezziRoute: typeof CronMezziRoute
   CronNcRoute: typeof CronNcRoute
   CronTurniRoute: typeof CronTurniRoute
   DashboardRoute: typeof DashboardRoute
@@ -305,6 +330,7 @@ export interface RootRouteChildren {
   FinanzaRoute: typeof FinanzaRoute
   GestioneTimbratureRoute: typeof GestioneTimbratureRoute
   LeMieOreRoute: typeof LeMieOreRoute
+  MezziRoute: typeof MezziRoute
   NovitaRoute: typeof NovitaRoute
   PresenzeRoute: typeof PresenzeRoute
   PrivacyRoute: typeof PrivacyRoute
@@ -381,6 +407,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NovitaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mezzi': {
+      id: '/mezzi'
+      path: '/mezzi'
+      fullPath: '/mezzi'
+      preLoaderRoute: typeof MezziRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/le-mie-ore': {
       id: '/le-mie-ore'
       path: '/le-mie-ore'
@@ -428,6 +461,13 @@ declare module '@tanstack/react-router' {
       path: '/cron-nc'
       fullPath: '/cron-nc'
       preLoaderRoute: typeof CronNcRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cron-mezzi': {
+      id: '/cron-mezzi'
+      path: '/cron-mezzi'
+      fullPath: '/cron-mezzi'
+      preLoaderRoute: typeof CronMezziRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cron-incassi': {
@@ -482,6 +522,7 @@ const rootRouteChildren: RootRouteChildren = {
   CronBancaRoute: CronBancaRoute,
   CronFattureRoute: CronFattureRoute,
   CronIncassiRoute: CronIncassiRoute,
+  CronMezziRoute: CronMezziRoute,
   CronNcRoute: CronNcRoute,
   CronTurniRoute: CronTurniRoute,
   DashboardRoute: DashboardRoute,
@@ -489,6 +530,7 @@ const rootRouteChildren: RootRouteChildren = {
   FinanzaRoute: FinanzaRoute,
   GestioneTimbratureRoute: GestioneTimbratureRoute,
   LeMieOreRoute: LeMieOreRoute,
+  MezziRoute: MezziRoute,
   NovitaRoute: NovitaRoute,
   PresenzeRoute: PresenzeRoute,
   PrivacyRoute: PrivacyRoute,
