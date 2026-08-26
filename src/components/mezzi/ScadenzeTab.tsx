@@ -23,7 +23,16 @@ import {
   type Semaforo,
 } from "@/lib/mezzi-types";
 import { spMezziElimina, spMezziSalvaScadenza } from "@/lib/mezzi.functions";
-import { Field, fmtData, inputCls, MezzoSelect, SemaforoBadge, targaDi, useMezzi } from "./shared";
+import {
+  ConfirmButton,
+  Field,
+  fmtData,
+  inputCls,
+  MezzoSelect,
+  SemaforoBadge,
+  targaDi,
+  useMezzi,
+} from "./shared";
 
 const ORDINE_SEM: Semaforo[] = ["scaduta", "rosso", "arancio", "giallo", "ok"];
 
@@ -232,7 +241,7 @@ function ScadenzaDialog({
   };
 
   const elimina = async () => {
-    if (!scadenza || !window.confirm(m("confermaElimina"))) return;
+    if (!scadenza) return;
     setSaving(true);
     try {
       const res = await spMezziElimina({ data: { collezione: "scadenze", id: scadenza.id } });
@@ -309,9 +318,7 @@ function ScadenzaDialog({
         <div className="mt-2 flex items-center justify-between">
           <div>
             {scadenza && (
-              <Button variant="destructive" size="sm" onClick={elimina} disabled={saving}>
-                {m("elimina")}
-              </Button>
+              <ConfirmButton label={m("elimina")} onConfirm={elimina} disabled={saving} />
             )}
           </div>
           <div className="flex gap-2">

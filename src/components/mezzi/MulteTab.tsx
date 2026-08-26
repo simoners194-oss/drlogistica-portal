@@ -22,7 +22,16 @@ import {
   type MultaStato,
 } from "@/lib/mezzi-types";
 import { spMezziElimina, spMezziSalvaMulta } from "@/lib/mezzi.functions";
-import { Field, fmtData, fmtEur, inputCls, MezzoSelect, targaDi, useMezzi } from "./shared";
+import {
+  ConfirmButton,
+  Field,
+  fmtData,
+  fmtEur,
+  inputCls,
+  MezzoSelect,
+  targaDi,
+  useMezzi,
+} from "./shared";
 
 const STATO_CLS: Record<MultaStato, string> = {
   ricevuta: "bg-destructive/15 text-destructive",
@@ -205,7 +214,7 @@ function MultaDialog({
   };
 
   const elimina = async () => {
-    if (!multa || !window.confirm(m("confermaElimina"))) return;
+    if (!multa) return;
     setSaving(true);
     try {
       const res = await spMezziElimina({ data: { collezione: "multe", id: multa.id } });
@@ -361,11 +370,7 @@ function MultaDialog({
         </div>
         <div className="mt-2 flex items-center justify-between">
           <div>
-            {multa && (
-              <Button variant="destructive" size="sm" onClick={elimina} disabled={saving}>
-                {m("elimina")}
-              </Button>
-            )}
+            {multa && <ConfirmButton label={m("elimina")} onConfirm={elimina} disabled={saving} />}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} disabled={saving}>

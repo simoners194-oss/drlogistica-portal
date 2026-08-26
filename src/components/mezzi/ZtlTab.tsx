@@ -17,7 +17,7 @@ import {
 import { MapPin, Plus } from "lucide-react";
 import { giorniA, type MezziDb, type PermessoZtl, type ZtlStato } from "@/lib/mezzi-types";
 import { spMezziElimina, spMezziSalvaZtl } from "@/lib/mezzi.functions";
-import { Field, fmtData, inputCls, MezzoSelect, targaDi, useMezzi } from "./shared";
+import { ConfirmButton, Field, fmtData, inputCls, MezzoSelect, targaDi, useMezzi } from "./shared";
 
 const ZTL_CLS: Record<ZtlStato, string> = {
   richiesto: "bg-status-break/20 text-status-break",
@@ -233,7 +233,7 @@ function ZtlDialog({
   };
 
   const elimina = async () => {
-    if (!permesso || !window.confirm(m("confermaElimina"))) return;
+    if (!permesso) return;
     setSaving(true);
     try {
       const res = await spMezziElimina({ data: { collezione: "ztl", id: permesso.id } });
@@ -325,9 +325,7 @@ function ZtlDialog({
         <div className="mt-2 flex items-center justify-between">
           <div>
             {permesso && (
-              <Button variant="destructive" size="sm" onClick={elimina} disabled={saving}>
-                {m("elimina")}
-              </Button>
+              <ConfirmButton label={m("elimina")} onConfirm={elimina} disabled={saving} />
             )}
           </div>
           <div className="flex gap-2">

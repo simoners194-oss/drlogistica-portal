@@ -8,7 +8,7 @@ import { Download, Save, Upload } from "lucide-react";
 import { esportaCsvFile, csvData } from "@/lib/csv";
 import { affidamentoCorrente, type MezziDb, type ParametriMezzi } from "@/lib/mezzi-types";
 import { spMezziImportaDb, spMezziSalvaParametri } from "@/lib/mezzi.functions";
-import { Field, fmtData, inputCls, useMezzi } from "./shared";
+import { ConfirmButton, Field, fmtData, inputCls, useMezzi } from "./shared";
 
 export function ParametriTab({
   db,
@@ -23,6 +23,7 @@ export function ParametriTab({
   const [p, setP] = useState<ParametriMezzi>(db.parametri);
   const [json, setJson] = useState("");
   const [saving, setSaving] = useState(false);
+  const [esitoImport, setEsitoImport] = useState<string | null>(null);
   const set = (patch: Partial<ParametriMezzi>) => setP((prev) => ({ ...prev, ...patch }));
 
   const salva = async () => {
@@ -207,15 +208,19 @@ export function ParametriTab({
 
   const importa = async () => {
     if (!json.trim()) return;
-    if (!window.confirm(m("importaHint"))) return;
     setSaving(true);
+    setEsitoImport(null);
     try {
       const res = await spMezziImportaDb({ data: { json } });
       onDb(res);
       setJson("");
-      toast.success(m("importato"));
+      const riepilogo = `${res.mezzi.length} mezzi · ${res.scadenze.length} scadenze · ${res.contratti.length} contratti · ${res.affidamenti.length} affidamenti · ${res.multe.length} multe · ${res.ztl.length} ZTL`;
+      setEsitoImport(`✓ ${m("importato")} ${riepilogo}`);
+      toast.success(`${m("importato")} ${riepilogo}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setEsitoImport(`✗ ${msg}`);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -360,9 +365,29 @@ export function ParametriTab({
                 onChange={(e) => setJson(e.target.value)}
                 placeholder='{"mezzi": […], "scadenze": […], …}'
               />
-              <Button onClick={importa} disabled={saving || !json.trim()} variant="destructive">
-                <Upload className="mr-1 h-4 w-4" /> {m("importa")}
-              </Button>
+              <div className="flex items-center gap-3">
+                <ConfirmButton
+                  label={m("importa")}
+                  onConfirm={importa}
+                  disabled={saving || !json.trim()}
+                  size="default"
+                  icon={<Upload className="mr-1 h-4 w-4" />}
+                />
+                {saving && (
+                  <span className="text-xs text-muted-foreground">{m("importaInCorso")}</span>
+                )}
+              </div>
+              {esitoImport && (
+                <p
+                  className={`rounded-lg p-2 text-xs font-medium ${
+                    esitoImport.startsWith("✓")
+                      ? "bg-status-present/15 text-status-present"
+                      : "bg-destructive/15 text-destructive"
+                  }`}
+                >
+                  {esitoImport}
+                </p>
+              )}
             </CardContent>
           </Card>
         )}

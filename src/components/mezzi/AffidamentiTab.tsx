@@ -15,7 +15,7 @@ import {
 import { Plus } from "lucide-react";
 import { type Affidamento, type MezziDb } from "@/lib/mezzi-types";
 import { spMezziElimina, spMezziSalvaAffidamento } from "@/lib/mezzi.functions";
-import { Field, fmtData, inputCls, MezzoSelect, targaDi, useMezzi } from "./shared";
+import { ConfirmButton, Field, fmtData, inputCls, MezzoSelect, targaDi, useMezzi } from "./shared";
 
 export function AffidamentiTab({ db, onDb }: { db: MezziDb; onDb: (db: MezziDb) => void }) {
   const { m } = useMezzi();
@@ -155,7 +155,7 @@ function AffidamentoDialog({
   };
 
   const elimina = async () => {
-    if (!affidamento || !window.confirm(m("confermaElimina"))) return;
+    if (!affidamento) return;
     setSaving(true);
     try {
       const res = await spMezziElimina({
@@ -263,9 +263,7 @@ function AffidamentoDialog({
         <div className="mt-2 flex items-center justify-between">
           <div>
             {affidamento && (
-              <Button variant="destructive" size="sm" onClick={elimina} disabled={saving}>
-                {m("elimina")}
-              </Button>
+              <ConfirmButton label={m("elimina")} onConfirm={elimina} disabled={saving} />
             )}
           </div>
           <div className="flex gap-2">

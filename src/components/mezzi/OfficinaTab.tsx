@@ -15,7 +15,17 @@ import {
 import { Plus } from "lucide-react";
 import { type InterventoOfficina, type MezziDb } from "@/lib/mezzi-types";
 import { spMezziElimina, spMezziSalvaIntervento } from "@/lib/mezzi.functions";
-import { Field, fmtData, fmtEur, inputCls, MezzoSelect, num, targaDi, useMezzi } from "./shared";
+import {
+  ConfirmButton,
+  Field,
+  fmtData,
+  fmtEur,
+  inputCls,
+  MezzoSelect,
+  num,
+  targaDi,
+  useMezzi,
+} from "./shared";
 
 const TIPI = ["tagliando", "riparazione", "gomme", "carrozzeria", "frigo", "revisione", "altro"];
 
@@ -151,7 +161,7 @@ function InterventoDialog({
   };
 
   const elimina = async () => {
-    if (!intervento || !window.confirm(m("confermaElimina"))) return;
+    if (!intervento) return;
     setSaving(true);
     try {
       const res = await spMezziElimina({ data: { collezione: "officina", id: intervento.id } });
@@ -243,9 +253,7 @@ function InterventoDialog({
         <div className="mt-2 flex items-center justify-between">
           <div>
             {intervento && (
-              <Button variant="destructive" size="sm" onClick={elimina} disabled={saving}>
-                {m("elimina")}
-              </Button>
+              <ConfirmButton label={m("elimina")} onConfirm={elimina} disabled={saving} />
             )}
           </div>
           <div className="flex gap-2">

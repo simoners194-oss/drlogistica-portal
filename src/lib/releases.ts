@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.53.1",
+    date: "2026-08-26",
+    codename: "Conferme visibili",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "fix",
+        audience: "direzione",
+        title: "Mezzi: conferme senza dialog di sistema",
+        description:
+          "L'import del database e i bottoni Elimina non usano più la finestra di conferma del browser (che in certi contesti — es. la preview dentro l'editor Lovable — viene soppressa in silenzio e l'azione sembrava non partire): ora il bottone si arma al primo click e conferma al secondo. Dopo l'import resta a schermo un riepilogo con i conteggi (mezzi, scadenze, contratti…) oltre al toast.",
+      },
+    ],
+  },
+  {
     version: "1.53.0",
     date: "2026-08-26",
     codename: "Gestione Mezzi",

@@ -2,9 +2,10 @@
 // Le etichette del modulo vivono qui (prefisso nessuno, chiavi corte) per non
 // gonfiare i18n.tsx: `useMezzi()` segue la stessa lingua scelta nel portale.
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useLang } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { semaforoScadenza, type Mezzo, type MezzoStato, type Semaforo } from "@/lib/mezzi-types";
 
 export const inputCls =
@@ -222,6 +223,8 @@ const it = {
   eliminato: "Eliminato.",
   importato: "Database importato.",
   aggiornatoIl: "Ultimo aggiornamento",
+  confermaClick: "Sicuro? Clicca di nuovo",
+  importaInCorso: "Import in corso… (qualche secondo)",
 } as const;
 
 type MezziKey = keyof typeof it;
@@ -427,6 +430,8 @@ const en: Record<MezziKey, string> = {
   eliminato: "Deleted.",
   importato: "Database imported.",
   aggiornatoIl: "Last update",
+  confermaClick: "Sure? Click again",
+  importaInCorso: "Importing… (a few seconds)",
 };
 
 /** Etichette del modulo Mezzi nella lingua corrente del portale. */
@@ -547,4 +552,54 @@ export function MezzoSelect({
 
 export function targaDi(mezzi: Mezzo[], id?: string): string {
   return mezzi.find((m) => m.id === id)?.targa ?? id ?? "—";
+}
+
+/**
+ * Bottone con conferma inline a doppio click: il primo click "arma" il
+ * bottone (etichetta di conferma per 4 secondi), il secondo esegue.
+ * Niente window.confirm: i dialog nativi vengono soppressi in silenzio nei
+ * contesti sandbox (es. preview dentro l'editor Lovable) e l'azione sembrava
+ * non partire mai.
+ */
+export function ConfirmButton({
+  label,
+  onConfirm,
+  disabled,
+  variant = "destructive",
+  size = "sm",
+  icon,
+}: {
+  label: string;
+  onConfirm: () => void;
+  disabled?: boolean;
+  variant?: "destructive" | "default" | "outline";
+  size?: "sm" | "default";
+  icon?: ReactNode;
+}) {
+  const { m } = useMezzi();
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 4000);
+    return () => clearTimeout(t);
+  }, [armed]);
+  return (
+    <Button
+      type="button"
+      variant={variant}
+      size={size}
+      disabled={disabled}
+      onClick={() => {
+        if (armed) {
+          setArmed(false);
+          onConfirm();
+        } else {
+          setArmed(true);
+        }
+      }}
+    >
+      {!armed && icon}
+      {armed ? m("confermaClick") : label}
+    </Button>
+  );
 }

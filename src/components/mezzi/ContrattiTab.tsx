@@ -17,6 +17,7 @@ import { AlertTriangle, Plus } from "lucide-react";
 import { canoniFuoriMercato, giorniA, type Contratto, type MezziDb } from "@/lib/mezzi-types";
 import { spMezziElimina, spMezziSalvaContratto } from "@/lib/mezzi.functions";
 import {
+  ConfirmButton,
   Field,
   fmtData,
   fmtEur,
@@ -209,7 +210,7 @@ function ContrattoDialog({
   };
 
   const elimina = async () => {
-    if (!contratto || !window.confirm(m("confermaElimina"))) return;
+    if (!contratto) return;
     setSaving(true);
     try {
       const res = await spMezziElimina({ data: { collezione: "contratti", id: contratto.id } });
@@ -376,9 +377,7 @@ function ContrattoDialog({
         <div className="mt-2 flex items-center justify-between">
           <div>
             {contratto && (
-              <Button variant="destructive" size="sm" onClick={elimina} disabled={saving}>
-                {m("elimina")}
-              </Button>
+              <ConfirmButton label={m("elimina")} onConfirm={elimina} disabled={saving} />
             )}
           </div>
           <div className="flex gap-2">

@@ -24,7 +24,16 @@ import {
   type MezzoStato,
 } from "@/lib/mezzi-types";
 import { spMezziElimina, spMezziSalvaMezzo } from "@/lib/mezzi.functions";
-import { Field, fmtData, inputCls, num, SemaforoBadge, StatoMezzoBadge, useMezzi } from "./shared";
+import {
+  ConfirmButton,
+  Field,
+  fmtData,
+  inputCls,
+  num,
+  SemaforoBadge,
+  StatoMezzoBadge,
+  useMezzi,
+} from "./shared";
 
 export function ParcoTab({
   db,
@@ -254,7 +263,6 @@ function MezzoDialog({
 
   const elimina = async () => {
     if (!mezzo) return;
-    if (!window.confirm(m("confermaElimina"))) return;
     setSaving(true);
     try {
       const res = await spMezziElimina({ data: { collezione: "mezzi", id: mezzo.id } });
@@ -541,9 +549,7 @@ function MezzoDialog({
         <div className="mt-2 flex items-center justify-between gap-2">
           <div>
             {mezzo && isAdmin && (
-              <Button variant="destructive" size="sm" onClick={elimina} disabled={saving}>
-                {m("elimina")}
-              </Button>
+              <ConfirmButton label={m("elimina")} onConfirm={elimina} disabled={saving} />
             )}
           </div>
           <div className="flex gap-2">

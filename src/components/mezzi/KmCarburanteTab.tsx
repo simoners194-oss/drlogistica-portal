@@ -20,7 +20,17 @@ import {
   spMezziSalvaLetturaKm,
   spMezziSalvaRifornimento,
 } from "@/lib/mezzi.functions";
-import { Field, fmtData, fmtEur, inputCls, MezzoSelect, num, targaDi, useMezzi } from "./shared";
+import {
+  ConfirmButton,
+  Field,
+  fmtData,
+  fmtEur,
+  inputCls,
+  MezzoSelect,
+  num,
+  targaDi,
+  useMezzi,
+} from "./shared";
 
 export function KmCarburanteTab({ db, onDb }: { db: MezziDb; onDb: (db: MezziDb) => void }) {
   const { m } = useMezzi();
@@ -258,7 +268,7 @@ function LetturaDialog({
   };
 
   const elimina = async () => {
-    if (!lettura || !window.confirm(m("confermaElimina"))) return;
+    if (!lettura) return;
     try {
       const res = await spMezziElimina({ data: { collezione: "km", id: lettura.id } });
       onDb(res);
@@ -323,9 +333,7 @@ function LetturaDialog({
         <div className="mt-2 flex items-center justify-between">
           <div>
             {lettura && (
-              <Button variant="destructive" size="sm" onClick={elimina}>
-                {m("elimina")}
-              </Button>
+              <ConfirmButton label={m("elimina")} onConfirm={elimina} disabled={saving} />
             )}
           </div>
           <div className="flex gap-2">
@@ -374,7 +382,7 @@ function RifornimentoDialog({
   };
 
   const elimina = async () => {
-    if (!rifornimento || !window.confirm(m("confermaElimina"))) return;
+    if (!rifornimento) return;
     try {
       const res = await spMezziElimina({ data: { collezione: "carburante", id: rifornimento.id } });
       onDb(res);
@@ -447,9 +455,7 @@ function RifornimentoDialog({
         <div className="mt-2 flex items-center justify-between">
           <div>
             {rifornimento && (
-              <Button variant="destructive" size="sm" onClick={elimina}>
-                {m("elimina")}
-              </Button>
+              <ConfirmButton label={m("elimina")} onConfirm={elimina} disabled={saving} />
             )}
           </div>
           <div className="flex gap-2">
