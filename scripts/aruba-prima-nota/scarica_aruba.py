@@ -256,7 +256,10 @@ def estrai_nc_links(page, cfg: dict) -> None:
             print(f"    (filtro anno {anno} non impostabile: resto sull'anno di default)")
             return False
 
-    anni_cfg = [int(a) for a in cfg.get("anni", [datetime.now().year])]
+    # Per NC e stati si guarda anche il 2024: le NC vecchie mai collegate
+    # comparivano nei solleciti e gli stati storici (pagata/stornata) non
+    # sono mai arrivati al portale. La prima nota resta sugli anni del config.
+    anni_cfg = sorted({2024, *(int(a) for a in cfg.get("anni", [datetime.now().year]))})
     for servizio, voce in (
         ("FatturaRicevutaFrontEnd", "Fatture ricevute"),
         ("FatturaFrontEnd", "Fatture inviate"),
@@ -274,10 +277,22 @@ def estrai_nc_links(page, cfg: dict) -> None:
                 attendi(servizio, anno, 40)
     # margine per le risposte ritardatarie, poi si legge TUTTO il catturato
     time.sleep(5)
+    # StatoPagInc della griglia (colonna "Pagamenti"), decodificato il
+    # 01/09/2026 incrociando fatture note: 0=Non pagata, 1=Pagata,
+    # 2=Non gestita, 3=Pagata parzialmente, 4=Stornata.
+    MAPPA_STATO = {
+        0: "Non pagata",
+        1: "Pagata",
+        2: "Non gestita",
+        3: "Pagata parzialmente",
+        4: "Stornata",
+    }
     links = []
+    stati = []
     for (srv, anno), dati in sorted(catture.items(), key=lambda x: (x[0][0], str(x[0][1]))):
         dire = "R" if srv.startswith("FatturaRicevuta") else "E"
         trovati = 0
+        con_stato = 0
         for it in dati.get("Items", []):
             tipo = str(it.get("Tipo", "")).upper()
             docs = it.get("DocumentiCollegati") or []
@@ -293,7 +308,21 @@ def estrai_nc_links(page, cfg: dict) -> None:
                     }
                 )
                 trovati += 1
-        print(f"[collegamenti NC] {srv} {anno}: {trovati} trovati")
+            # Stato di pagamento: per TUTTE le righe con nome file. La data
+            # arriva come "2026/07/20 00:00:00...": si tiene solo il giorno.
+            sp = it.get("StatoPagInc")
+            if it.get("SdiFileName") and sp in MAPPA_STATO:
+                voce_stato = {
+                    "file": it["SdiFileName"],
+                    "stato": MAPPA_STATO[sp],
+                    "dir": dire,
+                }
+                dp = str(it.get("DataPagInc") or "")[:10].replace("/", "-")
+                if re.match(r"^\d{4}-\d{2}-\d{2}$", dp):
+                    voce_stato["dataPag"] = dp
+                stati.append(voce_stato)
+                con_stato += 1
+        print(f"[collegamenti NC] {srv} {anno}: {trovati} trovati, {con_stato} stati letti")
     visti = set()
     unici = []
     for l in links:
@@ -311,24 +340,42 @@ def estrai_nc_links(page, cfg: dict) -> None:
         print("cron_fatture_url non configurato nel config.json: spedizione al portale SALTATA.")
         print("  (incolla li' l'URL del sync programmato dalla card Diagnostica Aruba)")
         return
-    base_nc = base.replace("/cron-fatture", "/cron-nc")
-    for i in range(0, len(unici), 40):
-        blocco = unici[i : i + 40]
-        payload = base64.b64encode(json.dumps(blocco, ensure_ascii=False).encode("utf-8")).decode(
-            "ascii"
-        )
-        url = base_nc + "&dati=" + urllib.parse.quote(payload, safe="")
-        try:
-            r = page.request.get(url, timeout=120000)
-            # React SSR infila commenti tra i pezzi di testo (OK<!-- -->: …):
-            # si tolgono prima di cercare l'esito.
-            esito = r.text().replace("<!-- -->", "")
-            i0 = esito.find("OK:")
-            if i0 < 0:
-                i0 = esito.find("ERRORE:")
-            print(f"  blocco {i // 40 + 1}: HTTP {r.status} — {esito[i0 : i0 + 120] if i0 >= 0 else esito[:120]}")
-        except Exception as e:
-            print(f"  blocco {i // 40 + 1}: errore {e}")
+    def spedisci_blocchi(voci, endpoint, passo, etichetta):
+        base_ep = base.replace("/cron-fatture", endpoint)
+        for i in range(0, len(voci), passo):
+            blocco = voci[i : i + passo]
+            payload = base64.b64encode(
+                json.dumps(blocco, ensure_ascii=False).encode("utf-8")
+            ).decode("ascii")
+            url = base_ep + "&dati=" + urllib.parse.quote(payload, safe="")
+            try:
+                r = page.request.get(url, timeout=120000)
+                # React SSR infila commenti tra i pezzi di testo (OK<!-- -->: …):
+                # si tolgono prima di cercare l'esito.
+                esito = r.text().replace("<!-- -->", "")
+                i0 = esito.find("OK:")
+                if i0 < 0:
+                    i0 = esito.find("ERRORE:")
+                print(
+                    f"  {etichetta} blocco {i // passo + 1}: HTTP {r.status} — {esito[i0 : i0 + 140] if i0 >= 0 else esito[:140]}"
+                )
+            except Exception as e:
+                print(f"  {etichetta} blocco {i // passo + 1}: errore {e}")
+
+    spedisci_blocchi(unici, "/cron-nc", 40, "NC")
+    # Stati di pagamento: dedup per file (la prima cattura vince) e via.
+    visti_st = set()
+    stati_unici = []
+    for s in stati:
+        if s["file"] in visti_st:
+            continue
+        visti_st.add(s["file"])
+        stati_unici.append(s)
+    # Blocchi da 80: l'URL porta il payload in base64 e oltre si rischia il
+    # limite di lunghezza (il server accetta fino a 400 voci, ma via GET
+    # conviene stare larghi).
+    print(f"[stati pagamento] {len(stati_unici)} da spedire a /cron-stati")
+    spedisci_blocchi(stati_unici, "/cron-stati", 80, "stati")
 
 
 def ricognizione_nc(page) -> None:

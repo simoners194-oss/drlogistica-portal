@@ -76,6 +76,12 @@ export function parseIncassoAruba(v: unknown): IncassoAruba {
   const s = normalizeTesto(String(v ?? ""));
   // Il report delle RICEVUTE usa "Pagata/Non pagata": stessa semantica.
   if (s.startsWith("non incassat") || s.startsWith("non pagat")) return "Non incassata";
+  // ATTENZIONE all'ordine: "Pagata parzialmente" inizia per "pagat" e senza
+  // questa guardia verrebbe letta come pagata PIENA (e la regola ritenuta
+  // la salderebbe). Un parziale non e' uno stato conclusivo: si lascia
+  // vuoto, gli importi veri li da' il report incassi.
+  if (s.startsWith("pagata parz") || s.startsWith("incassata parz") || s.startsWith("parzial"))
+    return "";
   if (s.startsWith("incassat") || s.startsWith("pagat")) return "Incassata";
   if (s.startsWith("non gestit")) return "Non gestita";
   // Stato usato dall'amministrazione quando la fattura viene annullata da

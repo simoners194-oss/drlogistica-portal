@@ -64,6 +64,7 @@ import {
 import {
   normalizzaNomeFile,
   isNotaCredito,
+  parseIncassoAruba,
   type RegolaFattura,
   type FatturaRaw,
   type TerminePagamento,
@@ -4241,6 +4242,86 @@ export async function collegaNcBatch(
     `Collegamenti NC da Aruba: +${esiti.collegate} (${esiti.giaCollegate} gia' collegate, ${esiti.nonTrovate} non in archivio)`,
   );
   return esiti;
+}
+
+/** CRON STATI — gli stati di pagamento LETTI DALLA GRIGLIA Aruba (colonna
+ *  "Pagamenti": Pagata / Non pagata / Stornata / Non gestita), estratti
+ *  dallo script locale insieme ai collegamenti NC. Guardie:
+ *  (1) MAI retrocedere in automatico: una fattura pagata o stornata non
+ *      torna "non pagata/non gestita" via cron — si conta e si ignora
+ *      (le correzioni all'indietro restano un gesto umano);
+ *  (2) i PARZIALI non si scrivono: non sono uno stato conclusivo, gli
+ *      importi veri li porta gia' il report incassi;
+ *  (3) le fatture assenti dal blocco non si toccano. */
+export async function cronStatiBatch(
+  righe: readonly { file: string; stato: string; dir: "R" | "E"; dataPag?: string }[],
+): Promise<{
+  aggiornate: number;
+  invariate: number;
+  retrocessioniIgnorate: number;
+  nonTrovate: number;
+}> {
+  const cfg = await discoverSharePoint();
+  const esito = { aggiornate: 0, invariate: 0, retrocessioniIgnorate: 0, nonTrovate: 0 };
+  for (const direzione of ["Ricevuta", "Emessa"] as DirezioneFattura[]) {
+    const gruppo = righe.filter((r) => (direzione === "Ricevuta" ? r.dir === "R" : r.dir === "E"));
+    if (!gruppo.length) continue;
+    const listId = requireFattureList(cfg, direzione);
+    const F = fattureListPer(cfg, direzione).fields;
+    if (!F.IncassoAruba)
+      throw new Error(
+        'Colonna "IncassoAruba" assente sulla lista fatture: aggiungerla (testo) e fare Riscopri.',
+      );
+    const archivio = new Map((await fetchFatture(direzione)).map((f) => [f.nomeFile, f]));
+    const ops: (() => Promise<void>)[] = [];
+    for (const r of gruppo) {
+      const doc = archivio.get(normalizzaNomeFile(r.file));
+      if (!doc) {
+        esito.nonTrovate++;
+        continue;
+      }
+      const attuale = parseIncassoAruba(doc.incassoAruba);
+      const nuovo = parseIncassoAruba(r.stato);
+      if (nuovo === "") {
+        // Parziale (o testo sconosciuto): non e' uno stato conclusivo.
+        esito.invariate++;
+        continue;
+      }
+      if (nuovo === attuale) {
+        esito.invariate++;
+        continue;
+      }
+      const conclusa = attuale === "Incassata" || attuale === "Stornata";
+      const indietro = nuovo === "Non incassata" || nuovo === "Non gestita";
+      if (conclusa && indietro) {
+        esito.retrocessioniIgnorate++; // MAI applicate: restano un gesto umano
+        continue;
+      }
+      const patch: Record<string, unknown> = { [F.IncassoAruba]: r.stato.slice(0, 60) };
+      if (F.DataIncasso && nuovo === "Incassata" && r.dataPag)
+        patch[F.DataIncasso] = `${r.dataPag}T00:00:00Z`;
+      ops.push(async () => {
+        await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${doc.id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        });
+      });
+    }
+    const BATCH = 4;
+    for (let i = 0; i < ops.length; i += BATCH) {
+      const esiti = await Promise.allSettled(ops.slice(i, i + BATCH).map((op) => op()));
+      for (const e of esiti) {
+        if (e.status === "fulfilled") esito.aggiornate++;
+        else esito.nonTrovate++; // errore di scrittura: contato, mai bloccante
+      }
+    }
+  }
+  logSp(
+    "info",
+    "cron.stati",
+    `Cron stati pagamento: ${esito.aggiornate} aggiornate, ${esito.invariate} invariate, ${esito.retrocessioniIgnorate} retrocessioni IGNORATE, ${esito.nonTrovate} non trovate`,
+  );
+  return esito;
 }
 
 export async function setRettificaNumero(

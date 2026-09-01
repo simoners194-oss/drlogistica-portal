@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.54.0",
+    date: "2026-09-01",
+    codename: "Stati di pagamento automatici",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Gli stati di pagamento segnati su Aruba arrivano da soli",
+        description:
+          "Quello che l'amministrazione registra su Aruba nella colonna Pagamenti (pagata, stornata, non pagata) ora viaggia col giro automatico giornaliero, insieme ai collegamenti delle note di credito — e la copertura si estende anche all'anno 2024. Due protezioni: il giro non fa MAI retrocedere uno stato (una fattura pagata o stornata non torna aperta in automatico: le correzioni all'indietro restano un gesto umano) e i pagamenti parziali non vengono scritti come stato, perché gli importi veri li porta già il report incassi.",
+      },
+    ],
+  },
+  {
     version: "1.53.1",
     date: "2026-08-26",
     codename: "Conferme visibili",
