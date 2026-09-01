@@ -270,7 +270,10 @@ export function ResocontoTab() {
     // RITENUTA D'ACCONTO: se su Aruba lo stato registrato dice pagata, la
     // fattura e' saldata anche se le rate sommano meno del totale (il
     // bonifico e' il netto, la ritenuta va con l'F24) — direzione 24/08.
+    // "Stornata" su Aruba = annullata: niente da pagare (ma non e' un
+    // pagamento) — caso Ristorante Lele 776/2024.
     if (x.s.statoFatturazione === "Pagata") return 0;
+    if (parseIncassoAruba(x.f.incassoAruba) === "Stornata") return 0;
     const inc = incassatoDi(x);
     // Se l'incassato arriva dal fallback "Incassata su Aruba" la NC e' gia'
     // dentro (totale − NC): sottrarla di nuovo la conterebbe due volte.

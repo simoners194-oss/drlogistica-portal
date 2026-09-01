@@ -69,7 +69,7 @@ export interface FatturaRaw {
   causaleDoc?: string;
 }
 
-export type IncassoAruba = "Incassata" | "Non incassata" | "Non gestita" | "";
+export type IncassoAruba = "Incassata" | "Non incassata" | "Non gestita" | "Stornata" | "";
 
 /** Normalizza il valore della colonna "Incassi" dell'export Aruba. */
 export function parseIncassoAruba(v: unknown): IncassoAruba {
@@ -78,6 +78,9 @@ export function parseIncassoAruba(v: unknown): IncassoAruba {
   if (s.startsWith("non incassat") || s.startsWith("non pagat")) return "Non incassata";
   if (s.startsWith("incassat") || s.startsWith("pagat")) return "Incassata";
   if (s.startsWith("non gestit")) return "Non gestita";
+  // Stato usato dall'amministrazione quando la fattura viene annullata da
+  // una nota di credito: niente da pagare, ma NON e' un pagamento.
+  if (s.startsWith("stornat")) return "Stornata";
   return "";
 }
 
@@ -970,7 +973,7 @@ export function computeStatoFattura(
   // Regola della direzione (24/08): se su Aruba lo stato REGISTRATO dice
   // pagata/incassata, la fattura e' SALDATA — residuo zero — anche se le
   // rate sommano meno. Le tre letture restano visibili cosi' come sono.
-  const saldataSuAruba = statoFatturazione === "Pagata";
+  const saldataSuAruba = statoFatturazione === "Pagata" || aruba === "Stornata";
   // Lettura combinata (solo per filtri, ritardi e ordinamenti): lo stato
   // registrato su Aruba comanda quando dice "pagata"; altrimenti la fonte
   // più precisa disponibile.
