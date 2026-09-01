@@ -12,6 +12,8 @@ REM in silenzio nel log. Se Python viene aggiornato, aggiornare il percorso.
 set PYEXE=C:\Python314\python.exe
 if not exist "%PYEXE%" set PYEXE=python
 echo ================= %date% %time% ================= >> log_esecuzioni.txt
+REM Diagnostica: quale interprete gira davvero sotto lo scheduler.
+"%PYEXE%" -c "import sys; print('interprete:', sys.executable)" >> log_esecuzioni.txt 2>&1
 "%PYEXE%" scarica_aruba.py >> log_esecuzioni.txt 2>&1
 "%PYEXE%" scarica_aruba.py incassi >> log_esecuzioni.txt 2>&1
 "%PYEXE%" scarica_aruba.py nclinks >> log_esecuzioni.txt 2>&1
