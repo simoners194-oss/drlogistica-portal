@@ -277,7 +277,16 @@ export function ResocontoTab() {
     const fallbackAruba =
       x.s.incassatoIncassi == null && parseIncassoAruba(x.f.incassoAruba) === "Incassata";
     const nc = fallbackAruba ? 0 : x.s.notaCredito;
-    return Math.max(0, Math.round((x.f.totale - nc - inc) * 100) / 100);
+    // Il DOVUTO delle passive e' il NETTO dichiarato in fattura quando c'e'
+    // (ritenuta d'acconto: si bonifica il netto, la ritenuta va con l'F24).
+    // Il residuo calcolato sul totale lasciava un finto "da pagare" pari
+    // alla ritenuta (caso De Luca 98/2024: 629,32 − 530,12 = 99,20) —
+    // stessa regola del motore stati (direzione 01/09).
+    const dovuto =
+      x.f.direzione === "Ricevuta" && x.f.netto > 0 && x.f.netto < x.f.totale - 0.01
+        ? x.f.netto
+        : x.f.totale;
+    return Math.max(0, Math.round((dovuto - nc - inc) * 100) / 100);
   };
 
   const inSelezione = (nome: string, sel: string[]) =>
