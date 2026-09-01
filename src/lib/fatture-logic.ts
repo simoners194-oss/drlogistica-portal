@@ -964,9 +964,19 @@ export function computeStatoFattura(
         : incassatoIncassi > TOLLERANZA_SALDO
           ? "Parziale"
           : "Non incassata";
-  // Lettura combinata (solo per filtri, ritardi e ordinamenti): la fonte più
-  // precisa disponibile.
-  const stato: StatoIncasso = statoIncassi ?? statoFatturazione ?? statoBanca;
+  // RITENUTA D'ACCONTO (consulenti e professionisti): il bonifico e' il
+  // NETTO, la ritenuta la versa DR con l'F24 — le rate del report non
+  // arriveranno mai al dovuto e la fattura restava "Parziale" per sempre.
+  // Regola della direzione (24/08): se su Aruba lo stato REGISTRATO dice
+  // pagata/incassata, la fattura e' SALDATA — residuo zero — anche se le
+  // rate sommano meno. Le tre letture restano visibili cosi' come sono.
+  const saldataSuAruba = statoFatturazione === "Pagata";
+  // Lettura combinata (solo per filtri, ritardi e ordinamenti): lo stato
+  // registrato su Aruba comanda quando dice "pagata"; altrimenti la fonte
+  // più precisa disponibile.
+  const stato: StatoIncasso = saldataSuAruba
+    ? "Pagata"
+    : (statoIncassi ?? statoFatturazione ?? statoBanca);
   const residuoFatturazione =
     incassatoFatturazione == null ? null : Math.max(0, base - incassatoFatturazione);
   // Lettura combinata: serve a filtri, ritardi e ordinamenti. Si prende la
@@ -979,7 +989,7 @@ export function computeStatoFattura(
           86400000,
       )
     : 0;
-  const residuo = residuoIncassi ?? residuoFatturazione ?? residuoBanca;
+  const residuo = saldataSuAruba ? 0 : (residuoIncassi ?? residuoFatturazione ?? residuoBanca);
   const incassatoComb = incassatoIncassi ?? incassatoFatturazione ?? incassato;
   return {
     // Coperta per intero dalle note di credito: nulla da incassare, ma non è

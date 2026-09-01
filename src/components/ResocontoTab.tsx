@@ -267,6 +267,10 @@ export function ResocontoTab() {
     // Aruba — richiesta direzione 17/08. Le NC collegate abbattono il
     // residuo anche quando coprono solo una parte.
     if (x.s.annullataDaNC) return 0;
+    // RITENUTA D'ACCONTO: se su Aruba lo stato registrato dice pagata, la
+    // fattura e' saldata anche se le rate sommano meno del totale (il
+    // bonifico e' il netto, la ritenuta va con l'F24) — direzione 24/08.
+    if (x.s.statoFatturazione === "Pagata") return 0;
     const inc = incassatoDi(x);
     // Se l'incassato arriva dal fallback "Incassata su Aruba" la NC e' gia'
     // dentro (totale − NC): sottrarla di nuovo la conterebbe due volte.
