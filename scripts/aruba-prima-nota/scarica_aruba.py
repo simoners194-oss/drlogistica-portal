@@ -410,7 +410,22 @@ def spedisci_incassi(cfg: dict) -> None:
         nome = z.namelist()[0]
         dati = z.read(nome)
         if dati[:4].hex() == "d0cf11e0":  # OLE2 = .xls binario
-            import xlrd
+            # Sotto l'Utilita' di pianificazione Python parte SENZA i
+            # pacchetti utente (site di AppData\Roaming invisibile): xlrd
+            # sta li' e il passo incassi moriva solo nelle corse schedulate.
+            # Se l'import fallisce si aggiunge il percorso a mano: e'
+            # deterministico (USERPROFILE c'e' sempre) e non serve admin.
+            try:
+                import xlrd
+            except ModuleNotFoundError:
+                import os
+
+                sys.path.append(
+                    os.path.expanduser(
+                        rf"~\AppData\Roaming\Python\Python{sys.version_info.major}{sys.version_info.minor}\site-packages"
+                    )
+                )
+                import xlrd
 
             wb = xlrd.open_workbook(file_contents=dati)
             sh = wb.sheet_by_index(0)
