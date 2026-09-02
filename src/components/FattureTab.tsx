@@ -78,6 +78,7 @@ import {
   spSetArubaCredenziali,
   spArubaSincronizza,
   spArubaCompletaDettagli,
+  spRichiediGiroCompleto,
   spSetRettificaNumero,
   spSetIncassoManuale,
   spTrovaFattureSenzaCliente,
@@ -3401,6 +3402,15 @@ export function FattureTab({
                         .then((r) => {
                           setSyncEsito(r as ArubaSyncResult);
                           load();
+                          // Il giro COMPLETO (stati di pagamento, incassi,
+                          // collegamenti NC) lo fa il PC aziendale: qui si
+                          // lascia la richiesta, il PC la raccoglie a minuti.
+                          void spRichiediGiroCompleto({})
+                            .then((g) => {
+                              if ((g as { scritta: boolean }).scritta)
+                                toast.info(t("ft.giroRichiesto"));
+                            })
+                            .catch(() => {});
                         })
                         .catch((err) =>
                           toast.error(t("common.error"), {

@@ -11,6 +11,9 @@ REM risolvere un interprete diverso (senza xlrd) e il passo incassi moriva
 REM in silenzio nel log. Se Python viene aggiornato, aggiornare il percorso.
 set PYEXE=C:\Python314\python.exe
 if not exist "%PYEXE%" set PYEXE=python
+REM Lock anti-sovrapposizione: il giro su richiesta (controlla_giro.bat)
+REM aspetta se un giro e' gia' in corso.
+echo su > giro_in_corso.lock
 echo ================= %date% %time% ================= >> log_esecuzioni.txt
 REM Diagnostica: quale interprete gira davvero sotto lo scheduler.
 "%PYEXE%" -c "import sys; print('interprete:', sys.executable)" >> log_esecuzioni.txt 2>&1
@@ -18,3 +21,4 @@ REM Diagnostica: quale interprete gira davvero sotto lo scheduler.
 "%PYEXE%" scarica_aruba.py incassi >> log_esecuzioni.txt 2>&1
 "%PYEXE%" scarica_aruba.py nclinks >> log_esecuzioni.txt 2>&1
 echo (fine corsa) >> log_esecuzioni.txt
+del giro_in_corso.lock 2>nul

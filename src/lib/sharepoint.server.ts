@@ -402,6 +402,11 @@ export const SP_DISPLAY = {
     // Cache del token (cifrata): il Worker è effimero e Aruba limita i signin
     // ripetuti (429) — persistere il token riduce le autenticazioni a ~2/ora.
     TokenCache: "TokenCache",
+    // Richiesta di GIRO COMPLETO dal bottone Sincronizza: timestamp ISO che
+    // il PC aziendale legge (e consuma) ogni ~10 minuti — gli stati di
+    // pagamento vivono solo sul sito web di Aruba e li porta lo script
+    // locale, non il server. Colonna OPZIONALE.
+    GiroRichiesto: "GiroRichiesto",
   },
   // Richieste di CORREZIONE delle timbrature inviate dal dipendente e decise
   // da chi ha il flag Operatore. Lista OPZIONALE.
@@ -6408,6 +6413,42 @@ export async function saveArubaTokenCacheRaw(json: string): Promise<void> {
   } catch {
     /* best-effort: la cache è un'ottimizzazione, non un requisito */
   }
+}
+
+/** RICHIESTA DI GIRO COMPLETO dal bottone Sincronizza: il server non può
+ *  leggere gli stati di pagamento (vivono solo sul sito web di Aruba, con
+ *  credenziali che restano sul PC aziendale) — scrive quindi un timestamp
+ *  che il PC raccoglie entro ~10 minuti ed esegue il giro locale. */
+export async function richiediGiroCompleto(): Promise<boolean> {
+  const cfg = await discoverSharePoint();
+  const F = cfg.arubaConfigFields;
+  if (!cfg.listArubaConfig || !F.GiroRichiesto) return false; // colonna assente
+  const row = await fetchArubaRow(cfg);
+  if (!row) return false;
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listArubaConfig}/items/${row.id}/fields`, {
+    method: "PATCH",
+    body: JSON.stringify({ [F.GiroRichiesto]: new Date().toISOString() }),
+  });
+  return true;
+}
+
+/** POLL del PC aziendale: c'è una richiesta di giro pendente? Se sì (e non
+ *  più vecchia di un'ora) la CONSUMA e risponde di eseguire — così una
+ *  richiesta scatena un solo giro. */
+export async function consumaGiroRichiesto(): Promise<{ esegui: boolean }> {
+  const cfg = await discoverSharePoint();
+  const F = cfg.arubaConfigFields;
+  if (!cfg.listArubaConfig || !F.GiroRichiesto) return { esegui: false };
+  const row = await fetchArubaRow(cfg);
+  const grezzo = String(row?.fields?.[F.GiroRichiesto] ?? "").trim();
+  if (!row || !grezzo) return { esegui: false };
+  const quando = Date.parse(grezzo);
+  const fresca = Number.isFinite(quando) && Date.now() - quando < 60 * 60 * 1000;
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listArubaConfig}/items/${row.id}/fields`, {
+    method: "PATCH",
+    body: JSON.stringify({ [F.GiroRichiesto]: "" }),
+  });
+  return { esegui: fresca };
 }
 
 /** Data/ora dell'ultimo sync fatture riuscito (colonna UltimaSync). */

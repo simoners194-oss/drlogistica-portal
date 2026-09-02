@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.55.0",
+    date: "2026-09-02",
+    codename: "Giro su richiesta",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Sincronizza da Aruba avvia anche il giro completo",
+        description:
+          "Premendo Sincronizza da Aruba, oltre alle fatture nuove parte una richiesta di giro completo: entro una decina di minuti il PC aziendale scarica e spedisce anche stati di pagamento, incassi registrati e collegamenti delle note di credito — senza aspettare gli orari pianificati. Requisito: il PC aziendale deve essere acceso; a PC spento la richiesta resta valida un'ora e viene raccolta alla riaccensione.",
+      },
+    ],
+  },
+  {
     version: "1.54.0",
     date: "2026-09-01",
     codename: "Stati di pagamento automatici",

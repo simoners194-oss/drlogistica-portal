@@ -51,6 +51,8 @@ import {
   verificaTokenCronFatture,
   collegaNcBatch,
   cronStatiBatch,
+  richiediGiroCompleto,
+  consumaGiroRichiesto,
   updateRegolaFattura,
   fetchPrefatture,
   createPrefattura,
@@ -681,6 +683,26 @@ export const spCronNc = createServerFn({ method: "POST" })
       })
       .filter((l) => l.file && l.numero);
     return collegaNcBatch(links);
+  });
+
+// Richiesta di GIRO COMPLETO dal bottone Sincronizza: il PC aziendale la
+// raccoglie entro ~10 minuti ed esegue lo script locale (stati compresi).
+export const spRichiediGiroCompleto = createServerFn({ method: "POST" }).handler(async () => {
+  await assertDirettore(await currentUser());
+  const scritta = await richiediGiroCompleto();
+  return { scritta };
+});
+
+// Poll del PC aziendale: consuma l'eventuale richiesta pendente.
+export const spCronGiroPoll = createServerFn({ method: "POST" })
+  .inputValidator((input: { token: string }) => {
+    const token = String(input?.token ?? "").trim();
+    if (!token || token.length > 100) throw new Error("Token mancante.");
+    return { token };
+  })
+  .handler(async ({ data }) => {
+    await verificaTokenCronFatture(data.token);
+    return consumaGiroRichiesto();
   });
 
 // Stati di pagamento dalla griglia Aruba (colonna "Pagamenti"), estratti

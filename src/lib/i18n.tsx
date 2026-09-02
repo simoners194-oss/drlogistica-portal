@@ -1225,6 +1225,8 @@ const en = {
   "ft.cxFatto": "XML details completed.",
   "ft.cxSenzaXml": "without XML",
   "ft.cxErrori": "errors",
+  "ft.giroRichiesto":
+    "Request sent to the company PC: payment states, collections and credit-note links will follow within about 10 minutes (PC must be on).",
   "ft.colImponibile": "Taxable base",
   "ft.colMetodo": "Payment method",
   "ft.colIva": "VAT",
@@ -2561,6 +2563,8 @@ const it: Record<DictKey, string> = {
   "ft.cxFatto": "Dettagli XML completati.",
   "ft.cxSenzaXml": "senza XML",
   "ft.cxErrori": "errori",
+  "ft.giroRichiesto":
+    "Richiesta inviata al PC aziendale: entro circa 10 minuti arrivano anche stati di pagamento, incassi e collegamenti NC (PC acceso).",
   "ft.colImponibile": "Imponibile",
   "ft.colMetodo": "Metodo pagamento",
   "ft.colIva": "IVA",
