@@ -3941,16 +3941,7 @@ export async function importMovimenti(
   // Chiave e classificazione ricalcolate QUI dai campi grezzi: il client può
   // aver già fatto lo stesso lavoro per l'anteprima, ma la verità è del server.
   // Le regole apprese si applicano DOPO la classificazione automatica.
-  // MAI classificare con zero regole per un errore transitorio (successo:
-  // 503 di SharePoint durante il sync -> movimenti a euristica nonostante
-  // le regole esistessero). Un ritento; se fallisce ancora si INTERROMPE
-  // con errore chiaro e si riprova al giro successivo.
-  const regole = await fetchRegoleFinanza().catch(async () => {
-    await new Promise((r) => setTimeout(r, 1500));
-    return fetchRegoleFinanza().catch(() => {
-      throw new Error("Regole non caricabili in questo momento: operazione rimandata (ritenta).");
-    });
-  });
+  const regole = await fetchRegoleObbligatorie();
   const nomiRoster = await nomiDipendenti();
   const daScrivere: { fields: Record<string, unknown>; chiave: string }[] = [];
   for (const r of rows) {
@@ -4741,6 +4732,27 @@ function mapRegola(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>
       : undefined,
     cliente: F.ClienteNuovo ? String(f[F.ClienteNuovo] ?? "").trim() || undefined : undefined,
   };
+}
+
+/** Regole per la CLASSIFICAZIONE in import e sync: ritenta e PRETENDE una
+ *  lista NON VUOTA. MAI classificare con zero regole per un errore
+ *  transitorio: e' gia' successo con un 503 esplicito (RN Servizi, 14/08)
+ *  e poi con una risposta VUOTA travestita da successo (DR Logistics,
+ *  02/09) — i movimenti finivano a euristica nonostante le regole
+ *  esistessero. Un elenco vuoto qui non e' mai legittimo: si interrompe
+ *  con errore chiaro e si riprova al giro successivo. */
+async function fetchRegoleObbligatorie(): Promise<RegolaFinanza[]> {
+  const prova = async () => {
+    const regole = await fetchRegoleFinanza();
+    if (!regole.length) throw new Error("elenco regole vuoto");
+    return regole;
+  };
+  return prova().catch(async () => {
+    await new Promise((r) => setTimeout(r, 1500));
+    return prova().catch(() => {
+      throw new Error("Regole non caricabili in questo momento: operazione rimandata (ritenta).");
+    });
+  });
 }
 
 export async function fetchRegoleFinanza(): Promise<RegolaFinanza[]> {
@@ -6840,16 +6852,7 @@ export async function ebSincronizza(
   const psu = presidiata ? psuContext() : {};
   const pagina = await ebTransazioni(cred, contoUid, dal, continuation, psu);
   const esistenti = new Set(await fetchMovimentiChiavi());
-  // MAI classificare con zero regole per un errore transitorio (successo:
-  // 503 di SharePoint durante il sync -> movimenti a euristica nonostante
-  // le regole esistessero). Un ritento; se fallisce ancora si INTERROMPE
-  // con errore chiaro e si riprova al giro successivo.
-  const regole = await fetchRegoleFinanza().catch(async () => {
-    await new Promise((r) => setTimeout(r, 1500));
-    return fetchRegoleFinanza().catch(() => {
-      throw new Error("Regole non caricabili in questo momento: operazione rimandata (ritenta).");
-    });
-  });
+  const regole = await fetchRegoleObbligatorie();
   const nomiRoster = await nomiDipendenti();
   const result: EbSyncResult = {
     scritti: 0,
