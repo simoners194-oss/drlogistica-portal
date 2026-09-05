@@ -297,7 +297,19 @@ def estrai_nc_links(page, cfg: dict) -> None:
     for (srv, anno), dati in sorted(catture.items(), key=lambda x: (x[0][0], str(x[0][1]))):
         items_dbg = dati.get("Items") or []
         if items_dbg:
-            campi_griglie[f"{srv}|{anno}"] = sorted(items_dbg[0].keys())
+            campi_griglie[f"{srv}|{anno}"] = {
+                "campi": sorted(items_dbg[0].keys()),
+                # I VALORI dei campi-file delle prime righe: il formato del
+                # nome conta quanto il nome del campo (caso emesse 05/09).
+                "esempi": [
+                    {
+                        k: it.get(k)
+                        for k in ("Numero", "SdiFileName", "FileName", "UploadFileName")
+                        if k in it
+                    }
+                    for it in items_dbg[:3]
+                ],
+            }
     try:
         (SCARICATI / "griglia-campi.json").write_text(
             json.dumps(campi_griglie, indent=1, ensure_ascii=False), encoding="utf-8"
@@ -314,11 +326,13 @@ def estrai_nc_links(page, cfg: dict) -> None:
             fatture = [
                 d for d in docs if str(d.get("Tipo", "")) == "Fattura" and d.get("Numero")
             ]
-            # Il nome file SdI: le RICEVUTE lo chiamano SdiFileName, le
-            # INVIATE FileName/UploadFileName — senza il ripiego le emesse
-            # restavano MUTE (zero NC e zero stati, scoperto il 05/09).
+            # Il nome file SdI: le RICEVUTE lo chiamano SdiFileName; le
+            # INVIATE hanno UploadFileName (nome SdI pulito) e FileName (con
+            # un hash appeso: IT..._adVef-31DEB525.xml.p7m, che NON combacia
+            # con l'archivio). Ordine del ripiego verificato il 05/09 sugli
+            # esempi in griglia-campi.json.
             nome_file_it = (
-                it.get("SdiFileName") or it.get("FileName") or it.get("UploadFileName")
+                it.get("SdiFileName") or it.get("UploadFileName") or it.get("FileName")
             )
             if tipo.startswith("TD04") and fatture and nome_file_it:
                 links.append(
