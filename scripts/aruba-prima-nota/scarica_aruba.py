@@ -289,6 +289,21 @@ def estrai_nc_links(page, cfg: dict) -> None:
     }
     links = []
     stati = []
+    # Diagnostica permanente: i NOMI DEI CAMPI della prima riga di ogni
+    # griglia finiscono in scaricati/griglia-campi.json — la griglia delle
+    # INVIATE usa nomi diversi da quella delle ricevute e senza questo dump
+    # gli stati delle attive sono rimasti muti per giorni.
+    campi_griglie = {}
+    for (srv, anno), dati in sorted(catture.items(), key=lambda x: (x[0][0], str(x[0][1]))):
+        items_dbg = dati.get("Items") or []
+        if items_dbg:
+            campi_griglie[f"{srv}|{anno}"] = sorted(items_dbg[0].keys())
+    try:
+        (SCARICATI / "griglia-campi.json").write_text(
+            json.dumps(campi_griglie, indent=1, ensure_ascii=False), encoding="utf-8"
+        )
+    except Exception:
+        pass
     for (srv, anno), dati in sorted(catture.items(), key=lambda x: (x[0][0], str(x[0][1]))):
         dire = "R" if srv.startswith("FatturaRicevuta") else "E"
         trovati = 0
@@ -299,10 +314,16 @@ def estrai_nc_links(page, cfg: dict) -> None:
             fatture = [
                 d for d in docs if str(d.get("Tipo", "")) == "Fattura" and d.get("Numero")
             ]
-            if tipo.startswith("TD04") and fatture and it.get("SdiFileName"):
+            # Il nome file SdI: le RICEVUTE lo chiamano SdiFileName, le
+            # INVIATE FileName/UploadFileName — senza il ripiego le emesse
+            # restavano MUTE (zero NC e zero stati, scoperto il 05/09).
+            nome_file_it = (
+                it.get("SdiFileName") or it.get("FileName") or it.get("UploadFileName")
+            )
+            if tipo.startswith("TD04") and fatture and nome_file_it:
                 links.append(
                     {
-                        "file": it["SdiFileName"],
+                        "file": nome_file_it,
                         "numero": str(fatture[0]["Numero"]),
                         "dir": dire,
                     }
@@ -311,9 +332,9 @@ def estrai_nc_links(page, cfg: dict) -> None:
             # Stato di pagamento: per TUTTE le righe con nome file. La data
             # arriva come "2026/07/20 00:00:00...": si tiene solo il giorno.
             sp = it.get("StatoPagInc")
-            if it.get("SdiFileName") and sp in MAPPA_STATO:
+            if nome_file_it and sp in MAPPA_STATO:
                 voce_stato = {
-                    "file": it["SdiFileName"],
+                    "file": nome_file_it,
                     "stato": MAPPA_STATO[sp],
                     "dir": dire,
                 }
@@ -465,11 +486,20 @@ def spedisci_incassi(cfg: dict) -> None:
             try:
                 import xlrd
             except ModuleNotFoundError:
-                import os
-
+                # Sotto lo scheduler mancano le variabili d'ambiente del
+                # profilo (USERPROFILE compreso): expanduser non espandeva e
+                # il ripiego falliva. La home si deriva dal percorso dello
+                # script stesso (C:\Users\<utente>\...), senza ambiente.
+                parti = Path(__file__).resolve().parts
+                base_utente = Path(parti[0]) / parti[1] / parti[2]  # C:\Users\simon
                 sys.path.append(
-                    os.path.expanduser(
-                        rf"~\AppData\Roaming\Python\Python{sys.version_info.major}{sys.version_info.minor}\site-packages"
+                    str(
+                        base_utente
+                        / "AppData"
+                        / "Roaming"
+                        / "Python"
+                        / f"Python{sys.version_info.major}{sys.version_info.minor}"
+                        / "site-packages"
                     )
                 )
                 import xlrd
