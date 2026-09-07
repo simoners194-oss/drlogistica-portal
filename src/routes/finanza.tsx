@@ -4135,52 +4135,47 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                   </p>
                   {editId === m.id ? (
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {/* Stessi campi a VOCABOLARIO della matita: niente testo
+                          libero (era la porta d'ingresso dei valori inventati),
+                          cascata tipologia→sottocategoria e primaria→secondaria. */}
                       <div>
-                        <label className="text-xs text-muted-foreground">{t("common.type")}</label>
-                        <input
-                          list="tipologie-sanatura"
-                          value={editTip}
-                          onChange={(e) => setEditTip(e.target.value)}
-                          className={inputCls}
-                        />
-                        <datalist id="tipologie-sanatura">
-                          {[
-                            ...new Set([
-                              ...TIPOLOGIE_MOVIMENTO,
-                              ...(movimenti ?? []).map((x) => x.tipologia).filter(Boolean),
-                            ]),
-                          ]
-                            .sort((a, b) => a.localeCompare(b))
-                            .map((tp) => (
-                              <option key={tp} value={tp} />
-                            ))}
-                        </datalist>
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground">{t("fin.sottocat")}</label>
-                        <input
-                          list="sottocategorie-note"
-                          value={editSott}
-                          onChange={(e) => setEditSott(e.target.value)}
-                          className={inputCls}
+                        <CampoVocabolario
+                          label={t("common.type")}
+                          valore={editTip}
+                          onChange={cambiaEditTip}
+                          opzioni={vocabEdit.tipologie}
+                          testoNessuno={t("fin.vuota")}
+                          testoNuova={t("fin.vocNuova")}
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-muted-foreground">{t("fin.allocPri")}</label>
-                        <input
-                          list="alloc-primarie"
-                          value={editAllocPri}
-                          onChange={(e) => setEditAllocPri(e.target.value)}
-                          className={inputCls}
+                        <CampoVocabolario
+                          label={t("fin.sottocat")}
+                          valore={editSott}
+                          onChange={setEditSott}
+                          opzioni={vocabEdit.sottocat}
+                          testoNessuno={t("fin.vuota")}
+                          testoNuova={t("fin.vocNuova")}
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-muted-foreground">{t("fin.allocSec")}</label>
-                        <input
-                          list="alloc-secondarie"
-                          value={editAllocSec}
-                          onChange={(e) => setEditAllocSec(e.target.value)}
-                          className={inputCls}
+                        <CampoVocabolario
+                          label={t("fin.allocPri")}
+                          valore={editAllocPri}
+                          onChange={cambiaEditAllocPri}
+                          opzioni={vocabEdit.allocPri}
+                          testoNessuno={t("fin.vuota")}
+                          testoNuova={t("fin.vocNuova")}
+                        />
+                      </div>
+                      <div>
+                        <CampoVocabolario
+                          label={t("fin.allocSec")}
+                          valore={editAllocSec}
+                          onChange={setEditAllocSec}
+                          opzioni={vocabEdit.allocSec}
+                          testoNessuno={t("fin.vuota")}
+                          testoNuova={t("fin.vocNuova")}
                         />
                       </div>
                       <div>

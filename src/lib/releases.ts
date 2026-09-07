@@ -36,6 +36,28 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.56.0",
+    date: "2026-09-07",
+    codename: "Liste di classificazione",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "improvement",
+        audience: "gestione",
+        title: "La tipologia delle fatture si sceglie da una lista",
+        description:
+          "Ovunque si classifichi una fattura passiva — doppio click sulla cella, riga di modifica, finestra di modifica e classificazione in blocco — la tipologia si sceglie ora da un menu con le sole voci previste dalle regole, senza testo libero. Un valore fuori lista già salvato resta visibile e selezionabile finché non viene corretto; lasciare vuoto significa affidarsi alla regola del fornitore.",
+      },
+      {
+        tag: "improvement",
+        audience: "gestione",
+        title: "Correzione anomalie con gli stessi menu della matita",
+        description:
+          "La correzione dei movimenti dalla pagina Anomalie usa gli stessi menu a vocabolario della matita: tipologia, sottocategoria e allocazioni si scelgono dalle voci ufficiali, con la cascata che mantiene coerenti sottocategoria e allocazione secondaria.",
+      },
+    ],
+  },
+  {
     version: "1.55.0",
     date: "2026-09-02",
     codename: "Giro su richiesta",

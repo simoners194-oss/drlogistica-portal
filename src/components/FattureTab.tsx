@@ -1779,10 +1779,12 @@ export function FattureTab({
     toast.info(t("ft.regolaPrecompilata"), { description: f.cliente });
   };
 
-  const salvaCella = async (f: FatturaRaw) => {
+  const salvaCella = async (f: FatturaRaw, valoreDiretto?: string) => {
     if (!cellaEdit) return;
     const { campo } = cellaEdit;
-    const valore = cellaVal.trim();
+    // valoreDiretto: la tendina della tipologia salva subito alla scelta,
+    // senza aspettare che lo stato React sia aggiornato.
+    const valore = (valoreDiretto ?? cellaVal).trim();
     setCellaEdit(null);
     const attuale =
       campo === "mese"
@@ -2098,13 +2100,16 @@ export function FattureTab({
     }
   };
 
-  // Tipologie già usate in archivio: suggerimenti per il campo (datalist).
+  // Vocabolario tipologie: SOLO le voci delle regole fatture. L'archivio non
+  // fa piu' da fonte: i valori scritti a mano in passato (es. descrizioni
+  // usate come tipologia) non devono ripresentarsi nei menu — la lista resta
+  // quella "ufficiale" delle regole e una voce davvero nuova passa dalla
+  // scelta esplicita del campo libero.
   const tipologieNote = useMemo(() => {
     const set = new Set<string>();
-    for (const f of fattureRic ?? []) if (f.tipologiaCosto) set.add(f.tipologiaCosto);
     for (const r of regoleFatture) if (r.tipologia) set.add(r.tipologia);
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [fattureRic, regoleFatture]);
+  }, [regoleFatture]);
 
   // --- Stato d'incasso corretto a mano ---------------------------------------
   // Per la fattura che si SA essere stata incassata (già registrata su Aruba)
@@ -3859,14 +3864,13 @@ export function FattureTab({
                       </div>
                       {ricevute && (
                         <div>
-                          <label className="text-xs text-muted-foreground">
-                            {t("ft.colTipologia")}
-                          </label>
-                          <input
-                            list="tipologie-note"
-                            value={fbTip}
-                            onChange={(e) => setFbTip(e.target.value)}
-                            className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                          <CampoVocabolario
+                            label={t("ft.colTipologia")}
+                            valore={fbTip}
+                            onChange={setFbTip}
+                            opzioni={tipologieNote}
+                            testoNessuno={t("fin.vuota")}
+                            testoNuova={t("fin.vocNuova")}
                           />
                         </div>
                       )}
@@ -4279,10 +4283,35 @@ export function FattureTab({
                                   if (inEdit) e.stopPropagation();
                                 }}
                               >
-                                {inEdit ? (
+                                {inEdit && campo === "tip" ? (
+                                  /* Tipologia: tendina vincolata al vocabolario
+                                     delle regole — la scelta salva subito. */
+                                  <select
+                                    autoFocus
+                                    value={cellaVal}
+                                    onChange={(e) => {
+                                      setCellaVal(e.target.value);
+                                      void salvaCella(x.f, e.target.value);
+                                    }}
+                                    onBlur={() => setCellaEdit(null)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Escape") setCellaEdit(null);
+                                    }}
+                                    className="w-full min-w-24 rounded border border-primary bg-background px-1 py-0.5 text-[12px] text-foreground"
+                                  >
+                                    <option value="">{t("ft.classTipVuota")}</option>
+                                    {cellaVal !== "" && !tipologieNote.includes(cellaVal) && (
+                                      <option value={cellaVal}>{cellaVal}</option>
+                                    )}
+                                    {tipologieNote.map((tp2) => (
+                                      <option key={tp2} value={tp2}>
+                                        {tp2}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : inEdit ? (
                                   <input
                                     autoFocus
-                                    list={campo === "tip" ? "tipologie-note" : undefined}
                                     value={cellaVal}
                                     onChange={(e) => setCellaVal(e.target.value)}
                                     onBlur={() => void salvaCella(x.f)}
@@ -4477,18 +4506,38 @@ export function FattureTab({
                                   placeholder={t("ft.classMesePh")}
                                   className="w-44 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
                                 />
-                                {ricevute && (
-                                  <input
-                                    list="tipologie-note"
-                                    value={
-                                      clFile === x.f.nomeFile ? clTip : (x.f.tipologiaCosto ?? "")
-                                    }
-                                    onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
-                                    onChange={(e) => setClTip(e.target.value)}
-                                    placeholder={t("ft.classPh")}
-                                    className="w-64 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
-                                  />
-                                )}
+                                {ricevute &&
+                                  (() => {
+                                    // Menu vincolato al vocabolario delle regole:
+                                    // niente testo libero (le "tipologie" inventate
+                                    // a mano finivano nei report). Il valore storto
+                                    // gia' salvato resta selezionabile finche' non
+                                    // lo si cambia; vuoto = decide la regola.
+                                    const val =
+                                      clFile === x.f.nomeFile ? clTip : (x.f.tipologiaCosto ?? "");
+                                    const fuori = val !== "" && !tipologieNote.includes(val);
+                                    return (
+                                      <select
+                                        value={val}
+                                        onFocus={() =>
+                                          clFile !== x.f.nomeFile && apriClassifica(x.f)
+                                        }
+                                        onChange={(e) => {
+                                          if (clFile !== x.f.nomeFile) apriClassifica(x.f);
+                                          setClTip(e.target.value);
+                                        }}
+                                        className="w-64 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
+                                      >
+                                        <option value="">{t("ft.classTipVuota")}</option>
+                                        {fuori && <option value={val}>{val}</option>}
+                                        {tipologieNote.map((tp2) => (
+                                          <option key={tp2} value={tp2}>
+                                            {tp2}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    );
+                                  })()}
                                 <input
                                   value={clFile === x.f.nomeFile ? clCli : (x.f.clienteRif ?? "")}
                                   onFocus={() => clFile !== x.f.nomeFile && apriClassifica(x.f)}
@@ -4498,11 +4547,6 @@ export function FattureTab({
                                   }
                                   className="w-36 rounded-lg border border-border bg-background px-2 py-1 text-[13px]"
                                 />
-                                <datalist id="tipologie-note">
-                                  {tipologieNote.map((tp2) => (
-                                    <option key={tp2} value={tp2} />
-                                  ))}
-                                </datalist>
                                 <button
                                   type="button"
                                   disabled={clSaving || clFile !== x.f.nomeFile}
@@ -4701,12 +4745,13 @@ export function FattureTab({
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">{t("ft.colTipologia")}</label>
-                  <input
-                    list="tipologie-note"
-                    value={efTip}
-                    onChange={(e) => setEfTip(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                  <CampoVocabolario
+                    label={t("ft.colTipologia")}
+                    valore={efTip}
+                    onChange={setEfTip}
+                    opzioni={tipologieNote}
+                    testoNessuno={t("fin.vuota")}
+                    testoNuova={t("fin.vocNuova")}
                   />
                 </div>
                 <div>
