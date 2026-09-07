@@ -418,6 +418,12 @@ export const SP_DISPLAY = {
     // pagamento vivono solo sul sito web di Aruba e li porta lo script
     // locale, non il server. Colonna OPZIONALE.
     GiroRichiesto: "GiroRichiesto",
+    // SEMAFORO FRESCHEZZA: timestamp ISO dell'ultimo blocco applicato di
+    // rate (prima nota) e stati di pagamento — il portale li mostra e li
+    // colora di rosso quando invecchiano, cosi' un passo del giro morto si
+    // vede in pagina e non dopo settimane. Colonne OPZIONALI.
+    UltimoIncassi: "UltimoIncassi",
+    UltimoStati: "UltimoStati",
   },
   // Richieste di CORREZIONE delle timbrature inviate dal dipendente e decise
   // da chi ha il flag Operatore. Lista OPZIONALE.
@@ -4205,6 +4211,7 @@ export async function cronIncassiBatch(
     "cron.incassi",
     `Cron incassi: ${esito.aggiornate} aggiornate, ${esito.invariate} invariate, ${esito.riduzioniIgnorate} riduzioni IGNORATE, ${esito.nonTrovate} non trovate`,
   );
+  await segnaUltimoAruba("UltimoIncassi");
   return esito;
 }
 
@@ -4334,7 +4341,45 @@ export async function cronStatiBatch(
     "cron.stati",
     `Cron stati pagamento: ${esito.aggiornate} aggiornate, ${esito.invariate} invariate, ${esito.retrocessioniIgnorate} retrocessioni IGNORATE, ${esito.nonTrovate} non trovate`,
   );
+  await segnaUltimoAruba("UltimoStati");
   return esito;
+}
+
+/** SEMAFORO FRESCHEZZA: marca l'ora dell'ultimo blocco APPLICATO di incassi
+ *  o stati sulla riga ArubaConfig (colonne opzionali UltimoIncassi /
+ *  UltimoStati). Best-effort: il semaforo non deve mai far fallire il giro. */
+async function segnaUltimoAruba(campo: "UltimoIncassi" | "UltimoStati"): Promise<void> {
+  try {
+    const cfg = await discoverSharePoint();
+    const nome = cfg.arubaConfigFields[campo];
+    if (!cfg.listArubaConfig || !nome) return;
+    const row = await fetchArubaRow(cfg);
+    if (!row) return;
+    await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listArubaConfig}/items/${row.id}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify({ [nome]: new Date().toISOString() }),
+    });
+  } catch {
+    /* mai bloccante */
+  }
+}
+
+/** Lettura del semaforo: quando sono arrivati per l'ultima volta incassi
+ *  (prima nota) e stati di pagamento. null = colonna assente o mai scritti. */
+export async function saluteFlussiAruba(): Promise<{
+  ultimoIncassi: string | null;
+  ultimoStati: string | null;
+}> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listArubaConfig) return { ultimoIncassi: null, ultimoStati: null };
+  const F = cfg.arubaConfigFields;
+  const row = await fetchArubaRow(cfg);
+  const f = (row?.fields ?? {}) as Record<string, unknown>;
+  const leggi = (nome?: string) => {
+    const v = nome ? String(f[nome] ?? "").trim() : "";
+    return v || null;
+  };
+  return { ultimoIncassi: leggi(F.UltimoIncassi), ultimoStati: leggi(F.UltimoStati) };
 }
 
 export async function setRettificaNumero(
@@ -4622,6 +4667,15 @@ export async function riapplicaRegoleTotale(): Promise<{
       },
       regole,
     );
+    // ABOLIZIONE EURISTICA (direzione 07/09): le etichette generiche
+    // ereditate ("Bonifico uscita", "Altro", "Estero") che nessuna regola
+    // giustifica si SVUOTANO e tornano in Anomalie — spariscono dai report
+    // senza inventare nulla al loro posto. Vale per le sole USCITE (i
+    // positivi restano al forza-incassi).
+    if (m.importo < 0 && ["Bonifico uscita", "Altro", "Estero"].includes(dopo.tipologia)) {
+      dopo.tipologia = "";
+      dopo.daVerificare = true;
+    }
     const patch: Record<string, unknown> = {};
     if (F.Tipologia && dopo.tipologia !== (m.tipologia ?? "")) patch[F.Tipologia] = dopo.tipologia;
     if (F.Sottocategoria && (dopo.sottocategoria ?? "") !== (m.sottocategoria ?? ""))
@@ -4780,12 +4834,15 @@ async function fetchRegoleObbligatorie(): Promise<RegolaFinanza[]> {
 export async function fetchRegoleFinanza(): Promise<RegolaFinanza[]> {
   const cfg = await discoverSharePoint();
   if (!cfg.listRegoleFinanza) return [];
-  const res = await withDiscoveryRetry(() =>
-    gatewayJson<GraphListResponse<Record<string, unknown>>>(
-      `/sites/${cfg.siteId}/lists/${cfg.listRegoleFinanza}/items?expand=fields&$top=999`,
-    ),
+  // PAGINAZIONE OBBLIGATORIA: Graph puo' restituire MENO di $top item con un
+  // @odata.nextLink anche sotto soglia (throttling) — la vecchia lettura a
+  // pagina singola tornava una lista PARZIALE spacciata per completa e i
+  // movimenti finivano a euristica nonostante la regola esistesse (caso RN
+  // Servizi 07/09, bonifico -9.381,05 arrivato "Bonifico uscita").
+  const items = await fetchMovimentiPages(
+    `/sites/${cfg.siteId}/lists/${cfg.listRegoleFinanza}/items?expand=fields&$top=999`,
   );
-  return res.value.map((it) => mapRegola(cfg, it)).filter((r) => r.pattern.trim());
+  return items.map((it) => mapRegola(cfg, it)).filter((r) => r.pattern.trim());
 }
 
 export async function createRegolaFinanza(input: RegolaFinanza): Promise<RegolaFinanza> {
@@ -5010,7 +5067,8 @@ export async function applicaRegolaDipendentiAiMovimenti(): Promise<{
   const target: { id: string; cliente: string; primaria: string; secondaria: string }[] = [];
   for (const m of all) {
     if (m.importo >= 0) continue;
-    if (!["Bonifico uscita", "Altro", "Pagamento Salario"].includes(m.tipologia)) continue;
+    // "" = uscita non classificata (post-abolizione euristica): candidata.
+    if (!["", "Bonifico uscita", "Altro", "Pagamento Salario"].includes(m.tipologia)) continue;
     const nome = matchDipendenteNome(
       m.cliente,
       nomiRoster.map((r) => r.nome),
@@ -5904,12 +5962,12 @@ export async function fetchRegoleFatture(): Promise<RegolaFattura[]> {
   const cfg = await discoverSharePoint();
   if (!cfg.listRegoleFatture) return [];
   const F = cfg.regoleFattureFields;
-  const res = await withDiscoveryRetry(() =>
-    gatewayJson<GraphListResponse<Record<string, unknown>>>(
-      `/sites/${cfg.siteId}/lists/${cfg.listRegoleFatture}/items?expand=fields&$top=999`,
-    ),
+  // Paginato come le regole movimenti: una pagina parziale spacciata per
+  // intera qui significherebbe fatture classificate senza meta' vocabolario.
+  const items = await fetchMovimentiPages(
+    `/sites/${cfg.siteId}/lists/${cfg.listRegoleFatture}/items?expand=fields&$top=999`,
   );
-  return res.value
+  return items
     .map((it) => {
       const f = it.fields ?? {};
       const op = String(F.Operatore ? (f[F.Operatore] ?? "") : "").toUpperCase();

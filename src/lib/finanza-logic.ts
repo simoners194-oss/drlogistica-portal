@@ -371,7 +371,8 @@ export function applicaRegolaDipendenti<
   },
 >(mov: T, importo: number, roster: readonly DipendenteRoster[]): T {
   if (importo >= 0 || roster.length === 0) return mov;
-  if (!["Bonifico uscita", "Altro", "Pagamento Salario"].includes(mov.tipologia)) return mov;
+  // "" = uscita non classificata (post-abolizione euristica): candidata.
+  if (!["", "Bonifico uscita", "Altro", "Pagamento Salario"].includes(mov.tipologia)) return mov;
   const nome = matchDipendenteNome(
     mov.cliente,
     roster.map((r) => r.nome),
@@ -552,11 +553,15 @@ export function classificaMovimento(raw: MovimentoRaw): {
   let incerto = false;
   if (desc.includes("bon.da ")) {
     ({ cliente, incerto } = estraiClienteIncasso(desc));
-  } else if (tipologia === "Bonifico uscita" || tipologia === "Pagamento Salario") {
+  } else if (
+    tipologia === "Bonifico uscita" ||
+    tipologia === "Estero" ||
+    tipologia === "Pagamento Salario"
+  ) {
     ({ cliente, incerto } = estraiClienteUscita(desc));
-    // Bonifico verso una persona fisica → pagamento di salario.
-    if (tipologia === "Bonifico uscita" && !incerto && isPersonaFisica(cliente))
-      tipologia = "Pagamento Salario";
+    // (Il vecchio automatismo "persona fisica → Pagamento Salario" e' stato
+    // ABOLITO con l'euristica generica: indovinava — caso Poggiani. I salari
+    // veri li riconosce la regola dipendenti dall'anagrafica.)
   } else if (tipologia === "Addebito SDD") {
     ({ cliente, incerto } = estraiClienteSdd(desc));
   } else if (tipologia === "Pagamento carta" || tipologia === "PagoPA / Multe") {
@@ -576,7 +581,20 @@ export function classificaMovimento(raw: MovimentoRaw): {
     daVerificare = true;
 
   const nrFattura = estraiNrFattura(raw.descrizione);
-  return { tipologia, cliente, nrFattura, daVerificare };
+  // EURISTICA GENERICA ABOLITA (richiesta direzione 07/09): "Bonifico
+  // uscita", "Altro" ed "Estero" non dicono nulla sul costo — etichette
+  // inventate che inquinavano report e pivot. Il movimento esce SENZA
+  // tipologia e resta in Anomalie finche' una regola (o la matita) non lo
+  // classifica. Restano le tipologie TECNICHE della causale ABI
+  // (commissioni, bolli, F24, carte, SDD...): quelle sono fatti, non
+  // ipotesi. Il cliente estratto resta: serve alle regole per agganciarlo.
+  const generica = tipologia === "Bonifico uscita" || tipologia === "Altro" || tipologia === "Estero";
+  return {
+    tipologia: generica ? "" : tipologia,
+    cliente,
+    nrFattura,
+    daVerificare: generica ? true : daVerificare,
+  };
 }
 
 /** Pipeline completa su un file: occorrenze → chiavi → classificazione →

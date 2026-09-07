@@ -128,6 +128,7 @@ import {
   deleteTermine,
   copiaTerminiSuFornitori,
   ultimoAggiornamentoFatture,
+  saluteFlussiAruba,
   fetchRegoleFatture,
   createRegolaFattura,
   deleteRegolaFattura,
@@ -1466,10 +1467,22 @@ export const spGetAggiornamentoFatture = createServerFn({ method: "GET" })
   .inputValidator((input?: { direzione?: string }) => ({
     direzione: (input?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
   }))
-  .handler(async ({ data }): Promise<{ aggiornatoAl: string | null }> => {
-    await assertDirettore(await currentUser());
-    return { aggiornatoAl: await ultimoAggiornamentoFatture(data.direzione) };
-  });
+  .handler(
+    async ({
+      data,
+    }): Promise<{
+      aggiornatoAl: string | null;
+      ultimoIncassi: string | null;
+      ultimoStati: string | null;
+    }> => {
+      await assertDirettore(await currentUser());
+      const [aggiornatoAl, salute] = await Promise.all([
+        ultimoAggiornamentoFatture(data.direzione),
+        saluteFlussiAruba(),
+      ]);
+      return { aggiornatoAl, ...salute };
+    },
+  );
 
 export const spGetFatture = createServerFn({ method: "GET" })
   .inputValidator((input?: { direzione?: string }) => ({

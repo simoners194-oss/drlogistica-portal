@@ -579,10 +579,23 @@ export function FattureTab({
   // Ultimo aggiornamento dei dati Aruba (ultima scrittura sulla lista della
   // direzione corrente): la data che il direttore vuole vedere in pagina.
   const [aggiornatoAl, setAggiornatoAl] = useState<string | null>(null);
+  // Semaforo freschezza: ultimo blocco di incassi (prima nota) e stati
+  // arrivato dal PC aziendale — rosso in pagina quando invecchia.
+  const [ultimoIncassi, setUltimoIncassi] = useState<string | null>(null);
+  const [ultimoStati, setUltimoStati] = useState<string | null>(null);
   useEffect(() => {
     setAggiornatoAl(null);
     spGetAggiornamentoFatture({ data: { direzione: dir } })
-      .then((r) => setAggiornatoAl((r as { aggiornatoAl: string | null }).aggiornatoAl))
+      .then((r) => {
+        const x = r as {
+          aggiornatoAl: string | null;
+          ultimoIncassi?: string | null;
+          ultimoStati?: string | null;
+        };
+        setAggiornatoAl(x.aggiornatoAl);
+        setUltimoIncassi(x.ultimoIncassi ?? null);
+        setUltimoStati(x.ultimoStati ?? null);
+      })
       .catch(() => setAggiornatoAl(null));
   }, [dir]);
 
@@ -3186,6 +3199,39 @@ export function FattureTab({
                   minute: "2-digit",
                 })}
               </b>
+              {/* SEMAFORO FRESCHEZZA: quando sono arrivati per l'ultima volta
+                  rate (prima nota) e stati di pagamento dal PC aziendale.
+                  ROSSO oltre le 26 ore: un passo del giro morto si deve
+                  vedere in pagina, non scoprire dopo settimane. */}
+              {(ultimoIncassi || ultimoStati) &&
+                (() => {
+                  const fmtOra = (iso: string) =>
+                    new Date(iso).toLocaleString("it-IT", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                  const vecchio = (iso: string) =>
+                    Date.now() - new Date(iso).getTime() > 26 * 3600 * 1000;
+                  const pezzo = (chiave: "ft.salutePrimaNota" | "ft.saluteStati", iso: string | null) =>
+                    iso ? (
+                      <span key={chiave}>
+                        {" · "}
+                        {t(chiave)}{" "}
+                        <b className={vecchio(iso) ? "text-status-absent" : undefined}>
+                          {fmtOra(iso)}
+                          {vecchio(iso) ? " ⚠" : ""}
+                        </b>
+                      </span>
+                    ) : null;
+                  return (
+                    <>
+                      {pezzo("ft.salutePrimaNota", ultimoIncassi)}
+                      {pezzo("ft.saluteStati", ultimoStati)}
+                    </>
+                  );
+                })()}
             </div>
           )}
           <div className="flex-1 min-w-44">

@@ -193,9 +193,21 @@ def scarica_prima_nota(page, anno: int) -> Path:
         "text=Scarica Report Excel",
         "div:has-text('Scarica Report Excel'):visible",
     )
-    with page.expect_download(timeout=120000) as attesa:
-        clicca_bottone(page, "clic su Applica", r"Applica")
-    download = attesa.value
+    # RETRY sul download: il 07/09 sera un timeout secco ha fatto proseguire
+    # il giro con report VECCHI (dati prima nota fermi di ore) — meglio un
+    # secondo tentativo che un giro con dati stantii spacciati per freschi.
+    download = None
+    for tentativo in (1, 2):
+        try:
+            with page.expect_download(timeout=120000) as attesa:
+                clicca_bottone(page, "clic su Applica", r"Applica")
+            download = attesa.value
+            break
+        except Exception as e:
+            print(f"  download tentativo {tentativo} fallito: {e}")
+            if tentativo == 2:
+                raise
+            time.sleep(10)
     SCARICATI.mkdir(exist_ok=True)
     dest = SCARICATI / f"{datetime.now():%Y%m%d}-{anno}-{download.suggested_filename}"
     download.save_as(str(dest))

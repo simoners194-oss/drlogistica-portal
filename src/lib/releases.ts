@@ -36,6 +36,35 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.58.0",
+    date: "2026-09-07",
+    codename: "Basta etichette inventate",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "improvement",
+        audience: "gestione",
+        title: "Abolita l'euristica generica sui movimenti",
+        description:
+          "Un movimento in uscita che nessuna regola riconosce non riceve più etichette di comodo (\"Bonifico uscita\", \"Altro\", \"Estero\"): resta senza tipologia e va in Anomalie finché una regola o la matita non lo classificano. Restano le tipologie tecniche della causale bancaria (commissioni, bolli, F24, carte), che sono fatti e non ipotesi. Il pulsante \"Riapplica tutte le regole\" ripulisce anche lo storico: le etichette generiche senza una regola che le giustifichi si svuotano.",
+      },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Semaforo freschezza dati Aruba",
+        description:
+          "Accanto a \"Dati Aruba aggiornati al\" ora si vede anche QUANDO sono arrivati l'ultima volta prima nota (incassi/pagamenti) e stati di pagamento dal PC aziendale — e diventano rossi con un avviso se il dato ha più di 26 ore. Un passo del giro fermo si nota in pagina, non dopo settimane. Richiede le colonne UltimoIncassi e UltimoStati su ArubaConfig.",
+      },
+      {
+        tag: "fix",
+        audience: "gestione",
+        title: "Letture delle regole a prova di rete",
+        description:
+          "Le regole di classificazione (movimenti e fatture) si leggono ora seguendo tutte le pagine della risposta: sotto carico SharePoint può restituire una pagina parziale spacciata per completa, e un movimento veniva classificato male nonostante la regola esistesse (caso RN Servizi del 7/9). Lo scarico giornaliero della prima nota ora ritenta da solo in caso di timeout.",
+      },
+    ],
+  },
+  {
     version: "1.57.0",
     date: "2026-09-07",
     codename: "Flussi di cassa",
