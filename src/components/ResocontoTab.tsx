@@ -614,6 +614,8 @@ export function ResocontoTab() {
 
   // Export in CSV (si apre in Excel): le due liste cosi' come filtrate,
   // con giorni (anche simulati), residuo = totale - incassato e composizione.
+  // Il residuo delle DA PAGARE esce col segno MENO (richiesta direzione):
+  // cosi' in Excel la colonna si somma algebricamente senza ritocchi a mano.
   const esportaResoconto = () => {
     const riga = (x: (typeof attive)[number], direzione: string) => [
       direzione,
@@ -622,7 +624,7 @@ export function ResocontoTab() {
       x.f.dataDocumento,
       x.s.scadenza ?? "",
       String(ggRitardoVis(x)),
-      String(residuoDi(x).toFixed(2)).replace(".", ","),
+      String(((direzione === "Da pagare" ? -1 : 1) * residuoDi(x)).toFixed(2)).replace(".", ","),
       x.nc && x.nc.importo > 0
         ? `tot ${x.f.totale.toFixed(2)} - NC ${x.nc.numeri.join("+")} ${x.nc.importo.toFixed(2)}`
         : "",
@@ -1279,14 +1281,17 @@ export function ResocontoTab() {
                           </td>
                         ))}
                       </tr>
+                      {/* Pagamenti col segno MENO (richiesta direzione): la
+                          tabella si copia in Excel e le colonne si sommano
+                          algebricamente. Il saldo non cambia. */}
                       <tr className="border-t border-border/40">
                         <td className="py-1 pr-3">{t("rt.prevPagamenti")}</td>
                         <td className="py-1 pr-3 text-right tabular-nums text-status-absent">
-                          {fmt(pas.scaduto)}
+                          {fmt(-pas.scaduto)}
                         </td>
                         {mesi6.map((m) => (
                           <td key={m} className="py-1 pr-3 text-right tabular-nums">
-                            {fmt(pas.out.get(m) ?? 0)}
+                            {fmt(-(pas.out.get(m) ?? 0))}
                           </td>
                         ))}
                       </tr>
@@ -1307,7 +1312,7 @@ export function ResocontoTab() {
                           <td className="py-1 pr-3 text-right">—</td>
                           {mesi6.map((m) => (
                             <td key={m} className="py-1 pr-3 text-right tabular-nums">
-                              {fmt(prefPas.get(m) ?? 0)}
+                              {fmt(-(prefPas.get(m) ?? 0))}
                             </td>
                           ))}
                         </tr>

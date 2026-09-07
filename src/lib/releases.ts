@@ -55,6 +55,13 @@ export const RELEASES: readonly Release[] = [
         description:
           "La correzione dei movimenti dalla pagina Anomalie usa gli stessi menu a vocabolario della matita: tipologia, sottocategoria e allocazioni si scelgono dalle voci ufficiali, con la cascata che mantiene coerenti sottocategoria e allocazione secondaria.",
       },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Nella previsione i pagamenti hanno il segno meno",
+        description:
+          "Nella previsione del Resoconto le uscite (fatture da pagare e prefatture passive) compaiono in negativo, e nell'export CSV il residuo delle fatture da pagare esce col segno meno: incollando in Excel le colonne si sommano algebricamente senza ritocchi a mano. Il saldo non cambia.",
+      },
     ],
   },
   {
