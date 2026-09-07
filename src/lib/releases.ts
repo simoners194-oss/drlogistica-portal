@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.57.0",
+    date: "2026-09-07",
+    codename: "Flussi di cassa",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Nuova tab Flussi di cassa",
+        description:
+          "Entrate e uscite attese, per mese o per settimana, dalle scadenze delle fatture aperte (stesse regole del Resoconto) e spaccate per controparte. In più le righe che le fatture non conoscono — Stipendi, Costo fiscale rate, Costo fiscale corrente, Altre spese — compilabili direttamente in griglia, la prefatturazione e in fondo il Delta saldo. Le uscite viaggiano col segno meno: la griglia incollata in Excel si somma da sola. Filtri dal/fino al ed esclusioni per controparte, anche solo per una finestra di mesi (per tenere fuori chi non paga e le casse esterne). Richiede la lista SharePoint FlussiCassa per righe manuali ed esclusioni.",
+      },
+    ],
+  },
+  {
     version: "1.56.0",
     date: "2026-09-07",
     codename: "Liste di classificazione",

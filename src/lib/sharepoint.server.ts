@@ -314,6 +314,17 @@ export const SP_DISPLAY = {
     MeseFine: "MeseFine",
     Note: "Note",
   },
+  // FLUSSI DI CASSA: righe manuali della vista cash-flow (stipendi, costo
+  // fiscale, altre spese — le mette la direzione/Sabrina) ed ESCLUSIONI di
+  // controparti dalla stessa vista. Title = nome voce o controparte.
+  // "Genere" e non "Tipo": Tipo e' un nome riservato SharePoint. OPZIONALE.
+  flussiCassa: {
+    Genere: "Genere", // "voce" | "esclusione"
+    Mese: "Mese", // voce: competenza YYYY-MM; esclusione: da (opzionale)
+    MeseFine: "MeseFine", // esclusione: fino a (opzionale)
+    Importo: "Importo", // voce: col segno (uscite negative)
+    Note: "Note",
+  },
   dettagliDistinte: {
     Appalto: "Appalto",
     MovimentoChiave: "MovimentoChiave",
@@ -489,6 +500,7 @@ const LIST_NAMES = {
   gruppiControparti: ["GruppiControparti", "Gruppi", "GruppiMadre"],
   anomalieScartate: ["AnomalieScartate", "AnomalieIgnorate"],
   prefatture: ["Prefatture", "FatturePianificate"],
+  flussiCassa: ["FlussiCassa", "FlussiDiCassa"],
   dettagliDistinte: ["DettagliDistinte", "Distinte", "EsitiPagamenti"],
   fatture: ["FattureEmesse", "FatturaEmessa", "Fatture"],
   fattureRicevute: ["FattureRicevute", "FatturaRicevuta"],
@@ -608,6 +620,8 @@ export interface SpDiscovered {
   anomalieScartateFields: Record<string, string>;
   listPrefatture: string | null;
   prefattureFields: Record<string, string>;
+  listFlussiCassa: string | null;
+  flussiCassaFields: Record<string, string>;
   listDettagliDistinte: string | null;
   dettagliDistinteFields: Record<string, string>;
   listFatture: string | null;
@@ -971,6 +985,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const anomSc = await softList(LIST_NAMES.anomalieScartate, SP_DISPLAY.anomalieScartate);
   const distD = await softList(LIST_NAMES.dettagliDistinte, SP_DISPLAY.dettagliDistinte);
   const prefat = await softList(LIST_NAMES.prefatture, SP_DISPLAY.prefatture);
+  const flussi = await softList(LIST_NAMES.flussiCassa, SP_DISPLAY.flussiCassa);
   const fat = await softList(LIST_NAMES.fatture, SP_DISPLAY.fatture);
   const fatR = await softList(LIST_NAMES.fattureRicevute, SP_DISPLAY.fatture);
   const trm = await softList(LIST_NAMES.terminiPagamento, SP_DISPLAY.terminiPagamento);
@@ -1042,6 +1057,8 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     dettagliDistinteFields: distD.fields,
     listPrefatture: prefat.id,
     prefattureFields: prefat.fields,
+    listFlussiCassa: flussi.id,
+    flussiCassaFields: flussi.fields,
     listFatture: fat.id,
     listFattureName: fat.name,
     fattureFields: fat.fields,
@@ -5598,6 +5615,113 @@ export async function deletePrefattura(id: string): Promise<void> {
   });
   if (!del.ok && del.status !== 204) throw new Error(`DELETE prefattura → HTTP ${del.status}`);
   logSp("info", "prefatture.delete", `Prefattura eliminata: #${id}`);
+}
+
+// --- Flussi di cassa (righe manuali + esclusioni) ---------------------------
+// La vista cash-flow del direttore somma fatture aperte E righe che le
+// fatture non conoscono: stipendi (file di Lucrezia), costo fiscale
+// (scadenzario di Sabrina), altre spese. Le ESCLUSIONI tolgono controparti
+// dalla vista (clienti che non pagano, casse esterne), anche solo per una
+// finestra di mesi. Lista OPZIONALE "FlussiCassa".
+
+export interface FlussoCassaRiga {
+  id: string;
+  /** Title: nome della voce ("Stipendi") o controparte da escludere. */
+  nome: string;
+  genere: "voce" | "esclusione";
+  /** Voce: mese di competenza YYYY-MM. Esclusione: da mese (opzionale). */
+  mese?: string;
+  /** Esclusione: fino a mese YYYY-MM (opzionale). */
+  meseFine?: string;
+  /** Solo voci, col segno (uscite negative). */
+  importo: number;
+  note?: string;
+}
+
+const ERR_LISTA_FLUSSI =
+  'Lista "FlussiCassa" assente su SharePoint: crearla con le colonne testo ' +
+  '"Genere", "Mese", "MeseFine", "Note" e la colonna numerica "Importo", poi fare Riscopri.';
+
+export async function fetchFlussiCassa(): Promise<FlussoCassaRiga[]> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listFlussiCassa) return [];
+  const F = cfg.flussiCassaFields;
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listFlussiCassa}/items?expand=fields&$top=999`,
+    ),
+  );
+  return res.value
+    .map((it) => {
+      const f = it.fields ?? {};
+      const gen = String(F.Genere ? (f[F.Genere] ?? "") : "")
+        .trim()
+        .toLowerCase();
+      const mese = F.Mese ? String(f[F.Mese] ?? "").slice(0, 7) : "";
+      const meseFine = F.MeseFine ? String(f[F.MeseFine] ?? "").slice(0, 7) : "";
+      return {
+        id: String(it.id),
+        nome: String(f["Title"] ?? "").trim(),
+        genere: (gen === "esclusione" ? "esclusione" : "voce") as "voce" | "esclusione",
+        mese: /^\d{4}-\d{2}$/.test(mese) ? mese : undefined,
+        meseFine: /^\d{4}-\d{2}$/.test(meseFine) ? meseFine : undefined,
+        importo: F.Importo ? Number(f[F.Importo] ?? 0) || 0 : 0,
+        note: F.Note ? String(f[F.Note] ?? "").trim() || undefined : undefined,
+      };
+    })
+    .filter((x) => x.nome);
+}
+
+/** Scrive una riga. Le VOCI fanno upsert per (nome, mese): correggere
+ *  "Stipendi settembre" sovrascrive, non duplica. Le esclusioni si
+ *  aggiungono e basta (si tolgono con delete). */
+export async function upsertFlussoCassa(input: Omit<FlussoCassaRiga, "id">): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listFlussiCassa) throw new Error(ERR_LISTA_FLUSSI);
+  const F = cfg.flussiCassaFields;
+  const mancanti = ["Genere", "Mese", "Importo"].filter((c) => !F[c]);
+  if (mancanti.length)
+    throw new Error(
+      `Colonne mancanti sulla lista FlussiCassa: ${mancanti.join(", ")}. Crearle e fare Riscopri.`,
+    );
+  const fields: Record<string, unknown> = { Title: input.nome };
+  fields[F.Genere] = input.genere;
+  fields[F.Mese] = input.mese ?? "";
+  if (F.MeseFine) fields[F.MeseFine] = input.meseFine ?? "";
+  fields[F.Importo] = input.importo;
+  if (F.Note) fields[F.Note] = input.note ?? "";
+  if (input.genere === "voce" && input.mese) {
+    const esistenti = await fetchFlussiCassa();
+    const gia = esistenti.find(
+      (x) =>
+        x.genere === "voce" &&
+        x.mese === input.mese &&
+        x.nome.trim().toLowerCase() === input.nome.trim().toLowerCase(),
+    );
+    if (gia) {
+      await gatewayJson(
+        `/sites/${cfg.siteId}/lists/${cfg.listFlussiCassa}/items/${gia.id}/fields`,
+        { method: "PATCH", body: JSON.stringify(fields) },
+      );
+      logSp("info", "flussi.upsert", `Voce aggiornata: ${input.nome} ${input.mese}`);
+      return;
+    }
+  }
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listFlussiCassa}/items`, {
+    method: "POST",
+    body: JSON.stringify({ fields }),
+  });
+  logSp("info", "flussi.upsert", `Riga creata: ${input.genere} ${input.nome}`);
+}
+
+export async function deleteFlussoCassa(id: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  if (!cfg.listFlussiCassa) throw new Error(ERR_LISTA_FLUSSI);
+  const del = await gatewayFetch(`/sites/${cfg.siteId}/lists/${cfg.listFlussiCassa}/items/${id}`, {
+    method: "DELETE",
+  });
+  if (!del.ok && del.status !== 204) throw new Error(`DELETE flusso → HTTP ${del.status}`);
+  logSp("info", "flussi.delete", `Riga flussi eliminata: #${id}`);
 }
 
 // --- Distinte / esiti pagamenti (lista DettagliDistinte) --------------------

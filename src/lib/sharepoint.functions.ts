@@ -58,6 +58,10 @@ import {
   createPrefattura,
   deletePrefattura,
   type Prefattura,
+  fetchFlussiCassa,
+  upsertFlussoCassa,
+  deleteFlussoCassa,
+  type FlussoCassaRiga,
   fetchDettagliDistinte,
   setDistintaAppalto,
   setDistintaMovimento,
@@ -571,6 +575,59 @@ export const spDeletePrefattura = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     await assertDirettore(await currentUser());
     await deletePrefattura(data.id);
+    return { ok: true };
+  });
+
+// Flussi di cassa: righe manuali (stipendi, fiscale, altre spese) ed
+// esclusioni di controparti per la vista cash-flow (solo direzione).
+export const spGetFlussiCassa = createServerFn({ method: "GET" }).handler(
+  async (): Promise<FlussoCassaRiga[]> => {
+    await assertDirettore(await currentUser());
+    return fetchFlussiCassa();
+  },
+);
+
+export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
+  .inputValidator((input: Omit<FlussoCassaRiga, "id">) => {
+    const nome = String(input?.nome ?? "")
+      .trim()
+      .slice(0, 120);
+    if (!nome) throw new Error("Nome mancante");
+    const genere = input?.genere === "esclusione" ? "esclusione" : "voce";
+    const importo = Number(input?.importo ?? 0);
+    if (genere === "voce" && (!Number.isFinite(importo) || importo === 0))
+      throw new Error("Importo non valido (per le uscite usare il segno meno)");
+    const mese = String(input?.mese ?? "").trim();
+    if (genere === "voce" && !/^\d{4}-(0[1-9]|1[0-2])$/.test(mese))
+      throw new Error("Mese non valido (formato 2026-09)");
+    if (mese && !/^\d{4}-(0[1-9]|1[0-2])$/.test(mese))
+      throw new Error("Mese non valido (formato 2026-09)");
+    const meseFine = String(input?.meseFine ?? "").trim();
+    if (meseFine && !/^\d{4}-(0[1-9]|1[0-2])$/.test(meseFine))
+      throw new Error("Mese di fine non valido (formato 2026-12)");
+    return {
+      nome,
+      genere: genere as "voce" | "esclusione",
+      mese: mese || undefined,
+      meseFine: meseFine || undefined,
+      importo: Number.isFinite(importo) ? Math.round(importo * 100) / 100 : 0,
+      note: String(input?.note ?? "").trim() || undefined,
+    };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await upsertFlussoCassa(data);
+    return { ok: true };
+  });
+
+export const spDeleteFlussoCassa = createServerFn({ method: "POST" })
+  .inputValidator((input: { id: string }) => {
+    if (!input?.id) throw new Error("id mancante");
+    return { id: String(input.id) };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await deleteFlussoCassa(data.id);
     return { ok: true };
   });
 

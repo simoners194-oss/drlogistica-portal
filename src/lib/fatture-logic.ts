@@ -1747,3 +1747,65 @@ export function spiegaBonifici(
   }
   return out;
 }
+
+// --- Residuo aperto condiviso (Resoconto + Flussi di cassa) ------------------
+// Semantica del "Da incassare/Da pagare" del direttore, estratta dal
+// ResocontoTab perche' la usino piu' viste SENZA divergere (lezione delle
+// griglie gemelle): NC dentro l'incassato, stornate a zero, ritenuta
+// d'acconto (pagata su Aruba o netto dichiarato) rispettata.
+
+export interface FatturaConStato {
+  f: FatturaRaw;
+  s: FatturaStato;
+}
+
+/** Incassato/pagato con la semantica dell'export (quella dei pivot): le NC
+ *  compensate pesano in negativo, le fatture al valore registrato. */
+export function incassatoRegistrato(x: FatturaConStato): number {
+  return isNotaCredito(x.f.tipoDocumento)
+    ? x.s.statoIncassi === "Pagata" || x.s.statoFatturazione === "Pagata"
+      ? -Math.abs(x.f.totale)
+      : 0
+    : (x.s.incassatoIncassi ??
+        (parseIncassoAruba(x.f.incassoAruba) === "Incassata"
+          ? Math.max(0, x.f.totale - x.s.notaCredito)
+          : 0));
+}
+
+/** RESIDUO ancora da incassare/pagare (richiesta direzione 12/08): non la
+ *  lettura combinata, ma DOVUTO − NC − INCASSATO, con tutte le regole
+ *  maturate nei casi reali (commenti nel corpo). */
+export function residuoAperto(x: FatturaConStato): number {
+  // Le NC non sono mai "da incassare": il loro effetto passa gia' dentro
+  // l'incassato (compensata = negativo). Senza questo azzeramento, una NC
+  // compensata varrebbe DUE volte il suo importo nel "da incassare".
+  if (isNotaCredito(x.f.tipoDocumento)) return 0;
+  // Fattura STORNATA (coperta da nota di credito collegata): niente da
+  // incassare/pagare, anche se l'incasso non e' mai stato gestito su
+  // Aruba — richiesta direzione 17/08. Le NC collegate abbattono il
+  // residuo anche quando coprono solo una parte.
+  if (x.s.annullataDaNC) return 0;
+  // RITENUTA D'ACCONTO: se su Aruba lo stato registrato dice pagata, la
+  // fattura e' saldata anche se le rate sommano meno del totale (il
+  // bonifico e' il netto, la ritenuta va con l'F24) — direzione 24/08.
+  // "Stornata" su Aruba = annullata: niente da pagare (ma non e' un
+  // pagamento) — caso Ristorante Lele 776/2024.
+  if (x.s.statoFatturazione === "Pagata") return 0;
+  if (parseIncassoAruba(x.f.incassoAruba) === "Stornata") return 0;
+  const inc = incassatoRegistrato(x);
+  // Se l'incassato arriva dal fallback "Incassata su Aruba" la NC e' gia'
+  // dentro (totale − NC): sottrarla di nuovo la conterebbe due volte.
+  const fallbackAruba =
+    x.s.incassatoIncassi == null && parseIncassoAruba(x.f.incassoAruba) === "Incassata";
+  const nc = fallbackAruba ? 0 : x.s.notaCredito;
+  // Il DOVUTO delle passive e' il NETTO dichiarato in fattura quando c'e'
+  // (ritenuta d'acconto: si bonifica il netto, la ritenuta va con l'F24).
+  // Il residuo calcolato sul totale lasciava un finto "da pagare" pari
+  // alla ritenuta (caso De Luca 98/2024: 629,32 − 530,12 = 99,20) —
+  // stessa regola del motore stati (direzione 01/09).
+  const dovuto =
+    x.f.direzione === "Ricevuta" && x.f.netto > 0 && x.f.netto < x.f.totale - 0.01
+      ? x.f.netto
+      : x.f.totale;
+  return Math.max(0, Math.round((dovuto - nc - inc) * 100) / 100);
+}

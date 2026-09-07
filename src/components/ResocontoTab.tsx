@@ -15,6 +15,8 @@ import {
   fattureEscluse,
   isNotaCredito,
   parseIncassoAruba,
+  incassatoRegistrato,
+  residuoAperto,
   type FatturaRaw,
   type TerminePagamento,
 } from "@/lib/fatture-logic";
@@ -241,56 +243,11 @@ export function ResocontoTab() {
     else imposta(nuovi.filter((x) => x !== NESSUNO));
   };
 
-  // Incassato/pagato con la semantica dell'export (quella dei pivot): le NC
-  // compensate pesano in negativo, le fatture al valore registrato.
-  const incassatoDi = (x: (typeof attive)[number]) =>
-    isNotaCredito(x.f.tipoDocumento)
-      ? x.s.statoIncassi === "Pagata" || x.s.statoFatturazione === "Pagata"
-        ? -Math.abs(x.f.totale)
-        : 0
-      : (x.s.incassatoIncassi ??
-        (parseIncassoAruba(x.f.incassoAruba) === "Incassata"
-          ? Math.max(0, x.f.totale - x.s.notaCredito)
-          : 0));
-
-  // RESIDUO del Resoconto (richiesta direzione 12/08): non la lettura
-  // combinata, ma TOTALE − INCASSATO — la stessa colonna "Da incassare"
-  // dell'archivio fatture, dove note di credito e storni pesano dentro
-  // l'incassato (NC compensata = negativo). Prima bozza: si rivede insieme.
-  const residuoDi = (x: (typeof attive)[number]) => {
-    // Le NC non sono mai "da incassare": il loro effetto passa gia' dentro
-    // l'incassato (compensata = negativo). Senza questo azzeramento, una NC
-    // compensata varrebbe DUE volte il suo importo nel "da incassare".
-    if (isNotaCredito(x.f.tipoDocumento)) return 0;
-    // Fattura STORNATA (coperta da nota di credito collegata): niente da
-    // incassare/pagare, anche se l'incasso non e' mai stato gestito su
-    // Aruba — richiesta direzione 17/08. Le NC collegate abbattono il
-    // residuo anche quando coprono solo una parte.
-    if (x.s.annullataDaNC) return 0;
-    // RITENUTA D'ACCONTO: se su Aruba lo stato registrato dice pagata, la
-    // fattura e' saldata anche se le rate sommano meno del totale (il
-    // bonifico e' il netto, la ritenuta va con l'F24) — direzione 24/08.
-    // "Stornata" su Aruba = annullata: niente da pagare (ma non e' un
-    // pagamento) — caso Ristorante Lele 776/2024.
-    if (x.s.statoFatturazione === "Pagata") return 0;
-    if (parseIncassoAruba(x.f.incassoAruba) === "Stornata") return 0;
-    const inc = incassatoDi(x);
-    // Se l'incassato arriva dal fallback "Incassata su Aruba" la NC e' gia'
-    // dentro (totale − NC): sottrarla di nuovo la conterebbe due volte.
-    const fallbackAruba =
-      x.s.incassatoIncassi == null && parseIncassoAruba(x.f.incassoAruba) === "Incassata";
-    const nc = fallbackAruba ? 0 : x.s.notaCredito;
-    // Il DOVUTO delle passive e' il NETTO dichiarato in fattura quando c'e'
-    // (ritenuta d'acconto: si bonifica il netto, la ritenuta va con l'F24).
-    // Il residuo calcolato sul totale lasciava un finto "da pagare" pari
-    // alla ritenuta (caso De Luca 98/2024: 629,32 − 530,12 = 99,20) —
-    // stessa regola del motore stati (direzione 01/09).
-    const dovuto =
-      x.f.direzione === "Ricevuta" && x.f.netto > 0 && x.f.netto < x.f.totale - 0.01
-        ? x.f.netto
-        : x.f.totale;
-    return Math.max(0, Math.round((dovuto - nc - inc) * 100) / 100);
-  };
+  // Incassato e residuo: semantica CONDIVISA con la tab Flussi di cassa —
+  // vive in fatture-logic (incassatoRegistrato/residuoAperto) perche' le due
+  // viste non possano divergere. Qui restano gli alias storici.
+  const incassatoDi = incassatoRegistrato;
+  const residuoDi = residuoAperto;
 
   const inSelezione = (nome: string, sel: string[]) =>
     sel.length === 0 || sel.includes(clienteGroupKey(nome) || nome);
