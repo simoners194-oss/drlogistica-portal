@@ -878,6 +878,8 @@ const en = {
   "fin.regolaApplicaEsistenti": "Also apply to transactions already in the archive",
   "fin.soloMovBtn": "Apply to this transaction only",
   "fin.soloMovFatto": "Classification saved on the transaction (no rule created).",
+  "fin.classManualeTip":
+    "Classification set by hand: rules and 'Reapply' no longer touch this row.",
   "fin.regolaCrea": "Save rule",
   "fin.regolaCreata": "Rule saved — it will apply to every future import",
   "fin.regolaRipristinoConfirm":
@@ -2274,6 +2276,8 @@ const it: Record<DictKey, string> = {
   "fin.regolaApplicaEsistenti": "Applica anche ai movimenti già in archivio",
   "fin.soloMovBtn": "Applica solo a questo movimento",
   "fin.soloMovFatto": "Classificazione salvata sul movimento (nessuna regola creata).",
+  "fin.classManualeTip":
+    "Classificazione impostata a mano: regole e Riapplica non toccano più questa riga.",
   "fin.regolaCrea": "Salva regola",
   "fin.regolaCreata": "Regola salvata — varrà per ogni import futuro",
   "fin.regolaRipristinoConfirm":

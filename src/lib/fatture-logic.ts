@@ -56,6 +56,12 @@ export interface FatturaRaw {
   meseCompetenza?: string;
   tipologiaCosto?: string;
   clienteRif?: string;
+  /** Classificazione manuale PER FATTURA (DG, 08/09): sottocategoria e
+   *  allocazioni impostate sulla singola fattura, che vincono campo per
+   *  campo sulla regola del fornitore. */
+  sottocategoria?: string;
+  allocPrimaria?: string;
+  allocSecondaria?: string;
   /** Solo per le NOTE DI CREDITO: numero della fattura che rettificano,
    *  dichiarato nell'XML in DatiGenerali/DatiFattureCollegate/IdDocumento.
    *  Serve ad abbattere il credito della fattura collegata. */
@@ -678,6 +684,9 @@ export function risolviClassificazione(
     | "meseCompetenza"
     | "tipologiaCosto"
     | "clienteRif"
+    | "sottocategoria"
+    | "allocPrimaria"
+    | "allocSecondaria"
     | "oggetto"
     | "causaleDoc"
     | "direzione"
@@ -695,10 +704,13 @@ export function risolviClassificazione(
   const proposta = auto.get(clienteGroupKey(f.cliente) || f.cliente);
   const manTip = (f.tipologiaCosto ?? "").trim();
   const manCli = (f.clienteRif ?? "").trim();
+  const manSott = (f.sottocategoria ?? "").trim();
+  const manAP = (f.allocPrimaria ?? "").trim();
+  const manAS = (f.allocSecondaria ?? "").trim();
   const tipologia = manTip || regola?.tipologia || proposta?.tipologia || "";
   const clienteRif = manCli || regola?.clienteRif || proposta?.clienteRif || "";
   const fonte: ClassificazioneRisolta["fonte"] =
-    manTip || manCli
+    manTip || manCli || manSott || manAP || manAS
       ? "manuale"
       : regola &&
           (regola.tipologia ||
@@ -714,9 +726,9 @@ export function risolviClassificazione(
     mese,
     tipologia,
     clienteRif,
-    sottocategoria: regola?.sottocategoria ?? "",
-    allocPrimaria: regola?.allocPrimaria ?? "",
-    allocSecondaria: regola?.allocSecondaria ?? "",
+    sottocategoria: manSott || regola?.sottocategoria || "",
+    allocPrimaria: manAP || regola?.allocPrimaria || "",
+    allocSecondaria: manAS || regola?.allocSecondaria || "",
     fonte,
   };
 }
@@ -740,15 +752,18 @@ export function risolviClassificazioneTutte(
     const proposta = auto.get(clienteGroupKey(f.cliente) || f.cliente);
     const manTip = (f.tipologiaCosto ?? "").trim();
     const manCli = (f.clienteRif ?? "").trim();
+    const manSott = (f.sottocategoria ?? "").trim();
+    const manAP = (f.allocPrimaria ?? "").trim();
+    const manAS = (f.allocSecondaria ?? "").trim();
     out.set(f.nomeFile, {
       mese,
       tipologia: manTip || regola?.tipologia || proposta?.tipologia || "",
       clienteRif: manCli || regola?.clienteRif || proposta?.clienteRif || "",
-      sottocategoria: regola?.sottocategoria ?? "",
-      allocPrimaria: regola?.allocPrimaria ?? "",
-      allocSecondaria: regola?.allocSecondaria ?? "",
+      sottocategoria: manSott || regola?.sottocategoria || "",
+      allocPrimaria: manAP || regola?.allocPrimaria || "",
+      allocSecondaria: manAS || regola?.allocSecondaria || "",
       fonte:
-        manTip || manCli
+        manTip || manCli || manSott || manAP || manAS
           ? "manuale"
           : regola &&
               (regola.tipologia ||

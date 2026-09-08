@@ -255,6 +255,10 @@ export const SP_DISPLAY = {
     NrFattura: "NrFattura",
     Note: "Note",
     DaVerificare: "DaVerificare",
+    // "true" quando la classificazione e' stata impostata A MANO (matita o
+    // editor anomalie): regole e Riapplica non la toccano piu' — lezione del
+    // caso DG 08/09 (appalti sovrascritti dal segnaposto della regola). OPZIONALE.
+    ClassManuale: "ClassManuale",
     // Lotto di import (per lo storico e l'annullamento di un import intero).
     ImportId: "ImportId",
     // Conto di appartenenza (in archivio convivono piu' c/c): "BPM 3681"
@@ -375,6 +379,11 @@ export const SP_DISPLAY = {
     MeseCompetenza: "MeseCompetenza",
     TipologiaCosto: "TipologiaCosto",
     ClienteRif: "ClienteRif",
+    // Classificazione manuale PER FATTURA (richiesta DG 08/09): vincono
+    // campo per campo sulla regola del fornitore. OPZIONALI.
+    Sottocategoria: "Sottocategoria",
+    AllocPrimaria: "AllocazionePrimaria",
+    AllocSecondaria: "AllocazioneSecondaria",
     // Somma delle rate incassate registrate su Aruba (report movimenti):
     // è il dato che quantifica gli incassi parziali. OPZIONALE.
     IncassatoAruba: "IncassatoAruba",
@@ -3800,6 +3809,8 @@ export interface SpMovimento {
   nrFattura: string;
   note: string;
   daVerificare: boolean;
+  /** true = classificazione impostata a mano: regole e Riapplica non la toccano. */
+  classManuale: boolean;
   importId: string;
   /** Conto di appartenenza ("" = non assegnato). */
   conto: string;
@@ -3837,6 +3848,7 @@ function mapMovimento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknow
     nrFattura: F.NrFattura ? String(f[F.NrFattura] ?? "") : "",
     note: F.Note ? String(f[F.Note] ?? "") : "",
     daVerificare: parseSpBool(F.DaVerificare ? f[F.DaVerificare] : undefined, false),
+    classManuale: parseSpBool(F.ClassManuale ? f[F.ClassManuale] : undefined, false),
     importId: F.ImportId ? String(f[F.ImportId] ?? "") : "",
     progressivo: 0, // valorizzato in fetchMovimenti sull'intero archivio
   };
@@ -4482,6 +4494,17 @@ export async function updateMovimento(input: UpdateMovimentoInput): Promise<SpMo
   if (F.Note && input.note !== undefined) fields[F.Note] = input.note;
   if (F.DaVerificare && input.daVerificare !== undefined)
     fields[F.DaVerificare] = input.daVerificare;
+  // Un salvataggio che tocca la CLASSIFICAZIONE marca la riga come manuale:
+  // da qui in poi regole e Riapplica la lasciano stare (caso DG 08/09).
+  const toccaClassificazione = [
+    input.tipologia,
+    input.sottocategoria,
+    input.allocPrimaria,
+    input.allocSecondaria,
+    input.cliente,
+    input.nrFattura,
+  ].some((v) => v !== undefined);
+  if (F.ClassManuale && toccaClassificazione) fields[F.ClassManuale] = "true";
   if (Object.keys(fields).length === 0) throw new Error("Nessun campo da aggiornare.");
   await withDiscoveryRetry(() =>
     gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${input.movimentoId}/fields`, {
@@ -4656,6 +4679,9 @@ export async function riapplicaRegoleTotale(): Promise<{
   const all = await fetchMovimenti();
   const target: { id: string; patch: Record<string, unknown> }[] = [];
   for (const m of all) {
+    // Le righe classificate A MANO non si toccano: il Riapplica del 07/09
+    // aveva ricoperto gli appalti di DG col segnaposto della regola.
+    if (m.classManuale) continue;
     const dopo = applicaRegole(
       {
         cliente: m.cliente,
@@ -5002,6 +5028,8 @@ export async function applicaRegolaAiMovimenti(
   }
   const all = await fetchMovimenti();
   const target = all.filter((m) => {
+    // Le righe classificate a mano restano com'e' — la regola non le copre.
+    if (m.classManuale) return false;
     if (!matchRegola(m, regola)) return false;
     // Una differenza CONTA solo se la colonna esiste su SharePoint: senza
     // questo vincolo una colonna mancante rendeva il lotto "sempre da
@@ -5074,6 +5102,8 @@ export async function applicaRegolaDipendentiAiMovimenti(): Promise<{
   const target: { id: string; cliente: string; primaria: string; secondaria: string }[] = [];
   for (const m of all) {
     if (m.importo >= 0) continue;
+    // Le righe classificate a mano non si toccano (caso DG 08/09).
+    if (m.classManuale) continue;
     // "" = uscita non classificata (post-abolizione euristica): candidata.
     if (!["", "Bonifico uscita", "Altro", "Pagamento Salario"].includes(m.tipologia)) continue;
     const nome = matchDipendenteNome(
@@ -5290,6 +5320,11 @@ function mapFattura(
     meseCompetenza: F.MeseCompetenza ? String(f[F.MeseCompetenza] ?? "") || undefined : undefined,
     tipologiaCosto: F.TipologiaCosto ? String(f[F.TipologiaCosto] ?? "") || undefined : undefined,
     clienteRif: F.ClienteRif ? String(f[F.ClienteRif] ?? "") || undefined : undefined,
+    sottocategoria: F.Sottocategoria ? String(f[F.Sottocategoria] ?? "") || undefined : undefined,
+    allocPrimaria: F.AllocPrimaria ? String(f[F.AllocPrimaria] ?? "") || undefined : undefined,
+    allocSecondaria: F.AllocSecondaria
+      ? String(f[F.AllocSecondaria] ?? "") || undefined
+      : undefined,
     oggetto: F.Oggetto ? String(f[F.Oggetto] ?? "") || undefined : undefined,
     causaleDoc: F.Causale ? String(f[F.Causale] ?? "") || undefined : undefined,
     incassatoAruba: F.IncassatoAruba ? numOrUndef(f[F.IncassatoAruba]) : undefined,
@@ -6078,7 +6113,14 @@ export async function deleteRegolaFattura(id: string): Promise<void> {
 export async function setClassificazione(
   nomeFile: string,
   direzione: DirezioneFattura,
-  campi: { meseCompetenza?: string; tipologiaCosto?: string; clienteRif?: string },
+  campi: {
+    meseCompetenza?: string;
+    tipologiaCosto?: string;
+    clienteRif?: string;
+    sottocategoria?: string;
+    allocPrimaria?: string;
+    allocSecondaria?: string;
+  },
 ): Promise<void> {
   const cfg = await discoverSharePoint();
   const listId = requireFattureList(cfg, direzione);
@@ -6087,12 +6129,28 @@ export async function setClassificazione(
     throw new Error(
       "Colonne MeseCompetenza/TipologiaCosto/ClienteRif assenti sulla lista fatture: aggiungerle (testo) e fare Riscopri.",
     );
+  for (const [valore, col, nome] of [
+    [campi.sottocategoria, F.Sottocategoria, "Sottocategoria"],
+    [campi.allocPrimaria, F.AllocPrimaria, "AllocazionePrimaria"],
+    [campi.allocSecondaria, F.AllocSecondaria, "AllocazioneSecondaria"],
+  ] as const) {
+    if (valore && !col)
+      throw new Error(
+        `Il campo "${nome}" non si puo' salvare: colonna assente sulla lista fatture — crearla (testo) e fare Riscopri.`,
+      );
+  }
   const doc = (await fetchFatture(direzione)).find((f) => f.nomeFile === nomeFile);
   if (!doc) throw new Error(`Documento non trovato in archivio: ${nomeFile}`);
   const patch: Record<string, unknown> = {};
   if (campi.meseCompetenza !== undefined) patch[F.MeseCompetenza] = campi.meseCompetenza;
   if (campi.tipologiaCosto !== undefined) patch[F.TipologiaCosto] = campi.tipologiaCosto;
   if (campi.clienteRif !== undefined) patch[F.ClienteRif] = campi.clienteRif;
+  if (F.Sottocategoria && campi.sottocategoria !== undefined)
+    patch[F.Sottocategoria] = campi.sottocategoria;
+  if (F.AllocPrimaria && campi.allocPrimaria !== undefined)
+    patch[F.AllocPrimaria] = campi.allocPrimaria;
+  if (F.AllocSecondaria && campi.allocSecondaria !== undefined)
+    patch[F.AllocSecondaria] = campi.allocSecondaria;
   if (!Object.keys(patch).length) return;
   await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${doc.id}/fields`, {
     method: "PATCH",

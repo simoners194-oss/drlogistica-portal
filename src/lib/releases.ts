@@ -36,6 +36,35 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.60.0",
+    date: "2026-09-08",
+    codename: "Il manuale è sacro",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "fix",
+        audience: "gestione",
+        title: "Le classificazioni fatte a mano non si toccano più",
+        description:
+          "Un movimento corretto con la matita viene marcato come MANUALE (badge M accanto alla tipologia): da quel momento regole, 'Riapplica tutte le regole' e la regola dipendenti lo lasciano stare. Chiude il caso degli appalti inseriti da DG e ricoperti dal segnaposto della regola al Riapplica del 07/09 — i valori sovrascritti sono stati recuperati dallo storico versioni di SharePoint.",
+      },
+      {
+        tag: "feature",
+        audience: "gestione",
+        title: "Sottocategoria e allocazioni sulla singola fattura",
+        description:
+          "La matita delle fatture ora ha anche Sottocategoria, Allocazione primaria e Allocazione secondaria: valori scritti lì vincono campo per campo sulla regola del fornitore — l'appalto specifico di una fattura ha finalmente una casa che nessuna operazione di massa può calpestare. Menu vincolati allo stesso vocabolario delle regole. Richiede le colonne Sottocategoria/AllocazionePrimaria/AllocazioneSecondaria sulle due liste fatture (già create).",
+      },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Esclusioni e preset nei Flussi di cassa, viste in ordine",
+        description:
+          "Raccolta delle patch 1.59.1→1.59.5: colonna Classificazione subito dopo l'importo nei Movimenti; esclusioni dei Flussi a quadratini con ricerca (le già escluse spariscono dall'elenco) e PRESET salvabili con un nome da riapplicare al volo; viste del Resoconto in ordine alfabetico; le fatture 'Non gestite' contano anche nei Flussi di cassa (caso iMile: ora Flussi e Resoconto dicono la stessa cifra).",
+      },
+    ],
+  },
+  {
     version: "1.59.0",
     date: "2026-09-08",
     codename: "Regole alla mano",

@@ -188,6 +188,11 @@ export function FattureTab({
   const [efMese, setEfMese] = useState("");
   const [efTip, setEfTip] = useState("");
   const [efCli, setEfCli] = useState("");
+  // Sottocategoria e allocazioni MANUALI per fattura (DG, 08/09): vincono
+  // campo per campo sulla regola del fornitore.
+  const [efSott, setEfSott] = useState("");
+  const [efAP, setEfAP] = useState("");
+  const [efAS, setEfAS] = useState("");
   const [efBusy, setEfBusy] = useState(false);
   const [migraBusy, setMigraBusy] = useState(false);
   const [migraProg, setMigraProg] = useState("");
@@ -701,6 +706,30 @@ export function FattureTab({
       allocSec: sec.length ? sec : uniq(tutte.map((r) => r.allocSecondaria)),
     };
   }, [regoleFin, regoleFatture, rfTipologia, rfAllocPri]);
+
+  // Vocabolario del MODALE fattura (stessa fonte del form regole), a cascata
+  // sui valori scelti nel modale stesso.
+  const efVocab = useMemo(() => {
+    const uniq = (xs: (string | undefined)[]) =>
+      [...new Set(xs.filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b));
+    const tutte = [...regoleFin, ...regoleFatture].map((r) => ({
+      tipologia: r.tipologia,
+      sottocategoria: r.sottocategoria,
+      allocPrimaria: r.allocPrimaria,
+      allocSecondaria: r.allocSecondaria,
+    }));
+    const perTip = efTip.trim() ? tutte.filter((r) => (r.tipologia ?? "") === efTip.trim()) : tutte;
+    const perPri = efAP.trim()
+      ? tutte.filter((r) => (r.allocPrimaria ?? "") === efAP.trim())
+      : tutte;
+    const sotto = uniq(perTip.map((r) => r.sottocategoria));
+    const sec = uniq(perPri.map((r) => r.allocSecondaria));
+    return {
+      sottocat: sotto.length ? sotto : uniq(tutte.map((r) => r.sottocategoria)),
+      allocPri: uniq(tutte.map((r) => r.allocPrimaria)),
+      allocSec: sec.length ? sec : uniq(tutte.map((r) => r.allocSecondaria)),
+    };
+  }, [regoleFin, regoleFatture, efTip, efAP]);
 
   const resetFormRf = () => {
     setRfCliente("");
@@ -1732,6 +1761,9 @@ export function FattureTab({
     setEfMese(f.meseCompetenza ?? "");
     setEfTip(f.tipologiaCosto ?? "");
     setEfCli(f.clienteRif ?? "");
+    setEfSott(f.sottocategoria ?? "");
+    setEfAP(f.allocPrimaria ?? "");
+    setEfAS(f.allocSecondaria ?? "");
   };
 
   const salvaEditFt = async () => {
@@ -1745,6 +1777,9 @@ export function FattureTab({
           meseCompetenza: efMese.trim(),
           tipologiaCosto: efTip.trim(),
           clienteRif: efCli.trim(),
+          sottocategoria: efSott.trim(),
+          allocPrimaria: efAP.trim(),
+          allocSecondaria: efAS.trim(),
         },
       });
       const nome = editFt.nomeFile;
@@ -1757,6 +1792,9 @@ export function FattureTab({
                     meseCompetenza: efMese.trim() || undefined,
                     tipologiaCosto: efTip.trim() || undefined,
                     clienteRif: efCli.trim() || undefined,
+                    sottocategoria: efSott.trim() || undefined,
+                    allocPrimaria: efAP.trim() || undefined,
+                    allocSecondaria: efAS.trim() || undefined,
                   }
                 : r,
             )
@@ -4808,6 +4846,36 @@ export function FattureTab({
                     value={efCli}
                     onChange={(e) => setEfCli(e.target.value)}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <CampoVocabolario
+                    label={t("fin.sottocat")}
+                    valore={efSott}
+                    onChange={setEfSott}
+                    opzioni={efVocab.sottocat}
+                    testoNessuno={t("fin.vuota")}
+                    testoNuova={t("fin.vocNuova")}
+                  />
+                </div>
+                <div>
+                  <CampoVocabolario
+                    label={t("fin.allocPri")}
+                    valore={efAP}
+                    onChange={setEfAP}
+                    opzioni={efVocab.allocPri}
+                    testoNessuno={t("fin.vuota")}
+                    testoNuova={t("fin.vocNuova")}
+                  />
+                </div>
+                <div>
+                  <CampoVocabolario
+                    label={t("fin.allocSec")}
+                    valore={efAS}
+                    onChange={setEfAS}
+                    opzioni={efVocab.allocSec}
+                    testoNessuno={t("fin.vuota")}
+                    testoNuova={t("fin.vocNuova")}
                   />
                 </div>
               </div>

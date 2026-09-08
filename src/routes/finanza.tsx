@@ -3906,6 +3906,14 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                       )}
                       <td className="py-1.5 pr-3">
                         {m.tipologia}
+                        {m.classManuale && (
+                          <span
+                            title={t("fin.classManualeTip")}
+                            className="ml-1 inline-block rounded bg-primary/15 px-1 text-[9px] font-semibold text-primary align-middle"
+                          >
+                            M
+                          </span>
+                        )}
                         {m.sottocategoria && (
                           <span className="text-[11px] text-muted-foreground">
                             {" "}

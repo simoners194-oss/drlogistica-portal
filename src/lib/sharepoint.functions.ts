@@ -1780,6 +1780,9 @@ export const spSetClassificazione = createServerFn({ method: "POST" })
       meseCompetenza?: string;
       tipologiaCosto?: string;
       clienteRif?: string;
+      sottocategoria?: string;
+      allocPrimaria?: string;
+      allocSecondaria?: string;
     }) => {
       const nomeFile = String(input?.nomeFile ?? "").trim();
       if (!nomeFile) throw new Error("Fattura non indicata");
@@ -1791,6 +1794,9 @@ export const spSetClassificazione = createServerFn({ method: "POST" })
         meseCompetenza: campo(input.meseCompetenza, 40),
         tipologiaCosto: campo(input.tipologiaCosto, 120),
         clienteRif: campo(input.clienteRif, 80),
+        sottocategoria: campo(input.sottocategoria, 80),
+        allocPrimaria: campo(input.allocPrimaria, 80),
+        allocSecondaria: campo(input.allocSecondaria, 80),
       };
     },
   )
@@ -1800,6 +1806,9 @@ export const spSetClassificazione = createServerFn({ method: "POST" })
       meseCompetenza: data.meseCompetenza,
       tipologiaCosto: data.tipologiaCosto,
       clienteRif: data.clienteRif,
+      sottocategoria: data.sottocategoria,
+      allocPrimaria: data.allocPrimaria,
+      allocSecondaria: data.allocSecondaria,
     });
     return { ok: true };
   });
