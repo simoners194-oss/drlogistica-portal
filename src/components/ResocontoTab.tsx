@@ -232,7 +232,8 @@ export function ResocontoTab() {
   };
   const viste = (gruppi ?? [])
     .map((g) => ({ id: g.id, nome: g.nome, cfg: parseVista(g.membri) }))
-    .filter((x): x is { id: string; nome: string; cfg: VistaCfg } => x.cfg != null);
+    .filter((x): x is { id: string; nome: string; cfg: VistaCfg } => x.cfg != null)
+    .sort((a, b) => a.nome.localeCompare(b.nome, "it", { sensitivity: "base" }));
   // Nel riepilogo della vista si mostrano i NOMI, non i conteggi: le chiavi
   // salvate si traducono in etichette con le stesse opzioni delle tendine.
   const nomiDi = (chiavi: string[], opzioniDi: { v: string; label: string }[]): string =>
