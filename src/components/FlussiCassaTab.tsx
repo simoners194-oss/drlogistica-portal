@@ -262,8 +262,10 @@ export function FlussiCassaTab() {
     for (const x of righe) {
       const residuo = residuoAperto(x);
       if (residuo <= 1) continue;
-      // Come nella Previsione: serve almeno una lettura (incassi o Aruba).
-      if (x.s.statoIncassi == null && x.s.statoFatturazione == null) continue;
+      // Anche le "Non gestite" (nessuna lettura) contano: decisione Simone
+      // 08/09 — una fattura aperta e' denaro atteso, come nel Resoconto.
+      // (Il caso iMile FPR 228/26+230/26: 21.791 fuori dai Flussi ma dentro
+      // i ritardi del Resoconto.)
       if (!x.s.scadenza) continue;
       const scad = x.s.scadenza.slice(0, 10);
       if (esclusa(x.f.cliente, scad.slice(0, 7))) continue;
