@@ -92,9 +92,11 @@ import {
   spEbStato,
   spEbSaldo,
   spEbSincronizza,
+  spGetFatture,
 } from "@/lib/sharepoint.functions";
 import type {
   SpMovimento,
+  SpFattura,
   ImportStoricoRiga,
   DettaglioDistinta,
   EbStato,
@@ -526,12 +528,76 @@ function FinanzaPage() {
   }, [regole, rTipologia, rAllocPri]);
   const [rNote, setRNote] = useState("");
   const [rSegno, setRSegno] = useState<"" | "entrate" | "uscite">("");
+  // Flag "conta nelle Altre spese" del Flussi di cassa (richiesta FR 08/09).
+  const [rAltreSpese, setRAltreSpese] = useState(false);
   // Movimento da cui e' partita la bacchetta: consente di applicare la
   // classificazione SOLO a lui, senza creare la regola.
   const [rSorgente, setRSorgente] = useState<string | null>(null);
   const [rApplica, setRApplica] = useState(true);
   const [rBusy, setRBusy] = useState(false);
   const [rProgress, setRProgress] = useState(0);
+
+  // AUTOCOMPLETE controparti (richiesta FR 08/09): i nomi VERI di clienti e
+  // fornitori — presi dalle fatture, piu' quelli visti in banca — suggeriti
+  // mentre si scrive il pattern di una regola o un termine d'incasso. Cosi'
+  // niente refusi ("post doc") e niente nomi che non esistono in archivio.
+  const [contropartiNote, setContropartiNote] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (tab !== "regole" || contropartiNote != null) return;
+    void Promise.allSettled([
+      spGetFatture({ data: { direzione: "Emessa" } }),
+      spGetFatture({ data: { direzione: "Ricevuta" } }),
+    ]).then((esiti) => {
+      const set = new Set<string>();
+      for (const e of esiti)
+        if (e.status === "fulfilled")
+          for (const f of e.value as SpFattura[]) if (f.cliente?.trim()) set.add(f.cliente.trim());
+      for (const m of movimenti ?? []) if (m.cliente?.trim()) set.add(m.cliente.trim());
+      setContropartiNote([...set].sort((a, b) => a.localeCompare(b)));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  // TOGGLE "Altre spese" direttamente dalla riga della regola (richiesta FR
+  // 08/09): i movimenti classificati dalle regole flaggate alimentano la
+  // media mensile della riga "Altre spese" nel Flussi di cassa.
+  const toggleAltreSpese = async (r: RegolaFinanza) => {
+    const nuovo = !(r.altreSpese === true);
+    try {
+      await spUpdateRegolaFinanza({ data: { regolaId: r.id ?? "", ...r, altreSpese: nuovo } });
+      setRegole((prev) =>
+        prev ? prev.map((x) => (x.id === r.id ? { ...x, altreSpese: nuovo } : x)) : prev,
+      );
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  // LINK DIRETTO alla modifica di una regola: usato dalla matita del
+  // movimento (riquadro "regole che colpiscono") e dall'elenco regole —
+  // porta nella tab Regole col modulo gia' popolato e la ricerca impostata.
+  const apriModificaRegola = (r: RegolaFinanza) => {
+    setRPattern(r.pattern);
+    setRCampo(r.campo);
+    setRModo(r.modo);
+    setRTipologia(r.tipologia ?? "");
+    setRSottocat(r.sottocategoria ?? "");
+    setRAllocPri(r.allocPrimaria ?? "");
+    setRAllocSec(r.allocSecondaria ?? "");
+    setRCliente(r.cliente ?? "");
+    setRNote(r.note ?? "");
+    setRSegno(r.segno ?? "");
+    setRAltreSpese(r.altreSpese === true);
+    setRSorgente(null);
+    setRApplica(true);
+    setREditId(r.id ?? null);
+    setRCerca(r.pattern.slice(0, 60));
+    setRegTab("movimenti");
+    setTab("regole");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   // Sanatura anomalie
   const [editId, setEditId] = useState<string | null>(null);
@@ -2144,6 +2210,7 @@ function FinanzaPage() {
         cliente: rCliente.trim() || undefined,
         note: rNote.trim() || undefined,
         segno: rSegno || undefined,
+        altreSpese: rAltreSpese,
       };
       // PARACADUTE: prima di salvare si mostra QUANTI movimenti verrebbero
       // toccati — una regola troppo larga si riconosce dal numero.
@@ -2244,6 +2311,7 @@ function FinanzaPage() {
       setRCliente("");
       setRNote("");
       setRSegno("");
+      setRAltreSpese(false);
       setRSorgente(null);
       setREditId(null);
       loadRegole();
@@ -3457,12 +3525,23 @@ function FinanzaPage() {
                           <p className="text-muted-foreground">{t("fin.spiegaNessuna")}</p>
                         ) : (
                           colpite.map(({ r, termine }) => (
-                            <p key={r.id} className="text-muted-foreground">
+                            /* CLICK = modifica: chiude la matita e porta la
+                               regola nel modulo della tab Regole. */
+                            <button
+                              key={r.id}
+                              type="button"
+                              onClick={() => {
+                                setEditId(null);
+                                apriModificaRegola(r);
+                              }}
+                              title={t("fin.spiegaVaiRegola")}
+                              className="block w-full rounded px-1 text-left text-muted-foreground underline-offset-2 hover:bg-muted hover:underline"
+                            >
                               «<b className="text-foreground">{termine}</b>» ({r.campo} · {r.modo})
                               → {r.tipologia ?? ""}
                               {r.sottocategoria ? ` · ${r.sottocategoria}` : ""}
-                              {r.allocSecondaria ? ` · ${r.allocSecondaria}` : ""}
-                            </p>
+                              {r.allocSecondaria ? ` · ${r.allocSecondaria}` : ""} ✎
+                            </button>
                           ))
                         )}
                       </div>
@@ -4545,6 +4624,37 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                   rows={2}
                   className={`${inputCls} min-h-[42px] resize-y`}
                 />
+                {/* AUTOCOMPLETE dai nomi VERI dell'archivio: mentre si scrive
+                    l'ultimo termine (>=3 lettere) compaiono i suggerimenti —
+                    un click sostituisce il termine col nome esatto. */}
+                {(() => {
+                  const pezzi = rPattern.split(/[,;\n]/);
+                  const corrente = (pezzi[pezzi.length - 1] ?? "").trim().toLowerCase();
+                  if (corrente.length < 3 || !contropartiNote?.length) return null;
+                  const sugg = contropartiNote
+                    .filter(
+                      (c) => c.toLowerCase().includes(corrente) && c.toLowerCase() !== corrente,
+                    )
+                    .slice(0, 8);
+                  if (!sugg.length) return null;
+                  return (
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {sugg.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            const prima = pezzi.slice(0, -1).join(",");
+                            setRPattern(prima ? `${prima}, ${c}` : c);
+                          }}
+                          className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary hover:bg-primary/20"
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">{t("fin.regolaCampo")}</label>
@@ -4653,6 +4763,18 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                   className="h-4 w-4 accent-primary"
                 />
                 {t("fin.regolaApplicaEsistenti")}
+              </label>
+              <label
+                className="flex items-end gap-2 pb-2 text-sm text-foreground"
+                title={t("fin.regolaAltreSpeseTip")}
+              >
+                <input
+                  type="checkbox"
+                  checked={rAltreSpese}
+                  onChange={(e) => setRAltreSpese(e.target.checked)}
+                  className="h-4 w-4 accent-primary"
+                />
+                {t("fin.regolaAltreSpese")}
               </label>
             </div>
             {rSorgente && !rEditId && (
@@ -5050,22 +5172,15 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                               />
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setRPattern(r.pattern);
-                                  setRCampo(r.campo);
-                                  setRModo(r.modo);
-                                  setRTipologia(r.tipologia ?? "");
-                                  setRSottocat(r.sottocategoria ?? "");
-                                  setRAllocPri(r.allocPrimaria ?? "");
-                                  setRAllocSec(r.allocSecondaria ?? "");
-                                  setRCliente(r.cliente ?? "");
-                                  setRNote(r.note ?? "");
-                                  setRSegno(r.segno ?? "");
-                                  setRSorgente(null);
-                                  setRApplica(true);
-                                  setREditId(r.id ?? null);
-                                  window.scrollTo({ top: 0, behavior: "smooth" });
-                                }}
+                                onClick={() => void toggleAltreSpese(r)}
+                                title={t("fin.regolaAltreSpeseTip")}
+                                className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${r.altreSpese ? "bg-primary/15 text-primary" : "text-muted-foreground/50 hover:text-foreground hover:bg-muted"}`}
+                              >
+                                €
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => apriModificaRegola(r)}
                                 title={t("common.edit")}
                                 className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted"
                               >
@@ -5137,15 +5252,22 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                 {t("fin.termCopiaBtn")}
               </button>
             </div>
-            <div className="flex flex-wrap items-end gap-3 mb-4">
+            <div id="termini-form" className="flex flex-wrap items-end gap-3 mb-4">
               <div className="flex-1 min-w-56">
                 <label className="text-xs text-muted-foreground">{t("fin.cliente")}</label>
                 <input
+                  id="termini-form-cliente"
+                  list="controparti-note"
                   value={tCliente}
                   onChange={(e) => setTCliente(e.target.value)}
                   placeholder={t("fin.termClientePh")}
                   className={inputCls}
                 />
+                <datalist id="controparti-note">
+                  {(contropartiNote ?? []).map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
               </div>
               <div className="w-32">
                 <label className="text-xs text-muted-foreground">{t("fin.termGiorni")}</label>
@@ -5221,6 +5343,16 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                           setTGiorni(String(x.giorni));
                           setTEmail(x.email ?? "");
                           setTOggetto(x.oggetto ?? "");
+                          // Il modulo sta in cima alla card: con 50+ righe il
+                          // click sembrava non fare NULLA (successo il 08/09).
+                          // Si scorre al modulo e si mette il focus sul campo.
+                          document
+                            .getElementById("termini-form")
+                            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                          window.setTimeout(
+                            () => document.getElementById("termini-form-cliente")?.focus(),
+                            350,
+                          );
                         }}
                         className="rounded-md p-1 text-muted-foreground hover:text-foreground"
                         title={t("common.edit")}

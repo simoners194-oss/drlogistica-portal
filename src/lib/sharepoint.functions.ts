@@ -1349,6 +1349,8 @@ function validateRegola(input: Partial<RegolaFinanza>): RegolaFinanza {
     cliente,
     note,
     segno,
+    // Flag "Altre spese" (flussi di cassa): tri-stato — assente = non toccare.
+    altreSpese: input.altreSpese == null ? undefined : input.altreSpese === true,
   };
 }
 

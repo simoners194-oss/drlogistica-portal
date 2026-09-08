@@ -18,7 +18,12 @@ import {
   residuoAperto,
   type TerminePagamento,
 } from "@/lib/fatture-logic";
-import { clienteGroupKey } from "@/lib/finanza-logic";
+import {
+  clienteGroupKey,
+  matchRegola,
+  regoleOrdinate,
+  type RegolaFinanza,
+} from "@/lib/finanza-logic";
 import { esportaCsvFile } from "@/lib/csv";
 import {
   spGetFatture,
@@ -27,8 +32,15 @@ import {
   spGetFlussiCassa,
   spUpsertFlussoCassa,
   spDeleteFlussoCassa,
+  spGetRegoleFinanza,
+  spGetMovimenti,
 } from "@/lib/sharepoint.functions";
-import type { SpFattura, Prefattura, FlussoCassaRiga } from "@/lib/sharepoint.server";
+import type {
+  SpFattura,
+  SpMovimento,
+  Prefattura,
+  FlussoCassaRiga,
+} from "@/lib/sharepoint.server";
 
 function fmtImporto(n: number): string {
   return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -70,6 +82,9 @@ export function FlussiCassaTab() {
   const [prefatture, setPrefatture] = useState<Prefattura[] | null>(null);
   const [flussi, setFlussi] = useState<FlussoCassaRiga[] | null>(null);
   const [flussiErr, setFlussiErr] = useState<string | null>(null);
+  // Per la MEDIA automatica delle "Altre spese": regole flaggate + movimenti.
+  const [regoleFin, setRegoleFin] = useState<RegolaFinanza[] | null>(null);
+  const [movimenti, setMovimenti] = useState<SpMovimento[] | null>(null);
 
   const [modo, setModo] = useState<"mese" | "settimana">("mese");
   const [finoA, setFinoA] = useState("");
@@ -114,6 +129,12 @@ export function FlussiCassaTab() {
     spGetPrefatture()
       .then((l) => setPrefatture(l as Prefattura[]))
       .catch(() => setPrefatture([]));
+    spGetRegoleFinanza()
+      .then((l) => setRegoleFin(l as RegolaFinanza[]))
+      .catch(() => setRegoleFin([]));
+    spGetMovimenti()
+      .then((l) => setMovimenti(l as SpMovimento[]))
+      .catch(() => setMovimenti([]));
     void ricaricaFlussi();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -296,6 +317,35 @@ export function FlussiCassaTab() {
   // ma non si possono spalmare onestamente — compaiono solo per mese.
   const haPref = modo === "mese" && (prefPer.att.size > 0 || prefPer.pas.size > 0);
 
+  // --- Media automatica "Altre spese" ----------------------------------------
+  // Richiesta FR 08/09: le spese che NON passano dalle fatture (regole
+  // flaggate "Altre spese" con la €) fanno media sugli ultimi 2 MESI PIENI
+  // e riempiono da sole la riga — il valore manuale, se inserito, vince.
+  const autoAltreSpese = useMemo(() => {
+    const flaggate = (regoleFin ?? []).filter((r) => r.altreSpese === true);
+    if (!flaggate.length || !movimenti?.length) return null;
+    const ordinate = regoleOrdinate(regoleFin ?? []);
+    const meseDi = (iso: string) => iso.slice(0, 7);
+    const base = new Date(`${oggiISO.slice(0, 7)}-01T00:00:00`);
+    const mesi = [1, 2].map((i) => {
+      const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    });
+    const somme = new Map<string, number>(mesi.map((m) => [m, 0]));
+    for (const m of movimenti) {
+      if (m.importo >= 0) continue;
+      const chiaveMese = meseDi(m.dataContabile);
+      if (!somme.has(chiaveMese)) continue;
+      // Stessa priorita' del classificatore: conta la PRIMA regola che
+      // matcha, e conta solo se e' una di quelle flaggate.
+      const r = ordinate.find((x) => matchRegola(m, x));
+      if (r?.altreSpese === true)
+        somme.set(chiaveMese, (somme.get(chiaveMese) ?? 0) + Math.abs(m.importo));
+    }
+    const media = [...somme.values()].reduce((s, v) => s + v, 0) / mesi.length;
+    return { media: Math.round(media * 100) / 100, mesi };
+  }, [regoleFin, movimenti, oggiISO]);
+
   // --- Voci manuali (mensili) ------------------------------------------------
   const nomiVoci = useMemo(() => {
     const set = new Set<string>(VOCI_BASE);
@@ -306,6 +356,22 @@ export function FlussiCassaTab() {
     voci.find(
       (v) => v.nome.trim().toLowerCase() === nome.trim().toLowerCase() && v.mese === mese,
     );
+
+  /** Valore effettivo di una voce nel mese: manuale se c'e', altrimenti — per
+   *  la sola riga "Altre spese", dai mesi correnti in poi — la media
+   *  automatica delle regole flaggate (in negativo: e' un'uscita). */
+  const valoreVoce = (nome: string, mese: string): { importo: number; auto: boolean } | null => {
+    const man = vocePer(nome, mese);
+    if (man) return { importo: man.importo, auto: false };
+    if (
+      nome.trim().toLowerCase() === "altre spese" &&
+      autoAltreSpese &&
+      autoAltreSpese.media > 0 &&
+      mese >= oggiISO.slice(0, 7)
+    )
+      return { importo: -autoAltreSpese.media, auto: true };
+    return null;
+  };
 
   const salvaVoce = async (nome: string, mese: string) => {
     const grezzo = cellaVal.trim().replace(/\./g, "").replace(",", ".");
@@ -375,7 +441,7 @@ export function FlussiCassaTab() {
     let v = (entrate.tot.perPeriodo.get(chiave) ?? 0) - (uscite.tot.perPeriodo.get(chiave) ?? 0);
     if (modo === "mese") {
       v += (prefPer.att.get(mese) ?? 0) - (prefPer.pas.get(mese) ?? 0);
-      for (const nome of nomiVoci) v += vocePer(nome, mese)?.importo ?? 0;
+      for (const nome of nomiVoci) v += valoreVoce(nome, mese)?.importo ?? 0;
     }
     return Math.round(v * 100) / 100;
   };
@@ -437,8 +503,8 @@ export function FlussiCassaTab() {
         righe.push([
           nome,
           "",
-          ...periodi.map((p) => num(vocePer(nome, p.mese)?.importo ?? 0)),
-          num(periodi.reduce((s, p) => s + (vocePer(nome, p.mese)?.importo ?? 0), 0)),
+          ...periodi.map((p) => num(valoreVoce(nome, p.mese)?.importo ?? 0)),
+          num(periodi.reduce((s, p) => s + (valoreVoce(nome, p.mese)?.importo ?? 0), 0)),
         ]);
     righe.push([
       t("fc.saldo"),
@@ -464,6 +530,7 @@ export function FlussiCassaTab() {
   const cellaVoceUI = (nome: string, mese: string) => {
     const chiave = `${nome}|${mese}`;
     const riga = vocePer(nome, mese);
+    const val = valoreVoce(nome, mese);
     if (cellaVoce === chiave)
       return (
         <input
@@ -481,14 +548,14 @@ export function FlussiCassaTab() {
     return (
       <button
         type="button"
-        title={t("fc.cellaTip")}
+        title={val?.auto ? t("fc.autoTip") : t("fc.cellaTip")}
         onClick={() => {
           setCellaVoce(chiave);
           setCellaVal(riga ? String(riga.importo).replace(".", ",") : "");
         }}
-        className="w-full rounded px-1 text-right tabular-nums hover:bg-muted"
+        className={`w-full rounded px-1 text-right tabular-nums hover:bg-muted ${val?.auto ? "italic text-muted-foreground" : ""}`}
       >
-        {riga ? fmt(riga.importo) : "·"}
+        {val ? `${val.auto ? "≈ " : ""}${fmt(val.importo)}` : "·"}
       </button>
     );
   };
@@ -755,7 +822,7 @@ export function FlussiCassaTab() {
                       ))}
                       <td className={tdN}>
                         {fmt(
-                          periodi.reduce((s, p) => s + (vocePer(nome, p.mese)?.importo ?? 0), 0),
+                          periodi.reduce((s, p) => s + (valoreVoce(nome, p.mese)?.importo ?? 0), 0),
                         )}
                       </td>
                     </tr>
@@ -792,6 +859,12 @@ export function FlussiCassaTab() {
         <div className="mt-3 space-y-1 text-[11px] text-muted-foreground">
           <p>{t("fc.notaSegni")}</p>
           {modo === "settimana" && <p>{t("fc.notaSettimana")}</p>}
+          {modo === "mese" && autoAltreSpese && autoAltreSpese.media > 0 && (
+            <p>
+              {t("fc.notaAuto")} {autoAltreSpese.mesi.join(" + ")} ={" "}
+              {fmtImporto(autoAltreSpese.media)} €
+            </p>
+          )}
           {modo === "mese" && (
             <div className="flex items-center gap-2">
               <span>{t("fc.nuovaVoce")}</span>

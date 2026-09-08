@@ -36,6 +36,35 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.59.0",
+    date: "2026-09-08",
+    codename: "Regole alla mano",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Altre spese automatiche nei Flussi di cassa",
+        description:
+          "Sulle regole movimenti c'è il flag € \"Conta nelle Altre spese\" (clic sulla € nella riga, o spunta nel modulo): i movimenti classificati dalle regole flaggate fanno la media degli ultimi 2 mesi pieni e riempiono da soli la riga Altre spese, in corsivo col segno ≈. Un valore scritto a mano nel mese vince sempre. Richiede la colonna AltreSpese (Sì/No) su RegoleFinanza.",
+      },
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Compensazione a spunta nel Resoconto",
+        description:
+          "Nell'elenco totale delle fatture ogni riga ha un quadratino: spuntando le attive si vedono Totale documento e netto a incassare, spuntando le passive Totale e netto a pagare, e spuntando dai due lati appare la compensazione — un saldo unico, verde se resta da incassare, rosso se resta da pagare. In più le fatture aperte mostrano il ritardo (+N gg, rosso) o l'anticipo (fra N gg, verde) rispetto alla scadenza.",
+      },
+      {
+        tag: "improvement",
+        audience: "gestione",
+        title: "Suggerimenti coi nomi veri e regole a portata di matita",
+        description:
+          "Scrivendo il pattern di una regola (o un termine d'incasso) compaiono i nomi VERI di clienti e fornitori presi dalle fatture: un clic inserisce il nome esatto, niente più refusi. Dalla matita di un movimento, un clic sulla regola che l'ha classificato la apre direttamente in modifica. E la matita dei termini d'incasso ora porta al modulo di modifica invece di sembrare morta.",
+      },
+    ],
+  },
+  {
     version: "1.58.0",
     date: "2026-09-07",
     codename: "Basta etichette inventate",

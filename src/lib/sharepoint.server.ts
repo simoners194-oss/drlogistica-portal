@@ -274,6 +274,8 @@ export const SP_DISPLAY = {
     ClienteNuovo: "ClienteNuovo",
     Segno: "Segno",
     Note: "Note",
+    // Flag "conta nelle Altre spese" del Flussi di cassa (Sì/No). OPZIONALE.
+    AltreSpese: "AltreSpese",
   },
   // Regole di CLASSIFICAZIONE delle fatture passive (tab Regole): per
   // fornitore (match sul nome, contiene) fissano tipologia di costo e/o
@@ -4807,6 +4809,9 @@ function mapRegola(cfg: SpDiscovered, it: GraphListItem<Record<string, unknown>>
       ? String(f[F.AllocSecondaria] ?? "").trim() || undefined
       : undefined,
     cliente: F.ClienteNuovo ? String(f[F.ClienteNuovo] ?? "").trim() || undefined : undefined,
+    altreSpese: F.AltreSpese
+      ? ["true", "1", "sì", "si", "yes"].includes(String(f[F.AltreSpese] ?? "").toLowerCase())
+      : undefined,
   };
 }
 
@@ -4895,6 +4900,7 @@ export async function createRegolaFinanza(input: RegolaFinanza): Promise<RegolaF
   if (F.ModoMatch) fields[F.ModoMatch] = input.modo;
   if (F.Tipologia && input.tipologia?.trim()) fields[F.Tipologia] = input.tipologia.trim();
   if (F.ClienteNuovo && input.cliente?.trim()) fields[F.ClienteNuovo] = input.cliente.trim();
+  if (F.AltreSpese && input.altreSpese != null) fields[F.AltreSpese] = input.altreSpese === true;
   const created = await withDiscoveryRetry(() =>
     gatewayJson<GraphListItem<Record<string, unknown>>>(
       `/sites/${cfg.siteId}/lists/${listId}/items`,
@@ -4945,6 +4951,7 @@ export async function updateRegolaFinanza(
   if (F.AllocPrimaria) fields[F.AllocPrimaria] = input.allocPrimaria?.trim() ?? "";
   if (F.AllocSecondaria) fields[F.AllocSecondaria] = input.allocSecondaria?.trim() ?? "";
   if (F.ClienteNuovo) fields[F.ClienteNuovo] = input.cliente?.trim() ?? "";
+  if (F.AltreSpese && input.altreSpese != null) fields[F.AltreSpese] = input.altreSpese === true;
   if (input.note?.trim() && !F.Note)
     throw new Error(
       'La regola ha una NOTA ma la colonna "Note" manca sulla lista RegoleFinanza: crearla (testo) e fare Riscopri.',

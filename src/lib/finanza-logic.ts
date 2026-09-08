@@ -190,6 +190,26 @@ export interface RegolaFinanza {
   cliente?: string;
   /** Nota libera del direttore (perche' esiste la regola, quando, per chi). */
   note?: string;
+  /** FLAG "Altre spese" (flussi di cassa, richiesta FR 08/09): i movimenti
+   *  classificati da questa regola contano nella media mensile della riga
+   *  "Altre spese" — le spese che NON passano dalle fatture. */
+  altreSpese?: boolean;
+}
+
+/** Ordine di applicazione delle regole (condiviso: classificatore e Flussi
+ *  di cassa): specifiche prima delle generiche, jolly "*" per ultimo. */
+export function regoleOrdinate(regole: readonly RegolaFinanza[]): RegolaFinanza[] {
+  const priorita = (r: RegolaFinanza) =>
+    r.pattern.trim() === "*"
+      ? 9
+      : r.campo === "cliente"
+        ? r.modo === "esatto"
+          ? 0
+          : 1
+        : r.campo === "entrambi"
+          ? 2
+          : 3;
+  return [...regole].sort((a, b) => priorita(a) - priorita(b));
 }
 
 export function matchRegola(
@@ -283,17 +303,7 @@ export function applicaRegole<
     };
   };
   if (!regole.length) return forzaIncasso(mov);
-  const priorita = (r: RegolaFinanza) =>
-    r.pattern.trim() === "*"
-      ? 9
-      : r.campo === "cliente"
-        ? r.modo === "esatto"
-          ? 0
-          : 1
-        : r.campo === "entrambi"
-          ? 2
-          : 3;
-  const ordinate = [...regole].sort((a, b) => priorita(a) - priorita(b));
+  const ordinate = regoleOrdinate(regole);
   const r = ordinate.find((x) => matchRegola(mov, x));
   if (!r) return forzaIncasso(mov);
   return forzaIncasso({

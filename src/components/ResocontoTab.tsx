@@ -106,6 +106,11 @@ export function ResocontoTab() {
   const [elencoAperto, setElencoAperto] = useState(false);
   const [elencoAnni, setElencoAnni] = useState<string[]>([]);
   const [elencoMesi, setElencoMesi] = useState<string[]>([]);
+  // COMPENSAZIONE A SPUNTA (richiesta FR 08/09): quadratini sulle righe
+  // dell'elenco totale — le attive spuntate mostrano Totale/Netto a
+  // incassare, le passive Totale/Netto a pagare, e spuntando dai due lati
+  // si compensano in un saldo unico. Chiave: "att:file" / "pas:file".
+  const [selComp, setSelComp] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     spGetFatture({ data: { direzione: "Emessa" } })
@@ -1069,6 +1074,64 @@ export function ResocontoTab() {
                 </div>
               )}
             </div>
+            {/* PANNELLO COMPENSAZIONE: compare con almeno una spunta. */}
+            {elencoAperto &&
+              selComp.size > 0 &&
+              (() => {
+                const raccogli = (k: "att" | "pas") => {
+                  let tot = 0;
+                  let netto = 0;
+                  let n = 0;
+                  for (const { x, residuo, stato } of elencoTot[k].dettagli) {
+                    if (!selComp.has(`${k}:${x.f.nomeFile}`)) continue;
+                    n++;
+                    tot += x.f.totale;
+                    netto += stato === "aperto" ? residuo : 0;
+                  }
+                  return { tot: Math.round(tot * 100) / 100, netto: Math.round(netto * 100) / 100, n };
+                };
+                const a = raccogli("att");
+                const p = raccogli("pas");
+                const saldo = Math.round((a.netto - p.netto) * 100) / 100;
+                return (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-primary/40 bg-primary/5 px-4 py-3 text-sm">
+                    {a.n > 0 && (
+                      <span>
+                        {t("rt.compAttive")} ({a.n}): {t("rt.compTotale")}{" "}
+                        <b className="tabular-nums">{fmtImporto(a.tot)} €</b> ·{" "}
+                        {t("rt.compNettoInc")}{" "}
+                        <b className="tabular-nums text-status-present">{fmtImporto(a.netto)} €</b>
+                      </span>
+                    )}
+                    {p.n > 0 && (
+                      <span>
+                        {t("rt.compPassive")} ({p.n}): {t("rt.compTotale")}{" "}
+                        <b className="tabular-nums">{fmtImporto(p.tot)} €</b> ·{" "}
+                        {t("rt.compNettoPag")}{" "}
+                        <b className="tabular-nums text-status-absent">{fmtImporto(p.netto)} €</b>
+                      </span>
+                    )}
+                    {a.n > 0 && p.n > 0 && (
+                      <span className="font-semibold">
+                        {t("rt.compSaldo")}{" "}
+                        <b
+                          className={`tabular-nums ${saldo >= 0 ? "text-status-present" : "text-status-absent"}`}
+                        >
+                          {fmtImporto(Math.abs(saldo))} €{" "}
+                          {saldo >= 0 ? t("rt.compNettoInc") : t("rt.compNettoPag")}
+                        </b>
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setSelComp(new Set())}
+                      className="ml-auto rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted"
+                    >
+                      {t("rt.compSvuota")}
+                    </button>
+                  </div>
+                );
+              })()}
             {elencoAperto && (
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 {(
@@ -1096,6 +1159,22 @@ export function ResocontoTab() {
                           <tbody>
                             {latoP.dettagli.map(({ x, residuo, stato }) => (
                               <tr key={x.f.nomeFile} className="border-t border-border/40">
+                                <td className="w-6 py-1 pr-1">
+                                  {/* Quadratino per la COMPENSAZIONE (vedi
+                                      pannello in alto). */}
+                                  <input
+                                    type="checkbox"
+                                    checked={selComp.has(`${k}:${x.f.nomeFile}`)}
+                                    onChange={() => {
+                                      const ns = new Set(selComp);
+                                      const chiave = `${k}:${x.f.nomeFile}`;
+                                      if (ns.has(chiave)) ns.delete(chiave);
+                                      else ns.add(chiave);
+                                      setSelComp(ns);
+                                    }}
+                                    className="h-3.5 w-3.5 accent-primary"
+                                  />
+                                </td>
                                 <td className="whitespace-nowrap py-1 pr-2 font-medium">
                                   {x.f.numero}
                                 </td>
@@ -1107,6 +1186,33 @@ export function ResocontoTab() {
                                 </td>
                                 <td className="whitespace-nowrap py-1 pr-2 text-muted-foreground">
                                   {fmtData(x.f.dataDocumento)}
+                                </td>
+                                <td className="whitespace-nowrap py-1 pr-2 text-right tabular-nums">
+                                  {(() => {
+                                    /* RITARDO/ANTICIPO (solo aperte): giorni
+                                       rispetto alla scadenza — rosso "+N gg"
+                                       se scaduta, verde "fra N gg" se deve
+                                       ancora scadere (l'anticipo). */
+                                    if (stato !== "aperto" || !x.s.scadenza) return null;
+                                    const gg = Math.round(
+                                      (new Date(`${oggiISO}T00:00:00`).getTime() -
+                                        new Date(`${x.s.scadenza.slice(0, 10)}T00:00:00`).getTime()) /
+                                        86400000,
+                                    );
+                                    return (
+                                      <span
+                                        className={
+                                          gg > 0
+                                            ? "font-medium text-status-absent"
+                                            : "font-medium text-status-present"
+                                        }
+                                      >
+                                        {gg > 0
+                                          ? `+${gg} ${t("fin.termGg")}`
+                                          : `${t("rt.elFra")} ${-gg} ${t("fin.termGg")}`}
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="whitespace-nowrap py-1 pr-2 text-right tabular-nums">
                                   {fmtImporto(stato === "aperto" ? residuo : x.f.totale)} €
