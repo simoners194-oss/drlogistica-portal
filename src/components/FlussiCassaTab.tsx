@@ -103,6 +103,9 @@ export function FlussiCassaTab() {
   const [exDa, setExDa] = useState("");
   const [exA, setExA] = useState("");
   const [exBusy, setExBusy] = useState(false);
+  // Preset di esclusioni (nome con cui salvare l'insieme corrente).
+  const [presetNome, setPresetNome] = useState("");
+  const [presetBusy, setPresetBusy] = useState(false);
   // Form nuova voce manuale.
   const [nuovaVoce, setNuovaVoce] = useState("");
 
@@ -165,6 +168,18 @@ export function FlussiCassaTab() {
   );
 
   const voci = useMemo(() => (flussi ?? []).filter((x) => x.genere === "voce"), [flussi]);
+  // Preset salvati: righe genere "preset" raggruppate per nome (Title).
+  const presets = useMemo(() => {
+    const per = new Map<string, FlussoCassaRiga[]>();
+    for (const r of flussi ?? []) {
+      if (r.genere !== "preset" || !r.note) continue;
+      const l = per.get(r.nome) ?? [];
+      l.push(r);
+      per.set(r.nome, l);
+    }
+    return [...per.entries()].sort((a, b) => a[0].localeCompare(b[0], "it"));
+  }, [flussi]);
+
   const esclusioni = useMemo(
     () => (flussi ?? []).filter((x) => x.genere === "esclusione"),
     [flussi],
@@ -437,6 +452,86 @@ export function FlussiCassaTab() {
       toast.error(t("common.error"), {
         description: err instanceof Error ? err.message : String(err),
       });
+    }
+  };
+
+  // --- Preset di esclusioni --------------------------------------------------
+  // Salva l'insieme CORRENTE di esclusioni sotto un nome (sovrascrivendo un
+  // eventuale preset omonimo); applicare un preset SOSTITUISCE le esclusioni.
+  const salvaPreset = async () => {
+    const nome = presetNome.trim();
+    if (!nome) return;
+    if (esclusioni.length === 0) {
+      toast.error(t("fc.presetVuoto"));
+      return;
+    }
+    setPresetBusy(true);
+    try {
+      const vecchie = (flussi ?? []).filter(
+        (r) => r.genere === "preset" && r.nome.trim().toLowerCase() === nome.toLowerCase(),
+      );
+      for (const r of vecchie) await spDeleteFlussoCassa({ data: { id: r.id } });
+      for (const e of esclusioni) {
+        await spUpsertFlussoCassa({
+          data: {
+            nome,
+            genere: "preset",
+            mese: e.mese,
+            meseFine: e.meseFine,
+            importo: 0,
+            note: e.nome,
+          },
+        });
+      }
+      setPresetNome("");
+      await ricaricaFlussi();
+      toast.success(t("fc.presetSalvato"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setPresetBusy(false);
+    }
+  };
+
+  const applicaPreset = async (nome: string, righe: FlussoCassaRiga[]) => {
+    if (!window.confirm(`${t("fc.presetConfirm")} “${nome}”?`)) return;
+    setPresetBusy(true);
+    try {
+      for (const e of esclusioni) await spDeleteFlussoCassa({ data: { id: e.id } });
+      for (const r of righe) {
+        await spUpsertFlussoCassa({
+          data: {
+            nome: r.note ?? "",
+            genere: "esclusione",
+            mese: r.mese,
+            meseFine: r.meseFine,
+            importo: 0,
+          },
+        });
+      }
+      await ricaricaFlussi();
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setPresetBusy(false);
+    }
+  };
+
+  const eliminaPreset = async (righe: FlussoCassaRiga[]) => {
+    setPresetBusy(true);
+    try {
+      for (const r of righe) await spDeleteFlussoCassa({ data: { id: r.id } });
+      await ricaricaFlussi();
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setPresetBusy(false);
     }
   };
 
@@ -734,6 +829,49 @@ export function FlussiCassaTab() {
               {contropartiEscludibili.length === 0 && (
                 <span className="text-xs text-muted-foreground">{t("fc.esclTutteFuori")}</span>
               )}
+            </div>
+            <div className="mt-3 border-t border-border/60 pt-2">
+              <p className="mb-1 text-xs text-muted-foreground">{t("fc.presetDesc")}</p>
+              <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                {presets.map(([nome, righe]) => (
+                  <span
+                    key={nome}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs"
+                  >
+                    <button
+                      type="button"
+                      disabled={presetBusy}
+                      onClick={() => void applicaPreset(nome, righe)}
+                      title={t("fc.presetApplicaTip")}
+                      className="font-medium hover:text-primary disabled:opacity-40"
+                    >
+                      {nome} ({righe.length})
+                    </button>
+                    <button
+                      type="button"
+                      disabled={presetBusy}
+                      onClick={() => void eliminaPreset(righe)}
+                      title={t("common.delete")}
+                    >
+                      <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  value={presetNome}
+                  onChange={(e) => setPresetNome(e.target.value)}
+                  placeholder={t("fc.presetNomePh")}
+                  className={`${inputCls} w-44`}
+                />
+                <button
+                  type="button"
+                  disabled={presetBusy || !presetNome.trim() || esclusioni.length === 0}
+                  onClick={() => void salvaPreset()}
+                  className="rounded-lg border border-border px-3 py-1 hover:bg-muted disabled:opacity-40"
+                >
+                  {t("fc.presetSalva")}
+                </button>
+              </div>
             </div>
           </div>
         )}

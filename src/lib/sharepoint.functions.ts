@@ -594,7 +594,8 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
       .trim()
       .slice(0, 120);
     if (!nome) throw new Error("Nome mancante");
-    const genere = input?.genere === "esclusione" ? "esclusione" : "voce";
+    const genere =
+      input?.genere === "esclusione" ? "esclusione" : input?.genere === "preset" ? "preset" : "voce";
     const importo = Number(input?.importo ?? 0);
     if (genere === "voce" && (!Number.isFinite(importo) || importo === 0))
       throw new Error("Importo non valido (per le uscite usare il segno meno)");
@@ -608,7 +609,7 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
       throw new Error("Mese di fine non valido (formato 2026-12)");
     return {
       nome,
-      genere: genere as "voce" | "esclusione",
+      genere: genere as "voce" | "esclusione" | "preset",
       mese: mese || undefined,
       meseFine: meseFine || undefined,
       importo: Number.isFinite(importo) ? Math.round(importo * 100) / 100 : 0,

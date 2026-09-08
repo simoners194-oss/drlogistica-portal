@@ -5691,12 +5691,15 @@ export async function deletePrefattura(id: string): Promise<void> {
 
 export interface FlussoCassaRiga {
   id: string;
-  /** Title: nome della voce ("Stipendi") o controparte da escludere. */
+  /** Title: nome della voce ("Stipendi"), controparte da escludere, o —
+   *  per genere "preset" — il nome del preset di esclusioni. */
   nome: string;
-  genere: "voce" | "esclusione";
-  /** Voce: mese di competenza YYYY-MM. Esclusione: da mese (opzionale). */
+  /** "preset" = una riga per ogni esclusione salvata nel preset: Title è
+   *  il nome del preset, Note la controparte, mese/meseFine la finestra. */
+  genere: "voce" | "esclusione" | "preset";
+  /** Voce: mese di competenza YYYY-MM. Esclusione/preset: da mese (opzionale). */
   mese?: string;
-  /** Esclusione: fino a mese YYYY-MM (opzionale). */
+  /** Esclusione/preset: fino a mese YYYY-MM (opzionale). */
   meseFine?: string;
   /** Solo voci, col segno (uscite negative). */
   importo: number;
@@ -5727,7 +5730,10 @@ export async function fetchFlussiCassa(): Promise<FlussoCassaRiga[]> {
       return {
         id: String(it.id),
         nome: String(f["Title"] ?? "").trim(),
-        genere: (gen === "esclusione" ? "esclusione" : "voce") as "voce" | "esclusione",
+        genere: (gen === "esclusione" ? "esclusione" : gen === "preset" ? "preset" : "voce") as
+          | "voce"
+          | "esclusione"
+          | "preset",
         mese: /^\d{4}-\d{2}$/.test(mese) ? mese : undefined,
         meseFine: /^\d{4}-\d{2}$/.test(meseFine) ? meseFine : undefined,
         importo: F.Importo ? Number(f[F.Importo] ?? 0) || 0 : 0,
