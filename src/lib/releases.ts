@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.61.0",
+    date: "2026-09-08",
+    codename: "Quota DR Logistics",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Il 90% delle iMile di facchinaggio va a DR Logistics",
+        description:
+          "Nei Flussi di cassa le fatture iMile con oggetto 'SERVIZI DI FACCHINAGGIO' + 'VIA DEL TECCHIONE' generano la riga '≈ Quota DR Logistics': il 90% dell'importo (IVA compresa) esce nello stesso periodo dell'incasso atteso, colonna Scaduto compresa, e pesa su saldo ed export CSV. È l'UNICA cosa dovuta a DR Logistics: le sue fatture da fornitore (pregresso compreso) non contano più in questa vista — nel Resoconto restano visibili come prima.",
+      },
+    ],
+  },
+  {
     version: "1.60.0",
     date: "2026-09-08",
     codename: "Il manuale è sacro",

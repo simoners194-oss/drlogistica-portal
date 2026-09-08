@@ -162,7 +162,13 @@ export function FlussiCassaTab() {
     [fattureEm, termini],
   );
   const passive = useMemo(
-    () => prepara(fattureRic ?? []),
+    // REGOLA FR 08/09: a DR Logistics si deve SOLO la quota 90% delle iMile
+    // di facchinaggio (riga dedicata piu' sotto) — le sue fatture passive,
+    // pregresso compreso, spariscono da QUESTA vista (Resoconto invariato).
+    () =>
+      prepara(fattureRic ?? []).filter(
+        (x) => !x.f.cliente.toLowerCase().includes("dr logistics"),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [fattureRic, termini],
   );
@@ -297,6 +303,40 @@ export function FlussiCassaTab() {
   const entrate = useMemo(() => somma(attive), [attive, periodi, esclusioni, daData, finoA]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const uscite = useMemo(() => somma(passive), [passive, periodi, esclusioni, daData, finoA]);
+
+  // QUOTA DR LOGISTICS (regola FR 08/09): le fatture iMile il cui oggetto
+  // contiene "SERVIZI DI FACCHINAGGIO" e "VIA DEL TECCHIONE" vanno girate
+  // al 90% (IVA compresa) a DR Logistics nello STESSO periodo dell'incasso
+  // atteso. Stesse guardie di somma(), quota sul residuo aperto.
+  const QUOTA_DR = 0.9;
+  const quotaDR = useMemo(() => {
+    const out = { scaduto: 0, perPeriodo: new Map<string, number>() };
+    for (const x of attive) {
+      if (!x.f.cliente.toLowerCase().includes("imile")) continue;
+      const testo = `${x.f.oggetto ?? ""} ${x.f.causaleDoc ?? ""}`.toLowerCase();
+      if (!testo.includes("servizi di facchinaggio") || !testo.includes("via del tecchione"))
+        continue;
+      const residuo = residuoAperto(x);
+      if (residuo <= 1) continue;
+      if (!x.s.scadenza) continue;
+      const scad = x.s.scadenza.slice(0, 10);
+      if (esclusa(x.f.cliente, scad.slice(0, 7))) continue;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(daData) && !x.s.inRitardo && scad < daData) continue;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(finoA) && scad > finoA) continue;
+      const q = Math.round(residuo * QUOTA_DR * 100) / 100;
+      if (x.s.inRitardo) out.scaduto += q;
+      else {
+        const kp = chiaveDi(scad);
+        if (!chiaviPeriodo.has(kp)) continue;
+        out.perPeriodo.set(kp, (out.perPeriodo.get(kp) ?? 0) + q);
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attive, periodi, esclusioni, daData, finoA]);
+  const quotaDRTotale =
+    quotaDR.scaduto + [...quotaDR.perPeriodo.values()].reduce((s, v) => s + v, 0);
+  const saldoScaduto = entrate.tot.scaduto - uscite.tot.scaduto - quotaDR.scaduto;
 
   // --- Prefatture (stessa copertura della Previsione) ------------------------
   const prefPer = useMemo(() => {
@@ -539,7 +579,10 @@ export function FlussiCassaTab() {
 
   // --- Saldo -----------------------------------------------------------------
   const saldoDi = (chiave: string, mese: string): number => {
-    let v = (entrate.tot.perPeriodo.get(chiave) ?? 0) - (uscite.tot.perPeriodo.get(chiave) ?? 0);
+    let v =
+      (entrate.tot.perPeriodo.get(chiave) ?? 0) -
+      (uscite.tot.perPeriodo.get(chiave) ?? 0) -
+      (quotaDR.perPeriodo.get(chiave) ?? 0);
     if (modo === "mese") {
       v += (prefPer.att.get(mese) ?? 0) - (prefPer.pas.get(mese) ?? 0);
       for (const nome of nomiVoci) v += valoreVoce(nome, mese)?.importo ?? 0;
@@ -585,6 +628,13 @@ export function FlussiCassaTab() {
         ...periodi.map((p) => num(-(r.perPeriodo.get(p.chiave) ?? 0))),
         num(-(r.scaduto + r.totale)),
       ]);
+    if (quotaDRTotale > 0.005)
+      righe.push([
+        t("fc.quotaDR"),
+        num(-quotaDR.scaduto),
+        ...periodi.map((p) => num(-(quotaDR.perPeriodo.get(p.chiave) ?? 0))),
+        num(-quotaDRTotale),
+      ]);
     if (haPref) {
       righe.push([
         t("fc.prefAtt"),
@@ -609,7 +659,7 @@ export function FlussiCassaTab() {
         ]);
     righe.push([
       t("fc.saldo"),
-      num(entrate.tot.scaduto - uscite.tot.scaduto),
+      num(saldoScaduto),
       ...periodi.map((p) => num(saldoDi(p.chiave, p.mese))),
       num(periodi.reduce((s, p) => s + saldoDi(p.chiave, p.mese), 0)),
     ]);
@@ -962,6 +1012,22 @@ export function FlussiCassaTab() {
                     </tr>
                   ))}
 
+                {/* QUOTA DR LOGISTICS (90% delle iMile di facchinaggio) */}
+                {quotaDRTotale > 0.005 && (
+                  <tr className="border-t border-border/40 italic text-primary">
+                    <td className="py-1 pr-3" title={t("fc.quotaDRTip")}>
+                      {t("fc.quotaDR")}
+                    </td>
+                    <td className={`${tdN} text-status-absent`}>{fmt(-quotaDR.scaduto)}</td>
+                    {periodi.map((p) => (
+                      <td key={p.chiave} className={tdN}>
+                        {fmt(-(quotaDR.perPeriodo.get(p.chiave) ?? 0))}
+                      </td>
+                    ))}
+                    <td className={tdN}>{fmt(-quotaDRTotale)}</td>
+                  </tr>
+                )}
+
                 {/* PREFATTURE (solo vista mensile) */}
                 {haPref && (
                   <>
@@ -1015,9 +1081,9 @@ export function FlussiCassaTab() {
                 <tr className="border-t-2 border-border font-semibold">
                   <td className="py-1.5 pr-3">{t("fc.saldo")}</td>
                   <td
-                    className={`${tdN} ${entrate.tot.scaduto - uscite.tot.scaduto >= 0 ? "text-status-present" : "text-status-absent"}`}
+                    className={`${tdN} ${saldoScaduto >= 0 ? "text-status-present" : "text-status-absent"}`}
                   >
-                    {fmt(entrate.tot.scaduto - uscite.tot.scaduto)}
+                    {fmt(saldoScaduto)}
                   </td>
                   {periodi.map((p) => {
                     const v = saldoDi(p.chiave, p.mese);

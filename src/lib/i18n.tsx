@@ -618,6 +618,9 @@ const en = {
   "fc.presetApplicaTip": "Apply: replaces the current exclusions with this preset's",
   "fc.presetConfirm": "Replace the current exclusions with preset",
   "fc.presetVuoto": "No exclusions to save.",
+  "fc.quotaDR": "≈ DR Logistics share (90% iMile handling)",
+  "fc.quotaDRTip":
+    "iMile invoices containing 'SERVIZI DI FACCHINAGGIO' and 'VIA DEL TECCHIONE': 90% of the amount (VAT included) is owed to DR Logistics in the same period as the expected collection. This is the only amount owed to DR Logistics: their supplier invoices are not counted in this view.",
   "fc.esclDa": "From month (optional)",
   "fc.esclA": "To month (optional)",
   "fc.esclAggiungi": "Exclude",
@@ -2015,6 +2018,9 @@ const it: Record<DictKey, string> = {
   "fc.presetApplicaTip": "Applica: sostituisce le esclusioni attuali con quelle del preset",
   "fc.presetConfirm": "Sostituire le esclusioni attuali con il preset",
   "fc.presetVuoto": "Non ci sono esclusioni da salvare.",
+  "fc.quotaDR": "≈ Quota DR Logistics (90% iMile facchinaggio)",
+  "fc.quotaDRTip":
+    "Fatture iMile con oggetto contenente 'SERVIZI DI FACCHINAGGIO' e 'VIA DEL TECCHIONE': il 90% dell'importo (IVA compresa) va girato a DR Logistics nello stesso periodo dell'incasso atteso. È l'unica cosa dovuta a DR Logistics: le sue fatture da fornitore non contano in questa vista.",
   "fc.esclDa": "Dal mese (facoltativo)",
   "fc.esclA": "Al mese (facoltativo)",
   "fc.esclAggiungi": "Escludi",
