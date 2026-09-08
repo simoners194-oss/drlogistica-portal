@@ -2484,8 +2484,8 @@ function FinanzaPage() {
         get: (m) => fmtImporto(m.importo),
         ord: ordImporto,
       },
-      { key: "causale", label: t("fin.causaleCol"), get: (m) => m.descrizione },
       { key: "tipo", label: t("common.type"), get: (m) => m.tipologia },
+      { key: "causale", label: t("fin.causaleCol"), get: (m) => m.descrizione },
       { key: "cliforn", label: t("fin.cliForn"), get: (m) => m.cliente },
       { key: "nrfatt", label: t("fin.nrFattura"), get: (m) => m.nrFattura },
       { key: "note", label: t("fin.note"), get: (m) => m.note },
@@ -3904,6 +3904,23 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                           {fmtImporto(saldoDopo(m))}
                         </td>
                       )}
+                      <td className="py-1.5 pr-3">
+                        {m.tipologia}
+                        {m.sottocategoria && (
+                          <span className="text-[11px] text-muted-foreground">
+                            {" "}
+                            · {m.sottocategoria}
+                          </span>
+                        )}
+                        {(m.allocPrimaria || m.allocSecondaria) && (
+                          <div className="text-[11px] text-muted-foreground">
+                            {[m.allocPrimaria, m.allocSecondaria].filter(Boolean).join(" / ")}
+                          </div>
+                        )}
+                        {m.daVerificare && (
+                          <AlertTriangle className="h-3.5 w-3.5 inline-block ml-1 text-status-absent" />
+                        )}
+                      </td>
                       <td className="py-1.5 pr-3 max-w-64">
                         {/* La causale VERA e' il testo del movimento; il
                             codice ABI (usato dal classificatore) resta
@@ -3934,23 +3951,6 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                             </button>
                           ) : null;
                         })()}
-                      </td>
-                      <td className="py-1.5 pr-3">
-                        {m.tipologia}
-                        {m.sottocategoria && (
-                          <span className="text-[11px] text-muted-foreground">
-                            {" "}
-                            · {m.sottocategoria}
-                          </span>
-                        )}
-                        {(m.allocPrimaria || m.allocSecondaria) && (
-                          <div className="text-[11px] text-muted-foreground">
-                            {[m.allocPrimaria, m.allocSecondaria].filter(Boolean).join(" / ")}
-                          </div>
-                        )}
-                        {m.daVerificare && (
-                          <AlertTriangle className="h-3.5 w-3.5 inline-block ml-1 text-status-absent" />
-                        )}
                       </td>
                       <td className="py-1.5 pr-3">
                         {m.cliente || "—"}
