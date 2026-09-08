@@ -96,9 +96,10 @@ export function FlussiCassaTab() {
   const [cellaVal, setCellaVal] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  // Form esclusioni.
+  // Form esclusioni: spunte multiple sulla checklist delle controparti.
   const [showEscl, setShowEscl] = useState(false);
-  const [exNome, setExNome] = useState("");
+  const [exSel, setExSel] = useState<Set<string>>(new Set());
+  const [exCerca, setExCerca] = useState("");
   const [exDa, setExDa] = useState("");
   const [exA, setExA] = useState("");
   const [exBusy, setExBusy] = useState(false);
@@ -399,20 +400,23 @@ export function FlussiCassaTab() {
     }
   };
 
-  const aggiungiEsclusione = async () => {
-    if (!exNome.trim()) return;
+  const escludiSelezionate = async () => {
+    if (exSel.size === 0) return;
     setExBusy(true);
     try {
-      await spUpsertFlussoCassa({
-        data: {
-          nome: exNome.trim(),
-          genere: "esclusione",
-          mese: exDa || undefined,
-          meseFine: exA || undefined,
-          importo: 0,
-        },
-      });
-      setExNome("");
+      // La finestra di mesi (facoltativa) vale per tutte le spunte del giro.
+      for (const nome of exSel) {
+        await spUpsertFlussoCassa({
+          data: {
+            nome,
+            genere: "esclusione",
+            mese: exDa || undefined,
+            meseFine: exA || undefined,
+            importo: 0,
+          },
+        });
+      }
+      setExSel(new Set());
       setExDa("");
       setExA("");
       await ricaricaFlussi();
@@ -517,12 +521,28 @@ export function FlussiCassaTab() {
 
   const loading = fattureEm == null || fattureRic == null || flussi == null;
 
-  // Controparti per il suggerimento del form esclusioni.
+  // Controparti per la checklist del form esclusioni.
   const contropartiNote = useMemo(() => {
     const set = new Set<string>();
     for (const x of [...attive, ...passive]) set.add(x.f.cliente);
     return [...set].sort((a, b) => a.localeCompare(b)).slice(0, 400);
   }, [attive, passive]);
+
+  // Checklist: fuori le controparti GIA' coperte da un'esclusione (con
+  // qualunque finestra di mesi — i chip sopra restano il posto per gestirle)
+  // e quelle che non passano il filtro di ricerca.
+  const contropartiEscludibili = useMemo(() => {
+    const cerca = exCerca.trim().toLowerCase();
+    return contropartiNote.filter((c) => {
+      const chiave = clienteGroupKey(c) || c.toLowerCase();
+      const giaEsclusa = esclusioni.some((e) => {
+        const token = clienteGroupKey(e.nome) || e.nome.trim().toLowerCase();
+        return !!token && chiave.includes(token);
+      });
+      if (giaEsclusa) return false;
+      return !cerca || c.toLowerCase().includes(cerca);
+    });
+  }, [contropartiNote, esclusioni, exCerca]);
 
   const inputCls =
     "rounded-lg border border-border bg-background px-2 py-1 text-[13px] text-foreground";
@@ -658,17 +678,11 @@ export function FlussiCassaTab() {
             </div>
             <div className="flex flex-wrap items-end gap-2 text-[13px]">
               <input
-                list="fc-controparti"
-                value={exNome}
-                onChange={(e) => setExNome(e.target.value)}
-                placeholder={t("fc.esclNomePh")}
+                value={exCerca}
+                onChange={(e) => setExCerca(e.target.value)}
+                placeholder={t("fc.esclCercaPh")}
                 className={`${inputCls} w-64`}
               />
-              <datalist id="fc-controparti">
-                {contropartiNote.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
               <input
                 type="month"
                 value={exDa}
@@ -685,12 +699,41 @@ export function FlussiCassaTab() {
               />
               <button
                 type="button"
-                disabled={exBusy || !exNome.trim()}
-                onClick={() => void aggiungiEsclusione()}
+                disabled={exBusy || exSel.size === 0}
+                onClick={() => void escludiSelezionate()}
                 className="rounded-lg bg-primary px-3 py-1 text-primary-foreground disabled:opacity-40"
               >
                 {t("fc.esclAggiungi")}
+                {exSel.size > 0 ? ` (${exSel.size})` : ""}
               </button>
+            </div>
+            <div className="mt-2 grid max-h-56 grid-cols-1 gap-x-4 gap-y-0.5 overflow-y-auto rounded-lg border border-border/60 p-2 sm:grid-cols-2 lg:grid-cols-3">
+              {contropartiEscludibili.map((c) => (
+                <label
+                  key={c}
+                  className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-muted"
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-primary"
+                    checked={exSel.has(c)}
+                    onChange={() =>
+                      setExSel((s) => {
+                        const ns = new Set(s);
+                        if (ns.has(c)) ns.delete(c);
+                        else ns.add(c);
+                        return ns;
+                      })
+                    }
+                  />
+                  <span className="truncate" title={c}>
+                    {c}
+                  </span>
+                </label>
+              ))}
+              {contropartiEscludibili.length === 0 && (
+                <span className="text-xs text-muted-foreground">{t("fc.esclTutteFuori")}</span>
+              )}
             </div>
           </div>
         )}
