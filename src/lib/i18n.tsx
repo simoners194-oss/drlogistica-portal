@@ -620,7 +620,7 @@ const en = {
   "fc.presetVuoto": "No exclusions to save.",
   "fc.quotaDR": "≈ DR Logistics share (90% iMile handling)",
   "fc.quotaDRTip":
-    "iMile invoices containing 'SERVIZI DI FACCHINAGGIO' and 'VIA DEL TECCHIONE': 90% of the amount (VAT included) is owed to DR Logistics in the same period as the expected collection. This is the only amount owed to DR Logistics: their supplier invoices are not counted in this view.",
+    "iMile invoices containing 'SERVIZI DI FACCHINAGGIO' and 'VIA DEL TECCHIONE': 90% of the amount (VAT included) is owed to DR Logistics in the same period as the expected collection. Once collected (from Sep 2026 onward) the share sits in Overdue until it is covered by actual bank transfers to DR Logistics. This is the only amount owed to DR Logistics: their supplier invoices are not counted in this view.",
   "fc.esclDa": "From month (optional)",
   "fc.esclA": "To month (optional)",
   "fc.esclAggiungi": "Exclude",
@@ -2020,7 +2020,7 @@ const it: Record<DictKey, string> = {
   "fc.presetVuoto": "Non ci sono esclusioni da salvare.",
   "fc.quotaDR": "≈ Quota DR Logistics (90% iMile facchinaggio)",
   "fc.quotaDRTip":
-    "Fatture iMile con oggetto contenente 'SERVIZI DI FACCHINAGGIO' e 'VIA DEL TECCHIONE': il 90% dell'importo (IVA compresa) va girato a DR Logistics nello stesso periodo dell'incasso atteso. È l'unica cosa dovuta a DR Logistics: le sue fatture da fornitore non contano in questa vista.",
+    "Fatture iMile con oggetto contenente 'SERVIZI DI FACCHINAGGIO' e 'VIA DEL TECCHIONE': il 90% dell'importo (IVA compresa) va girato a DR Logistics nello stesso periodo dell'incasso atteso. Una volta incassate (da settembre 2026) la quota resta nello Scaduto finché non è coperta dai bonifici reali verso DR Logistics. È l'unica cosa dovuta a DR Logistics: le sue fatture da fornitore non contano in questa vista.",
   "fc.esclDa": "Dal mese (facoltativo)",
   "fc.esclA": "Al mese (facoltativo)",
   "fc.esclAggiungi": "Escludi",

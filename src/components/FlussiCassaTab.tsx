@@ -16,6 +16,7 @@ import {
   collegaNoteCredito,
   fattureEscluse,
   residuoAperto,
+  incassatoRegistrato,
   type TerminePagamento,
 } from "@/lib/fatture-logic";
 import {
@@ -307,15 +308,21 @@ export function FlussiCassaTab() {
   // QUOTA DR LOGISTICS (regola FR 08/09): le fatture iMile il cui oggetto
   // contiene "SERVIZI DI FACCHINAGGIO" e "VIA DEL TECCHIONE" vanno girate
   // al 90% (IVA compresa) a DR Logistics nello STESSO periodo dell'incasso
-  // atteso. Stesse guardie di somma(), quota sul residuo aperto.
+  // atteso. Sulle APERTE la quota segue la scadenza (stesse guardie di
+  // somma()); sulle INCASSATE da settembre in poi (ok Simone 10/09) matura
+  // in Scaduto e si spegne man mano che partono i bonifici REALI verso
+  // DR Logistics, letti dai movimenti banca. Pregresso fuori.
   const QUOTA_DR = 0.9;
+  const QUOTA_DR_DA = "2026-09-01";
+  const eFacchinaggio = (x: (typeof attive)[number]): boolean => {
+    if (!x.f.cliente.toLowerCase().includes("imile")) return false;
+    const testo = `${x.f.oggetto ?? ""} ${x.f.causaleDoc ?? ""}`.toLowerCase();
+    return testo.includes("servizi di facchinaggio") && testo.includes("via del tecchione");
+  };
   const quotaDR = useMemo(() => {
     const out = { scaduto: 0, perPeriodo: new Map<string, number>() };
     for (const x of attive) {
-      if (!x.f.cliente.toLowerCase().includes("imile")) continue;
-      const testo = `${x.f.oggetto ?? ""} ${x.f.causaleDoc ?? ""}`.toLowerCase();
-      if (!testo.includes("servizi di facchinaggio") || !testo.includes("via del tecchione"))
-        continue;
+      if (!eFacchinaggio(x)) continue;
       const residuo = residuoAperto(x);
       if (residuo <= 1) continue;
       if (!x.s.scadenza) continue;
@@ -331,9 +338,30 @@ export function FlussiCassaTab() {
         out.perPeriodo.set(kp, (out.perPeriodo.get(kp) ?? 0) + q);
       }
     }
+    // Maturata sugli incassi gia' arrivati, al netto di quanto gia' girato.
+    // SOLO la facchinaggio di LUGLIO (FPR 220/26, incassata 08/09 — precisato
+    // da Simone 10/09): per le prossime si decidera' a incasso avvenuto.
+    let maturata = 0;
+    for (const x of attive) {
+      if (!eFacchinaggio(x)) continue;
+      if (!x.f.numero.includes("220/26")) continue;
+      const inc = incassatoRegistrato(x);
+      if (inc <= 0) continue;
+      const dataInc = (x.f.dataIncasso ?? "").slice(0, 10);
+      if (!dataInc || dataInc < QUOTA_DR_DA) continue;
+      maturata += inc * QUOTA_DR;
+    }
+    let versato = 0;
+    for (const m of movimenti ?? []) {
+      if (m.importo >= 0) continue;
+      if (m.dataContabile < QUOTA_DR_DA) continue;
+      if (!`${m.cliente} ${m.descrizione}`.toLowerCase().includes("dr logistics")) continue;
+      versato += -m.importo;
+    }
+    out.scaduto += Math.max(0, Math.round((maturata - versato) * 100) / 100);
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attive, periodi, esclusioni, daData, finoA]);
+  }, [attive, movimenti, periodi, esclusioni, daData, finoA]);
   const quotaDRTotale =
     quotaDR.scaduto + [...quotaDR.perPeriodo.values()].reduce((s, v) => s + v, 0);
   const saldoScaduto = entrate.tot.scaduto - uscite.tot.scaduto - quotaDR.scaduto;
