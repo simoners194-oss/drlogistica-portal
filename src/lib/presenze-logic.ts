@@ -22,7 +22,10 @@ export const UNDO_TIMBRATURA_MINUTI = 5;
 // mezzanotte: l'uscita chiude l'entrata aperta anche se il giorno è cambiato.
 // Oltre il tetto, il turno si considera dimenticato: l'Entrata torna
 // disponibile e il turno aperto finisce nelle anomalie da sanare.
-export const MAX_TURNO_ORE = 13;
+// 13 → 16 (ok Simone 11/09): i turni spezzati di Cerro al Lambro Zingali
+// (es. 4:00→18:00 con pausa lunga) sono 14h di calendario e il tetto a 13
+// rifiutava l'uscita con "devi prima registrare l'entrata".
+export const MAX_TURNO_ORE = 16;
 
 /** Evento con orario, indipendente dal nome del campo client/server. */
 export interface EventoConOra {
