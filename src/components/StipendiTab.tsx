@@ -11,10 +11,13 @@ import { Banknote, Loader2, Trash2, Upload } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { esportaCsvFile } from "@/lib/csv";
 import {
+  mensilitaStimate,
   meseSuccessivo,
   parseCostiFile,
+  parseMappatura,
   parseStipendiDr,
   totaleMese,
+  type AnagraficaDipendente,
   type NettiMese,
   type ParseCostiFileResult,
   type StipendiDb,
@@ -23,6 +26,7 @@ import {
 import {
   spStipendiEliminaMese,
   spStipendiGet,
+  spStipendiSalvaAnagrafica,
   spStipendiSalvaMese,
   spStipendiSalvaNetti,
 } from "@/lib/stipendi.functions";
@@ -52,6 +56,11 @@ function fmtMese(yyyymm: string): string {
     "Dicembre",
   ];
   return `${nomi[Number(m) - 1] ?? m} ${y}`;
+}
+
+function fmtDataIt(iso: string): string {
+  const [y, m, g] = iso.slice(0, 10).split("-");
+  return y && m && g ? `${g}/${m}/${y}` : iso;
 }
 
 interface PreviewStip {
@@ -87,6 +96,14 @@ export function StipendiTab() {
   } | null>(null);
   const [flussiNetti, setFlussiNetti] = useState(true);
   const [savingN, setSavingN] = useState(false);
+  // Import "Mappatura Dipendenti" (anagrafica contrattuale: livello, contratto).
+  const [showMappa, setShowMappa] = useState(false);
+  const [parsingM, setParsingM] = useState(false);
+  const [previewMappa, setPreviewMappa] = useState<{
+    fileName: string;
+    anagrafica: AnagraficaDipendente[];
+  } | null>(null);
+  const [savingM, setSavingM] = useState(false);
 
   const refresh = () =>
     spStipendiGet()
@@ -200,6 +217,34 @@ export function StipendiTab() {
   }, [nettoMese]);
   const nettoDi = (d: StipendioDipendente) =>
     nettiPerNome.get(nameKey(`${d.cognome} ${d.nome}`)) ?? null;
+  // Anagrafica contrattuale (Mappatura Dipendenti) per nome.
+  const anagPerNome = useMemo(() => {
+    const m = new Map<string, AnagraficaDipendente>();
+    for (const a of db?.anagrafica ?? []) m.set(nameKey(a.nome), a);
+    return m;
+  }, [db]);
+  const anagDi = (d: StipendioDipendente) =>
+    anagPerNome.get(nameKey(`${d.cognome} ${d.nome}`)) ?? null;
+  // Mensilità stimate (12/13/14) dai ratei Mens.Agg. di TUTTI i mesi caricati:
+  // mediana di (rateo/ordinario); i mesi con ordinario basso si scartano.
+  const mensPerNome = useMemo(() => {
+    const ratios = new Map<string, number[]>();
+    for (const m of db?.mesi ?? [])
+      for (const d of m.dipendenti) {
+        if (d.costoOrdinario < 500) continue;
+        const k = nameKey(`${d.cognome} ${d.nome}`);
+        if (!ratios.has(k)) ratios.set(k, []);
+        ratios.get(k)!.push(d.mensilitaAggiuntive / d.costoOrdinario);
+      }
+    const out = new Map<string, number>();
+    for (const [k, rs] of ratios) {
+      const v = mensilitaStimate(rs);
+      if (v != null) out.set(k, v);
+    }
+    return out;
+  }, [db]);
+  const mensDi = (d: StipendioDipendente) =>
+    mensPerNome.get(nameKey(`${d.cognome} ${d.nome}`)) ?? null;
 
   const onFile = async (f: File) => {
     setParsing(true);
@@ -293,6 +338,53 @@ export function StipendiTab() {
     }
   };
 
+  const onFileMappa = async (f: File) => {
+    setParsingM(true);
+    setPreviewMappa(null);
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(await f.arrayBuffer(), { cellDates: false });
+      const fogli = wb.SheetNames.map((nome) => ({
+        nome,
+        matrix: XLSX.utils.sheet_to_json(wb.Sheets[nome], {
+          header: 1,
+          raw: true,
+          defval: null,
+        }) as unknown[][],
+      }));
+      const anagrafica = parseMappatura(fogli);
+      if (!anagrafica) {
+        toast.error(t("stip.errMappa"));
+        return;
+      }
+      setPreviewMappa({ fileName: f.name, anagrafica });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setParsingM(false);
+    }
+  };
+
+  const confermaMappa = async () => {
+    if (!previewMappa) return;
+    setSavingM(true);
+    try {
+      const res = await spStipendiSalvaAnagrafica({
+        data: { anagrafica: previewMappa.anagrafica, fonte: previewMappa.fileName },
+      });
+      setDb(res);
+      setPreviewMappa(null);
+      setShowMappa(false);
+      toast.success(t("stip.mappaOk"), {
+        description: `${previewMappa.anagrafica.length} ${t("stip.dipendenti").toLowerCase()}`,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingM(false);
+    }
+  };
+
   const conferma = async () => {
     if (!preview || !/^\d{4}-\d{2}$/.test(meseComp)) return;
     setSaving(true);
@@ -359,6 +451,10 @@ export function StipendiTab() {
         "Codice",
         "Cognome",
         "Nome",
+        "Livello",
+        "Contratto",
+        "Fine contratto",
+        "Mensilita",
         "Ore ordinarie",
         "Ore straordinarie",
         "Costo ordinario",
@@ -379,6 +475,10 @@ export function StipendiTab() {
         d.codice,
         d.cognome,
         d.nome,
+        anagDi(d)?.livello ?? "",
+        anagDi(d)?.contratto ?? "",
+        anagDi(d)?.fineContratto ?? "",
+        mensDi(d) ?? "",
         d.oreOrdinarie,
         d.oreStraordinarie,
         d.costoOrdinario,
@@ -460,6 +560,13 @@ export function StipendiTab() {
             className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
           >
             <Upload className="h-4 w-4" /> {t("stip.nettiBtn")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowMappa((x) => !x)}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+          >
+            <Upload className="h-4 w-4" /> {t("stip.mappaBtn")}
           </button>
           <button
             type="button"
@@ -666,6 +773,66 @@ export function StipendiTab() {
         </div>
       )}
 
+      {showMappa && (
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+          <div className="mb-1 text-sm font-semibold text-foreground">{t("stip.mappaTitle")}</div>
+          <p className="mb-4 text-xs text-muted-foreground">{t("stip.mappaDesc")}</p>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            disabled={parsingM || savingM}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onFileMappa(f);
+              e.target.value = "";
+            }}
+            className="block text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
+          />
+          {parsingM && (
+            <p className="mt-3 inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> {t("fin.parsing")}
+            </p>
+          )}
+          {previewMappa && (
+            <div className="mt-4 rounded-xl border border-border p-4">
+              <div className="text-sm font-medium text-foreground">{previewMappa.fileName}</div>
+              <ul className="mt-2 space-y-1 text-[13px] text-muted-foreground">
+                <li>
+                  {t("stip.dipendenti")}: <b>{previewMappa.anagrafica.length}</b>
+                </li>
+                <li>
+                  {t("stip.colLivello")}:{" "}
+                  <b>{previewMappa.anagrafica.filter((a) => a.livello).length}</b> ·{" "}
+                  {t("stip.mappaIndet")}:{" "}
+                  <b>
+                    {previewMappa.anagrafica.filter((a) => a.contratto === "Indeterminato").length}
+                  </b>
+                </li>
+              </ul>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void confermaMappa()}
+                  disabled={savingM}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  {savingM && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {t("stip.conferma")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewMappa(null)}
+                  disabled={savingM}
+                  className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  {t("common.cancel")}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {mese ? (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
@@ -744,6 +911,9 @@ export function StipendiTab() {
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
                   <th className="px-3 py-2">{t("stip.etichetta")}</th>
                   <th className="px-3 py-2">{t("common.employee")}</th>
+                  <th className="px-3 py-2">{t("stip.colLivello")}</th>
+                  <th className="px-3 py-2">{t("stip.colContratto")}</th>
+                  <th className="px-3 py-2 text-right">{t("stip.colMens")}</th>
                   <th className="px-3 py-2 text-right">{t("stip.oreOrd")}</th>
                   <th className="px-3 py-2 text-right">{t("stip.oreStr")}</th>
                   <th className="px-3 py-2 text-right">{t("stip.ordinario")}</th>
@@ -774,6 +944,19 @@ export function StipendiTab() {
                         {d.codice}
                       </span>
                     </td>
+                    <td className="px-3 py-1.5" title={anagDi(d)?.mansione}>
+                      {anagDi(d)?.livello || "—"}
+                    </td>
+                    <td className="max-w-32 truncate px-3 py-1.5 text-xs" title={anagDi(d)?.orario}>
+                      {anagDi(d)
+                        ? anagDi(d)!.contratto === "Indeterminato"
+                          ? t("stip.indet")
+                          : anagDi(d)!.fineContratto
+                            ? `${t("stip.det")} ${fmtDataIt(anagDi(d)!.fineContratto!)}`
+                            : (anagDi(d)!.contratto ?? "—")
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{mensDi(d) ?? "—"}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{d.oreOrdinarie || "—"}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">
                       {d.oreStraordinarie || "—"}
@@ -808,7 +991,7 @@ export function StipendiTab() {
                   </tr>
                 ))}
                 <tr className="bg-muted/40 font-semibold">
-                  <td className="px-3 py-2" colSpan={2}>
+                  <td className="px-3 py-2" colSpan={5}>
                     {t("common.total")} ({righe.length})
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">

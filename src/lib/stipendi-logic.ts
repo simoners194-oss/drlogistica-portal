@@ -60,11 +60,28 @@ export interface NettiMese {
   totaleSaldo: number;
 }
 
+/** Riga della "Mappatura Dipendenti" (Personale\DIPENDENTI): anagrafica
+ *  contrattuale per nome. */
+export interface AnagraficaDipendente {
+  nome: string; // come scritto nel file
+  mansione?: string; // es. "AUTISTA G1", "IMPIEGATO 5"
+  livello?: string; // estratto dalla mansione (G1, D2, 5…)
+  /** "Indeterminato" | "Determinato" */
+  contratto?: string;
+  /** Per i determinati: la fine più avanzata tra data fine e proroghe. */
+  fineContratto?: string; // ISO
+  orario?: string; // FULL TIME / P.TIME 20H…
+  stato?: string; // vuoto = in forza, "NON IN FORZA"…
+}
+
 export interface StipendiDb {
   versione: number;
   mesi: StipendiMese[];
   /** Netti da "Stipendi Dr.xlsx" (un foglio per mese). */
   netti?: NettiMese[];
+  /** Anagrafica contrattuale dalla "Mappatura Dipendenti". */
+  anagrafica?: AnagraficaDipendente[];
+  anagraficaFonte?: string;
   aggiornatoIl?: string;
   aggiornatoDa?: string;
 }
@@ -347,6 +364,88 @@ export function parseStipendiDr(
   if (out.length === 0) return null;
   out.sort((a, b) => (a.mese < b.mese ? -1 : 1));
   return out;
+}
+
+/** Estrae il livello contrattuale dalla mansione ("AUTISTA G1" → "G1",
+ *  "IMPIEGATO 5" → "5", "MAGAZZINIERE 6 L" → "6 L"). */
+export function livelloDaMansione(mansione: string): string {
+  // "IMPIEGATO 1 LIVELLO" → "1"
+  const liv = mansione.trim().match(/(?:^|\s)([A-Z]?\d[A-Z]?)\s+LIVELLO\s*$/i);
+  if (liv) return liv[1].toUpperCase();
+  // "AUTISTA G1" → "G1", "MAGAZZINIERE 6 L" → "6 L"
+  const m = mansione.trim().match(/\s([A-Z]?\d[A-Z]?)(\s?[SL])?\s*$/i);
+  return m ? `${m[1]}${m[2] ? ` ${m[2].trim()}` : ""}`.toUpperCase() : "";
+}
+
+/** Interpreta la "Mappatura Dipendenti Dr Logistica.xlsx" (foglio 1):
+ *  colonne per intestazione NOME, MANSIONE, DATA FINE (data oppure
+ *  "INDETERMINATO"), ORARIO, STATO, PROROGA 1..4. null se non riconosciuta. */
+export function parseMappatura(
+  fogli: { nome: string; matrix: unknown[][] }[],
+): AnagraficaDipendente[] | null {
+  for (const f of fogli) {
+    const headerIdx = f.matrix.findIndex((r) => {
+      const cells = (r ?? []).map(norm);
+      return cells.includes("nome") && cells.includes("mansione");
+    });
+    if (headerIdx < 0) continue;
+    const header = (f.matrix[headerIdx] ?? []).map(norm);
+    const col = (n: string) => header.findIndex((c) => c === n || c.startsWith(n));
+    const C = {
+      nome: col("nome"),
+      mansione: col("mansione"),
+      fine: col("data fine"),
+      orario: col("orario"),
+      stato: col("stato"),
+      proroghe: [1, 2, 3, 4].map((i) => col(`proroga ${i}`)),
+    };
+    if (C.nome < 0 || C.mansione < 0) continue;
+    const toIso = (v: unknown): string => {
+      const s = String(v ?? "").trim();
+      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+      const it = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (it) return `${it[3]}-${it[2].padStart(2, "0")}-${it[1].padStart(2, "0")}`;
+      return "";
+    };
+    const out: AnagraficaDipendente[] = [];
+    for (const r of f.matrix.slice(headerIdx + 1)) {
+      const nome = String(r?.[C.nome] ?? "").trim();
+      if (!nome) continue;
+      const mansione = String(r[C.mansione] ?? "").trim() || undefined;
+      const fineRaw = C.fine >= 0 ? String(r[C.fine] ?? "").trim() : "";
+      const indet = /^indet/i.test(fineRaw);
+      // Fine effettiva: la più avanzata tra data fine e proroghe.
+      const date = [toIso(fineRaw), ...C.proroghe.map((i) => (i >= 0 ? toIso(r[i]) : ""))]
+        .filter(Boolean)
+        .sort();
+      out.push({
+        nome,
+        mansione,
+        livello: mansione ? livelloDaMansione(mansione) : undefined,
+        contratto: indet ? "Indeterminato" : fineRaw || date.length ? "Determinato" : undefined,
+        fineContratto: indet ? undefined : date[date.length - 1] || undefined,
+        orario: C.orario >= 0 ? String(r[C.orario] ?? "").trim() || undefined : undefined,
+        stato: C.stato >= 0 ? String(r[C.stato] ?? "").trim() || undefined : undefined,
+      });
+    }
+    if (out.length) return out;
+  }
+  return null;
+}
+
+/** Mensilità stimate (12/13/14) dai ratei di "Mens.Agg." dei mesi caricati:
+ *  mediana di (rateo mensilità aggiuntive / costo ordinario) → 0≈12,
+ *  1/12≈13, 2/12≈14. I mesi con ordinario basso (assunzioni/cessazioni) si
+ *  scartano; null se non c'è abbastanza storia. */
+export function mensilitaStimate(ratios: number[]): number | null {
+  const validi = ratios.filter((r) => Number.isFinite(r));
+  if (validi.length === 0) return null;
+  const s = [...validi].sort((a, b) => a - b);
+  const med =
+    s.length % 2 ? s[Math.floor(s.length / 2)] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+  const extra = Math.round(med * 12);
+  return 12 + Math.max(0, Math.min(2, extra));
 }
 
 export interface ParseCostiFileResult extends ParseCostiResult {

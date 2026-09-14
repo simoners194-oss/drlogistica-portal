@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.68.0",
+    date: "2026-09-14",
+    entries: [
+      {
+        title: "Stipendi: livello, contratto e mensilità",
+        description:
+          "La tab Stipendi mostra tre colonne in più per dipendente: livello contrattuale e tipo di contratto (dalla «Mappatura Dipendenti» in Personale\\DIPENDENTI, caricabile dal nuovo pannello Importa mappatura) e le mensilità stimate dai ratei delle mensilità aggiuntive nei file paghe (12, 13 o 14). Le nuove colonne finiscono anche nel CSV.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.67.1",
     date: "2026-09-14",
     author: "Simone Russo",

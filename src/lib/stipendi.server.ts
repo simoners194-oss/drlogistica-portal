@@ -15,6 +15,7 @@ import {
 } from "./sharepoint.server";
 import {
   emptyStipendiDb,
+  type AnagraficaDipendente,
   type NettiMese,
   type StipendiDb,
   type StipendiMese,
@@ -85,6 +86,18 @@ export async function upsertStipendiMese(mese: StipendiMese, utente: string): Pr
 export async function deleteStipendiMese(mese: string, utente: string): Promise<StipendiDb> {
   const db = await loadStipendiDb();
   db.mesi = db.mesi.filter((m) => m.mese !== mese);
+  return saveStipendiDb(db, utente);
+}
+
+/** Sostituisce l'anagrafica contrattuale (dalla "Mappatura Dipendenti"). */
+export async function replaceStipendiAnagrafica(
+  anagrafica: AnagraficaDipendente[],
+  fonte: string,
+  utente: string,
+): Promise<StipendiDb> {
+  const db = await loadStipendiDb();
+  db.anagrafica = anagrafica;
+  db.anagraficaFonte = fonte;
   return saveStipendiDb(db, utente);
 }
 

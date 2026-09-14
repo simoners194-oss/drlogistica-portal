@@ -9,11 +9,12 @@ import { haVistaDirezione } from "./richieste-logic";
 import {
   deleteStipendiMese,
   loadStipendiDb,
+  replaceStipendiAnagrafica,
   stimaStipendiMensile,
   upsertStipendiMese,
   upsertStipendiNetti,
 } from "./stipendi.server";
-import type { NettiMese, StipendiDb, StipendiMese } from "./stipendi-logic";
+import type { AnagraficaDipendente, NettiMese, StipendiDb, StipendiMese } from "./stipendi-logic";
 
 async function utenteStipendi(): Promise<ServerSessionUser> {
   const me = await readSessionUser();
@@ -43,6 +44,17 @@ export const spStipendiSalvaMese = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<StipendiDb> => {
     const me = await utenteStipendi();
     return upsertStipendiMese(data.mese, firma(me));
+  });
+
+export const spStipendiSalvaAnagrafica = createServerFn({ method: "POST" })
+  .inputValidator((input: { anagrafica: AnagraficaDipendente[]; fonte: string }) => {
+    if (!Array.isArray(input?.anagrafica) || input.anagrafica.length === 0)
+      throw new Error("Nessun dipendente nel file.");
+    return input;
+  })
+  .handler(async ({ data }): Promise<StipendiDb> => {
+    const me = await utenteStipendi();
+    return replaceStipendiAnagrafica(data.anagrafica, data.fonte, firma(me));
   });
 
 /** Stima mensile per i Flussi: media del netto dovuto degli ultimi 2 mesi. */
