@@ -36,6 +36,20 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.66.1",
+    date: "2026-09-14",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Stipendi: colonne Stipendio, Anticipo e Saldo per dipendente",
+        description:
+          "Nella tabella del mese, accanto al costo azienda, ora ci sono le tre colonne dal file Stipendi Dr: netto dovuto, anticipi già versati e saldo da pagare, abbinate per nome e presenti anche nel CSV (totali in fondo).",
+      },
+    ],
+  },
+  {
     version: "1.66.0",
     date: "2026-09-14",
     codename: "Netto in cassa",

@@ -184,6 +184,22 @@ export function StipendiTab() {
     () => db?.netti?.find((n) => n.mese === meseSel) ?? null,
     [db, meseSel],
   );
+  // Netti per dipendente (match per nome, ordine parole libero): colonne
+  // Stipendio/Anticipo/Saldo della tabella (richiesta Simone 14/09).
+  const nettiPerNome = useMemo(() => {
+    const m = new Map<string, { stipendio: number; anticipo: number; saldo: number }>();
+    for (const d of nettoMese?.dipendenti ?? []) {
+      const k = nameKey(d.nome);
+      const cur = m.get(k) ?? { stipendio: 0, anticipo: 0, saldo: 0 };
+      cur.stipendio += d.stipendio;
+      cur.anticipo += d.anticipo;
+      cur.saldo += d.saldo;
+      m.set(k, cur);
+    }
+    return m;
+  }, [nettoMese]);
+  const nettoDi = (d: StipendioDipendente) =>
+    nettiPerNome.get(nameKey(`${d.cognome} ${d.nome}`)) ?? null;
 
   const onFile = async (f: File) => {
     setParsing(true);
@@ -351,6 +367,9 @@ export function StipendiTab() {
         "Mensilita aggiuntive",
         "TFR",
         "Totale costo",
+        "Stipendio netto",
+        "Anticipo",
+        "Saldo",
         "Versato in banca",
         "Costo medio",
       ],
@@ -368,6 +387,9 @@ export function StipendiTab() {
         d.mensilitaAggiuntive,
         d.tfr,
         d.totaleCosto,
+        nettoDi(d)?.stipendio ?? "",
+        nettoDi(d)?.anticipo || "",
+        nettoDi(d)?.saldo ?? "",
         versatoDi(d) ?? "",
         d.costoMedio,
       ]),
@@ -730,6 +752,9 @@ export function StipendiTab() {
                   <th className="px-3 py-2 text-right">{t("stip.mensAgg")}</th>
                   <th className="px-3 py-2 text-right">TFR</th>
                   <th className="px-3 py-2 text-right">{t("stip.totale")}</th>
+                  <th className="px-3 py-2 text-right">{t("stip.colStip")}</th>
+                  <th className="px-3 py-2 text-right">{t("stip.colAnt")}</th>
+                  <th className="px-3 py-2 text-right">{t("stip.colSaldo")}</th>
                   <th className="px-3 py-2 text-right">{t("stip.versatoCol")}</th>
                   <th className="px-3 py-2 text-right">{t("stip.medio")}</th>
                 </tr>
@@ -766,6 +791,15 @@ export function StipendiTab() {
                       {eur(d.totaleCosto)}
                     </td>
                     <td className="px-3 py-1.5 text-right tabular-nums">
+                      {nettoDi(d) ? eur(nettoDi(d)!.stipendio) : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">
+                      {nettoDi(d)?.anticipo ? eur(nettoDi(d)!.anticipo) : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">
+                      {nettoDi(d) ? eur(nettoDi(d)!.saldo) : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">
                       {versatoDi(d) != null ? eur(versatoDi(d)!) : "—"}
                     </td>
                     <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
@@ -787,6 +821,15 @@ export function StipendiTab() {
                   <td className="px-3 py-2 text-right tabular-nums">{eur(totRighe.mens)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{eur(totRighe.tfr)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{eur(totRighe.totale)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {eur(righe.reduce((a, d) => a + (nettoDi(d)?.stipendio ?? 0), 0))}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {eur(righe.reduce((a, d) => a + (nettoDi(d)?.anticipo ?? 0), 0))}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {eur(righe.reduce((a, d) => a + (nettoDi(d)?.saldo ?? 0), 0))}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {eur(righe.reduce((a, d) => a + (versatoDi(d) ?? 0), 0))}
                   </td>
