@@ -32,12 +32,14 @@ import {
   spGetGruppiControparti,
   spCreateGruppoControparti,
   spDeleteGruppoControparti,
+  spGetFlussiCassa,
 } from "@/lib/sharepoint.functions";
 import type {
   SpFattura,
   SpMovimento,
   GruppoControparti,
   Prefattura,
+  FlussoCassaRiga,
 } from "@/lib/sharepoint.server";
 
 function fmtImporto(n: number): string {
@@ -111,6 +113,12 @@ export function ResocontoTab() {
   // incassare, le passive Totale/Netto a pagare, e spuntando dai due lati
   // si compensano in un saldo unico. Chiave: "att:file" / "pas:file".
   const [selComp, setSelComp] = useState<Set<string>>(new Set());
+  // ESCLUSIONI (richiesta FR 14/09): le stesse controparti escluse nei Flussi
+  // di cassa (lista FlussiCassa, genere "esclusione", finestra mesi compresa)
+  // si possono togliere ANCHE da questo quadro. A richiesta: il toggle parte
+  // spento e il resoconto resta canonico finché non lo si accende.
+  const [flussi, setFlussi] = useState<FlussoCassaRiga[] | null>(null);
+  const [applicaEscl, setApplicaEscl] = useState(false);
 
   useEffect(() => {
     spGetFatture({ data: { direzione: "Emessa" } })
@@ -136,6 +144,9 @@ export function ResocontoTab() {
     spGetPrefatture()
       .then((l) => setPrefatture(l as Prefattura[]))
       .catch(() => setPrefatture([]));
+    spGetFlussiCassa()
+      .then((l) => setFlussi(l as FlussoCassaRiga[]))
+      .catch(() => setFlussi([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -155,15 +166,36 @@ export function ResocontoTab() {
         nc: nc.get(f.nomeFile),
       }));
   };
+  // Esclusioni condivise coi Flussi: stessa semantica di matching (gruppo
+  // controparte + finestra mesi sulla scadenza; senza scadenza vale la data
+  // documento). Filtrano attive E passive, quindi tutto il quadro a valle.
+  const esclusioni = useMemo(
+    () => (flussi ?? []).filter((x) => x.genere === "esclusione"),
+    [flussi],
+  );
+  const esclusa = (nomeControparte: string, meseScadenza: string): boolean => {
+    const chiave = clienteGroupKey(nomeControparte) || nomeControparte.toLowerCase();
+    return esclusioni.some((e) => {
+      const token = clienteGroupKey(e.nome) || e.nome.trim().toLowerCase();
+      if (!token || !chiave.includes(token)) return false;
+      if (e.mese && meseScadenza < e.mese) return false;
+      if (e.meseFine && meseScadenza > e.meseFine) return false;
+      return true;
+    });
+  };
+  const applicaEsclA = (righe: ReturnType<typeof prepara>) =>
+    applicaEscl
+      ? righe.filter((x) => !esclusa(x.f.cliente, (x.s.scadenza || x.f.dataDocumento).slice(0, 7)))
+      : righe;
   const attive = useMemo(
-    () => prepara(fattureEm ?? []),
+    () => applicaEsclA(prepara(fattureEm ?? [])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fattureEm, termini],
+    [fattureEm, termini, applicaEscl, esclusioni],
   );
   const passive = useMemo(
-    () => prepara(fattureRic ?? []),
+    () => applicaEsclA(prepara(fattureRic ?? [])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fattureRic, termini],
+    [fattureRic, termini, applicaEscl, esclusioni],
   );
 
   // Opzioni dei due filtri, per fatturato/costo decrescente.
@@ -767,6 +799,27 @@ export function ResocontoTab() {
               ))}
             </div>
           </div>
+          {/* Esclusioni condivise coi Flussi di cassa (richiesta FR 14/09):
+              toggle a richiesta, spento di default — il quadro resta canonico. */}
+          <div>
+            <label className="text-xs text-muted-foreground">{t("rt.esclLabel")}</label>
+            <div className="pt-1.5">
+              <button
+                type="button"
+                onClick={() => setApplicaEscl((x) => !x)}
+                title={t("rt.esclHint")}
+                disabled={esclusioni.length === 0}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                  applicaEscl
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-background text-foreground hover:bg-muted"
+                }`}
+              >
+                {applicaEscl ? t("rt.esclOn") : t("rt.esclOff")}
+                {esclusioni.length > 0 ? ` (${esclusioni.length})` : ""}
+              </button>
+            </div>
+          </div>
         </div>
         {showGruppi && (
           <div className="mt-3 rounded-xl border border-border p-3">
@@ -1089,7 +1142,11 @@ export function ResocontoTab() {
                     tot += x.f.totale;
                     netto += stato === "aperto" ? residuo : 0;
                   }
-                  return { tot: Math.round(tot * 100) / 100, netto: Math.round(netto * 100) / 100, n };
+                  return {
+                    tot: Math.round(tot * 100) / 100,
+                    netto: Math.round(netto * 100) / 100,
+                    n,
+                  };
                 };
                 const a = raccogli("att");
                 const p = raccogli("pas");
@@ -1197,7 +1254,9 @@ export function ResocontoTab() {
                                     if (stato !== "aperto" || !x.s.scadenza) return null;
                                     const gg = Math.round(
                                       (new Date(`${oggiISO}T00:00:00`).getTime() -
-                                        new Date(`${x.s.scadenza.slice(0, 10)}T00:00:00`).getTime()) /
+                                        new Date(
+                                          `${x.s.scadenza.slice(0, 10)}T00:00:00`,
+                                        ).getTime()) /
                                         86400000,
                                     );
                                     return (

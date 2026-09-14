@@ -36,6 +36,28 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.63.0",
+    date: "2026-09-14",
+    codename: "Stipendi ed esclusioni nel Resoconto",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Nuova tab Stipendi in Finanze",
+        description:
+          'Il costo del personale entra nel portale: si carica il file paghe del mese ("COSTI <mese>" da OneDrive Personale/MENSILITA\') e la tab mostra il dettaglio per dipendente — ordinario, straordinari, ferie/permessi, mensilità aggiuntive, TFR, totale e costo medio orario — con totale del mese, confronto col mese precedente, filtri per appalto/etichetta ed export CSV. Ricaricare un mese lo sostituisce (niente doppioni) e il file viene controllato riga per riga: se i componenti di un dipendente non tornano col totale, l\'anteprima lo segnala. Al salvataggio, a scelta, si aggiorna da sola la riga "Stipendi" nei Flussi di cassa sul mese di pagamento (proposto il mese successivo alla competenza).',
+      },
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Resoconto: filtro esclusioni condiviso coi Flussi",
+        description:
+          'Accanto alle fasce di ritardo c\'è il nuovo interruttore "Applica esclusioni": toglie dal quadro (situazione fatture, ritardi da incassare/pagare, elenco) le stesse controparti escluse nella tab Flussi di cassa, finestre di mesi comprese. Spento di default: il resoconto resta canonico finché non serve la vista al netto degli esclusi.',
+      },
+    ],
+  },
+  {
     version: "1.62.0",
     date: "2026-09-14",
     codename: "Girate configurabili",
@@ -112,7 +134,7 @@ export const RELEASES: readonly Release[] = [
         audience: "direzione",
         title: "Altre spese automatiche nei Flussi di cassa",
         description:
-          "Sulle regole movimenti c'è il flag € \"Conta nelle Altre spese\" (clic sulla € nella riga, o spunta nel modulo): i movimenti classificati dalle regole flaggate fanno la media degli ultimi 2 mesi pieni e riempiono da soli la riga Altre spese, in corsivo col segno ≈. Un valore scritto a mano nel mese vince sempre. Richiede la colonna AltreSpese (Sì/No) su RegoleFinanza.",
+          'Sulle regole movimenti c\'è il flag € "Conta nelle Altre spese" (clic sulla € nella riga, o spunta nel modulo): i movimenti classificati dalle regole flaggate fanno la media degli ultimi 2 mesi pieni e riempiono da soli la riga Altre spese, in corsivo col segno ≈. Un valore scritto a mano nel mese vince sempre. Richiede la colonna AltreSpese (Sì/No) su RegoleFinanza.',
       },
       {
         tag: "feature",
@@ -141,14 +163,14 @@ export const RELEASES: readonly Release[] = [
         audience: "gestione",
         title: "Abolita l'euristica generica sui movimenti",
         description:
-          "Un movimento in uscita che nessuna regola riconosce non riceve più etichette di comodo (\"Bonifico uscita\", \"Altro\", \"Estero\"): resta senza tipologia e va in Anomalie finché una regola o la matita non lo classificano. Restano le tipologie tecniche della causale bancaria (commissioni, bolli, F24, carte), che sono fatti e non ipotesi. Il pulsante \"Riapplica tutte le regole\" ripulisce anche lo storico: le etichette generiche senza una regola che le giustifichi si svuotano.",
+          'Un movimento in uscita che nessuna regola riconosce non riceve più etichette di comodo ("Bonifico uscita", "Altro", "Estero"): resta senza tipologia e va in Anomalie finché una regola o la matita non lo classificano. Restano le tipologie tecniche della causale bancaria (commissioni, bolli, F24, carte), che sono fatti e non ipotesi. Il pulsante "Riapplica tutte le regole" ripulisce anche lo storico: le etichette generiche senza una regola che le giustifichi si svuotano.',
       },
       {
         tag: "improvement",
         audience: "direzione",
         title: "Semaforo freschezza dati Aruba",
         description:
-          "Accanto a \"Dati Aruba aggiornati al\" ora si vede anche QUANDO sono arrivati l'ultima volta prima nota (incassi/pagamenti) e stati di pagamento dal PC aziendale — e diventano rossi con un avviso se il dato ha più di 26 ore. Un passo del giro fermo si nota in pagina, non dopo settimane. Richiede le colonne UltimoIncassi e UltimoStati su ArubaConfig.",
+          'Accanto a "Dati Aruba aggiornati al" ora si vede anche QUANDO sono arrivati l\'ultima volta prima nota (incassi/pagamenti) e stati di pagamento dal PC aziendale — e diventano rossi con un avviso se il dato ha più di 26 ore. Un passo del giro fermo si nota in pagina, non dopo settimane. Richiede le colonne UltimoIncassi e UltimoStati su ArubaConfig.',
       },
       {
         tag: "fix",
