@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.66.0",
+    date: "2026-09-14",
+    codename: "Netto in cassa",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: 'Stipendi: import di "Stipendi Dr.xlsx" e riga Flussi col NETTO',
+        description:
+          'Nuovo bottone "Importa Stipendi Dr (netti)": legge il file di Personale con un foglio per mese (STIPENDIO netto dovuto, ANTICIPO già versato, SALDO da pagare) e, a scelta, aggiorna le righe "Stipendi" dei Flussi di cassa col SALDO sul mese di pagamento — il movimento di cassa vero, non il costo lordo. In tab compare la card "Netto da pagare" accanto a costo e versato. I mesi con saldo zero (tutto già anticipato) non generano righe.',
+      },
+    ],
+  },
+  {
     version: "1.65.1",
     date: "2026-09-14",
     author: "Simone Russo",

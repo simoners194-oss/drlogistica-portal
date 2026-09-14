@@ -36,9 +36,35 @@ export interface StipendiMese {
   dipendenti: StipendioDipendente[];
 }
 
+/** Riga del file "Stipendi Dr.xlsx" (Personale): il NETTO da bonificare.
+ *  saldo = resto da pagare (stipendio − anticipi − addebiti); il file lo
+ *  riporta esplicito nei mesi recenti, altrimenti si ricalcola. */
+export interface NettoDipendente {
+  nome: string; // "COGNOME NOME" come scritto nel file
+  appalto?: string;
+  stipendio: number;
+  anticipo: number;
+  addebito: number;
+  saldo: number;
+}
+
+export interface NettiMese {
+  mese: string; // YYYY-MM (competenza, dal nome del foglio)
+  fonteFile: string;
+  caricatoIl?: string;
+  caricatoDa?: string;
+  dipendenti: NettoDipendente[];
+  totaleStipendio: number;
+  totaleAnticipi: number;
+  /** Somma dei saldi: quello che esce dal conto al pagamento (mese dopo). */
+  totaleSaldo: number;
+}
+
 export interface StipendiDb {
   versione: number;
   mesi: StipendiMese[];
+  /** Netti da "Stipendi Dr.xlsx" (un foglio per mese). */
+  netti?: NettiMese[];
   aggiornatoIl?: string;
   aggiornatoDa?: string;
 }
@@ -255,6 +281,72 @@ export function meseDaNomeFile(nomeFile: string): string {
     if (m) return `${m[1]}-${String(i + 1).padStart(2, "0")}`;
   }
   return "";
+}
+
+/** Interpreta "Stipendi Dr.xlsx": un foglio per mese ("Febbraio 2026"…) con
+ *  APPALTO, NOME, STIPENDIO, ANTICIPO, ADDEBITO, SALDO (+ IBAN). Le colonne
+ *  si trovano per intestazione (cambiano posizione tra i fogli); il mese
+ *  viene dal NOME DEL FOGLIO. null se nessun foglio è riconosciuto. */
+export function parseStipendiDr(
+  fogli: { nome: string; matrix: unknown[][] }[],
+  fonteFile: string,
+): NettiMese[] | null {
+  const out: NettiMese[] = [];
+  for (const f of fogli) {
+    // Mese dal nome foglio ("Maggio 2026").
+    const mese = meseDaNomeFile(f.nome);
+    if (!mese) continue;
+    const headerIdx = f.matrix.findIndex((r) => {
+      const cells = (r ?? []).map(norm);
+      return cells.includes("nome") && cells.includes("stipendio");
+    });
+    if (headerIdx < 0) continue;
+    const header = (f.matrix[headerIdx] ?? []).map(norm);
+    const C = {
+      appalto: header.indexOf("appalto"),
+      nome: header.indexOf("nome"),
+      stipendio: header.indexOf("stipendio"),
+      anticipo: header.indexOf("anticipo"),
+      addebito: header.indexOf("addebito"),
+      saldo: header.indexOf("saldo"),
+    };
+    if (C.nome < 0 || C.stipendio < 0) continue;
+    const dipendenti: NettoDipendente[] = [];
+    for (const r of f.matrix.slice(headerIdx + 1)) {
+      const nome = String(r?.[C.nome] ?? "").trim();
+      if (!nome || /^totale/i.test(nome)) continue;
+      const stipendio = numCell(r[C.stipendio]);
+      const anticipo = C.anticipo >= 0 ? numCell(r[C.anticipo]) : 0;
+      const addebito = C.addebito >= 0 ? numCell(r[C.addebito]) : 0;
+      const saldoFile = C.saldo >= 0 ? numCell(r[C.saldo]) : 0;
+      const saldo =
+        Math.abs(saldoFile) > 0.004
+          ? saldoFile
+          : Math.round((stipendio - anticipo - addebito) * 100) / 100;
+      if (Math.abs(stipendio) < 0.004 && Math.abs(saldo) < 0.004) continue;
+      dipendenti.push({
+        nome,
+        appalto: C.appalto >= 0 ? String(r[C.appalto] ?? "").trim() || undefined : undefined,
+        stipendio: Math.round(stipendio * 100) / 100,
+        anticipo: Math.round(anticipo * 100) / 100,
+        addebito: Math.round(addebito * 100) / 100,
+        saldo,
+      });
+    }
+    if (dipendenti.length === 0) continue;
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    out.push({
+      mese,
+      fonteFile,
+      dipendenti,
+      totaleStipendio: r2(dipendenti.reduce((a, d) => a + d.stipendio, 0)),
+      totaleAnticipi: r2(dipendenti.reduce((a, d) => a + d.anticipo, 0)),
+      totaleSaldo: r2(dipendenti.reduce((a, d) => a + d.saldo, 0)),
+    });
+  }
+  if (out.length === 0) return null;
+  out.sort((a, b) => (a.mese < b.mese ? -1 : 1));
+  return out;
 }
 
 export interface ParseCostiFileResult extends ParseCostiResult {

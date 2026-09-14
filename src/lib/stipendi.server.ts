@@ -13,7 +13,12 @@ import {
   logSp,
   SpHttpError,
 } from "./sharepoint.server";
-import { emptyStipendiDb, type StipendiDb, type StipendiMese } from "./stipendi-logic";
+import {
+  emptyStipendiDb,
+  type NettiMese,
+  type StipendiDb,
+  type StipendiMese,
+} from "./stipendi-logic";
 
 const DB_PATH = "FinanzaData/stipendi.json";
 
@@ -80,5 +85,23 @@ export async function upsertStipendiMese(mese: StipendiMese, utente: string): Pr
 export async function deleteStipendiMese(mese: string, utente: string): Promise<StipendiDb> {
   const db = await loadStipendiDb();
   db.mesi = db.mesi.filter((m) => m.mese !== mese);
+  return saveStipendiDb(db, utente);
+}
+
+/** Upsert dei NETTI da "Stipendi Dr.xlsx": ogni mese presente nel file
+ *  sostituisce l'omonimo già caricato, gli altri restano. */
+export async function upsertStipendiNetti(mesi: NettiMese[], utente: string): Promise<StipendiDb> {
+  const db = await loadStipendiDb();
+  const netti = [...(db.netti ?? [])];
+  const ora = new Date().toISOString();
+  for (const m of mesi) {
+    m.caricatoIl = ora;
+    m.caricatoDa = utente;
+    const i = netti.findIndex((x) => x.mese === m.mese);
+    if (i >= 0) netti[i] = m;
+    else netti.push(m);
+  }
+  netti.sort((a, b) => (a.mese < b.mese ? -1 : 1));
+  db.netti = netti;
   return saveStipendiDb(db, utente);
 }

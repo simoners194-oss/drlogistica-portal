@@ -13,7 +13,9 @@ import { esportaCsvFile } from "@/lib/csv";
 import {
   meseSuccessivo,
   parseCostiFile,
+  parseStipendiDr,
   totaleMese,
+  type NettiMese,
   type ParseCostiFileResult,
   type StipendiDb,
   type StipendioDipendente,
@@ -22,6 +24,7 @@ import {
   spStipendiEliminaMese,
   spStipendiGet,
   spStipendiSalvaMese,
+  spStipendiSalvaNetti,
 } from "@/lib/stipendi.functions";
 import { spGetDettagliDistinte, spUpsertFlussoCassa } from "@/lib/sharepoint.functions";
 import type { DettaglioDistinta } from "@/lib/sharepoint.server";
@@ -75,6 +78,15 @@ export function StipendiTab() {
   const [confermaElimina, setConfermaElimina] = useState(false);
   // Distinte stipendi (report BPM "Esiti pagamenti"): per l'EFFETTIVO versato.
   const [distinte, setDistinte] = useState<DettaglioDistinta[] | null>(null);
+  // Import "Stipendi Dr.xlsx" (netti da bonificare, un foglio per mese).
+  const [showNetti, setShowNetti] = useState(false);
+  const [parsingN, setParsingN] = useState(false);
+  const [previewNetti, setPreviewNetti] = useState<{
+    fileName: string;
+    mesi: NettiMese[];
+  } | null>(null);
+  const [flussiNetti, setFlussiNetti] = useState(true);
+  const [savingN, setSavingN] = useState(false);
 
   const refresh = () =>
     spStipendiGet()
@@ -167,6 +179,11 @@ export function StipendiTab() {
     const chiavi = new Set((mese?.dipendenti ?? []).map((x) => nameKey(`${x.cognome} ${x.nome}`)));
     return salariPag.righe.filter((r) => !chiavi.has(nameKey(r.beneficiario)));
   }, [salariPag, mese]);
+  // Netto da "Stipendi Dr.xlsx" per il mese selezionato (competenza).
+  const nettoMese = useMemo(
+    () => db?.netti?.find((n) => n.mese === meseSel) ?? null,
+    [db, meseSel],
+  );
 
   const onFile = async (f: File) => {
     setParsing(true);
@@ -194,6 +211,69 @@ export function StipendiTab() {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setParsing(false);
+    }
+  };
+
+  const onFileNetti = async (f: File) => {
+    setParsingN(true);
+    setPreviewNetti(null);
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(await f.arrayBuffer(), { cellDates: false });
+      const fogli = wb.SheetNames.map((nome) => ({
+        nome,
+        matrix: XLSX.utils.sheet_to_json(wb.Sheets[nome], {
+          header: 1,
+          raw: true,
+          defval: null,
+        }) as unknown[][],
+      }));
+      const mesi = parseStipendiDr(fogli, f.name);
+      if (!mesi) {
+        toast.error(t("stip.errNetti"));
+        return;
+      }
+      setPreviewNetti({ fileName: f.name, mesi });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setParsingN(false);
+    }
+  };
+
+  const confermaNetti = async () => {
+    if (!previewNetti) return;
+    setSavingN(true);
+    try {
+      const res = await spStipendiSalvaNetti({ data: { mesi: previewNetti.mesi } });
+      let flussiFatti = 0;
+      if (flussiNetti) {
+        // La riga "Stipendi" del cash flow = SALDO netto da versare, sul mese
+        // di PAGAMENTO (successivo alla competenza del foglio).
+        for (const m of previewNetti.mesi) {
+          if (Math.abs(m.totaleSaldo) < 0.005) continue;
+          await spUpsertFlussoCassa({
+            data: {
+              nome: "Stipendi",
+              genere: "voce",
+              mese: meseSuccessivo(m.mese),
+              importo: -m.totaleSaldo,
+              note: `${t("stip.nettiNota")} ${fmtMese(m.mese)} (${previewNetti.fileName})`,
+            },
+          });
+          flussiFatti++;
+        }
+      }
+      setDb(res);
+      setPreviewNetti(null);
+      setShowNetti(false);
+      toast.success(t("stip.nettiOk"), {
+        description: `${previewNetti.mesi.length} ${t("stip.nettiMesi")}${flussiFatti ? ` · ${flussiFatti} ${t("stip.nettiFlussiOk")}` : ""}`,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingN(false);
     }
   };
 
@@ -354,6 +434,13 @@ export function StipendiTab() {
           </button>
           <button
             type="button"
+            onClick={() => setShowNetti((x) => !x)}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+          >
+            <Upload className="h-4 w-4" /> {t("stip.nettiBtn")}
+          </button>
+          <button
+            type="button"
             onClick={esporta}
             disabled={!mese}
             className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
@@ -476,9 +563,90 @@ export function StipendiTab() {
         </div>
       )}
 
+      {showNetti && (
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+          <div className="mb-1 text-sm font-semibold text-foreground">{t("stip.nettiTitle")}</div>
+          <p className="mb-4 text-xs text-muted-foreground">{t("stip.nettiDesc")}</p>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            disabled={parsingN || savingN}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onFileNetti(f);
+              e.target.value = "";
+            }}
+            className="block text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
+          />
+          {parsingN && (
+            <p className="mt-3 inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> {t("fin.parsing")}
+            </p>
+          )}
+          {previewNetti && (
+            <div className="mt-4 rounded-xl border border-border p-4">
+              <div className="text-sm font-medium text-foreground">{previewNetti.fileName}</div>
+              <table className="mt-2 text-[13px]">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
+                    <th className="pr-4">{t("stip.mese")}</th>
+                    <th className="pr-4 text-right">{t("stip.dipendenti")}</th>
+                    <th className="pr-4 text-right">{t("stip.nettiStipendio")}</th>
+                    <th className="pr-4 text-right">{t("stip.nettiAnticipi")}</th>
+                    <th className="text-right">{t("stip.nettiSaldo")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewNetti.mesi.map((m) => (
+                    <tr key={m.mese}>
+                      <td className="pr-4">{fmtMese(m.mese)}</td>
+                      <td className="pr-4 text-right tabular-nums">{m.dipendenti.length}</td>
+                      <td className="pr-4 text-right tabular-nums">{eur(m.totaleStipendio)}</td>
+                      <td className="pr-4 text-right tabular-nums">
+                        {m.totaleAnticipi ? eur(m.totaleAnticipi) : "—"}
+                      </td>
+                      <td className="text-right font-semibold tabular-nums">
+                        {eur(m.totaleSaldo)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <label className="mt-3 flex items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={flussiNetti}
+                  onChange={(e) => setFlussiNetti(e.target.checked)}
+                />
+                {t("stip.nettiFlussiCheck")}
+              </label>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void confermaNetti()}
+                  disabled={savingN}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  {savingN && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {t("stip.conferma")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewNetti(null)}
+                  disabled={savingN}
+                  className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  {t("common.cancel")}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {mese ? (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
             <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
               <p className="text-xs uppercase tracking-wider text-muted-foreground">
                 {t("stip.totaleMese")}
@@ -530,6 +698,19 @@ export function StipendiTab() {
                 {salariPag.righe.length
                   ? `${salariPag.righe.length} ${t("stip.disposizioni")}${nonAbbinate.length ? ` · ${nonAbbinate.length} ${t("stip.nonAbbinate")}` : ""}`
                   : t("stip.versatoVuoto")}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("stip.nettiCard")}
+              </p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
+                {nettoMese ? `${eur(nettoMese.totaleSaldo)} €` : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {nettoMese
+                  ? `${t("stip.nettiStipendio")} ${eur(nettoMese.totaleStipendio)}${nettoMese.totaleAnticipi ? ` · ${t("stip.nettiAnticipi").toLowerCase()} ${eur(nettoMese.totaleAnticipi)}` : ""}`
+                  : t("stip.nettiVuoto")}
               </p>
             </div>
           </div>
