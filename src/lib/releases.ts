@@ -48,6 +48,13 @@ export const RELEASES: readonly Release[] = [
         description:
           "Nei Flussi di cassa la quota verso DR Logistics diventa una GIRATA configurabile: dal pannello Esclusioni si scrive 'Se entra una fattura da [cliente] gira il [%] a [fornitore]' — fornitore a scelta tra DR Logistics, RN Servizi o un campo libero con l'autocompletamento dai fornitori veri, più un filtro facoltativo sull'oggetto della fattura. Ogni regola genera la sua riga tra le uscite, intitolata al solo nome del fornitore e con lo stesso stile delle altre righe. Il caso speciale della facchinaggio di luglio (90% della FPR 220/26 in Scaduto al netto dei bonifici reali) resta attivo sulle girate verso DR Logistics.",
       },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Controparti simili unite in tutte le viste",
+        description:
+          "Le grafie diverse della stessa azienda (POSTADOC in tre varianti, WIDEM con e senza 'LOGISTICA ITALIA', AS SOLUTION/AS SOLUTIONS, SCORRANO GROUP...) ora si accorpano: i GRUPPI sulla lista GruppiControparti (Titolo = nome del gruppo, Membri = un nome per riga) vengono applicati alla chiave di raggruppamento usata da Overview incassi, Resoconto, Flussi e regole — una riga sola per azienda, ovunque.",
+      },
     ],
   },
   {

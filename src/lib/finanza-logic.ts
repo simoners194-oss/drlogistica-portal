@@ -145,10 +145,34 @@ export function canonicalCliente(nome: string): string {
 // classificazioni), quasi sempre sugli stessi nomi: si calcola una volta.
 const groupKeyCache = new Map<string, string>();
 
-export function clienteGroupKey(nome: string): string {
-  const cached = groupKeyCache.get(nome);
-  if (cached !== undefined) return cached;
-  const out = canonicalCliente(nome)
+// ALIAS DI GRUPPO (richiesta Simone 14/09, "unire i simili"): le righe NON
+// vista della lista GruppiControparti (Title = nome del gruppo, Membri = un
+// nome per riga) accorpano grafie diverse della stessa azienda che la sola
+// normalizzazione non unifica (POSTADOC/POST DOC, WIDEM/WIDEM LOGISTICA,
+// AS SOLUTION/AS SOLUTIONS...). La mappa va da chiave algoritmica del membro
+// a chiave del gruppo; la registra la pagina Finanze al caricamento.
+let gruppiAlias = new Map<string, string>();
+
+export function setGruppiControparti(gruppi: readonly { nome: string; membri: string }[]): void {
+  const next = new Map<string, string>();
+  for (const g of gruppi) {
+    const membriRaw = String(g.membri ?? "").trim();
+    // Le VISTE del Resoconto vivono sulla stessa lista come JSON: non sono
+    // gruppi, si saltano.
+    if (!membriRaw || membriRaw.startsWith("{")) continue;
+    const chiaveGruppo = groupKeyAlgoritmica(g.nome);
+    if (!chiaveGruppo) continue;
+    for (const membro of membriRaw.split(/\r?\n|;/)) {
+      const k = groupKeyAlgoritmica(membro.trim());
+      if (k && k !== chiaveGruppo) next.set(k, chiaveGruppo);
+    }
+  }
+  gruppiAlias = next;
+  groupKeyCache.clear(); // le chiavi gia' calcolate vanno ricalcolate
+}
+
+function groupKeyAlgoritmica(nome: string): string {
+  return canonicalCliente(nome)
     .replace(/\bitaly\b/g, "italia")
     .replace(/\b(?:srls?|spa|snc|sas|sa|scarl|scpa)\b/g, " ")
     .replace(/[^a-z0-9àèéìòù]+/g, " ")
@@ -156,6 +180,13 @@ export function clienteGroupKey(nome: string): string {
     .filter(Boolean)
     .sort()
     .join(" ");
+}
+
+export function clienteGroupKey(nome: string): string {
+  const cached = groupKeyCache.get(nome);
+  if (cached !== undefined) return cached;
+  const alg = groupKeyAlgoritmica(nome);
+  const out = gruppiAlias.get(alg) ?? alg;
   if (groupKeyCache.size > 20000) groupKeyCache.clear(); // tetto di sicurezza
   groupKeyCache.set(nome, out);
   return out;

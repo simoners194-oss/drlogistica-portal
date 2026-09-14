@@ -57,6 +57,7 @@ import {
   type MovimentoParsed,
   type ParseFileResult,
   type RegolaFinanza,
+  setGruppiControparti,
 } from "@/lib/finanza-logic";
 import {
   spGetMovimenti,
@@ -65,6 +66,7 @@ import {
   spUpdateMovimento,
   spGetImportStorico,
   spGetDettagliDistinte,
+  spGetGruppiControparti,
   spSetDistintaAppalto,
   spSetDistintaMovimento,
   spGetRosterDipendenti,
@@ -306,6 +308,8 @@ function FinanzaPage() {
   const [storico, setStorico] = useState<ImportStoricoRiga[] | null>(null);
   // Distinte / esiti pagamenti: dettaglio dei pagamenti cumulativi.
   const [distinte, setDistinte] = useState<DettaglioDistinta[] | null>(null);
+  // Bump quando gli alias dei gruppi controparti sono stati registrati.
+  const [gruppiVer, setGruppiVer] = useState(0);
   const [trancheBusy, setTrancheBusy] = useState(false);
   const [rosterDip, setRosterDip] = useState<DipendenteRoster[] | null>(null);
   const [distPreview, setDistPreview] = useState<
@@ -747,6 +751,15 @@ function FinanzaPage() {
     spGetRosterDipendenti()
       .then((l) => setRosterDip(l as DipendenteRoster[]))
       .catch(() => setRosterDip([]));
+    // Gruppi controparti ("unire i simili", 14/09): registrano gli alias di
+    // clienteGroupKey prima che le viste raggruppino; il contatore invalida
+    // i memo calcolati con la mappa vuota.
+    spGetGruppiControparti()
+      .then((l) => {
+        setGruppiControparti(l as { nome: string; membri: string }[]);
+        setGruppiVer((v) => v + 1);
+      })
+      .catch(() => {});
   }, []);
 
   // Parser del report "Esiti pagamenti" BPM (xlsx o csv, 16 colonne):
@@ -2857,7 +2870,8 @@ function FinanzaPage() {
       ),
     ].sort((a, b) => a.localeCompare(b));
     return { righe, colonne, totCol, tot, count: selezione.length, tipologieSpese };
-  }, [movimentiVista, ovMode, ovTipF, anni, mesi, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movimentiVista, ovMode, ovTipF, anni, mesi, t, gruppiVer]);
 
   const esportaMovimenti = () => {
     esportaCsvFile(
