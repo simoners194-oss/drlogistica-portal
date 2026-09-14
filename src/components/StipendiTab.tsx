@@ -143,8 +143,11 @@ export function StipendiTab() {
       .join(" ");
   const salariPag = useMemo(() => {
     const mesePag = /^\d{4}-\d{2}$/.test(meseSel) ? meseSuccessivo(meseSel) : "";
+    // I valori reali del campo sono "Stipendi SEPA" (e "Pagamento Riba" da
+    // escludere): si accettano entrambe le diciture stipendi/salari.
     const righeS = (distinte ?? []).filter(
-      (d) => /salar/i.test(d.tipoPagamento) && (d.dataEsecuzione || "").slice(0, 7) === mesePag,
+      (d) =>
+        /salar|stipend/i.test(d.tipoPagamento) && (d.dataEsecuzione || "").slice(0, 7) === mesePag,
     );
     const perNome = new Map<string, number>();
     for (const d of righeS) {

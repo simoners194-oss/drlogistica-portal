@@ -36,6 +36,20 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.65.1",
+    date: "2026-09-14",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "fix",
+        audience: "direzione",
+        title: 'Stipendi: il "Versato" ora legge le distinte "Stipendi SEPA"',
+        description:
+          'Il tipo pagamento reale delle distinte salari BPM è "Stipendi SEPA" (non "salari"): la card e la colonna Versato ora le agganciano. Copertura attuale dai report Esiti pagamenti importati: maggio quasi completo, giugno-agosto parziali — importando i report mancanti in Storico estratti la colonna si riempie da sola.',
+      },
+    ],
+  },
+  {
     version: "1.65.0",
     date: "2026-09-14",
     codename: "Versato in banca",
