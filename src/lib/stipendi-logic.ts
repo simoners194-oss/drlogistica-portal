@@ -52,6 +52,7 @@ export function totaleMese(m: StipendiMese): number {
 }
 
 export interface ParseCostiResult {
+  /** "" quando il file non dichiara il mese (tracciato per-appalto). */
   mese: string;
   dipendenti: StipendioDipendente[];
   totale: number;
@@ -76,12 +77,35 @@ function numCell(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Riconosce e interpreta un foglio "COSTI <mese>"; null se il foglio non è
- *  nel tracciato (si prova il successivo). */
-export function parseCostiMese(matrix: unknown[][]): ParseCostiResult | null {
+/** Descrizione indirizzamento → codice, per i fogli SENZA la colonna codice
+ *  (tracciato per-appalto di gennaio–maggio 2026: un foglio per appalto). */
+function codiceDaDescrizione(desc: string): string {
+  const d = norm(desc);
+  if (d.startsWith("costi ord")) return "1";
+  if (d.startsWith("costi str")) return "2";
+  if (d.startsWith("ferie")) return "910";
+  if (d.startsWith("mens")) return "920";
+  if (d.startsWith("t.f.r") || d === "tfr") return "930";
+  if (d.startsWith("totalizzazioni")) return "0";
+  return "";
+}
+
+/** Riconosce e interpreta un foglio costi; null se il foglio non è nel
+ *  tracciato (si prova il successivo). Due varianti: export paghe completo
+ *  (con "Codice indirizzamento", "Codice dipendente", "Mese da") e foglio
+ *  per-appalto (solo "Descrizione indirizzamento", niente codici né mese —
+ *  l'appalto è `etichettaDefault`, cioè il nome del foglio). */
+export function parseCostiMese(
+  matrix: unknown[][],
+  etichettaDefault = "",
+): ParseCostiResult | null {
   const headerIdx = matrix.findIndex((r) => {
     const cells = (r ?? []).map(norm);
-    return cells.includes("codice indirizzamento") && cells.includes("totale costo");
+    return (
+      cells.includes("totale costo") &&
+      (cells.includes("codice indirizzamento") ||
+        cells.some((c) => c.startsWith("descrizione indirizzament")))
+    );
   });
   if (headerIdx < 0) return null;
   const header = (matrix[headerIdx] ?? []).map(norm);
@@ -91,6 +115,7 @@ export function parseCostiMese(matrix: unknown[][]): ParseCostiResult | null {
     cognome: col("cognome"),
     nome: col("nome"),
     indirizzamento: col("codice indirizzamento"),
+    indirizzamentoDesc: header.findIndex((c) => c.startsWith("descrizione indirizzament")),
     retrib: col("costo retribuzione"),
     contrib: col("costo contributivo"),
     inail: col("costo inail"),
@@ -103,24 +128,33 @@ export function parseCostiMese(matrix: unknown[][]): ParseCostiResult | null {
     annoDa: col("anno da"),
     ripart: col("descrizione ripartizione 1"),
   };
-  if (C.codice < 0 || C.indirizzamento < 0 || C.totCosto < 0) return null;
+  if (C.cognome < 0 || C.totCosto < 0) return null;
+  if (C.indirizzamento < 0 && C.indirizzamentoDesc < 0) return null;
+  // La colonna etichetta (appalto) esiste solo nel tracciato completo, dove
+  // la prima colonna NON è il cognome.
+  const haEtichetta = C.cognome > 0;
 
   const perDip = new Map<string, StipendioDipendente>();
   const mesi = new Map<string, number>();
   let scartate = 0;
   for (const r of matrix.slice(headerIdx + 1)) {
-    const codice = String(r?.[C.codice] ?? "").trim();
-    if (!codice) {
+    const cognome = String(r?.[C.cognome] ?? "").trim();
+    const nome = C.nome >= 0 ? String(r?.[C.nome] ?? "").trim() : "";
+    const codice = C.codice >= 0 ? String(r?.[C.codice] ?? "").trim() : "";
+    // Nel tracciato completo la chiave è il codice dipendente; in quello
+    // per-appalto (senza codici) vale cognome+nome.
+    const chiave = codice || (cognome ? `${cognome}|${nome}` : "");
+    if (!chiave) {
       if ((r ?? []).some((c) => c != null && String(c).trim() !== "")) scartate++;
       continue;
     }
-    let d = perDip.get(codice);
+    let d = perDip.get(chiave);
     if (!d) {
       d = {
         codice,
-        cognome: String(r[C.cognome] ?? "").trim(),
-        nome: String(r[C.nome] ?? "").trim(),
-        etichetta: String(r[0] ?? "").trim(),
+        cognome,
+        nome,
+        etichetta: haEtichetta ? String(r[0] ?? "").trim() : etichettaDefault,
         ripartizione: C.ripart >= 0 ? String(r[C.ripart] ?? "").trim() || undefined : undefined,
         oreOrdinarie: 0,
         oreStraordinarie: 0,
@@ -133,13 +167,16 @@ export function parseCostiMese(matrix: unknown[][]): ParseCostiResult | null {
         totaleOre: 0,
         costoMedio: 0,
       };
-      perDip.set(codice, d);
+      perDip.set(chiave, d);
     }
     const componente =
       numCell(r[C.retrib]) +
       (C.contrib >= 0 ? numCell(r[C.contrib]) : 0) +
       (C.inail >= 0 ? numCell(r[C.inail]) : 0);
-    const ind = String(r[C.indirizzamento] ?? "").trim();
+    const ind =
+      C.indirizzamento >= 0
+        ? String(r[C.indirizzamento] ?? "").trim()
+        : codiceDaDescrizione(String(r[C.indirizzamentoDesc] ?? ""));
     if (ind === "1") {
       d.costoOrdinario += componente;
       if (C.oreOrd >= 0) d.oreOrdinarie += numCell(r[C.oreOrd]);
@@ -165,8 +202,7 @@ export function parseCostiMese(matrix: unknown[][]): ParseCostiResult | null {
   }
   if (perDip.size === 0) return null;
 
-  const mese =
-    [...mesi.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? new Date().toISOString().slice(0, 7);
+  const mese = [...mesi.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
   const dipendenti = [...perDip.values()].sort((a, b) =>
     `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`),
   );
@@ -194,4 +230,62 @@ export function meseSuccessivo(yyyymm: string): string {
   const [y, m] = yyyymm.split("-").map(Number);
   const d = new Date(y, m, 1); // m è già il mese successivo (0-based)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+const MESI_IT = [
+  "gennaio",
+  "febbraio",
+  "marzo",
+  "aprile",
+  "maggio",
+  "giugno",
+  "luglio",
+  "agosto",
+  "settembre",
+  "ottobre",
+  "novembre",
+  "dicembre",
+];
+
+/** "01 - Costi Personale Gennaio 2026.xlsx" → "2026-01" ("" se non riconosciuto). */
+export function meseDaNomeFile(nomeFile: string): string {
+  const s = norm(nomeFile);
+  for (let i = 0; i < 12; i++) {
+    const m = s.match(new RegExp(`${MESI_IT[i]}[^0-9]*([0-9]{4})`));
+    if (m) return `${m[1]}-${String(i + 1).padStart(2, "0")}`;
+  }
+  return "";
+}
+
+export interface ParseCostiFileResult extends ParseCostiResult {
+  /** Fogli del file effettivamente letti (per l'anteprima). */
+  fogli: string[];
+}
+
+/** Interpreta un intero file costi: prova OGNI foglio e unisce quelli validi.
+ *  Serve per il tracciato per-appalto (gennaio–maggio 2026: un foglio per
+ *  appalto, l'appalto è il nome del foglio); per l'export paghe completo
+ *  passa di solito un solo foglio. Il mese viene dal contenuto quando c'è,
+ *  altrimenti dal nome del file ("Costi Personale Gennaio 2026"). */
+export function parseCostiFile(
+  fogli: { nome: string; matrix: unknown[][] }[],
+  nomeFile: string,
+): ParseCostiFileResult | null {
+  const parziali: { nome: string; res: ParseCostiResult }[] = [];
+  for (const f of fogli) {
+    const res = parseCostiMese(f.matrix, f.nome);
+    if (res) parziali.push({ nome: f.nome, res });
+  }
+  if (parziali.length === 0) return null;
+  const dipendenti = parziali.flatMap((p) => p.res.dipendenti);
+  const mese = parziali.map((p) => p.res.mese).find((m) => m) || meseDaNomeFile(nomeFile) || "";
+  const totale = Math.round(dipendenti.reduce((a, d) => a + d.totaleCosto, 0) * 100) / 100;
+  return {
+    mese,
+    dipendenti,
+    totale,
+    squadrature: parziali.reduce((a, p) => a + p.res.squadrature, 0),
+    scartate: parziali.reduce((a, p) => a + p.res.scartate, 0),
+    fogli: parziali.map((p) => p.nome),
+  };
 }

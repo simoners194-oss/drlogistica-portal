@@ -17,6 +17,7 @@ import {
   fattureEscluse,
   residuoAperto,
   incassatoRegistrato,
+  isNotaCredito,
   type TerminePagamento,
 } from "@/lib/fatture-logic";
 import {
@@ -36,12 +37,7 @@ import {
   spGetRegoleFinanza,
   spGetMovimenti,
 } from "@/lib/sharepoint.functions";
-import type {
-  SpFattura,
-  SpMovimento,
-  Prefattura,
-  FlussoCassaRiga,
-} from "@/lib/sharepoint.server";
+import type { SpFattura, SpMovimento, Prefattura, FlussoCassaRiga } from "@/lib/sharepoint.server";
 
 function fmtImporto(n: number): string {
   return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -63,9 +59,7 @@ function chiaveSettimana(iso: string): string {
   const gen4 = new Date(Date.UTC(anno, 0, 4));
   const sett =
     1 +
-    Math.round(
-      ((t.getTime() - gen4.getTime()) / 86400000 - 3 + ((gen4.getUTCDay() + 6) % 7)) / 7,
-    );
+    Math.round(((t.getTime() - gen4.getTime()) / 86400000 - 3 + ((gen4.getUTCDay() + 6) % 7)) / 7);
   return `${anno}-W${String(sett).padStart(2, "0")}`;
 }
 
@@ -91,6 +85,10 @@ export function FlussiCassaTab() {
   const [finoA, setFinoA] = useState("");
   const [daData, setDaData] = useState("");
   const [dettaglio, setDettaglio] = useState(true);
+  // CUMULATO (richiesta Simone 14/09): ogni colonna mostra il progressivo
+  // "fino a quel momento" — a settembre scaduto+settembre, a ottobre
+  // scaduto+settembre+ottobre, e così via. Vale per entrambe le tabelle.
+  const [cumulato, setCumulato] = useState(false);
 
   // Editor cella voce manuale: chiave "nome|periodo".
   const [cellaVoce, setCellaVoce] = useState<string | null>(null);
@@ -148,7 +146,6 @@ export function FlussiCassaTab() {
       .then((l) => setMovimenti(l as SpMovimento[]))
       .catch(() => setMovimenti([]));
     void ricaricaFlussi();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const oggiISO = new Date().toISOString().slice(0, 10);
@@ -174,9 +171,7 @@ export function FlussiCassaTab() {
     // di facchinaggio (riga dedicata piu' sotto) — le sue fatture passive,
     // pregresso compreso, spariscono da QUESTA vista (Resoconto invariato).
     () =>
-      prepara(fattureRic ?? []).filter(
-        (x) => !x.f.cliente.toLowerCase().includes("dr logistics"),
-      ),
+      prepara(fattureRic ?? []).filter((x) => !x.f.cliente.toLowerCase().includes("dr logistics")),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [fattureRic, termini],
   );
@@ -312,6 +307,64 @@ export function FlussiCassaTab() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const uscite = useMemo(() => somma(passive), [passive, periodi, esclusioni, daData, finoA]);
 
+  // --- Tabella "solo fatturazioni" (richiesta Simone 14/09) ------------------
+  // Come sopra ma a FATTURATO: ogni fattura pesa per il suo TOTALE (al netto
+  // delle note di credito collegate) alla scadenza, incassata/pagata o no —
+  // nessuna movimentazione bancaria. Scaduto = scadenza prima di oggi.
+  const sommaFatturato = (
+    righe: typeof attive,
+    tutte: SpFattura[],
+  ): { righe: RigaCp[]; tot: RigaCp } => {
+    const nc = collegaNoteCredito(tutte, fattureEscluse(tutte));
+    const per = new Map<string, RigaCp>();
+    const tot: RigaCp = { nome: "", scaduto: 0, perPeriodo: new Map(), totale: 0 };
+    for (const x of righe) {
+      if (isNotaCredito(x.f.tipoDocumento)) continue;
+      const importo = Math.abs(x.f.totale) - (nc.get(x.f.nomeFile)?.importo ?? 0);
+      if (importo <= 0.005) continue;
+      if (!x.s.scadenza) continue;
+      const scad = x.s.scadenza.slice(0, 10);
+      if (esclusa(x.f.cliente, scad.slice(0, 7))) continue;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(finoA) && scad > finoA) continue;
+      const k = clienteGroupKey(x.f.cliente) || x.f.cliente;
+      const r = per.get(k) ?? {
+        nome: x.f.cliente,
+        scaduto: 0,
+        perPeriodo: new Map(),
+        totale: 0,
+      };
+      if (scad < oggiISO) {
+        r.scaduto += importo;
+        tot.scaduto += importo;
+      } else {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(daData) && scad < daData) continue;
+        const kp = chiaveDi(scad);
+        if (!chiaviPeriodo.has(kp)) continue;
+        r.perPeriodo.set(kp, (r.perPeriodo.get(kp) ?? 0) + importo);
+        r.totale += importo;
+        tot.perPeriodo.set(kp, (tot.perPeriodo.get(kp) ?? 0) + importo);
+        tot.totale += importo;
+      }
+      per.set(k, r);
+    }
+    return {
+      righe: [...per.values()]
+        .filter((r) => r.totale > 0.005 || r.scaduto > 0.005)
+        .sort((a, b) => b.totale + b.scaduto - (a.totale + a.scaduto)),
+      tot,
+    };
+  };
+  const entrateFat = useMemo(
+    () => sommaFatturato(attive, fattureEm ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [attive, fattureEm, periodi, esclusioni, daData, finoA],
+  );
+  const usciteFat = useMemo(
+    () => sommaFatturato(passive, fattureRic ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [passive, fattureRic, periodi, esclusioni, daData, finoA],
+  );
+
   // GIRATE (spec Simone 12/09, v1.62.0): regole "se entra una fattura dal
   // cliente X, gira il P% al fornitore Y", configurabili dal pannello
   // Esclusioni e salvate sulla lista FlussiCassa (genere "girata": Title =
@@ -411,7 +464,8 @@ export function FlussiCassaTab() {
       const fonte = dir === "Emessa" ? (fattureEm ?? []) : (fattureRic ?? []);
       return new Set(
         fonte.map(
-          (f) => `${clienteGroupKey(f.cliente) || f.cliente.toLowerCase()}|${f.dataDocumento.slice(0, 7)}`,
+          (f) =>
+            `${clienteGroupKey(f.cliente) || f.cliente.toLowerCase()}|${f.dataDocumento.slice(0, 7)}`,
         ),
       );
     };
@@ -424,9 +478,7 @@ export function FlussiCassaTab() {
         const mesiPf =
           pf.ricorrenza === "una"
             ? mesiVisibili.filter((m) => m === pf.meseInizio)
-            : mesiVisibili.filter(
-                (m) => m >= pf.meseInizio && (!pf.meseFine || m <= pf.meseFine),
-              );
+            : mesiVisibili.filter((m) => m >= pf.meseInizio && (!pf.meseFine || m <= pf.meseFine));
         for (const m of mesiPf) {
           if (cov.has(`${chiave}|${m}`)) continue;
           if (esclusa(pf.controparte, m)) continue;
@@ -478,9 +530,7 @@ export function FlussiCassaTab() {
     return [...set];
   }, [voci]);
   const vocePer = (nome: string, mese: string): FlussoCassaRiga | undefined =>
-    voci.find(
-      (v) => v.nome.trim().toLowerCase() === nome.trim().toLowerCase() && v.mese === mese,
-    );
+    voci.find((v) => v.nome.trim().toLowerCase() === nome.trim().toLowerCase() && v.mese === mese);
 
   /** Valore effettivo di una voce nel mese: manuale se c'e', altrimenti — per
    *  la sola riga "Altre spese", dai mesi correnti in poi — la media
@@ -684,7 +734,28 @@ export function FlussiCassaTab() {
     return Math.round(v * 100) / 100;
   };
 
+  // Saldo della tabella "solo fatturazioni" (niente girate/voci/prefatture:
+  // è fatturato puro, entrate meno uscite).
+  const saldoFatDi = (chiave: string): number =>
+    Math.round(
+      ((entrateFat.tot.perPeriodo.get(chiave) ?? 0) - (usciteFat.tot.perPeriodo.get(chiave) ?? 0)) *
+        100,
+    ) / 100;
+  const saldoFatScaduto = entrateFat.tot.scaduto - usciteFat.tot.scaduto;
+
   const fmt = (v: number) => (Math.abs(v) >= 0.005 ? `${fmtImporto(v)}` : "—");
+
+  // Valori di riga per colonna: normali, oppure PROGRESSIVI partendo dallo
+  // scaduto quando il Cumulato è acceso.
+  const serie = (scad: number, get: (chiave: string, mese: string) => number): number[] => {
+    let acc = scad;
+    return periodi.map((p) => {
+      const v = get(p.chiave, p.mese);
+      if (!cumulato) return v;
+      acc += v;
+      return acc;
+    });
+  };
 
   // --- Export ----------------------------------------------------------------
   const esporta = () => {
@@ -757,6 +828,41 @@ export function FlussiCassaTab() {
       num(saldoScaduto),
       ...periodi.map((p) => num(saldoDi(p.chiave, p.mese))),
       num(periodi.reduce((s, p) => s + saldoDi(p.chiave, p.mese), 0)),
+    ]);
+    // Sezione "solo fatturazioni" (fatturato pieno, incassate/pagate comprese).
+    righe.push([]);
+    righe.push([t("fc.fatTitolo")]);
+    righe.push([
+      t("fc.entrate"),
+      num(entrateFat.tot.scaduto),
+      ...periodi.map((p) => num(entrateFat.tot.perPeriodo.get(p.chiave) ?? 0)),
+      num(entrateFat.tot.scaduto + entrateFat.tot.totale),
+    ]);
+    for (const r of entrateFat.righe)
+      righe.push([
+        `  ${r.nome}`,
+        num(r.scaduto),
+        ...periodi.map((p) => num(r.perPeriodo.get(p.chiave) ?? 0)),
+        num(r.scaduto + r.totale),
+      ]);
+    righe.push([
+      t("fc.uscite"),
+      num(-usciteFat.tot.scaduto),
+      ...periodi.map((p) => num(-(usciteFat.tot.perPeriodo.get(p.chiave) ?? 0))),
+      num(-(usciteFat.tot.scaduto + usciteFat.tot.totale)),
+    ]);
+    for (const r of usciteFat.righe)
+      righe.push([
+        `  ${r.nome}`,
+        num(-r.scaduto),
+        ...periodi.map((p) => num(-(r.perPeriodo.get(p.chiave) ?? 0))),
+        num(-(r.scaduto + r.totale)),
+      ]);
+    righe.push([
+      t("fc.saldo"),
+      num(saldoFatScaduto),
+      ...periodi.map((p) => num(saldoFatDi(p.chiave))),
+      num(periodi.reduce((s, p) => s + saldoFatDi(p.chiave), 0)),
     ]);
     esportaCsvFile(`flussi-di-cassa-${modo}`, testata, righe);
   };
@@ -879,6 +985,14 @@ export function FlussiCassaTab() {
             className="rounded-lg border border-border px-3 py-1 hover:bg-muted"
           >
             {dettaglio ? t("fc.nascondiDettaglio") : t("fc.mostraDettaglio")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCumulato((v) => !v)}
+            title={t("fc.cumulatoTip")}
+            className={`rounded-lg border px-3 py-1 ${cumulato ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted"}`}
+          >
+            {t("fc.cumulato")}
           </button>
           <button
             type="button"
@@ -1038,9 +1152,7 @@ export function FlussiCassaTab() {
                   >
                     {g.cliente} → {Math.round(g.perc * 100)}% → {g.fornitore}
                     {g.oggettoTermini.length > 0 && (
-                      <span className="text-muted-foreground">
-                        ({g.oggettoTermini.join(", ")})
-                      </span>
+                      <span className="text-muted-foreground">({g.oggettoTermini.join(", ")})</span>
                     )}
                     <button
                       type="button"
@@ -1111,9 +1223,7 @@ export function FlussiCassaTab() {
                 <button
                   type="button"
                   disabled={
-                    giBusy ||
-                    !giCliente.trim() ||
-                    (giFornSel === "altro" && !giFornAltro.trim())
+                    giBusy || !giCliente.trim() || (giFornSel === "altro" && !giFornAltro.trim())
                   }
                   onClick={() => void aggiungiGirata()}
                   className="rounded-lg bg-primary px-3 py-1 text-primary-foreground disabled:opacity-40"
@@ -1155,11 +1265,13 @@ export function FlussiCassaTab() {
                 <tr className="border-t border-border/60 font-medium">
                   <td className="py-1 pr-3">{t("fc.entrate")}</td>
                   <td className={`${tdN} text-status-absent`}>{fmt(entrate.tot.scaduto)}</td>
-                  {periodi.map((p) => (
-                    <td key={p.chiave} className={tdN}>
-                      {fmt(entrate.tot.perPeriodo.get(p.chiave) ?? 0)}
-                    </td>
-                  ))}
+                  {serie(entrate.tot.scaduto, (c) => entrate.tot.perPeriodo.get(c) ?? 0).map(
+                    (v, i) => (
+                      <td key={periodi[i].chiave} className={tdN}>
+                        {fmt(v)}
+                      </td>
+                    ),
+                  )}
                   <td className={tdN}>{fmt(entrate.tot.scaduto + entrate.tot.totale)}</td>
                 </tr>
                 {dettaglio &&
@@ -1169,9 +1281,9 @@ export function FlussiCassaTab() {
                         {r.nome}
                       </td>
                       <td className={`${tdN} text-muted-foreground`}>{fmt(r.scaduto)}</td>
-                      {periodi.map((p) => (
-                        <td key={p.chiave} className={`${tdN} text-muted-foreground`}>
-                          {fmt(r.perPeriodo.get(p.chiave) ?? 0)}
+                      {serie(r.scaduto, (c) => r.perPeriodo.get(c) ?? 0).map((v, i) => (
+                        <td key={periodi[i].chiave} className={`${tdN} text-muted-foreground`}>
+                          {fmt(v)}
                         </td>
                       ))}
                       <td className={`${tdN} text-muted-foreground`}>
@@ -1184,11 +1296,13 @@ export function FlussiCassaTab() {
                 <tr className="border-t border-border/60 font-medium">
                   <td className="py-1 pr-3">{t("fc.uscite")}</td>
                   <td className={`${tdN} text-status-absent`}>{fmt(-uscite.tot.scaduto)}</td>
-                  {periodi.map((p) => (
-                    <td key={p.chiave} className={tdN}>
-                      {fmt(-(uscite.tot.perPeriodo.get(p.chiave) ?? 0))}
-                    </td>
-                  ))}
+                  {serie(uscite.tot.scaduto, (c) => uscite.tot.perPeriodo.get(c) ?? 0).map(
+                    (v, i) => (
+                      <td key={periodi[i].chiave} className={tdN}>
+                        {fmt(-v)}
+                      </td>
+                    ),
+                  )}
                   <td className={tdN}>{fmt(-(uscite.tot.scaduto + uscite.tot.totale))}</td>
                 </tr>
                 {dettaglio &&
@@ -1198,9 +1312,9 @@ export function FlussiCassaTab() {
                         {r.nome}
                       </td>
                       <td className={`${tdN} text-muted-foreground`}>{fmt(-r.scaduto)}</td>
-                      {periodi.map((p) => (
-                        <td key={p.chiave} className={`${tdN} text-muted-foreground`}>
-                          {fmt(-(r.perPeriodo.get(p.chiave) ?? 0))}
+                      {serie(r.scaduto, (c) => r.perPeriodo.get(c) ?? 0).map((v, i) => (
+                        <td key={periodi[i].chiave} className={`${tdN} text-muted-foreground`}>
+                          {fmt(-v)}
                         </td>
                       ))}
                       <td className={`${tdN} text-muted-foreground`}>
@@ -1218,9 +1332,9 @@ export function FlussiCassaTab() {
                           {q.fornitore}
                         </td>
                         <td className={`${tdN} text-status-absent`}>{fmt(-q.scaduto)}</td>
-                        {periodi.map((p) => (
-                          <td key={p.chiave} className={tdN}>
-                            {fmt(-(q.perPeriodo.get(p.chiave) ?? 0))}
+                        {serie(q.scaduto, (c) => q.perPeriodo.get(c) ?? 0).map((v, i) => (
+                          <td key={periodi[i].chiave} className={tdN}>
+                            {fmt(-v)}
                           </td>
                         ))}
                         <td className={tdN}>{fmt(-girataTotaleDi(q))}</td>
@@ -1234,9 +1348,9 @@ export function FlussiCassaTab() {
                     <tr className="border-t border-border/40 italic text-primary">
                       <td className="py-1 pr-3">{t("fc.prefAtt")}</td>
                       <td className={tdN}>—</td>
-                      {periodi.map((p) => (
-                        <td key={p.chiave} className={tdN}>
-                          {fmt(prefPer.att.get(p.mese) ?? 0)}
+                      {serie(0, (_c, m) => prefPer.att.get(m) ?? 0).map((v, i) => (
+                        <td key={periodi[i].chiave} className={tdN}>
+                          {fmt(v)}
                         </td>
                       ))}
                       <td className={tdN}>
@@ -1246,9 +1360,9 @@ export function FlussiCassaTab() {
                     <tr className="border-t border-border/40 italic text-primary">
                       <td className="py-1 pr-3">{t("fc.prefPas")}</td>
                       <td className={tdN}>—</td>
-                      {periodi.map((p) => (
-                        <td key={p.chiave} className={tdN}>
-                          {fmt(-(prefPer.pas.get(p.mese) ?? 0))}
+                      {serie(0, (_c, m) => prefPer.pas.get(m) ?? 0).map((v, i) => (
+                        <td key={periodi[i].chiave} className={tdN}>
+                          {fmt(-v)}
                         </td>
                       ))}
                       <td className={tdN}>
@@ -1264,11 +1378,17 @@ export function FlussiCassaTab() {
                     <tr key={`v:${nome}`} className="border-t border-border/40">
                       <td className="py-1 pr-3">{nome}</td>
                       <td className={tdN}>—</td>
-                      {periodi.map((p) => (
-                        <td key={p.chiave} className="py-0.5 pr-3 text-right">
-                          {cellaVoceUI(nome, p.mese)}
-                        </td>
-                      ))}
+                      {cumulato
+                        ? serie(0, (_c, m) => valoreVoce(nome, m)?.importo ?? 0).map((v, i) => (
+                            <td key={periodi[i].chiave} className={tdN}>
+                              {fmt(v)}
+                            </td>
+                          ))
+                        : periodi.map((p) => (
+                            <td key={p.chiave} className="py-0.5 pr-3 text-right">
+                              {cellaVoceUI(nome, p.mese)}
+                            </td>
+                          ))}
                       <td className={tdN}>
                         {fmt(
                           periodi.reduce((s, p) => s + (valoreVoce(nome, p.mese)?.importo ?? 0), 0),
@@ -1285,23 +1405,126 @@ export function FlussiCassaTab() {
                   >
                     {fmt(saldoScaduto)}
                   </td>
-                  {periodi.map((p) => {
-                    const v = saldoDi(p.chiave, p.mese);
-                    return (
-                      <td
-                        key={p.chiave}
-                        className={`${tdN} ${v >= 0 ? "text-status-present" : "text-status-absent"}`}
-                      >
-                        {fmt(v)}
-                      </td>
-                    );
-                  })}
+                  {serie(saldoScaduto, (c, m) => saldoDi(c, m)).map((v, i) => (
+                    <td
+                      key={periodi[i].chiave}
+                      className={`${tdN} ${v >= 0 ? "text-status-present" : "text-status-absent"}`}
+                    >
+                      {fmt(v)}
+                    </td>
+                  ))}
                   <td className={tdN}>
                     {fmt(periodi.reduce((s, p) => s + saldoDi(p.chiave, p.mese), 0))}
                   </td>
                 </tr>
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* --- SOLO FATTURAZIONI (richiesta Simone 14/09): stessa tabella ma a
+            fatturato pieno alla scadenza, incassate/pagate COMPRESE — nessuna
+            movimentazione bancaria, niente voci manuali/girate/prefatture. --- */}
+        {!loading && (
+          <div className="mt-6 border-t-2 border-border pt-4">
+            <div className="text-sm font-semibold text-foreground">{t("fc.fatTitolo")}</div>
+            <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">{t("fc.fatNota")}</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="text-left text-[11px] text-muted-foreground">
+                    <th className="py-1 pr-3 min-w-44" />
+                    <th className={thCls}>{t("fc.colScaduto")}</th>
+                    {periodi.map((p) => (
+                      <th key={p.chiave} className={thCls}>
+                        {p.label}
+                      </th>
+                    ))}
+                    <th className={thCls}>{t("fc.colTotale")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-border/60 font-medium">
+                    <td className="py-1 pr-3">{t("fc.entrate")}</td>
+                    <td className={`${tdN} text-status-absent`}>{fmt(entrateFat.tot.scaduto)}</td>
+                    {serie(
+                      entrateFat.tot.scaduto,
+                      (c) => entrateFat.tot.perPeriodo.get(c) ?? 0,
+                    ).map((v, i) => (
+                      <td key={periodi[i].chiave} className={tdN}>
+                        {fmt(v)}
+                      </td>
+                    ))}
+                    <td className={tdN}>{fmt(entrateFat.tot.scaduto + entrateFat.tot.totale)}</td>
+                  </tr>
+                  {dettaglio &&
+                    entrateFat.righe.map((r) => (
+                      <tr key={`fe:${r.nome}`} className="border-t border-border/30">
+                        <td className="max-w-56 truncate py-0.5 pl-4 pr-3 text-muted-foreground">
+                          {r.nome}
+                        </td>
+                        <td className={`${tdN} text-muted-foreground`}>{fmt(r.scaduto)}</td>
+                        {serie(r.scaduto, (c) => r.perPeriodo.get(c) ?? 0).map((v, i) => (
+                          <td key={periodi[i].chiave} className={`${tdN} text-muted-foreground`}>
+                            {fmt(v)}
+                          </td>
+                        ))}
+                        <td className={`${tdN} text-muted-foreground`}>
+                          {fmt(r.scaduto + r.totale)}
+                        </td>
+                      </tr>
+                    ))}
+                  <tr className="border-t border-border/60 font-medium">
+                    <td className="py-1 pr-3">{t("fc.uscite")}</td>
+                    <td className={`${tdN} text-status-absent`}>{fmt(-usciteFat.tot.scaduto)}</td>
+                    {serie(usciteFat.tot.scaduto, (c) => usciteFat.tot.perPeriodo.get(c) ?? 0).map(
+                      (v, i) => (
+                        <td key={periodi[i].chiave} className={tdN}>
+                          {fmt(-v)}
+                        </td>
+                      ),
+                    )}
+                    <td className={tdN}>{fmt(-(usciteFat.tot.scaduto + usciteFat.tot.totale))}</td>
+                  </tr>
+                  {dettaglio &&
+                    usciteFat.righe.map((r) => (
+                      <tr key={`fu:${r.nome}`} className="border-t border-border/30">
+                        <td className="max-w-56 truncate py-0.5 pl-4 pr-3 text-muted-foreground">
+                          {r.nome}
+                        </td>
+                        <td className={`${tdN} text-muted-foreground`}>{fmt(-r.scaduto)}</td>
+                        {serie(r.scaduto, (c) => r.perPeriodo.get(c) ?? 0).map((v, i) => (
+                          <td key={periodi[i].chiave} className={`${tdN} text-muted-foreground`}>
+                            {fmt(-v)}
+                          </td>
+                        ))}
+                        <td className={`${tdN} text-muted-foreground`}>
+                          {fmt(-(r.scaduto + r.totale))}
+                        </td>
+                      </tr>
+                    ))}
+                  <tr className="border-t-2 border-border font-semibold">
+                    <td className="py-1.5 pr-3">{t("fc.saldo")}</td>
+                    <td
+                      className={`${tdN} ${saldoFatScaduto >= 0 ? "text-status-present" : "text-status-absent"}`}
+                    >
+                      {fmt(saldoFatScaduto)}
+                    </td>
+                    {serie(saldoFatScaduto, (c) => saldoFatDi(c)).map((v, i) => (
+                      <td
+                        key={periodi[i].chiave}
+                        className={`${tdN} ${v >= 0 ? "text-status-present" : "text-status-absent"}`}
+                      >
+                        {fmt(v)}
+                      </td>
+                    ))}
+                    <td className={tdN}>
+                      {fmt(periodi.reduce((s, p) => s + saldoFatDi(p.chiave), 0))}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

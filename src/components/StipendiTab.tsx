@@ -12,9 +12,9 @@ import { useLang } from "@/lib/i18n";
 import { esportaCsvFile } from "@/lib/csv";
 import {
   meseSuccessivo,
-  parseCostiMese,
+  parseCostiFile,
   totaleMese,
-  type ParseCostiResult,
+  type ParseCostiFileResult,
   type StipendiDb,
 } from "@/lib/stipendi-logic";
 import {
@@ -51,8 +51,7 @@ function fmtMese(yyyymm: string): string {
 
 interface PreviewStip {
   fileName: string;
-  res: ParseCostiResult;
-  sostituisce: boolean;
+  res: ParseCostiFileResult;
 }
 
 export function StipendiTab() {
@@ -67,6 +66,9 @@ export function StipendiTab() {
   const [preview, setPreview] = useState<PreviewStip | null>(null);
   const [aggiornaFlussi, setAggiornaFlussi] = useState(true);
   const [meseFlussi, setMeseFlussi] = useState("");
+  // Mese di competenza del file in anteprima: proposto dal contenuto (o dal
+  // nome file per il tracciato per-appalto) e sempre correggibile a mano.
+  const [meseComp, setMeseComp] = useState("");
   const [saving, setSaving] = useState(false);
   const [confermaElimina, setConfermaElimina] = useState(false);
 
@@ -125,26 +127,22 @@ export function StipendiTab() {
     try {
       const XLSX = await import("xlsx");
       const wb = XLSX.read(await f.arrayBuffer(), { cellDates: false });
-      let res: ParseCostiResult | null = null;
-      for (const nome of wb.SheetNames) {
-        const matrix = XLSX.utils.sheet_to_json(wb.Sheets[nome], {
+      const fogli = wb.SheetNames.map((nome) => ({
+        nome,
+        matrix: XLSX.utils.sheet_to_json(wb.Sheets[nome], {
           header: 1,
           raw: true,
           defval: null,
-        }) as unknown[][];
-        res = parseCostiMese(matrix);
-        if (res) break;
-      }
+        }) as unknown[][],
+      }));
+      const res = parseCostiFile(fogli, f.name);
       if (!res) {
         toast.error(t("stip.errTracciato"));
         return;
       }
-      setPreview({
-        fileName: f.name,
-        res,
-        sostituisce: !!db?.mesi.some((m) => m.mese === res!.mese),
-      });
-      setMeseFlussi(meseSuccessivo(res.mese));
+      setPreview({ fileName: f.name, res });
+      setMeseComp(res.mese);
+      setMeseFlussi(res.mese ? meseSuccessivo(res.mese) : "");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -153,13 +151,13 @@ export function StipendiTab() {
   };
 
   const conferma = async () => {
-    if (!preview) return;
+    if (!preview || !/^\d{4}-\d{2}$/.test(meseComp)) return;
     setSaving(true);
     try {
       const res = await spStipendiSalvaMese({
         data: {
           mese: {
-            mese: preview.res.mese,
+            mese: meseComp,
             fonteFile: preview.fileName,
             dipendenti: preview.res.dipendenti,
           },
@@ -172,16 +170,16 @@ export function StipendiTab() {
             genere: "voce",
             mese: meseFlussi,
             importo: -preview.res.totale,
-            note: `${t("stip.flussiNota")} ${fmtMese(preview.res.mese)} (${preview.fileName})`,
+            note: `${t("stip.flussiNota")} ${fmtMese(meseComp)} (${preview.fileName})`,
           },
         });
       }
       setDb(res);
-      setMeseSel(preview.res.mese);
+      setMeseSel(meseComp);
       setPreview(null);
       setShowImport(false);
       toast.success(t("stip.importOk"), {
-        description: `${fmtMese(preview.res.mese)} · ${preview.res.dipendenti.length} ${t("stip.dipendenti").toLowerCase()} · ${eur(preview.res.totale)} €${aggiornaFlussi ? ` · ${t("stip.flussiOk")} ${fmtMese(meseFlussi)}` : ""}`,
+        description: `${fmtMese(meseComp)} · ${preview.res.dipendenti.length} ${t("stip.dipendenti").toLowerCase()} · ${eur(preview.res.totale)} €${aggiornaFlussi && meseFlussi ? ` · ${t("stip.flussiOk")} ${fmtMese(meseFlussi)}` : ""}`,
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -350,13 +348,29 @@ export function StipendiTab() {
             <div className="mt-4 rounded-xl border border-border p-4">
               <div className="text-sm font-medium text-foreground">{preview.fileName}</div>
               <ul className="mt-2 space-y-1 text-[13px] text-muted-foreground">
-                <li>
-                  {t("stip.mese")}: <b>{fmtMese(preview.res.mese)}</b>
-                  {preview.sostituisce && (
-                    <span className="ml-2 rounded bg-status-break/20 px-1.5 py-0.5 text-xs text-status-break">
+                <li className="flex items-center gap-2">
+                  {t("stip.mese")}:
+                  <input
+                    type="month"
+                    className={inputCls}
+                    value={meseComp}
+                    onChange={(e) => {
+                      setMeseComp(e.target.value);
+                      if (/^\d{4}-\d{2}$/.test(e.target.value))
+                        setMeseFlussi(meseSuccessivo(e.target.value));
+                    }}
+                  />
+                  {!preview.res.mese && (
+                    <span className="text-xs text-status-break">{t("stip.meseNonNelFile")}</span>
+                  )}
+                  {/^\d{4}-\d{2}$/.test(meseComp) && db?.mesi.some((m) => m.mese === meseComp) && (
+                    <span className="rounded bg-status-break/20 px-1.5 py-0.5 text-xs text-status-break">
                       {t("stip.sovrascrive")}
                     </span>
                   )}
+                </li>
+                <li>
+                  {t("stip.fogli")}: {preview.res.fogli.join(", ")}
                 </li>
                 <li>
                   {t("stip.dipendenti")}: <b>{preview.res.dipendenti.length}</b>
@@ -393,7 +407,7 @@ export function StipendiTab() {
                 <button
                   type="button"
                   onClick={() => void conferma()}
-                  disabled={saving}
+                  disabled={saving || !/^\d{4}-\d{2}$/.test(meseComp)}
                   className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                 >
                   {saving && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -477,7 +491,10 @@ export function StipendiTab() {
               </thead>
               <tbody>
                 {righe.map((d) => (
-                  <tr key={d.codice} className="border-b border-border/60 hover:bg-muted/40">
+                  <tr
+                    key={`${d.codice}|${d.cognome} ${d.nome}|${d.etichetta}`}
+                    className="border-b border-border/60 hover:bg-muted/40"
+                  >
                     <td className="max-w-44 truncate px-3 py-1.5 text-xs text-muted-foreground">
                       {d.etichetta || "—"}
                     </td>

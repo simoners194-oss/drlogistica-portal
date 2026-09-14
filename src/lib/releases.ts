@@ -36,6 +36,35 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.64.0",
+    date: "2026-09-14",
+    codename: "Cumulato e solo fatturazioni",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Flussi di cassa: bottone Cumulato",
+        description:
+          "Nuovo interruttore accanto ai controlli della tabella: ogni colonna mostra il progressivo fino a quel momento — a settembre scaduto + settembre, a ottobre scaduto + settembre + ottobre, e così via. Vale per entrate, uscite, girate, voci manuali, saldo e anche per la nuova tabella del fatturato.",
+      },
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: 'Flussi di cassa: seconda tabella "solo fatturazioni"',
+        description:
+          "Sotto la tabella principale ce n'è una identica ma a FATTURATO pieno alla scadenza (al netto delle note di credito collegate), senza guardare le movimentazioni bancarie: le fatture già incassate o pagate ci sono. Niente voci manuali, girate o prefatture: solo fatturazioni, con saldo dedicato e sezione aggiuntiva nell'export CSV.",
+      },
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: "Stipendi: si caricano anche i mesi gennaio–maggio",
+        description:
+          'Il parser riconosce anche il tracciato per-appalto dei file "Costi Personale <mese>" (un foglio per appalto, senza codici dipendente né mese nel contenuto): l\'appalto arriva dal nome del foglio, il mese dal nome del file ed è comunque correggibile in anteprima, dove ora si vedono anche i fogli letti.',
+      },
+    ],
+  },
+  {
     version: "1.63.0",
     date: "2026-09-14",
     codename: "Stipendi ed esclusioni nel Resoconto",

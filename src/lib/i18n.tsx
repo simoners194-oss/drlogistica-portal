@@ -606,6 +606,8 @@ const en = {
   "stip.errTracciato":
     'No sheet in the file matches the payroll layout (needs "Codice indirizzamento" and "Totale costo" columns).',
   "stip.sovrascrive": "replaces the month already loaded",
+  "stip.fogli": "Sheets read",
+  "stip.meseNonNelFile": "month not stated in the file: check it",
   "stip.dipendenti": "Employees",
   "stip.totaleMese": "Total cost",
   "stip.squadrature": "employees whose components don't add up to the total (check the file)",
@@ -670,6 +672,12 @@ const en = {
   "fc.colScaduto": "Overdue",
   "fc.colTotale": "Total",
   "fc.entrate": "In — invoices to collect",
+  "fc.cumulato": "Cumulative",
+  "fc.cumulatoTip":
+    "Each column shows the running total up to that point: September = overdue + September, October = overdue + September + October, and so on.",
+  "fc.fatTitolo": "Invoicing only — collected and paid included",
+  "fc.fatNota":
+    "Same table but by INVOICED amount at due date (net of linked credit notes), regardless of bank movements: invoices already collected or paid are included. No manual rows, transfers or pre-invoices. Overdue = due before today.",
   "fc.uscite": "Out — invoices to pay",
   "fc.prefAtt": "Planned invoicing (in)",
   "fc.prefPas": "Planned costs (out)",
@@ -2054,6 +2062,8 @@ const it: Record<DictKey, string> = {
   "stip.errTracciato":
     'Nessun foglio del file rispetta il tracciato paghe (servono le colonne "Codice indirizzamento" e "Totale costo").',
   "stip.sovrascrive": "sostituisce il mese già caricato",
+  "stip.fogli": "Fogli letti",
+  "stip.meseNonNelFile": "mese non indicato nel file: verificalo",
   "stip.dipendenti": "Dipendenti",
   "stip.totaleMese": "Totale costo",
   "stip.squadrature": "dipendenti con componenti che non tornano col totale (controllare il file)",
@@ -2118,6 +2128,12 @@ const it: Record<DictKey, string> = {
   "fc.colScaduto": "Scaduto",
   "fc.colTotale": "Totale",
   "fc.entrate": "Entrate — fatture da incassare",
+  "fc.cumulato": "Cumulato",
+  "fc.cumulatoTip":
+    "Ogni colonna mostra il progressivo fino a quel momento: a settembre scaduto + settembre, a ottobre scaduto + settembre + ottobre, e così via.",
+  "fc.fatTitolo": "Solo fatturazioni — incassate e pagate comprese",
+  "fc.fatNota":
+    "Stessa tabella ma a FATTURATO alla scadenza (al netto delle note di credito collegate), senza guardare le movimentazioni bancarie: le fatture già incassate o pagate ci sono. Niente voci manuali, girate o prefatture. Scaduto = scadenza prima di oggi.",
   "fc.uscite": "Uscite — fatture da pagare",
   "fc.prefAtt": "Prefatturazione (entrate)",
   "fc.prefPas": "Costi pianificati (uscite)",
