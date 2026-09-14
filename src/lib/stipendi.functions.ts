@@ -10,6 +10,7 @@ import {
   deleteStipendiMese,
   loadStipendiDb,
   replaceStipendiAnagrafica,
+  setStipendiMensilita,
   stimaStipendiMensile,
   upsertStipendiMese,
   upsertStipendiNetti,
@@ -55,6 +56,21 @@ export const spStipendiSalvaAnagrafica = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<StipendiDb> => {
     const me = await utenteStipendi();
     return replaceStipendiAnagrafica(data.anagrafica, data.fonte, firma(me));
+  });
+
+export const spStipendiMensilita = createServerFn({ method: "POST" })
+  .inputValidator((input: { nome: string; mensilita: number | null }) => {
+    if (!input?.nome?.trim()) throw new Error("Nome mancante.");
+    if (
+      input.mensilita != null &&
+      (!Number.isInteger(input.mensilita) || input.mensilita < 12 || input.mensilita > 15)
+    )
+      throw new Error("Mensilità: intero tra 12 e 15 (vuoto per tornare alla stima).");
+    return input;
+  })
+  .handler(async ({ data }): Promise<StipendiDb> => {
+    const me = await utenteStipendi();
+    return setStipendiMensilita(data.nome.trim(), data.mensilita, firma(me));
   });
 
 /** Stima mensile per i Flussi: media del netto dovuto degli ultimi 2 mesi. */

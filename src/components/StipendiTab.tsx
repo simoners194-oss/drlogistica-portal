@@ -11,6 +11,7 @@ import { Banknote, Loader2, Trash2, Upload } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { esportaCsvFile } from "@/lib/csv";
 import {
+  chiaveNome,
   mensilitaStimate,
   meseSuccessivo,
   parseCostiFile,
@@ -26,6 +27,7 @@ import {
 import {
   spStipendiEliminaMese,
   spStipendiGet,
+  spStipendiMensilita,
   spStipendiSalvaAnagrafica,
   spStipendiSalvaMese,
   spStipendiSalvaNetti,
@@ -62,6 +64,9 @@ function fmtDataIt(iso: string): string {
   const [y, m, g] = iso.slice(0, 10).split("-");
   return y && m && g ? `${g}/${m}/${y}` : iso;
 }
+
+// Chiave di confronto nomi tra fonti diverse (paghe, distinte, mappatura).
+const nameKey = chiaveNome;
 
 interface PreviewStip {
   fileName: string;
@@ -104,6 +109,10 @@ export function StipendiTab() {
     anagrafica: AnagraficaDipendente[];
   } | null>(null);
   const [savingM, setSavingM] = useState(false);
+  // Editor mensilità dichiarate (override della stima dai ratei paghe).
+  const [mensEdit, setMensEdit] = useState<string | null>(null); // chiave nome
+  const [mensVal, setMensVal] = useState("");
+  const [mensBusy, setMensBusy] = useState(false);
 
   const refresh = () =>
     spStipendiGet()
@@ -162,14 +171,6 @@ export function StipendiTab() {
   // importato in Finanze → Storico estratti). Gli stipendi del mese M si
   // pagano nel mese M+1: per il mese selezionato si guardano le disposizioni
   // salari ESEGUITE nel mese successivo, abbinate al dipendente per nome.
-  const nameKey = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/[^a-zà-ù ]/g, " ")
-      .split(/\s+/)
-      .filter(Boolean)
-      .sort()
-      .join(" ");
   const salariPag = useMemo(() => {
     const mesePag = /^\d{4}-\d{2}$/.test(meseSel) ? meseSuccessivo(meseSel) : "";
     // I valori reali del campo sono "Stipendi SEPA" (e "Pagamento Riba" da
@@ -243,8 +244,36 @@ export function StipendiTab() {
     }
     return out;
   }, [db]);
-  const mensDi = (d: StipendioDipendente) =>
-    mensPerNome.get(nameKey(`${d.cognome} ${d.nome}`)) ?? null;
+  /** Mensilità: l'override dichiarato (Mappatura/che ci dice la direzione)
+   *  vince sulla stima dai ratei paghe (che si mostra col "≈"). */
+  const mensDi = (d: StipendioDipendente): { val: number; stima: boolean } | null => {
+    const ov = anagDi(d)?.mensilita;
+    if (ov != null) return { val: ov, stima: false };
+    const s = mensPerNome.get(nameKey(`${d.cognome} ${d.nome}`));
+    return s != null ? { val: s, stima: true } : null;
+  };
+
+  const salvaMensilita = async (d: StipendioDipendente) => {
+    const nome = anagDi(d)?.nome ?? `${d.cognome} ${d.nome}`;
+    const grezzo = mensVal.trim();
+    setMensEdit(null);
+    const mensilita = grezzo === "" ? null : Number(grezzo);
+    if (mensilita != null && (!Number.isInteger(mensilita) || mensilita < 12 || mensilita > 15)) {
+      toast.error(t("stip.mensErr"));
+      return;
+    }
+    // Click + blur senza modifiche: niente scrittura (e niente version bump).
+    if (mensilita === (anagDi(d)?.mensilita ?? null)) return;
+    setMensBusy(true);
+    try {
+      const res = await spStipendiMensilita({ data: { nome, mensilita } });
+      setDb(res);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMensBusy(false);
+    }
+  };
 
   const onFile = async (f: File) => {
     setParsing(true);
@@ -478,7 +507,7 @@ export function StipendiTab() {
         anagDi(d)?.livello ?? "",
         anagDi(d)?.contratto ?? "",
         anagDi(d)?.fineContratto ?? "",
-        mensDi(d) ?? "",
+        mensDi(d)?.val ?? "",
         d.oreOrdinarie,
         d.oreStraordinarie,
         d.costoOrdinario,
@@ -956,7 +985,43 @@ export function StipendiTab() {
                             : (anagDi(d)!.contratto ?? "—")
                         : "—"}
                     </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{mensDi(d) ?? "—"}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">
+                      {mensEdit === nameKey(`${d.cognome} ${d.nome}`) ? (
+                        <input
+                          autoFocus
+                          value={mensVal}
+                          onChange={(e) => setMensVal(e.target.value)}
+                          onBlur={() => void salvaMensilita(d)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void salvaMensilita(d);
+                            if (e.key === "Escape") setMensEdit(null);
+                          }}
+                          className="w-10 rounded border border-primary bg-background px-1 py-0.5 text-right text-[12px]"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={mensBusy}
+                          title={t("stip.mensTip")}
+                          onClick={() => {
+                            setMensEdit(nameKey(`${d.cognome} ${d.nome}`));
+                            const m = mensDi(d);
+                            setMensVal(m && !m.stima ? String(m.val) : "");
+                          }}
+                          className="w-full rounded px-1 text-right hover:bg-muted"
+                        >
+                          {(() => {
+                            const m = mensDi(d);
+                            if (!m) return "—";
+                            return m.stima ? (
+                              <span className="italic text-muted-foreground">≈ {m.val}</span>
+                            ) : (
+                              m.val
+                            );
+                          })()}
+                        </button>
+                      )}
+                    </td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{d.oreOrdinarie || "—"}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">
                       {d.oreStraordinarie || "—"}

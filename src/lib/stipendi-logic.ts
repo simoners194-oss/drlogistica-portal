@@ -72,6 +72,20 @@ export interface AnagraficaDipendente {
   fineContratto?: string; // ISO
   orario?: string; // FULL TIME / P.TIME 20H…
   stato?: string; // vuoto = in forza, "NON IN FORZA"…
+  /** Mensilità dichiarate a mano (vincono sulla stima dai ratei paghe). */
+  mensilita?: number;
+}
+
+/** Chiave di confronto nomi tra fonti diverse ("GABELLI SERVENTI DIEGO" vs
+ *  cognome+nome dei file paghe): minuscole, solo lettere, parole ordinate. */
+export function chiaveNome(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-zà-ù ]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
 }
 
 export interface StipendiDb {
@@ -401,6 +415,11 @@ export function parseMappatura(
     };
     if (C.nome < 0 || C.mansione < 0) continue;
     const toIso = (v: unknown): string => {
+      // Con `raw:true` le date Excel arrivano come numero seriale.
+      if (typeof v === "number" && Number.isFinite(v) && v > 25569 && v < 80000)
+        return new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000)
+          .toISOString()
+          .slice(0, 10);
       const s = String(v ?? "").trim();
       const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
       if (m) return `${m[1]}-${m[2]}-${m[3]}`;
@@ -413,10 +432,13 @@ export function parseMappatura(
       const nome = String(r?.[C.nome] ?? "").trim();
       if (!nome) continue;
       const mansione = String(r[C.mansione] ?? "").trim() || undefined;
-      const fineRaw = C.fine >= 0 ? String(r[C.fine] ?? "").trim() : "";
+      // La cella va passata GREZZA a toIso: stringificarla prima trasforma
+      // il seriale Excel in "46112", che nessun ramo riconosce più.
+      const fineCell = C.fine >= 0 ? r[C.fine] : null;
+      const fineRaw = String(fineCell ?? "").trim();
       const indet = /^indet/i.test(fineRaw);
       // Fine effettiva: la più avanzata tra data fine e proroghe.
-      const date = [toIso(fineRaw), ...C.proroghe.map((i) => (i >= 0 ? toIso(r[i]) : ""))]
+      const date = [toIso(fineCell), ...C.proroghe.map((i) => (i >= 0 ? toIso(r[i]) : ""))]
         .filter(Boolean)
         .sort();
       out.push({

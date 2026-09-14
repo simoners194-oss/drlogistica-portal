@@ -633,6 +633,10 @@ const en = {
     "Upload Personale\\DIPENDENTI\\Mappatura Dipendenti Dr Logistica.xlsx: role (with contract level), end date or open-ended, working hours. Replaces the stored mapping; matched to employees by name.",
   "stip.errMappa": "The file doesn't match the mapping layout (needs NOME and MANSIONE columns).",
   "stip.mappaOk": "Staff mapping imported",
+  "stip.mensTip":
+    "Monthly salary payments — click to set them by hand (12–15, empty = back to the estimate from payroll accruals; ≈ = estimated)",
+  "stip.mensErr":
+    "Monthly payments: whole number between 12 and 15 (empty to go back to the estimate).",
   "stip.mappaIndet": "open-ended",
   "stip.colLivello": "Level",
   "stip.colContratto": "Contract",
@@ -715,6 +719,28 @@ const en = {
   "fc.cumulato": "Cumulative",
   "fc.notaAutoStipendi":
     "Stipendi row without real data (future months) = automatic estimate: average NET DUE from Stipendi Dr of",
+  "fc.fiscaleBtn": "Tax schedule",
+  "fc.fiscaleTip": "Import the tax payment schedule (SCADENZARIO FISCALE) to fill the two tax rows",
+  "fc.fiscaleDesc":
+    "Upload Fiscale\\SCADENZARIO FISCALE__aggiornato.xlsx: unpaid deadlines fill 'Costo fiscale rate' (previous-year debts, instalment plans and QR-code cartelle) and 'Costo fiscale corrente' (current-year taxes) in the months without a manual value; unpaid overdue amounts move onto the current month. Financing/rental instalments in the file stay OUT of the tax rows. A hand-written value always wins.",
+  "fc.fiscaleScegli": "Choose file (SCADENZARIO FISCALE.xlsx)",
+  "fc.errFiscale":
+    "File not recognized: no sheet with VOCE / Quantità / Data pagamento / Pagato columns.",
+  "fc.fiscaleAgg": "Loaded schedule:",
+  "fc.fiscaleDaPagare": "unpaid deadlines",
+  "fc.fiscaleFoglio": "sheet",
+  "fc.fiscaleRateLbl": "instalments/cartelle",
+  "fc.fiscaleCorrLbl": "current",
+  "fc.fiscaleFin": "financing/rental instalments (kept OUT of the tax rows)",
+  "fc.fiscaleSenzaData": "unpaid rows without a valid date (not imported)",
+  "fc.fiscaleDaRat": "known amounts still to be scheduled (no date, NOT in the cash flow):",
+  "fc.fiscaleConferma": "Import schedule",
+  "fc.fiscaleOk": "Tax schedule imported",
+  "fc.notaFiscale":
+    "Tax rows without a manual value = exact amounts from the schedule (≈ only marks the automatic source):",
+  "fc.autoTipFiscale":
+    "Exact amount from the tax schedule for this month (a hand-written value wins). Click to overwrite.",
+  "fc.fiscaleUltima": "last deadline:",
   "fc.cumulatoTip":
     "Each column shows the running total up to that point: September = overdue + September, October = overdue + September + October, and so on.",
   "fc.fatTitolo": "Invoicing only — collected and paid included",
@@ -2133,6 +2159,9 @@ const it: Record<DictKey, string> = {
   "stip.errMappa":
     "Il file non rispetta il tracciato mappatura (servono le colonne NOME e MANSIONE).",
   "stip.mappaOk": "Mappatura importata",
+  "stip.mensTip":
+    "Mensilità — clicca per impostarle a mano (12–15, vuoto = torna alla stima dai ratei paghe; ≈ = stimata)",
+  "stip.mensErr": "Mensilità: numero intero tra 12 e 15 (vuoto per tornare alla stima).",
   "stip.mappaIndet": "indeterminati",
   "stip.colLivello": "Livello",
   "stip.colContratto": "Contratto",
@@ -2215,6 +2244,28 @@ const it: Record<DictKey, string> = {
   "fc.cumulato": "Cumulato",
   "fc.notaAutoStipendi":
     "Riga Stipendi senza dato reale (mesi futuri) = stima automatica: media del NETTO DOVUTO da Stipendi Dr di",
+  "fc.fiscaleBtn": "Scadenziario fiscale",
+  "fc.fiscaleTip": "Importa lo scadenziario fiscale per riempire le due voci fiscali",
+  "fc.fiscaleDesc":
+    "Carica Fiscale\\SCADENZARIO FISCALE__aggiornato.xlsx: le scadenze non pagate riempiono 'Costo fiscale rate' (debiti di anni precedenti, rateizzazioni e cartelle QR code) e 'Costo fiscale corrente' (imposte dell'anno) nei mesi senza valore manuale; le scadute non pagate passano sul mese corrente. Le rate di finanziamenti/noleggi presenti nel file restano FUORI dalle voci fiscali. Il valore scritto a mano vince sempre.",
+  "fc.fiscaleScegli": "Scegli file (SCADENZARIO FISCALE.xlsx)",
+  "fc.errFiscale":
+    "File non riconosciuto: nessun foglio con colonne VOCE / Quantità / Data pagamento / Pagato.",
+  "fc.fiscaleAgg": "Scadenziario caricato:",
+  "fc.fiscaleDaPagare": "scadenze da pagare",
+  "fc.fiscaleFoglio": "foglio",
+  "fc.fiscaleRateLbl": "rate/cartelle",
+  "fc.fiscaleCorrLbl": "correnti",
+  "fc.fiscaleFin": "rate finanziamenti/noleggi (restano FUORI dalle voci fiscali)",
+  "fc.fiscaleSenzaData": "righe non pagate senza data valida (non importate)",
+  "fc.fiscaleDaRat": "importi noti ancora da rateizzare (senza data, NON nel cash flow):",
+  "fc.fiscaleConferma": "Importa scadenziario",
+  "fc.fiscaleOk": "Scadenziario fiscale importato",
+  "fc.notaFiscale":
+    "Voci fiscali senza valore manuale = importi esatti dallo scadenziario (il ≈ segnala solo la fonte automatica):",
+  "fc.autoTipFiscale":
+    "Importo esatto dallo scadenziario fiscale per questo mese (il valore scritto a mano vince). Clicca per sovrascrivere.",
+  "fc.fiscaleUltima": "ultima scadenza:",
   "fc.cumulatoTip":
     "Ogni colonna mostra il progressivo fino a quel momento: a settembre scaduto + settembre, a ottobre scaduto + settembre + ottobre, e così via.",
   "fc.fatTitolo": "Solo fatturazioni — incassate e pagate comprese",

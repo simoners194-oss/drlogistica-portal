@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.69.0",
+    date: "2026-09-14",
+    entries: [
+      {
+        title: "Flussi: voci fiscali dallo scadenziario",
+        description:
+          "Nuovo pannello \u00abScadenziario fiscale\u00bb nei Flussi di cassa: importa Fiscale\\SCADENZARIO FISCALE__aggiornato.xlsx e le scadenze non pagate riempiono in automatico \u00abCosto fiscale rate\u00bb (debiti di anni precedenti, rateizzazioni, cartelle) e \u00abCosto fiscale corrente\u00bb (imposte dell'anno) nei mesi senza valore manuale, in entrambe le tabelle e nel CSV. Le rate di finanziamenti/noleggi del file restano fuori dalle voci fiscali; gli importi ancora da rateizzare sono segnalati in nota.",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Stipendi: mensilit\u00e0 correggibili a mano",
+        description:
+          "La colonna Mens. ora si modifica con un clic (12\u201315): il valore dichiarato vince sulla stima dai ratei paghe, che resta col \u2248. Corretta anche la lettura delle date della Mappatura (fine contratto e proroghe arrivavano vuote dal browser).",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.68.0",
     date: "2026-09-14",
     entries: [

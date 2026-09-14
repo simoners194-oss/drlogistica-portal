@@ -14,6 +14,7 @@ import {
   SpHttpError,
 } from "./sharepoint.server";
 import {
+  chiaveNome,
   emptyStipendiDb,
   type AnagraficaDipendente,
   type NettiMese,
@@ -89,15 +90,53 @@ export async function deleteStipendiMese(mese: string, utente: string): Promise<
   return saveStipendiDb(db, utente);
 }
 
-/** Sostituisce l'anagrafica contrattuale (dalla "Mappatura Dipendenti"). */
+/** Sostituisce l'anagrafica contrattuale (dalla "Mappatura Dipendenti"),
+ *  conservando gli override manuali delle mensilità già impostati. */
 export async function replaceStipendiAnagrafica(
   anagrafica: AnagraficaDipendente[],
   fonte: string,
   utente: string,
 ): Promise<StipendiDb> {
   const db = await loadStipendiDb();
+  const override = new Map<string, number>();
+  for (const a of db.anagrafica ?? [])
+    if (a.mensilita != null) override.set(chiaveNome(a.nome), a.mensilita);
+  const chiaviNuove = new Set<string>();
+  for (const a of anagrafica) {
+    const k = chiaveNome(a.nome);
+    chiaviNuove.add(k);
+    const m = override.get(k);
+    if (m != null) a.mensilita = m;
+  }
+  // Override di dipendenti FUORI dal nuovo file (presenti solo nei file
+  // paghe): non vanno persi al re-import — restano come righe sintetiche.
+  for (const a of db.anagrafica ?? []) {
+    if (a.mensilita != null && !chiaviNuove.has(chiaveNome(a.nome)))
+      anagrafica.push({ nome: a.nome, mensilita: a.mensilita });
+  }
   db.anagrafica = anagrafica;
   db.anagraficaFonte = fonte;
+  return saveStipendiDb(db, utente);
+}
+
+/** Imposta (o toglie, con null) le mensilità dichiarate di un dipendente —
+ *  es. "io SONO 12" di Simone contro la stima 13 dai ratei paghe. */
+export async function setStipendiMensilita(
+  nome: string,
+  mensilita: number | null,
+  utente: string,
+): Promise<StipendiDb> {
+  const db = await loadStipendiDb();
+  const k = chiaveNome(nome);
+  const lista = db.anagrafica ?? [];
+  const entry = lista.find((a) => chiaveNome(a.nome) === k);
+  if (entry) {
+    if (mensilita == null) delete entry.mensilita;
+    else entry.mensilita = mensilita;
+  } else if (mensilita != null) {
+    lista.push({ nome, mensilita });
+  }
+  db.anagrafica = lista;
   return saveStipendiDb(db, utente);
 }
 

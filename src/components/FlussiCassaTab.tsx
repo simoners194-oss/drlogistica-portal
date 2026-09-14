@@ -38,6 +38,13 @@ import {
   spGetMovimenti,
 } from "@/lib/sharepoint.functions";
 import { spStipendiStima } from "@/lib/stipendi.functions";
+import {
+  parseScadenzario,
+  totaliFiscaliPerMese,
+  type FiscaleDb,
+  type ParseScadenzarioResult,
+} from "@/lib/fiscale-logic";
+import { spFiscaleGet, spFiscaleSalva } from "@/lib/fiscale.functions";
 import type { SpFattura, SpMovimento, Prefattura, FlussoCassaRiga } from "@/lib/sharepoint.server";
 
 function fmtImporto(n: number): string {
@@ -93,6 +100,17 @@ export function FlussiCassaTab() {
   // Stima Stipendi per i mesi senza dato (media netto dovuto ultimi 2 mesi
   // da "Stipendi Dr.xlsx" — richiesta Simone 14/09).
   const [autoStipendi, setAutoStipendi] = useState<{ media: number; mesi: string[] } | null>(null);
+  // Scadenziario fiscale (Fiscale\SCADENZARIO FISCALE__aggiornato.xlsx di
+  // Sabrina — richiesta Simone 14/09): riempie "Costo fiscale rate" e
+  // "Costo fiscale corrente" per i mesi senza valore manuale.
+  const [fiscale, setFiscale] = useState<FiscaleDb | null>(null);
+  const [showFisc, setShowFisc] = useState(false);
+  const [parsingF, setParsingF] = useState(false);
+  const [previewFisc, setPreviewFisc] = useState<{
+    fileName: string;
+    res: ParseScadenzarioResult;
+  } | null>(null);
+  const [savingF, setSavingF] = useState(false);
 
   // Editor cella voce manuale: chiave "nome|periodo".
   const [cellaVoce, setCellaVoce] = useState<string | null>(null);
@@ -129,12 +147,16 @@ export function FlussiCassaTab() {
         setFlussi([]);
         setFlussiErr(err instanceof Error ? err.message : String(err));
       });
-  // Stima stipendi per i mesi futuri (media netto dovuto ultimi 2 mesi).
-  spStipendiStima()
-    .then((s) => setAutoStipendi(s))
-    .catch(() => setAutoStipendi(null));
-
   useEffect(() => {
+    // Stima stipendi per i mesi futuri (media netto dovuto ultimi 2 mesi).
+    // Nell'effetto, non nel corpo: nel corpo partiva una fetch a OGNI render.
+    spStipendiStima()
+      .then((s) => setAutoStipendi(s))
+      .catch(() => setAutoStipendi(null));
+    // Scadenziario fiscale per le due voci "Costo fiscale".
+    spFiscaleGet()
+      .then((f) => setFiscale(f))
+      .catch(() => setFiscale(null));
     spGetFatture({ data: { direzione: "Emessa" } })
       .then((l) => setFattureEm(l as SpFattura[]))
       .catch(() => setFattureEm([]));
@@ -548,12 +570,32 @@ export function FlussiCassaTab() {
   const vocePer = (nome: string, mese: string): FlussoCassaRiga | undefined =>
     voci.find((v) => v.nome.trim().toLowerCase() === nome.trim().toLowerCase() && v.mese === mese);
 
+  // Totali dello scadenziario fiscale per mese (scadenze NON pagate; le già
+  // scadute si spostano sul mese corrente perché sono ancora da pagare).
+  const totFiscali = useMemo(
+    () =>
+      fiscale && fiscale.scadenze.length > 0
+        ? totaliFiscaliPerMese(fiscale.scadenze, oggiISO.slice(0, 7))
+        : null,
+    [fiscale, oggiISO],
+  );
+
   /** Valore effettivo di una voce nel mese: manuale se c'e', altrimenti — per
    *  la sola riga "Altre spese", dai mesi correnti in poi — la media
    *  automatica delle regole flaggate (in negativo: e' un'uscita). */
   const valoreVoce = (nome: string, mese: string): { importo: number; auto: boolean } | null => {
     const man = vocePer(nome, mese);
     if (man) return { importo: man.importo, auto: false };
+    // Voci fiscali dallo scadenziario di Sabrina (importi ESATTI, non stime:
+    // il "≈" segnala solo che arrivano in automatico dal file).
+    const chiaveFisc = nome.trim().toLowerCase();
+    if (totFiscali && mese >= oggiISO.slice(0, 7)) {
+      const tot = totFiscali.get(mese);
+      if (chiaveFisc === "costo fiscale rate" && tot && tot.rate > 0)
+        return { importo: -tot.rate, auto: true };
+      if (chiaveFisc === "costo fiscale corrente" && tot && tot.corrente > 0)
+        return { importo: -tot.corrente, auto: true };
+    }
     if (
       nome.trim().toLowerCase() === "altre spese" &&
       autoAltreSpese &&
@@ -597,6 +639,58 @@ export function FlussiCassaTab() {
       });
     } finally {
       setSalvando(false);
+    }
+  };
+
+  // --- Import scadenziario fiscale ------------------------------------------
+  const onFileFiscale = async (f: File) => {
+    setParsingF(true);
+    setPreviewFisc(null);
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(await f.arrayBuffer(), { cellDates: false });
+      const fogli = wb.SheetNames.map((nome) => ({
+        nome,
+        matrix: XLSX.utils.sheet_to_json(wb.Sheets[nome], {
+          header: 1,
+          raw: true,
+          defval: null,
+        }) as unknown[][],
+      }));
+      const res = parseScadenzario(fogli);
+      if (!res) {
+        toast.error(t("fc.errFiscale"));
+        return;
+      }
+      setPreviewFisc({ fileName: f.name, res });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setParsingF(false);
+    }
+  };
+
+  const confermaFiscale = async () => {
+    if (!previewFisc) return;
+    setSavingF(true);
+    try {
+      const res = await spFiscaleSalva({
+        data: {
+          scadenze: previewFisc.res.scadenze,
+          daRateizzare: previewFisc.res.daRateizzare,
+          fonte: previewFisc.fileName,
+        },
+      });
+      setFiscale(res);
+      setPreviewFisc(null);
+      setShowFisc(false);
+      toast.success(t("fc.fiscaleOk"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setSavingF(false);
     }
   };
 
@@ -987,10 +1081,13 @@ export function FlussiCassaTab() {
           className="w-24 rounded border border-primary bg-background px-1 py-0.5 text-right text-[12px]"
         />
       );
+    const fiscaleAuto = ["costo fiscale rate", "costo fiscale corrente"].includes(
+      nome.trim().toLowerCase(),
+    );
     return (
       <button
         type="button"
-        title={val?.auto ? t("fc.autoTip") : t("fc.cellaTip")}
+        title={val?.auto ? t(fiscaleAuto ? "fc.autoTipFiscale" : "fc.autoTip") : t("fc.cellaTip")}
         onClick={() => {
           setCellaVoce(chiave);
           setCellaVal(riga ? String(riga.importo).replace(".", ",") : "");
@@ -1070,12 +1167,109 @@ export function FlussiCassaTab() {
           </button>
           <button
             type="button"
+            onClick={() => setShowFisc((v) => !v)}
+            title={t("fc.fiscaleTip")}
+            className={`rounded-lg border px-3 py-1 ${showFisc ? "border-primary" : "border-border"} hover:bg-muted`}
+          >
+            {t("fc.fiscaleBtn")}
+          </button>
+          <button
+            type="button"
             onClick={esporta}
             className="rounded-lg bg-primary px-3 py-1 font-medium text-primary-foreground"
           >
             {t("common.exportCsv")}
           </button>
         </div>
+
+        {/* Scadenziario fiscale */}
+        {showFisc && (
+          <div className="mb-4 rounded-xl border border-border p-3">
+            <p className="mb-2 text-xs text-muted-foreground">{t("fc.fiscaleDesc")}</p>
+            {fiscale && fiscale.scadenze.length > 0 && (
+              <p className="mb-2 text-xs text-muted-foreground">
+                {t("fc.fiscaleAgg")} <span className="font-medium">{fiscale.fonteFile}</span>
+                {fiscale.aggiornatoIl
+                  ? ` · ${new Date(fiscale.aggiornatoIl).toLocaleString("it-IT")}`
+                  : ""}{" "}
+                ·{" "}
+                {
+                  fiscale.scadenze.filter((s) => !s.pagato && s.categoria !== "finanziamento")
+                    .length
+                }{" "}
+                {t("fc.fiscaleDaPagare")}
+              </p>
+            )}
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-[13px] hover:bg-muted">
+              {parsingF && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t("fc.fiscaleScegli")}
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void onFileFiscale(f);
+                }}
+              />
+            </label>
+            {previewFisc &&
+              (() => {
+                const nonPag = previewFisc.res.scadenze.filter((s) => !s.pagato);
+                const fisc = nonPag.filter((s) => s.categoria !== "finanziamento");
+                const fin = nonPag.filter((s) => s.categoria === "finanziamento");
+                const totFisc = fisc.reduce((a, s) => a + s.importo, 0);
+                const totFin = fin.reduce((a, s) => a + s.importo, 0);
+                const totRate = fisc
+                  .filter((s) => s.categoria === "rate")
+                  .reduce((a, s) => a + s.importo, 0);
+                const daRat = previewFisc.res.daRateizzare;
+                return (
+                  <div className="mt-2 space-y-1 rounded-lg border border-border/60 p-2 text-xs">
+                    <p className="font-medium">
+                      {previewFisc.fileName} — {t("fc.fiscaleFoglio")} “{previewFisc.res.foglio}”
+                    </p>
+                    <p>
+                      {fisc.length} {t("fc.fiscaleDaPagare")} = {fmtImporto(totFisc)} € (
+                      {t("fc.fiscaleRateLbl")} {fmtImporto(totRate)} € · {t("fc.fiscaleCorrLbl")}{" "}
+                      {fmtImporto(totFisc - totRate)} €) · {t("fc.fiscaleUltima")}{" "}
+                      {fisc.reduce((m, s) => (s.dataPagamento > m ? s.dataPagamento : m), "")}
+                    </p>
+                    {fin.length > 0 && (
+                      <p className="text-muted-foreground">
+                        {t("fc.fiscaleFin")}: {fin.length} = {fmtImporto(totFin)} €
+                      </p>
+                    )}
+                    {previewFisc.res.senzaData > 0 && (
+                      <p className="text-status-absent">
+                        {previewFisc.res.senzaData} {t("fc.fiscaleSenzaData")}
+                      </p>
+                    )}
+                    {daRat.length > 0 && (
+                      <p className="text-status-absent">
+                        {t("fc.fiscaleDaRat")}{" "}
+                        {daRat
+                          .map(
+                            (d) =>
+                              `${d.voce} ${d.periodo ?? ""} ${d.anno ?? ""} ${fmtImporto(d.importo)} €`,
+                          )
+                          .join(" · ")}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      disabled={savingF}
+                      onClick={() => void confermaFiscale()}
+                      className="mt-1 rounded-lg bg-primary px-3 py-1 font-medium text-primary-foreground disabled:opacity-40"
+                    >
+                      {savingF ? t("common.loading") : t("fc.fiscaleConferma")}
+                    </button>
+                  </div>
+                );
+              })()}
+          </div>
+        )}
 
         {/* Esclusioni */}
         {showEscl && (
@@ -1679,6 +1873,19 @@ export function FlussiCassaTab() {
             <p>
               {t("fc.notaAutoStipendi")} {autoStipendi.mesi.join(" + ")} ={" "}
               {fmtImporto(autoStipendi.media)} €
+            </p>
+          )}
+          {modo === "mese" && totFiscali && fiscale && (
+            <p>
+              {t("fc.notaFiscale")} {fiscale.fonteFile}
+              {fiscale.daRateizzare.length > 0
+                ? ` — ${t("fc.fiscaleDaRat")} ${fiscale.daRateizzare
+                    .map(
+                      (d) =>
+                        `${d.voce} ${d.periodo ?? ""} ${d.anno ?? ""} ${fmtImporto(d.importo)} €`,
+                    )
+                    .join(" · ")}`
+                : ""}
             </p>
           )}
           {modo === "mese" && (
