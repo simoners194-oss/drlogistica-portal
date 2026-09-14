@@ -618,9 +618,17 @@ const en = {
   "fc.presetApplicaTip": "Apply: replaces the current exclusions with this preset's",
   "fc.presetConfirm": "Replace the current exclusions with preset",
   "fc.presetVuoto": "No exclusions to save.",
-  "fc.quotaDR": "≈ DR Logistics share (90% iMile handling)",
-  "fc.quotaDRTip":
-    "iMile invoices containing 'SERVIZI DI FACCHINAGGIO' and 'VIA DEL TECCHIONE': 90% of the amount (VAT included) is owed to DR Logistics in the same period as the expected collection. Once collected (from Sep 2026 onward) the share sits in Overdue until it is covered by actual bank transfers to DR Logistics. This is the only amount owed to DR Logistics: their supplier invoices are not counted in this view.",
+  "fc.girDesc":
+    "Pass-through rules: when an invoice comes in from a given client, a percentage is owed to a supplier — each rule adds its own row among the outflows, named after the supplier.",
+  "fc.girNessuna": "No pass-through rules.",
+  "fc.girSe": "When an invoice comes in from",
+  "fc.girPerc": "pass",
+  "fc.girA": "% to",
+  "fc.girAltro": "Other supplier…",
+  "fc.girOggettoPh": "only if the description contains… (optional, comma-separated)",
+  "fc.girAggiungi": "Add rule",
+  "fc.girataTip":
+    "Pass-through row: percentage of the client's expected collections owed to this supplier in the same period. Configure under Exclusions.",
   "fc.esclDa": "From month (optional)",
   "fc.esclA": "To month (optional)",
   "fc.esclAggiungi": "Exclude",
@@ -2018,9 +2026,17 @@ const it: Record<DictKey, string> = {
   "fc.presetApplicaTip": "Applica: sostituisce le esclusioni attuali con quelle del preset",
   "fc.presetConfirm": "Sostituire le esclusioni attuali con il preset",
   "fc.presetVuoto": "Non ci sono esclusioni da salvare.",
-  "fc.quotaDR": "≈ Quota DR Logistics (90% iMile facchinaggio)",
-  "fc.quotaDRTip":
-    "Fatture iMile con oggetto contenente 'SERVIZI DI FACCHINAGGIO' e 'VIA DEL TECCHIONE': il 90% dell'importo (IVA compresa) va girato a DR Logistics nello stesso periodo dell'incasso atteso. Una volta incassate (da settembre 2026) la quota resta nello Scaduto finché non è coperta dai bonifici reali verso DR Logistics. È l'unica cosa dovuta a DR Logistics: le sue fatture da fornitore non contano in questa vista.",
+  "fc.girDesc":
+    "Girate: quando entra una fattura da un certo cliente, una percentuale va girata a un fornitore — ogni regola aggiunge la sua riga tra le uscite, intitolata al fornitore.",
+  "fc.girNessuna": "Nessuna girata configurata.",
+  "fc.girSe": "Se entra una fattura da",
+  "fc.girPerc": "gira il",
+  "fc.girA": "% a",
+  "fc.girAltro": "Altro fornitore…",
+  "fc.girOggettoPh": "solo se l'oggetto contiene… (facoltativo, termini separati da virgola)",
+  "fc.girAggiungi": "Aggiungi girata",
+  "fc.girataTip":
+    "Riga girata: percentuale degli incassi attesi dal cliente dovuta a questo fornitore nello stesso periodo. Si configura dal pannello Esclusioni.",
   "fc.esclDa": "Dal mese (facoltativo)",
   "fc.esclA": "Al mese (facoltativo)",
   "fc.esclAggiungi": "Escludi",

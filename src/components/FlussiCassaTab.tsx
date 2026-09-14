@@ -107,6 +107,13 @@ export function FlussiCassaTab() {
   // Preset di esclusioni (nome con cui salvare l'insieme corrente).
   const [presetNome, setPresetNome] = useState("");
   const [presetBusy, setPresetBusy] = useState(false);
+  // Form girate: "se entra una fattura da X gira il P% a Y".
+  const [giCliente, setGiCliente] = useState("");
+  const [giPerc, setGiPerc] = useState("90");
+  const [giFornSel, setGiFornSel] = useState("DR Logistics");
+  const [giFornAltro, setGiFornAltro] = useState("");
+  const [giOggetto, setGiOggetto] = useState("");
+  const [giBusy, setGiBusy] = useState(false);
   // Form nuova voce manuale.
   const [nuovaVoce, setNuovaVoce] = useState("");
 
@@ -305,66 +312,98 @@ export function FlussiCassaTab() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const uscite = useMemo(() => somma(passive), [passive, periodi, esclusioni, daData, finoA]);
 
-  // QUOTA DR LOGISTICS (regola FR 08/09): le fatture iMile il cui oggetto
-  // contiene "SERVIZI DI FACCHINAGGIO" e "VIA DEL TECCHIONE" vanno girate
-  // al 90% (IVA compresa) a DR Logistics nello STESSO periodo dell'incasso
-  // atteso. Sulle APERTE la quota segue la scadenza (stesse guardie di
-  // somma()); sulle INCASSATE da settembre in poi (ok Simone 10/09) matura
-  // in Scaduto e si spegne man mano che partono i bonifici REALI verso
-  // DR Logistics, letti dai movimenti banca. Pregresso fuori.
-  const QUOTA_DR = 0.9;
-  const QUOTA_DR_DA = "2026-09-01";
-  const eFacchinaggio = (x: (typeof attive)[number]): boolean => {
-    if (!x.f.cliente.toLowerCase().includes("imile")) return false;
-    const testo = `${x.f.oggetto ?? ""} ${x.f.causaleDoc ?? ""}`.toLowerCase();
-    return testo.includes("servizi di facchinaggio") && testo.includes("via del tecchione");
-  };
-  const quotaDR = useMemo(() => {
-    const out = { scaduto: 0, perPeriodo: new Map<string, number>() };
-    for (const x of attive) {
-      if (!eFacchinaggio(x)) continue;
-      const residuo = residuoAperto(x);
-      if (residuo <= 1) continue;
-      if (!x.s.scadenza) continue;
-      const scad = x.s.scadenza.slice(0, 10);
-      if (esclusa(x.f.cliente, scad.slice(0, 7))) continue;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(daData) && !x.s.inRitardo && scad < daData) continue;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(finoA) && scad > finoA) continue;
-      const q = Math.round(residuo * QUOTA_DR * 100) / 100;
-      if (x.s.inRitardo) out.scaduto += q;
-      else {
-        const kp = chiaveDi(scad);
-        if (!chiaviPeriodo.has(kp)) continue;
-        out.perPeriodo.set(kp, (out.perPeriodo.get(kp) ?? 0) + q);
+  // GIRATE (spec Simone 12/09, v1.62.0): regole "se entra una fattura dal
+  // cliente X, gira il P% al fornitore Y", configurabili dal pannello
+  // Esclusioni e salvate sulla lista FlussiCassa (genere "girata": Title =
+  // fornitore, Importo = percentuale, Note = "cliente | termini oggetto
+  // facoltativi"). Ogni regola genera la SUA riga tra le uscite, intitolata
+  // al fornitore, come le altre (niente corsivo/colore). Caso speciale DR
+  // Logistics (FR 10/09): il 90% della facchinaggio di LUGLIO (FPR 220/26,
+  // incassata) resta in Scaduto al netto dei bonifici reali al fornitore.
+  const GIRATA_INCASSI_DA = "2026-09-01";
+  const girate = useMemo(
+    () =>
+      (flussi ?? [])
+        .filter((x) => x.genere === "girata" && (x.importo ?? 0) > 0)
+        .map((r) => {
+          const [cli, ogg] = String(r.note ?? "").split("|");
+          return {
+            id: r.id,
+            fornitore: r.nome,
+            perc: Math.min(100, Math.max(0, r.importo)) / 100,
+            cliente: (cli ?? "").trim().toLowerCase(),
+            oggettoTermini: (ogg ?? "")
+              .split(",")
+              .map((s) => s.trim().toLowerCase())
+              .filter((s) => s.length >= 3),
+          };
+        })
+        .filter((g) => g.cliente && g.fornitore),
+    [flussi],
+  );
+  const girataQuote = useMemo(() => {
+    const out = girate.map((g) => ({
+      fornitore: g.fornitore,
+      perc: g.perc,
+      cliente: g.cliente,
+      scaduto: 0,
+      perPeriodo: new Map<string, number>(),
+    }));
+    girate.forEach((g, gi) => {
+      const q = out[gi];
+      const matcha = (x: (typeof attive)[number]) => {
+        if (!x.f.cliente.toLowerCase().includes(g.cliente)) return false;
+        if (!g.oggettoTermini.length) return true;
+        const testo = `${x.f.oggetto ?? ""} ${x.f.causaleDoc ?? ""}`.toLowerCase();
+        return g.oggettoTermini.every((t2) => testo.includes(t2));
+      };
+      for (const x of attive) {
+        if (!matcha(x)) continue;
+        const residuo = residuoAperto(x);
+        if (residuo <= 1) continue;
+        if (!x.s.scadenza) continue;
+        const scad = x.s.scadenza.slice(0, 10);
+        if (esclusa(x.f.cliente, scad.slice(0, 7))) continue;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(daData) && !x.s.inRitardo && scad < daData) continue;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(finoA) && scad > finoA) continue;
+        const v = Math.round(residuo * g.perc * 100) / 100;
+        if (x.s.inRitardo) q.scaduto += v;
+        else {
+          const kp = chiaveDi(scad);
+          if (!chiaviPeriodo.has(kp)) continue;
+          q.perPeriodo.set(kp, (q.perPeriodo.get(kp) ?? 0) + v);
+        }
       }
-    }
-    // Maturata sugli incassi gia' arrivati, al netto di quanto gia' girato.
-    // SOLO la facchinaggio di LUGLIO (FPR 220/26, incassata 08/09 — precisato
-    // da Simone 10/09): per le prossime si decidera' a incasso avvenuto.
-    let maturata = 0;
-    for (const x of attive) {
-      if (!eFacchinaggio(x)) continue;
-      if (!x.f.numero.includes("220/26")) continue;
-      const inc = incassatoRegistrato(x);
-      if (inc <= 0) continue;
-      const dataInc = (x.f.dataIncasso ?? "").slice(0, 10);
-      if (!dataInc || dataInc < QUOTA_DR_DA) continue;
-      maturata += inc * QUOTA_DR;
-    }
-    let versato = 0;
-    for (const m of movimenti ?? []) {
-      if (m.importo >= 0) continue;
-      if (m.dataContabile < QUOTA_DR_DA) continue;
-      if (!`${m.cliente} ${m.descrizione}`.toLowerCase().includes("dr logistics")) continue;
-      versato += -m.importo;
-    }
-    out.scaduto += Math.max(0, Math.round((maturata - versato) * 100) / 100);
+      if (/dr logistics/i.test(g.fornitore)) {
+        // SOLO la facchinaggio di luglio gia' incassata (FPR 220/26).
+        let maturata = 0;
+        for (const x of attive) {
+          if (!matcha(x)) continue;
+          if (!x.f.numero.includes("220/26")) continue;
+          const inc = incassatoRegistrato(x);
+          if (inc <= 0) continue;
+          const dataInc = (x.f.dataIncasso ?? "").slice(0, 10);
+          if (!dataInc || dataInc < GIRATA_INCASSI_DA) continue;
+          maturata += inc * g.perc;
+        }
+        let versato = 0;
+        for (const m of movimenti ?? []) {
+          if (m.importo >= 0) continue;
+          if (m.dataContabile < GIRATA_INCASSI_DA) continue;
+          if (!`${m.cliente} ${m.descrizione}`.toLowerCase().includes(g.fornitore.toLowerCase()))
+            continue;
+          versato += -m.importo;
+        }
+        q.scaduto += Math.max(0, Math.round((maturata - versato) * 100) / 100);
+      }
+    });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attive, movimenti, periodi, esclusioni, daData, finoA]);
-  const quotaDRTotale =
-    quotaDR.scaduto + [...quotaDR.perPeriodo.values()].reduce((s, v) => s + v, 0);
-  const saldoScaduto = entrate.tot.scaduto - uscite.tot.scaduto - quotaDR.scaduto;
+  }, [girate, attive, movimenti, periodi, esclusioni, daData, finoA]);
+  const girateScadutoTot = girataQuote.reduce((s, q) => s + q.scaduto, 0);
+  const girataTotaleDi = (q: (typeof girataQuote)[number]) =>
+    q.scaduto + [...q.perPeriodo.values()].reduce((s, v) => s + v, 0);
+  const saldoScaduto = entrate.tot.scaduto - uscite.tot.scaduto - girateScadutoTot;
 
   // --- Prefatture (stessa copertura della Previsione) ------------------------
   const prefPer = useMemo(() => {
@@ -591,6 +630,33 @@ export function FlussiCassaTab() {
     }
   };
 
+  const aggiungiGirata = async () => {
+    const fornitore = (giFornSel === "altro" ? giFornAltro : giFornSel).trim();
+    const perc = Number(giPerc.replace(",", "."));
+    if (!fornitore || !giCliente.trim() || !Number.isFinite(perc) || perc <= 0 || perc > 100)
+      return;
+    setGiBusy(true);
+    try {
+      await spUpsertFlussoCassa({
+        data: {
+          nome: fornitore,
+          genere: "girata",
+          importo: Math.round(perc * 100) / 100,
+          note: giCliente.trim() + (giOggetto.trim() ? ` | ${giOggetto.trim()}` : ""),
+        },
+      });
+      setGiCliente("");
+      setGiOggetto("");
+      await ricaricaFlussi();
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setGiBusy(false);
+    }
+  };
+
   const eliminaPreset = async (righe: FlussoCassaRiga[]) => {
     setPresetBusy(true);
     try {
@@ -610,7 +676,7 @@ export function FlussiCassaTab() {
     let v =
       (entrate.tot.perPeriodo.get(chiave) ?? 0) -
       (uscite.tot.perPeriodo.get(chiave) ?? 0) -
-      (quotaDR.perPeriodo.get(chiave) ?? 0);
+      girataQuote.reduce((s, q) => s + (q.perPeriodo.get(chiave) ?? 0), 0);
     if (modo === "mese") {
       v += (prefPer.att.get(mese) ?? 0) - (prefPer.pas.get(mese) ?? 0);
       for (const nome of nomiVoci) v += valoreVoce(nome, mese)?.importo ?? 0;
@@ -656,13 +722,14 @@ export function FlussiCassaTab() {
         ...periodi.map((p) => num(-(r.perPeriodo.get(p.chiave) ?? 0))),
         num(-(r.scaduto + r.totale)),
       ]);
-    if (quotaDRTotale > 0.005)
-      righe.push([
-        t("fc.quotaDR"),
-        num(-quotaDR.scaduto),
-        ...periodi.map((p) => num(-(quotaDR.perPeriodo.get(p.chiave) ?? 0))),
-        num(-quotaDRTotale),
-      ]);
+    for (const q of girataQuote)
+      if (girataTotaleDi(q) > 0.005)
+        righe.push([
+          q.fornitore,
+          num(-q.scaduto),
+          ...periodi.map((p) => num(-(q.perPeriodo.get(p.chiave) ?? 0))),
+          num(-girataTotaleDi(q)),
+        ]);
     if (haPref) {
       righe.push([
         t("fc.prefAtt"),
@@ -695,6 +762,13 @@ export function FlussiCassaTab() {
   };
 
   const loading = fattureEm == null || fattureRic == null || flussi == null;
+
+  // Fornitori per la tendina/autocomplete delle girate (dalle passive).
+  const fornitoriNote = useMemo(() => {
+    const set = new Set<string>();
+    for (const x of passive) set.add(x.f.cliente);
+    return [...set].sort((a, b) => a.localeCompare(b)).slice(0, 400);
+  }, [passive]);
 
   // Controparti per la checklist del form esclusioni.
   const contropartiNote = useMemo(() => {
@@ -953,6 +1027,101 @@ export function FlussiCassaTab() {
                 </button>
               </div>
             </div>
+            {/* GIRATE a fornitore (spec Simone 12/09) */}
+            <div className="mt-3 border-t border-border/60 pt-2">
+              <p className="mb-1 text-xs text-muted-foreground">{t("fc.girDesc")}</p>
+              <div className="mb-2 flex flex-wrap gap-2">
+                {girate.map((g) => (
+                  <span
+                    key={g.id}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs"
+                  >
+                    {g.cliente} → {Math.round(g.perc * 100)}% → {g.fornitore}
+                    {g.oggettoTermini.length > 0 && (
+                      <span className="text-muted-foreground">
+                        ({g.oggettoTermini.join(", ")})
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void rimuoviRiga(g.id)}
+                      title={t("common.delete")}
+                    >
+                      <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </span>
+                ))}
+                {girate.length === 0 && (
+                  <span className="text-xs text-muted-foreground">{t("fc.girNessuna")}</span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                <span>{t("fc.girSe")}</span>
+                <input
+                  list="fc-girata-clienti"
+                  value={giCliente}
+                  onChange={(e) => setGiCliente(e.target.value)}
+                  placeholder={t("fc.esclCercaPh")}
+                  className={`${inputCls} w-48`}
+                />
+                <datalist id="fc-girata-clienti">
+                  {contropartiNote.map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+                <span>{t("fc.girPerc")}</span>
+                <input
+                  value={giPerc}
+                  onChange={(e) => setGiPerc(e.target.value)}
+                  className={`${inputCls} w-16 text-right`}
+                />
+                <span>{t("fc.girA")}</span>
+                <select
+                  value={giFornSel}
+                  onChange={(e) => setGiFornSel(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="DR Logistics">DR Logistics</option>
+                  <option value="RN Servizi">RN Servizi</option>
+                  <option value="altro">{t("fc.girAltro")}</option>
+                </select>
+                {giFornSel === "altro" && (
+                  <>
+                    <input
+                      list="fc-girata-fornitori"
+                      value={giFornAltro}
+                      onChange={(e) => setGiFornAltro(e.target.value)}
+                      placeholder={t("fc.esclCercaPh")}
+                      className={`${inputCls} w-56`}
+                    />
+                    <datalist id="fc-girata-fornitori">
+                      {fornitoriNote.map((c) => (
+                        <option key={c} value={c} />
+                      ))}
+                    </datalist>
+                  </>
+                )}
+                <input
+                  value={giOggetto}
+                  onChange={(e) => setGiOggetto(e.target.value)}
+                  placeholder={t("fc.girOggettoPh")}
+                  title={t("fc.girOggettoPh")}
+                  className={`${inputCls} w-72`}
+                />
+                <button
+                  type="button"
+                  disabled={
+                    giBusy ||
+                    !giCliente.trim() ||
+                    (giFornSel === "altro" && !giFornAltro.trim())
+                  }
+                  onClick={() => void aggiungiGirata()}
+                  className="rounded-lg bg-primary px-3 py-1 text-primary-foreground disabled:opacity-40"
+                >
+                  {t("fc.girAggiungi")}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1040,20 +1209,23 @@ export function FlussiCassaTab() {
                     </tr>
                   ))}
 
-                {/* QUOTA DR LOGISTICS (90% delle iMile di facchinaggio) */}
-                {quotaDRTotale > 0.005 && (
-                  <tr className="border-t border-border/40 italic text-primary">
-                    <td className="py-1 pr-3" title={t("fc.quotaDRTip")}>
-                      {t("fc.quotaDR")}
-                    </td>
-                    <td className={`${tdN} text-status-absent`}>{fmt(-quotaDR.scaduto)}</td>
-                    {periodi.map((p) => (
-                      <td key={p.chiave} className={tdN}>
-                        {fmt(-(quotaDR.perPeriodo.get(p.chiave) ?? 0))}
-                      </td>
-                    ))}
-                    <td className={tdN}>{fmt(-quotaDRTotale)}</td>
-                  </tr>
+                {/* GIRATE: una riga per fornitore, come le altre (spec 12/09) */}
+                {girataQuote.map(
+                  (q) =>
+                    girataTotaleDi(q) > 0.005 && (
+                      <tr key={`g:${q.fornitore}`} className="border-t border-border/40">
+                        <td className="py-1 pr-3" title={t("fc.girataTip")}>
+                          {q.fornitore}
+                        </td>
+                        <td className={`${tdN} text-status-absent`}>{fmt(-q.scaduto)}</td>
+                        {periodi.map((p) => (
+                          <td key={p.chiave} className={tdN}>
+                            {fmt(-(q.perPeriodo.get(p.chiave) ?? 0))}
+                          </td>
+                        ))}
+                        <td className={tdN}>{fmt(-girataTotaleDi(q))}</td>
+                      </tr>
+                    ),
                 )}
 
                 {/* PREFATTURE (solo vista mensile) */}

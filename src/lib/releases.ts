@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.62.0",
+    date: "2026-09-14",
+    codename: "Girate configurabili",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Le girate si impostano dalle regole, non dal codice",
+        description:
+          "Nei Flussi di cassa la quota verso DR Logistics diventa una GIRATA configurabile: dal pannello Esclusioni si scrive 'Se entra una fattura da [cliente] gira il [%] a [fornitore]' — fornitore a scelta tra DR Logistics, RN Servizi o un campo libero con l'autocompletamento dai fornitori veri, più un filtro facoltativo sull'oggetto della fattura. Ogni regola genera la sua riga tra le uscite, intitolata al solo nome del fornitore e con lo stesso stile delle altre righe. Il caso speciale della facchinaggio di luglio (90% della FPR 220/26 in Scaduto al netto dei bonifici reali) resta attivo sulle girate verso DR Logistics.",
+      },
+    ],
+  },
+  {
     version: "1.61.0",
     date: "2026-09-08",
     codename: "Quota DR Logistics",

@@ -5730,8 +5730,11 @@ export interface FlussoCassaRiga {
    *  per genere "preset" — il nome del preset di esclusioni. */
   nome: string;
   /** "preset" = una riga per ogni esclusione salvata nel preset: Title è
-   *  il nome del preset, Note la controparte, mese/meseFine la finestra. */
-  genere: "voce" | "esclusione" | "preset";
+   *  il nome del preset, Note la controparte, mese/meseFine la finestra.
+   *  "girata" = regola "se entra fattura dal cliente X gira il P% al
+   *  fornitore Y": Title = fornitore, Importo = percentuale, Note =
+   *  "cliente | termini oggetto (facoltativi, virgola)". */
+  genere: "voce" | "esclusione" | "preset" | "girata";
   /** Voce: mese di competenza YYYY-MM. Esclusione/preset: da mese (opzionale). */
   mese?: string;
   /** Esclusione/preset: fino a mese YYYY-MM (opzionale). */
@@ -5765,10 +5768,13 @@ export async function fetchFlussiCassa(): Promise<FlussoCassaRiga[]> {
       return {
         id: String(it.id),
         nome: String(f["Title"] ?? "").trim(),
-        genere: (gen === "esclusione" ? "esclusione" : gen === "preset" ? "preset" : "voce") as
-          | "voce"
-          | "esclusione"
-          | "preset",
+        genere: (gen === "esclusione"
+          ? "esclusione"
+          : gen === "preset"
+            ? "preset"
+            : gen === "girata"
+              ? "girata"
+              : "voce") as "voce" | "esclusione" | "preset" | "girata",
         mese: /^\d{4}-\d{2}$/.test(mese) ? mese : undefined,
         meseFine: /^\d{4}-\d{2}$/.test(meseFine) ? meseFine : undefined,
         importo: F.Importo ? Number(f[F.Importo] ?? 0) || 0 : 0,
