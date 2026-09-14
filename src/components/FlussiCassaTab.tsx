@@ -37,6 +37,7 @@ import {
   spGetRegoleFinanza,
   spGetMovimenti,
 } from "@/lib/sharepoint.functions";
+import { spStipendiStima } from "@/lib/stipendi.functions";
 import type { SpFattura, SpMovimento, Prefattura, FlussoCassaRiga } from "@/lib/sharepoint.server";
 
 function fmtImporto(n: number): string {
@@ -89,6 +90,9 @@ export function FlussiCassaTab() {
   // "fino a quel momento" — a settembre scaduto+settembre, a ottobre
   // scaduto+settembre+ottobre, e così via. Vale per entrambe le tabelle.
   const [cumulato, setCumulato] = useState(false);
+  // Stima Stipendi per i mesi senza dato (media netto dovuto ultimi 2 mesi
+  // da "Stipendi Dr.xlsx" — richiesta Simone 14/09).
+  const [autoStipendi, setAutoStipendi] = useState<{ media: number; mesi: string[] } | null>(null);
 
   // Editor cella voce manuale: chiave "nome|periodo".
   const [cellaVoce, setCellaVoce] = useState<string | null>(null);
@@ -125,6 +129,10 @@ export function FlussiCassaTab() {
         setFlussi([]);
         setFlussiErr(err instanceof Error ? err.message : String(err));
       });
+  // Stima stipendi per i mesi futuri (media netto dovuto ultimi 2 mesi).
+  spStipendiStima()
+    .then((s) => setAutoStipendi(s))
+    .catch(() => setAutoStipendi(null));
 
   useEffect(() => {
     spGetFatture({ data: { direzione: "Emessa" } })
@@ -545,6 +553,16 @@ export function FlussiCassaTab() {
       mese >= oggiISO.slice(0, 7)
     )
       return { importo: -autoAltreSpese.media, auto: true };
+    // Stipendi futuri senza dato reale: stima = media del netto dovuto degli
+    // ultimi 2 mesi di "Stipendi Dr.xlsx" (il dato vero, quando arriva
+    // dall'import, vince perché è una voce manuale).
+    if (
+      nome.trim().toLowerCase() === "stipendi" &&
+      autoStipendi &&
+      autoStipendi.media > 0 &&
+      mese >= oggiISO.slice(0, 7)
+    )
+      return { importo: -autoStipendi.media, auto: true };
     return null;
   };
 
@@ -1535,6 +1553,12 @@ export function FlussiCassaTab() {
             <p>
               {t("fc.notaAuto")} {autoAltreSpese.mesi.join(" + ")} ={" "}
               {fmtImporto(autoAltreSpese.media)} €
+            </p>
+          )}
+          {modo === "mese" && autoStipendi && autoStipendi.media > 0 && (
+            <p>
+              {t("fc.notaAutoStipendi")} {autoStipendi.mesi.join(" + ")} ={" "}
+              {fmtImporto(autoStipendi.media)} €
             </p>
           )}
           {modo === "mese" && (

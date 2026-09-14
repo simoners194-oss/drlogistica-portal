@@ -88,6 +88,22 @@ export async function deleteStipendiMese(mese: string, utente: string): Promise<
   return saveStipendiDb(db, utente);
 }
 
+/** Stima dello stipendio mensile FUTURO per i Flussi di cassa (richiesta
+ *  Simone 14/09): media del NETTO DOVUTO degli ultimi 2 mesi caricati da
+ *  "Stipendi Dr.xlsx". Si usa il netto dovuto e non il saldo perché i saldi
+ *  recenti sono abbattuti dagli anticipi già versati. */
+export async function stimaStipendiMensile(): Promise<{ media: number; mesi: string[] } | null> {
+  const db = await loadStipendiDb();
+  const netti = (db.netti ?? [])
+    .filter((n) => n.totaleStipendio > 0)
+    .sort((a, b) => (a.mese < b.mese ? -1 : 1));
+  const ultimi = netti.slice(-2);
+  if (ultimi.length === 0) return null;
+  const media =
+    Math.round((ultimi.reduce((s, n) => s + n.totaleStipendio, 0) / ultimi.length) * 100) / 100;
+  return { media, mesi: ultimi.map((n) => n.mese) };
+}
+
 /** Upsert dei NETTI da "Stipendi Dr.xlsx": ogni mese presente nel file
  *  sostituisce l'omonimo già caricato, gli altri restano. */
 export async function upsertStipendiNetti(mesi: NettiMese[], utente: string): Promise<StipendiDb> {

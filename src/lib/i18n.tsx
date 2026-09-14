@@ -701,6 +701,8 @@ const en = {
   "fc.colTotale": "Total",
   "fc.entrate": "In — invoices to collect",
   "fc.cumulato": "Cumulative",
+  "fc.notaAutoStipendi":
+    "Stipendi row without real data (future months) = automatic estimate: average NET DUE from Stipendi Dr of",
   "fc.cumulatoTip":
     "Each column shows the running total up to that point: September = overdue + September, October = overdue + September + October, and so on.",
   "fc.fatTitolo": "Invoicing only — collected and paid included",
@@ -2186,6 +2188,8 @@ const it: Record<DictKey, string> = {
   "fc.colTotale": "Totale",
   "fc.entrate": "Entrate — fatture da incassare",
   "fc.cumulato": "Cumulato",
+  "fc.notaAutoStipendi":
+    "Riga Stipendi senza dato reale (mesi futuri) = stima automatica: media del NETTO DOVUTO da Stipendi Dr di",
   "fc.cumulatoTip":
     "Ogni colonna mostra il progressivo fino a quel momento: a settembre scaduto + settembre, a ottobre scaduto + settembre + ottobre, e così via.",
   "fc.fatTitolo": "Solo fatturazioni — incassate e pagate comprese",

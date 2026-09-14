@@ -36,6 +36,21 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.67.0",
+    date: "2026-09-14",
+    codename: "Stipendi stimati",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: "Flussi: stima automatica degli stipendi futuri",
+        description:
+          "Per i mesi senza dato reale la riga Stipendi si riempie da sola con la media del NETTO DOVUTO degli ultimi 2 mesi di Stipendi Dr (si usa il netto dovuto e non il saldo, che nei mesi con anticipi è abbattuto). La stima entra in celle, totale e saldo come le altre spese automatiche, con la nota sotto la tabella; appena arriva il dato vero dall'import, vince quello.",
+      },
+    ],
+  },
+  {
     version: "1.66.1",
     date: "2026-09-14",
     author: "Simone Russo",

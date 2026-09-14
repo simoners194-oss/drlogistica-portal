@@ -9,6 +9,7 @@ import { haVistaDirezione } from "./richieste-logic";
 import {
   deleteStipendiMese,
   loadStipendiDb,
+  stimaStipendiMensile,
   upsertStipendiMese,
   upsertStipendiNetti,
 } from "./stipendi.server";
@@ -43,6 +44,14 @@ export const spStipendiSalvaMese = createServerFn({ method: "POST" })
     const me = await utenteStipendi();
     return upsertStipendiMese(data.mese, firma(me));
   });
+
+/** Stima mensile per i Flussi: media del netto dovuto degli ultimi 2 mesi. */
+export const spStipendiStima = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ media: number; mesi: string[] } | null> => {
+    await utenteStipendi();
+    return stimaStipendiMensile();
+  },
+);
 
 export const spStipendiSalvaNetti = createServerFn({ method: "POST" })
   .inputValidator((input: { mesi: NettiMese[] }) => {
