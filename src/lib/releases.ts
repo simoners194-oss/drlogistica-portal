@@ -36,6 +36,20 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.67.1",
+    date: "2026-09-14",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "improvement",
+        audience: "direzione",
+        title: 'Flussi: la tabella "solo fatturazioni" è la copia completa di quella sopra',
+        description:
+          "Correzione su indicazione di Simone: stesso Scaduto di partenza (i residui aperti reali, identici riga per riga), stesse esclusioni, e ora dentro anche girate, prefatture e le quattro voci manuali (Stipendi, costi fiscali, Altre spese) — l unica differenza è che dai mesi in avanti le fatture pesano per il fatturato pieno alla scadenza, senza scalare i movimenti bancari. Il saldo di partenza delle due tabelle ora coincide; sezione CSV allineata.",
+      },
+    ],
+  },
+  {
     version: "1.67.0",
     date: "2026-09-14",
     codename: "Stipendi stimati",

@@ -707,7 +707,7 @@ const en = {
     "Each column shows the running total up to that point: September = overdue + September, October = overdue + September + October, and so on.",
   "fc.fatTitolo": "Invoicing only — collected and paid included",
   "fc.fatNota":
-    "Same table but by INVOICED amount at due date (net of linked credit notes), regardless of bank movements: invoices already collected or paid are included. No manual rows, transfers or pre-invoices. Overdue = due before today.",
+    "Copy of the table above — same starting Overdue (real open balances), same exclusions, transfers, pre-invoices and the four manual rows — but from the months onward every invoice counts at its FULL invoiced amount at due date (net of linked credit notes), with no bank movements deducted: collected and paid invoices are included.",
   "fc.uscite": "Out — invoices to pay",
   "fc.prefAtt": "Planned invoicing (in)",
   "fc.prefPas": "Planned costs (out)",
@@ -2194,7 +2194,7 @@ const it: Record<DictKey, string> = {
     "Ogni colonna mostra il progressivo fino a quel momento: a settembre scaduto + settembre, a ottobre scaduto + settembre + ottobre, e così via.",
   "fc.fatTitolo": "Solo fatturazioni — incassate e pagate comprese",
   "fc.fatNota":
-    "Stessa tabella ma a FATTURATO alla scadenza (al netto delle note di credito collegate), senza guardare le movimentazioni bancarie: le fatture già incassate o pagate ci sono. Niente voci manuali, girate o prefatture. Scaduto = scadenza prima di oggi.",
+    "Copia della tabella sopra — stesso Scaduto di partenza (residui aperti reali), stesse esclusioni, girate, prefatture e le quattro voci manuali — ma dai mesi in avanti ogni fattura pesa per il FATTURATO PIENO alla scadenza (al netto delle NC collegate), senza scalare i movimenti bancari: le fatture già incassate o pagate ci sono.",
   "fc.uscite": "Uscite — fatture da pagare",
   "fc.prefAtt": "Prefatturazione (entrate)",
   "fc.prefPas": "Costi pianificati (uscite)",

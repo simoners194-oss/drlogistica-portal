@@ -319,6 +319,11 @@ export function FlussiCassaTab() {
   // Come sopra ma a FATTURATO: ogni fattura pesa per il suo TOTALE (al netto
   // delle note di credito collegate) alla scadenza, incassata/pagata o no —
   // nessuna movimentazione bancaria. Scaduto = scadenza prima di oggi.
+  // Spec Simone 14/09 sera: la tabella "solo fatturazioni" è la COPIA di
+  // quella sopra — stesso Scaduto di partenza (residui aperti in ritardo,
+  // identici riga per riga), stesse esclusioni — ma dai mesi in avanti ogni
+  // fattura pesa per il FATTURATO PIENO alla scadenza (al netto delle NC
+  // collegate), incassata/pagata o no: i movimenti bancari non scalano nulla.
   const sommaFatturato = (
     righe: typeof attive,
     tutte: SpFattura[],
@@ -328,8 +333,6 @@ export function FlussiCassaTab() {
     const tot: RigaCp = { nome: "", scaduto: 0, perPeriodo: new Map(), totale: 0 };
     for (const x of righe) {
       if (isNotaCredito(x.f.tipoDocumento)) continue;
-      const importo = Math.abs(x.f.totale) - (nc.get(x.f.nomeFile)?.importo ?? 0);
-      if (importo <= 0.005) continue;
       if (!x.s.scadenza) continue;
       const scad = x.s.scadenza.slice(0, 10);
       if (esclusa(x.f.cliente, scad.slice(0, 7))) continue;
@@ -341,13 +344,18 @@ export function FlussiCassaTab() {
         perPeriodo: new Map(),
         totale: 0,
       };
-      if (scad < oggiISO) {
-        r.scaduto += importo;
-        tot.scaduto += importo;
+      if (x.s.inRitardo) {
+        // IDENTICO alla tabella sopra: il punto di partenza è lo stato reale.
+        const residuo = residuoAperto(x);
+        if (residuo <= 1) continue;
+        r.scaduto += residuo;
+        tot.scaduto += residuo;
       } else {
         if (/^\d{4}-\d{2}-\d{2}$/.test(daData) && scad < daData) continue;
         const kp = chiaveDi(scad);
         if (!chiaviPeriodo.has(kp)) continue;
+        const importo = Math.abs(x.f.totale) - (nc.get(x.f.nomeFile)?.importo ?? 0);
+        if (importo <= 0.005) continue;
         r.perPeriodo.set(kp, (r.perPeriodo.get(kp) ?? 0) + importo);
         r.totale += importo;
         tot.perPeriodo.set(kp, (tot.perPeriodo.get(kp) ?? 0) + importo);
@@ -754,12 +762,21 @@ export function FlussiCassaTab() {
 
   // Saldo della tabella "solo fatturazioni" (niente girate/voci/prefatture:
   // è fatturato puro, entrate meno uscite).
-  const saldoFatDi = (chiave: string): number =>
-    Math.round(
-      ((entrateFat.tot.perPeriodo.get(chiave) ?? 0) - (usciteFat.tot.perPeriodo.get(chiave) ?? 0)) *
-        100,
-    ) / 100;
-  const saldoFatScaduto = entrateFat.tot.scaduto - usciteFat.tot.scaduto;
+  // STESSA formula del saldo sopra (girate, prefatture e voci comprese),
+  // cambiano solo entrate/uscite (a fatturato pieno). Lo Scaduto coincide
+  // con quello sopra per costruzione.
+  const saldoFatDi = (chiave: string, mese: string): number => {
+    let v =
+      (entrateFat.tot.perPeriodo.get(chiave) ?? 0) -
+      (usciteFat.tot.perPeriodo.get(chiave) ?? 0) -
+      girataQuote.reduce((s, q) => s + (q.perPeriodo.get(chiave) ?? 0), 0);
+    if (modo === "mese") {
+      v += (prefPer.att.get(mese) ?? 0) - (prefPer.pas.get(mese) ?? 0);
+      for (const nome of nomiVoci) v += valoreVoce(nome, mese)?.importo ?? 0;
+    }
+    return Math.round(v * 100) / 100;
+  };
+  const saldoFatScaduto = entrateFat.tot.scaduto - usciteFat.tot.scaduto - girateScadutoTot;
 
   const fmt = (v: number) => (Math.abs(v) >= 0.005 ? `${fmtImporto(v)}` : "—");
 
@@ -876,11 +893,43 @@ export function FlussiCassaTab() {
         ...periodi.map((p) => num(-(r.perPeriodo.get(p.chiave) ?? 0))),
         num(-(r.scaduto + r.totale)),
       ]);
+    // Girate, prefatture e voci: identiche alla sezione sopra (fanno parte
+    // anche del saldo "solo fatturazioni").
+    for (const q of girataQuote)
+      if (girataTotaleDi(q) > 0.005)
+        righe.push([
+          q.fornitore,
+          num(-q.scaduto),
+          ...periodi.map((p) => num(-(q.perPeriodo.get(p.chiave) ?? 0))),
+          num(-girataTotaleDi(q)),
+        ]);
+    if (haPref) {
+      righe.push([
+        t("fc.prefAtt"),
+        "",
+        ...periodi.map((p) => num(prefPer.att.get(p.mese) ?? 0)),
+        num([...prefPer.att.values()].reduce((s, v) => s + v, 0)),
+      ]);
+      righe.push([
+        t("fc.prefPas"),
+        "",
+        ...periodi.map((p) => num(-(prefPer.pas.get(p.mese) ?? 0))),
+        num(-[...prefPer.pas.values()].reduce((s, v) => s + v, 0)),
+      ]);
+    }
+    if (modo === "mese")
+      for (const nome of nomiVoci)
+        righe.push([
+          nome,
+          "",
+          ...periodi.map((p) => num(valoreVoce(nome, p.mese)?.importo ?? 0)),
+          num(periodi.reduce((s, p) => s + (valoreVoce(nome, p.mese)?.importo ?? 0), 0)),
+        ]);
     righe.push([
       t("fc.saldo"),
       num(saldoFatScaduto),
-      ...periodi.map((p) => num(saldoFatDi(p.chiave))),
-      num(periodi.reduce((s, p) => s + saldoFatDi(p.chiave), 0)),
+      ...periodi.map((p) => num(saldoFatDi(p.chiave, p.mese))),
+      num(periodi.reduce((s, p) => s + saldoFatDi(p.chiave, p.mese), 0)),
     ]);
     esportaCsvFile(`flussi-di-cassa-${modo}`, testata, righe);
   };
@@ -1440,9 +1489,11 @@ export function FlussiCassaTab() {
           </div>
         )}
 
-        {/* --- SOLO FATTURAZIONI (richiesta Simone 14/09): stessa tabella ma a
-            fatturato pieno alla scadenza, incassate/pagate COMPRESE — nessuna
-            movimentazione bancaria, niente voci manuali/girate/prefatture. --- */}
+        {/* --- SOLO FATTURAZIONI (spec Simone 14/09 sera): COPIA della tabella
+            sopra — stesso Scaduto di partenza, stesse esclusioni, girate,
+            prefatture e le 4 voci — ma dai mesi in poi le fatture pesano per
+            il fatturato PIENO alla scadenza, senza scalare i movimenti
+            bancari (incassate/pagate comprese). --- */}
         {!loading && (
           <div className="mt-6 border-t-2 border-border pt-4">
             <div className="text-sm font-semibold text-foreground">{t("fc.fatTitolo")}</div>
@@ -1521,6 +1572,75 @@ export function FlussiCassaTab() {
                         </td>
                       </tr>
                     ))}
+
+                  {/* GIRATE, PREFATTURE e VOCI: identiche alla tabella sopra
+                      (qui in sola lettura — si modificano di sopra). */}
+                  {girataQuote.map(
+                    (q) =>
+                      girataTotaleDi(q) > 0.005 && (
+                        <tr key={`fg:${q.fornitore}`} className="border-t border-border/40">
+                          <td className="py-1 pr-3" title={t("fc.girataTip")}>
+                            {q.fornitore}
+                          </td>
+                          <td className={`${tdN} text-status-absent`}>{fmt(-q.scaduto)}</td>
+                          {serie(q.scaduto, (c) => q.perPeriodo.get(c) ?? 0).map((v, i) => (
+                            <td key={periodi[i].chiave} className={tdN}>
+                              {fmt(-v)}
+                            </td>
+                          ))}
+                          <td className={tdN}>{fmt(-girataTotaleDi(q))}</td>
+                        </tr>
+                      ),
+                  )}
+                  {haPref && (
+                    <>
+                      <tr className="border-t border-border/40 italic text-primary">
+                        <td className="py-1 pr-3">{t("fc.prefAtt")}</td>
+                        <td className={tdN}>—</td>
+                        {serie(0, (_c, m) => prefPer.att.get(m) ?? 0).map((v, i) => (
+                          <td key={periodi[i].chiave} className={tdN}>
+                            {fmt(v)}
+                          </td>
+                        ))}
+                        <td className={tdN}>
+                          {fmt([...prefPer.att.values()].reduce((s, v) => s + v, 0))}
+                        </td>
+                      </tr>
+                      <tr className="border-t border-border/40 italic text-primary">
+                        <td className="py-1 pr-3">{t("fc.prefPas")}</td>
+                        <td className={tdN}>—</td>
+                        {serie(0, (_c, m) => prefPer.pas.get(m) ?? 0).map((v, i) => (
+                          <td key={periodi[i].chiave} className={tdN}>
+                            {fmt(-v)}
+                          </td>
+                        ))}
+                        <td className={tdN}>
+                          {fmt(-[...prefPer.pas.values()].reduce((s, v) => s + v, 0))}
+                        </td>
+                      </tr>
+                    </>
+                  )}
+                  {modo === "mese" &&
+                    nomiVoci.map((nome) => (
+                      <tr key={`fv:${nome}`} className="border-t border-border/40">
+                        <td className="py-1 pr-3">{nome}</td>
+                        <td className={tdN}>—</td>
+                        {serie(0, (_c, m) => valoreVoce(nome, m)?.importo ?? 0).map((v, i) => (
+                          <td key={periodi[i].chiave} className={tdN}>
+                            {fmt(v)}
+                          </td>
+                        ))}
+                        <td className={tdN}>
+                          {fmt(
+                            periodi.reduce(
+                              (s, p) => s + (valoreVoce(nome, p.mese)?.importo ?? 0),
+                              0,
+                            ),
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+
                   <tr className="border-t-2 border-border font-semibold">
                     <td className="py-1.5 pr-3">{t("fc.saldo")}</td>
                     <td
@@ -1528,7 +1648,7 @@ export function FlussiCassaTab() {
                     >
                       {fmt(saldoFatScaduto)}
                     </td>
-                    {serie(saldoFatScaduto, (c) => saldoFatDi(c)).map((v, i) => (
+                    {serie(saldoFatScaduto, (c, m) => saldoFatDi(c, m)).map((v, i) => (
                       <td
                         key={periodi[i].chiave}
                         className={`${tdN} ${v >= 0 ? "text-status-present" : "text-status-absent"}`}
@@ -1537,7 +1657,7 @@ export function FlussiCassaTab() {
                       </td>
                     ))}
                     <td className={tdN}>
-                      {fmt(periodi.reduce((s, p) => s + saldoFatDi(p.chiave), 0))}
+                      {fmt(periodi.reduce((s, p) => s + saldoFatDi(p.chiave, p.mese), 0))}
                     </td>
                   </tr>
                 </tbody>
