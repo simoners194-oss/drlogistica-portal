@@ -16,13 +16,15 @@ import {
   totaleMese,
   type ParseCostiFileResult,
   type StipendiDb,
+  type StipendioDipendente,
 } from "@/lib/stipendi-logic";
 import {
   spStipendiEliminaMese,
   spStipendiGet,
   spStipendiSalvaMese,
 } from "@/lib/stipendi.functions";
-import { spUpsertFlussoCassa } from "@/lib/sharepoint.functions";
+import { spGetDettagliDistinte, spUpsertFlussoCassa } from "@/lib/sharepoint.functions";
+import type { DettaglioDistinta } from "@/lib/sharepoint.server";
 
 const inputCls =
   "rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
@@ -71,6 +73,8 @@ export function StipendiTab() {
   const [meseComp, setMeseComp] = useState("");
   const [saving, setSaving] = useState(false);
   const [confermaElimina, setConfermaElimina] = useState(false);
+  // Distinte stipendi (report BPM "Esiti pagamenti"): per l'EFFETTIVO versato.
+  const [distinte, setDistinte] = useState<DettaglioDistinta[] | null>(null);
 
   const refresh = () =>
     spStipendiGet()
@@ -89,6 +93,9 @@ export function StipendiTab() {
       });
   useEffect(() => {
     void refresh();
+    spGetDettagliDistinte()
+      .then((l) => setDistinte(l as DettaglioDistinta[]))
+      .catch(() => setDistinte([]));
   }, []);
 
   const mese = useMemo(() => db?.mesi.find((m) => m.mese === meseSel) ?? null, [db, meseSel]);
@@ -120,6 +127,43 @@ export function StipendiTab() {
     }),
     [righe],
   );
+
+  // EFFETTIVO VERSATO (richiesta direzione 14/09): il netto uscito dal conto
+  // verso i dipendenti, dalle distinte stipendi BPM (report "Esiti pagamenti"
+  // importato in Finanze → Storico estratti). Gli stipendi del mese M si
+  // pagano nel mese M+1: per il mese selezionato si guardano le disposizioni
+  // salari ESEGUITE nel mese successivo, abbinate al dipendente per nome.
+  const nameKey = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-zà-ù ]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .sort()
+      .join(" ");
+  const salariPag = useMemo(() => {
+    const mesePag = /^\d{4}-\d{2}$/.test(meseSel) ? meseSuccessivo(meseSel) : "";
+    const righeS = (distinte ?? []).filter(
+      (d) => /salar/i.test(d.tipoPagamento) && (d.dataEsecuzione || "").slice(0, 7) === mesePag,
+    );
+    const perNome = new Map<string, number>();
+    for (const d of righeS) {
+      const k = nameKey(d.beneficiario);
+      perNome.set(k, (perNome.get(k) ?? 0) + d.importo);
+    }
+    return {
+      mesePag,
+      righe: righeS,
+      perNome,
+      totale: righeS.reduce((a, d) => a + d.importo, 0),
+    };
+  }, [distinte, meseSel]);
+  const versatoDi = (d: StipendioDipendente): number | null =>
+    salariPag.perNome.get(nameKey(`${d.cognome} ${d.nome}`)) ?? null;
+  const nonAbbinate = useMemo(() => {
+    const chiavi = new Set((mese?.dipendenti ?? []).map((x) => nameKey(`${x.cognome} ${x.nome}`)));
+    return salariPag.righe.filter((r) => !chiavi.has(nameKey(r.beneficiario)));
+  }, [salariPag, mese]);
 
   const onFile = async (f: File) => {
     setParsing(true);
@@ -224,6 +268,7 @@ export function StipendiTab() {
         "Mensilita aggiuntive",
         "TFR",
         "Totale costo",
+        "Versato in banca",
         "Costo medio",
       ],
       mese.dipendenti.map((d) => [
@@ -240,6 +285,7 @@ export function StipendiTab() {
         d.mensilitaAggiuntive,
         d.tfr,
         d.totaleCosto,
+        versatoDi(d) ?? "",
         d.costoMedio,
       ]),
     );
@@ -429,7 +475,7 @@ export function StipendiTab() {
 
       {mese ? (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
               <p className="text-xs uppercase tracking-wider text-muted-foreground">
                 {t("stip.totaleMese")}
@@ -470,7 +516,21 @@ export function StipendiTab() {
                 {eur(mese.dipendenti.length ? totale / mese.dipendenti.length : 0)} €
               </p>
             </div>
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                {t("stip.versato")} · {salariPag.mesePag ? fmtMese(salariPag.mesePag) : "—"}
+              </p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
+                {salariPag.righe.length ? `${eur(salariPag.totale)} €` : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {salariPag.righe.length
+                  ? `${salariPag.righe.length} ${t("stip.disposizioni")}${nonAbbinate.length ? ` · ${nonAbbinate.length} ${t("stip.nonAbbinate")}` : ""}`
+                  : t("stip.versatoVuoto")}
+              </p>
+            </div>
           </div>
+          <p className="text-[11px] text-muted-foreground">{t("stip.versatoNota")}</p>
 
           <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-[var(--shadow-card)]">
             <table className="w-full text-sm">
@@ -486,6 +546,7 @@ export function StipendiTab() {
                   <th className="px-3 py-2 text-right">{t("stip.mensAgg")}</th>
                   <th className="px-3 py-2 text-right">TFR</th>
                   <th className="px-3 py-2 text-right">{t("stip.totale")}</th>
+                  <th className="px-3 py-2 text-right">{t("stip.versatoCol")}</th>
                   <th className="px-3 py-2 text-right">{t("stip.medio")}</th>
                 </tr>
               </thead>
@@ -520,6 +581,9 @@ export function StipendiTab() {
                     <td className="px-3 py-1.5 text-right font-semibold tabular-nums">
                       {eur(d.totaleCosto)}
                     </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">
+                      {versatoDi(d) != null ? eur(versatoDi(d)!) : "—"}
+                    </td>
                     <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
                       {d.costoMedio ? eur(d.costoMedio) : "—"}
                     </td>
@@ -539,6 +603,9 @@ export function StipendiTab() {
                   <td className="px-3 py-2 text-right tabular-nums">{eur(totRighe.mens)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{eur(totRighe.tfr)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{eur(totRighe.totale)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {eur(righe.reduce((a, d) => a + (versatoDi(d) ?? 0), 0))}
+                  </td>
                   <td className="px-3 py-2" />
                 </tr>
               </tbody>

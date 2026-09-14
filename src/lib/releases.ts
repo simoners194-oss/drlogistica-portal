@@ -36,6 +36,28 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.65.0",
+    date: "2026-09-14",
+    codename: "Versato in banca",
+    author: "Simone Russo",
+    entries: [
+      {
+        tag: "feature",
+        audience: "direzione",
+        title: 'Stipendi: colonna e card "Versato in banca"',
+        description:
+          "Accanto al costo di competenza ora c'è l'EFFETTIVO uscito dal conto verso i dipendenti: le disposizioni salari delle distinte BPM (report Esiti pagamenti) eseguite nel mese successivo alla competenza, abbinate per nome al dipendente — card col totale del mese, colonna per persona, riga nel CSV. Le disposizioni che non trovano il dipendente vengono contate a parte.",
+      },
+      {
+        tag: "fix",
+        audience: "direzione",
+        title: "Import estratto conto: guardia sull'era del sync bancario",
+        description:
+          "Un xlsx che sconfina oltre la data di taglio Excel→API creava doppioni invisibili al controllo chiavi (le chiavi delle due fonti non possono incrociarsi — caso dei 9 movimenti doppi del 22/07, bonifico RN compreso). Ora quelle righe vengono scartate in automatico e contate nell'esito dell'import.",
+      },
+    ],
+  },
+  {
     version: "1.64.0",
     date: "2026-09-14",
     codename: "Cumulato e solo fatturazioni",

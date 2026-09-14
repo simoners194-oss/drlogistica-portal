@@ -3956,6 +3956,10 @@ export interface ImportMovimentiResult {
   importati: number;
   doppioni: number;
   anomalie: number;
+  /** Righe scartate perché datate DOPO il taglio Excel→API: da lì scrive solo
+   *  il sync bancario (caso 14/09: 9 doppioni sul giorno di taglio — le chiavi
+   *  Excel e quelle API "EB|…" non possono incrociarsi). */
+  eraApi: number;
   errori: string[];
 }
 
@@ -3977,8 +3981,13 @@ export async function importMovimenti(
     importati: 0,
     doppioni: 0,
     anomalie: 0,
+    eraApi: 0,
     errori: [],
   };
+  // GUARDIA ERA-API: dal DataTaglio in poi la verità è del sync bancario; un
+  // xlsx che sconfina in quella finestra creerebbe doppioni invisibili al
+  // controllo chiavi (formati diversi). Le righe si scartano e si contano.
+  const dataTaglio = (await getEbStato().catch(() => null))?.dataTaglio ?? null;
 
   // Chiave e classificazione ricalcolate QUI dai campi grezzi: il client può
   // aver già fatto lo stesso lavoro per l'anteprima, ma la verità è del server.
@@ -3987,6 +3996,10 @@ export async function importMovimenti(
   const nomiRoster = await nomiDipendenti();
   const daScrivere: { fields: Record<string, unknown>; chiave: string }[] = [];
   for (const r of rows) {
+    if (dataTaglio && r.dataContabile >= dataTaglio) {
+      result.eraApi++;
+      continue;
+    }
     const chiave = chiaveMovimento(r, r.occ);
     if (esistenti.has(chiave)) {
       result.doppioni++;

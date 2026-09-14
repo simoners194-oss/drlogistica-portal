@@ -2119,6 +2119,7 @@ function FinanzaPage() {
     const importId = `IMP-${new Date().toISOString().slice(0, 19)}`;
     let importati = 0;
     let doppioni = 0;
+    let eraApi = 0;
     const errori: string[] = [];
     try {
       for (let i = 0; i < preview.nuove.length; i += CHUNK) {
@@ -2135,10 +2136,11 @@ function FinanzaPage() {
         const res = await spImportMovimenti({ data: { rows, importId } });
         importati += res.importati;
         doppioni += res.doppioni;
+        eraApi += res.eraApi ?? 0;
         errori.push(...res.errori);
       }
       toast.success(t("fin.importDone"), {
-        description: `${importati} ${t("fin.importedRows")}${doppioni ? ` · ${doppioni} ${t("fin.skippedDup")}` : ""}${errori.length ? ` · ${errori.length} ${t("common.error").toLowerCase()}` : ""}`,
+        description: `${importati} ${t("fin.importedRows")}${doppioni ? ` · ${doppioni} ${t("fin.skippedDup")}` : ""}${eraApi ? ` · ${eraApi} ${t("fin.skippedEraApi")}` : ""}${errori.length ? ` · ${errori.length} ${t("common.error").toLowerCase()}` : ""}`,
       });
       if (errori.length) console.warn("Import movimenti — errori:", errori);
       setPreview(null);
