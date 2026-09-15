@@ -659,6 +659,7 @@ const en = {
   "stip.cerca": "Employee, label…",
   "stip.etichetta": "Label",
   "stip.etichettaFileTip": "Label in the payroll file",
+  "stip.sedeAltri": "Others",
   "stip.importBtn": "Import COSTI file",
   "stip.importTitle": "Import monthly payroll file (xlsx)",
   "stip.importDesc":
@@ -2278,6 +2279,7 @@ const it: Record<DictKey, string> = {
   "stip.cerca": "Dipendente, etichetta…",
   "stip.etichetta": "Etichetta",
   "stip.etichettaFileTip": "Etichetta nel file paghe",
+  "stip.sedeAltri": "Altri",
   "stip.importBtn": "Importa file COSTI",
   "stip.importTitle": "Importa il file paghe del mese (xlsx)",
   "stip.importDesc":

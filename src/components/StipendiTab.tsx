@@ -156,27 +156,41 @@ export function StipendiTab() {
   }, [db, mese]);
 
   // SEDE per riga (richiesta Simone 15/09): l'etichetta del file quando è una
-  // sede vera; quando invece è vuota, solo cifre (il "311" del file di giugno)
-  // o il nome del dipendente stesso (file di luglio col nome in prima
-  // colonna), si usa l'appalto dell'anagrafica portale — stesso motore di
-  // match dei nomi delle distinte, ambiguità = si tiene l'etichetta org.
+  // sede vera; quando invece è vuota, solo cifre (il "311" del file di
+  // giugno) o il nome del dipendente stesso (file di luglio col nome in prima
+  // colonna), si ricava in ordine: (1) l'etichetta-sede della stessa persona
+  // in un ALTRO mese del file paghe (dal più recente — stessa nomenclatura
+  // della tabella), (2) l'appalto dell'anagrafica portale (stesso motore di
+  // match dei nomi delle distinte, ambiguità = nessun match), (3) la voce
+  // "Altri" — mai il nome della persona come finta sede.
   const sediMese = useMemo(() => {
+    const nonSedeVal = (e: string, k: string) => !e || /^\d+$/.test(e) || chiaveNome(e) === k;
+    const sedePersona = new Map<string, string>();
+    for (const mm of [...(db?.mesi ?? [])].reverse()) {
+      for (const d of mm.dipendenti) {
+        const k = chiaveNome(`${d.cognome} ${d.nome}`);
+        const e = (d.etichetta ?? "").trim();
+        if (!sedePersona.has(k) && !nonSedeVal(e, k)) sedePersona.set(k, e);
+      }
+    }
     const nomiRoster = roster.map((r) => r.nome);
     const appaltoDi = new Map(roster.map((r) => [chiaveNome(r.nome), r.appalto ?? ""]));
     const m = new Map<string, string>();
     for (const d of mese?.dipendenti ?? []) {
       const e = (d.etichetta ?? "").trim();
-      const nonSede =
-        !e || /^\d+$/.test(e) || chiaveNome(e) === chiaveNome(`${d.cognome} ${d.nome}`);
+      const k = chiaveNome(`${d.cognome} ${d.nome}`);
       let sede = e;
-      if (nonSede && nomiRoster.length) {
-        const hit = matchDipendenteNome(`${d.cognome} ${d.nome}`, nomiRoster);
-        sede = (hit ? appaltoDi.get(chiaveNome(hit)) : "") || e;
+      if (nonSedeVal(e, k)) {
+        const hit = nomiRoster.length
+          ? matchDipendenteNome(`${d.cognome} ${d.nome}`, nomiRoster)
+          : null;
+        sede =
+          sedePersona.get(k) || (hit ? appaltoDi.get(chiaveNome(hit)) : "") || t("stip.sedeAltri");
       }
       m.set(`${d.codice}|${d.cognome} ${d.nome}|${d.etichetta}`, sede);
     }
     return m;
-  }, [mese, roster]);
+  }, [db, mese, roster, t]);
   const sedeDi = (d: StipendioDipendente) =>
     sediMese.get(`${d.codice}|${d.cognome} ${d.nome}|${d.etichetta}`) ?? d.etichetta;
   const etichette = useMemo(

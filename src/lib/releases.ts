@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.74.3",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Stipendi: sedi ricavate anche dagli altri mesi, residuo in “Altri”",
+        description:
+          "Quando il file paghe non porta la sede, ora si guarda prima la sede della stessa persona negli altri mesi (agosto in testa), poi l'appalto in anagrafica; chi resta senza nulla finisce nella voce “Altri” invece di comparire col proprio nome nel filtro.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.74.2",
     date: "2026-09-15",
     entries: [
