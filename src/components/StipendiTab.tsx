@@ -173,12 +173,18 @@ export function StipendiTab() {
   // salari ESEGUITE nel mese successivo, abbinate al dipendente per nome.
   const salariPag = useMemo(() => {
     const mesePag = /^\d{4}-\d{2}$/.test(meseSel) ? meseSuccessivo(meseSel) : "";
-    // I valori reali del campo sono "Stipendi SEPA" (e "Pagamento Riba" da
-    // escludere): si accettano entrambe le diciture stipendi/salari.
-    const righeS = (distinte ?? []).filter(
-      (d) =>
-        /salar|stipend/i.test(d.tipoPagamento) && (d.dataEsecuzione || "").slice(0, 7) === mesePag,
+    // Contano le distinte "Stipendi SEPA" e — richiesta Simone 15/09 — anche
+    // i BONIFICI SINGOLI intestati a un dipendente del mese (alcuni stipendi
+    // viaggiano fuori distinta); le Riba e i bonifici ai fornitori restano
+    // fuori perché il beneficiario non è in organico.
+    const chiaviDip = new Set(
+      (mese?.dipendenti ?? []).map((x) => nameKey(`${x.cognome} ${x.nome}`)),
     );
+    const righeS = (distinte ?? []).filter((d) => {
+      if ((d.dataEsecuzione || "").slice(0, 7) !== mesePag) return false;
+      if (/salar|stipend/i.test(d.tipoPagamento)) return true;
+      return chiaviDip.has(nameKey(d.beneficiario));
+    });
     const perNome = new Map<string, number>();
     for (const d of righeS) {
       const k = nameKey(d.beneficiario);
@@ -190,7 +196,7 @@ export function StipendiTab() {
       perNome,
       totale: righeS.reduce((a, d) => a + d.importo, 0),
     };
-  }, [distinte, meseSel]);
+  }, [distinte, meseSel, mese]);
   const versatoDi = (d: StipendioDipendente): number | null =>
     salariPag.perNome.get(nameKey(`${d.cognome} ${d.nome}`)) ?? null;
   const nonAbbinate = useMemo(() => {

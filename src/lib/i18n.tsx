@@ -651,7 +651,7 @@ const en = {
   "stip.versatoVuoto":
     'No salary batch for that month: import BPM "Esiti pagamenti" in Finanze → Bank statements history.',
   "stip.versatoNota":
-    '"Paid out" is the actual cash to employees from the BPM salary batches (Esiti pagamenti report) executed in the month AFTER the accrual month; the other columns are the company accrual cost, so the two figures differ by contributions, withholdings and accrued TFR.',
+    '"Paid out" is the actual cash to employees executed in the month AFTER the accrual month, from the BPM Esiti pagamenti report: salary batches (Stipendi SEPA) plus single SEPA transfers made out to an employee of the month; the other columns are the company accrual cost, so the two figures differ by contributions, withholdings and accrued TFR.',
   "stip.dipendenti": "Employees",
   "stip.totaleMese": "Total cost",
   "stip.squadrature": "employees whose components don't add up to the total (check the file)",
@@ -2176,7 +2176,7 @@ const it: Record<DictKey, string> = {
   "stip.versatoVuoto":
     'Nessuna distinta salari per quel mese: importa gli "Esiti pagamenti" BPM in Finanze → Storico estratti.',
   "stip.versatoNota":
-    '"Versato" è il movimento di cassa reale verso i dipendenti, dalle distinte salari BPM (report Esiti pagamenti) ESEGUITE nel mese successivo alla competenza; le altre colonne sono il costo azienda di competenza — la differenza sono contributi, ritenute e TFR accantonato.',
+    '"Versato" è il movimento di cassa reale verso i dipendenti ESEGUITO nel mese successivo alla competenza, dal report Esiti pagamenti BPM: distinte salari (Stipendi SEPA) più i bonifici singoli intestati a un dipendente del mese; le altre colonne sono il costo azienda di competenza — la differenza sono contributi, ritenute e TFR accantonato.',
   "stip.dipendenti": "Dipendenti",
   "stip.totaleMese": "Totale costo",
   "stip.squadrature": "dipendenti con componenti che non tornano col totale (controllare il file)",

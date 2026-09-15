@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.69.1",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Stipendi: il Versato conta anche i bonifici singoli",
+        description:
+          "La colonna Versato ora somma, oltre alle distinte Stipendi SEPA, anche i bonifici singoli eseguiti verso un dipendente del mese (alcuni stipendi viaggiano fuori distinta). Riba e bonifici ai fornitori restano esclusi.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.69.0",
     date: "2026-09-14",
     entries: [
