@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.70.1",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Vista direzione a Lucrezia Pratesi e Sabrina Guidarelli",
+        description:
+          "Le utenze DR000 (Lucrezia Pratesi) e DR002 (Sabrina Guidarelli) vedono ora le schermate della direzione — Finanze, Fatture e novità riservate — con le loro credenziali di sempre. La tab Amministrazione resta riservata all'amministratore di sistema.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.70.0",
     date: "2026-09-15",
     entries: [

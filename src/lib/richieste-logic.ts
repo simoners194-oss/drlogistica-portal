@@ -342,6 +342,10 @@ const CODICI_VISTA_DIREZIONE = new Set<string>([
   // (Finanza, Mezzi e moduli direzione) ma SENZA la tab Amministrazione,
   // che resta riservata al ruolo amministratore_sistema (ADM001).
   "ADM002",
+  // Richiesta Simone 15/09: stessi accessi suoi tranne Amministrazione —
+  // entrano con le loro utenze esistenti (Codice + PIN di sempre).
+  "DR000", // Lucrezia Pratesi
+  "DR002", // Sabrina Guidarelli
 ]);
 
 export function haVistaDirezione(codice: string): boolean {
