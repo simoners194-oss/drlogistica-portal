@@ -4800,18 +4800,6 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                 />
                 {t("fin.regolaApplicaEsistenti")}
               </label>
-              <label
-                className="flex items-end gap-2 pb-2 text-sm text-foreground"
-                title={t("fin.regolaAltreSpeseTip")}
-              >
-                <input
-                  type="checkbox"
-                  checked={rAltreSpese}
-                  onChange={(e) => setRAltreSpese(e.target.checked)}
-                  className="h-4 w-4 accent-primary"
-                />
-                {t("fin.regolaAltreSpese")}
-              </label>
             </div>
             {rSorgente && !rEditId && (
               <button
@@ -5206,14 +5194,6 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                               />
-                              <button
-                                type="button"
-                                onClick={() => void toggleAltreSpese(r)}
-                                title={t("fin.regolaAltreSpeseTip")}
-                                className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${r.altreSpese ? "bg-primary/15 text-primary" : "text-muted-foreground/50 hover:text-foreground hover:bg-muted"}`}
-                              >
-                                €
-                              </button>
                               <button
                                 type="button"
                                 onClick={() => apriModificaRegola(r)}

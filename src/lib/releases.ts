@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.74.0",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Flussi: click sulle voci per vedere cosa comprendono",
+        description:
+          "Cliccando il NOME di Stipendi, Costo fiscale rate/corrente e Altre spese si apre il dettaglio: per gli stipendi i dipendenti col netto e chi è segnato pagato, per le voci fiscali le scadenze del mese, per le Altre spese le tipologie che compongono la media — con le spunte per includere o escludere ogni tipologia (la scelta si salva).",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Altre spese: media vera degli ultimi 2 mesi",
+        description:
+          "Il valore automatico è la media degli ultimi 2 mesi completi dei costi generali NON fatturati (fuori salari, consulenze, POST EBITDA e tutto ciò che viaggia già a fattura). Il vecchio flag € sulle regole non serve più ed è stato tolto. Il valore scritto a mano vince sempre.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.73.0",
     date: "2026-09-15",
     entries: [

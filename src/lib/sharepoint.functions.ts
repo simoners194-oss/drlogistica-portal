@@ -601,10 +601,14 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
           ? "preset"
           : input?.genere === "girata"
             ? "girata"
-            : "voce";
+            : input?.genere === "asvoce"
+              ? "asvoce"
+              : "voce";
     const importo = Number(input?.importo ?? 0);
     if (genere === "voce" && (!Number.isFinite(importo) || importo === 0))
       throw new Error("Importo non valido (per le uscite usare il segno meno)");
+    if (genere === "asvoce" && importo !== 0 && importo !== 1)
+      throw new Error("Valore inclusione non valido (0 o 1)");
     if (genere === "girata" && (!Number.isFinite(importo) || importo <= 0 || importo > 100))
       throw new Error("Percentuale non valida (1-100)");
     const mese = String(input?.mese ?? "").trim();
@@ -617,7 +621,7 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
       throw new Error("Mese di fine non valido (formato 2026-12)");
     return {
       nome,
-      genere: genere as "voce" | "esclusione" | "preset" | "girata",
+      genere: genere as "voce" | "esclusione" | "preset" | "girata" | "asvoce",
       mese: mese || undefined,
       meseFine: meseFine || undefined,
       importo: Number.isFinite(importo) ? Math.round(importo * 100) / 100 : 0,

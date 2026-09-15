@@ -20,12 +20,7 @@ import {
   isNotaCredito,
   type TerminePagamento,
 } from "@/lib/fatture-logic";
-import {
-  clienteGroupKey,
-  matchRegola,
-  regoleOrdinate,
-  type RegolaFinanza,
-} from "@/lib/finanza-logic";
+import { clienteGroupKey } from "@/lib/finanza-logic";
 import { esportaCsvFile } from "@/lib/csv";
 import {
   spGetFatture,
@@ -34,10 +29,10 @@ import {
   spGetFlussiCassa,
   spUpsertFlussoCassa,
   spDeleteFlussoCassa,
-  spGetRegoleFinanza,
   spGetMovimenti,
 } from "@/lib/sharepoint.functions";
-import { spStipendiFlussi } from "@/lib/stipendi.functions";
+import { spStipendiFlussi, spStipendiGet } from "@/lib/stipendi.functions";
+import { chiaveNome, type StipendiDb } from "@/lib/stipendi-logic";
 import {
   parseScadenzario,
   totaliFiscaliPerMese,
@@ -85,8 +80,6 @@ export function FlussiCassaTab() {
   const [prefatture, setPrefatture] = useState<Prefattura[] | null>(null);
   const [flussi, setFlussi] = useState<FlussoCassaRiga[] | null>(null);
   const [flussiErr, setFlussiErr] = useState<string | null>(null);
-  // Per la MEDIA automatica delle "Altre spese": regole flaggate + movimenti.
-  const [regoleFin, setRegoleFin] = useState<RegolaFinanza[] | null>(null);
   const [movimenti, setMovimenti] = useState<SpMovimento[] | null>(null);
 
   const [modo, setModo] = useState<"mese" | "settimana">("mese");
@@ -118,6 +111,10 @@ export function FlussiCassaTab() {
     res: ParseScadenzarioResult;
   } | null>(null);
   const [savingF, setSavingF] = useState(false);
+  // Pannello "cosa comprende" al click sul nome delle 4 voci (Simone 15/09).
+  const [drill, setDrill] = useState<{ voce: string; mese: string } | null>(null);
+  const [drillStip, setDrillStip] = useState<StipendiDb | null>(null);
+  const [drillBusy, setDrillBusy] = useState(false);
 
   // Editor cella voce manuale: chiave "nome|periodo".
   const [cellaVoce, setCellaVoce] = useState<string | null>(null);
@@ -182,9 +179,6 @@ export function FlussiCassaTab() {
     spGetPrefatture()
       .then((l) => setPrefatture(l as Prefattura[]))
       .catch(() => setPrefatture([]));
-    spGetRegoleFinanza()
-      .then((l) => setRegoleFin(l as RegolaFinanza[]))
-      .catch(() => setRegoleFin([]));
     spGetMovimenti()
       .then((l) => setMovimenti(l as SpMovimento[]))
       .catch(() => setMovimenti([]));
@@ -551,30 +545,68 @@ export function FlussiCassaTab() {
   // Richiesta FR 08/09: le spese che NON passano dalle fatture (regole
   // flaggate "Altre spese" con la €) fanno media sugli ultimi 2 MESI PIENI
   // e riempiono da sole la riga — il valore manuale, se inserito, vince.
+  // ALTRE SPESE = media degli ultimi 2 mesi COMPLETI dei movimenti "Costi
+  // generali" NON fatturati (decisione Simone 15/09): fuori Pagamento
+  // Salario, Consulenze e POST EBITDA (gia' coperti da Stipendi, fatture e
+  // voci fiscali) e fuori ogni movimento con nr fattura o verso un
+  // fornitore che ha fatture passive in archivio. Le spunte del pannello
+  // (righe FlussiCassa genere "asvoce": 1 includi / 0 escludi) vincono sul
+  // default, tipologia per tipologia.
+  const TIP_ESCLUSE_DEFAULT = useMemo(
+    () => new Set(["Pagamento Salario", "Consulenze", "POST EBITDA"]),
+    [],
+  );
+  const asOverride = useMemo(() => {
+    const m = new Map<string, boolean>();
+    for (const r of flussi ?? [])
+      if (r.genere === "asvoce") m.set(r.nome.trim(), (r.importo ?? 0) > 0);
+    return m;
+  }, [flussi]);
   const autoAltreSpese = useMemo(() => {
-    const flaggate = (regoleFin ?? []).filter((r) => r.altreSpese === true);
-    if (!flaggate.length || !movimenti?.length) return null;
-    const ordinate = regoleOrdinate(regoleFin ?? []);
-    const meseDi = (iso: string) => iso.slice(0, 7);
+    if (!movimenti?.length) return null;
     const base = new Date(`${oggiISO.slice(0, 7)}-01T00:00:00`);
-    const mesi = [1, 2].map((i) => {
+    const mesi = [2, 1].map((i) => {
       const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     });
-    const somme = new Map<string, number>(mesi.map((m) => [m, 0]));
+    const fornitori = new Set(
+      (fattureRic ?? []).map((f) => f.cliente.toLowerCase().trim()).filter((c) => c.length > 6),
+    );
+    const fatturata = (m: SpMovimento) => {
+      if ((m.nrFattura ?? "").trim()) return true;
+      const c = (m.cliente ?? "").toLowerCase().trim();
+      if (!c) return false;
+      if (fornitori.has(c)) return true;
+      // La direzione f.includes(c) solo con controparti non-corte: 'TIM'
+      // e' sottostringa di mezzo archivio e sparirebbe dalla media in silenzio.
+      for (const f of fornitori) if (c.includes(f) || (c.length > 6 && f.includes(c))) return true;
+      return false;
+    };
+    const perTip = new Map<string, [number, number]>();
     for (const m of movimenti) {
       if (m.importo >= 0) continue;
-      const chiaveMese = meseDi(m.dataContabile);
-      if (!somme.has(chiaveMese)) continue;
-      // Stessa priorita' del classificatore: conta la PRIMA regola che
-      // matcha, e conta solo se e' una di quelle flaggate.
-      const r = ordinate.find((x) => matchRegola(m, x));
-      if (r?.altreSpese === true)
-        somme.set(chiaveMese, (somme.get(chiaveMese) ?? 0) + Math.abs(m.importo));
+      const idx = mesi.indexOf(m.dataContabile.slice(0, 7));
+      if (idx < 0) continue;
+      if (!(m.allocPrimaria ?? "").toLowerCase().includes("generali")) continue;
+      if (fatturata(m)) continue;
+      const tip = m.tipologia?.trim() || "(senza tipologia)";
+      if (!perTip.has(tip)) perTip.set(tip, [0, 0]);
+      perTip.get(tip)![idx] += Math.abs(m.importo);
     }
-    const media = [...somme.values()].reduce((s, v) => s + v, 0) / mesi.length;
-    return { media: Math.round(media * 100) / 100, mesi };
-  }, [regoleFin, movimenti, oggiISO]);
+    const righe = [...perTip.entries()]
+      .map(([tip, v]) => ({
+        tip,
+        m1: Math.round(v[0] * 100) / 100,
+        m2: Math.round(v[1] * 100) / 100,
+        inclusa: asOverride.get(tip) ?? !TIP_ESCLUSE_DEFAULT.has(tip),
+      }))
+      .sort((a, b) => b.m1 + b.m2 - (a.m1 + a.m2));
+    const media =
+      Math.round(
+        (righe.filter((r) => r.inclusa).reduce((s2, r) => s2 + r.m1 + r.m2, 0) / 2) * 100,
+      ) / 100;
+    return { media, mesi, righe };
+  }, [movimenti, fattureRic, asOverride, TIP_ESCLUSE_DEFAULT, oggiISO]);
 
   // --- Voci manuali (mensili) ------------------------------------------------
   const nomiVoci = useMemo(() => {
@@ -595,9 +627,9 @@ export function FlussiCassaTab() {
     [fiscale, oggiISO],
   );
 
-  /** Valore effettivo di una voce nel mese: manuale se c'e', altrimenti — per
-   *  la sola riga "Altre spese", dai mesi correnti in poi — la media
-   *  automatica delle regole flaggate (in negativo: e' un'uscita). */
+  /** Valore effettivo di una voce nel mese: manuale se c'e', altrimenti gli
+   *  automatici — Altre spese dalla media dei costi generali non fatturati,
+   *  Stipendi dai netti/spunte, voci fiscali dallo scadenziario. */
   const valoreVoce = (
     nome: string,
     mese: string,
@@ -715,6 +747,32 @@ export function FlussiCassaTab() {
       });
     } finally {
       setSavingF(false);
+    }
+  };
+
+  const apriDrill = (voce: string) => {
+    const mese = periodi[0]?.mese ?? oggiISO.slice(0, 7);
+    setDrill({ voce, mese });
+    if (voce.trim().toLowerCase() === "stipendi" && !drillStip) {
+      spStipendiGet()
+        .then((db) => setDrillStip(db))
+        .catch((err) => {
+          setDrillStip(null);
+          toast.error(err instanceof Error ? err.message : String(err));
+        });
+    }
+  };
+  const toggleAsVoce = async (tip: string, inclusa: boolean) => {
+    setDrillBusy(true);
+    try {
+      await spUpsertFlussoCassa({
+        data: { nome: tip, genere: "asvoce", importo: inclusa ? 0 : 1 },
+      });
+      await ricaricaFlussi();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDrillBusy(false);
     }
   };
 
@@ -1670,7 +1728,20 @@ export function FlussiCassaTab() {
                 {modo === "mese" &&
                   nomiVoci.map((nome) => (
                     <tr key={`v:${nome}`} className="border-t border-border/40">
-                      <td className="py-1 pr-3">{nome}</td>
+                      <td className="py-1 pr-3">
+                        {VOCI_BASE.includes(nome) ? (
+                          <button
+                            type="button"
+                            onClick={() => apriDrill(nome)}
+                            title={t("fc.drillTip")}
+                            className="rounded px-1 text-left hover:bg-muted hover:text-primary"
+                          >
+                            {nome}
+                          </button>
+                        ) : (
+                          nome
+                        )}
+                      </td>
                       <td className={tdN}>—</td>
                       {cumulato
                         ? serie(0, (_c, m) => valoreVoce(nome, m)?.importo ?? 0).map((v, i) => (
@@ -1895,6 +1966,232 @@ export function FlussiCassaTab() {
           </div>
         )}
 
+        {drill &&
+          (() => {
+            const chiave = drill.voce.trim().toLowerCase();
+            const chiudi = () => setDrill(null);
+            const selMese = (
+              <select
+                value={drill.mese}
+                onChange={(e) => setDrill({ ...drill, mese: e.target.value })}
+                className={inputCls}
+              >
+                {periodi.map((pp) => (
+                  <option key={pp.chiave} value={pp.mese}>
+                    {pp.mese}
+                  </option>
+                ))}
+              </select>
+            );
+            const manuale = vocePer(drill.voce, drill.mese);
+            let corpo: React.ReactNode = null;
+            if (chiave === "altre spese") {
+              corpo = autoAltreSpese ? (
+                <>
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    {t("fc.drillAsDesc")} {autoAltreSpese.mesi.join(" + ")}.
+                  </p>
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                        <th className="py-1 pr-3">{t("fc.colVoce")}</th>
+                        <th className="py-1 pr-3 text-right">{autoAltreSpese.mesi[0]}</th>
+                        <th className="py-1 pr-3 text-right">{autoAltreSpese.mesi[1]}</th>
+                        <th className="py-1 pr-3 text-right">{t("fc.drillMedia")}</th>
+                        <th className="py-1 text-center">{t("fc.drillInclusa")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {autoAltreSpese.righe.map((r) => (
+                        <tr
+                          key={r.tip}
+                          className={`border-b border-border/40 ${r.inclusa ? "" : "text-muted-foreground line-through"}`}
+                        >
+                          <td className="py-0.5 pr-3">{r.tip}</td>
+                          <td className="py-0.5 pr-3 text-right tabular-nums">
+                            {fmtImporto(r.m1)}
+                          </td>
+                          <td className="py-0.5 pr-3 text-right tabular-nums">
+                            {fmtImporto(r.m2)}
+                          </td>
+                          <td className="py-0.5 pr-3 text-right tabular-nums">
+                            {fmtImporto((r.m1 + r.m2) / 2)}
+                          </td>
+                          <td className="py-0.5 text-center">
+                            <input
+                              type="checkbox"
+                              className="accent-primary"
+                              checked={r.inclusa}
+                              disabled={drillBusy}
+                              onChange={() => void toggleAsVoce(r.tip, r.inclusa)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-border font-semibold">
+                        <td className="py-1 pr-3" colSpan={3}>
+                          {t("fc.drillMediaRisultante")}
+                        </td>
+                        <td className="py-1 pr-3 text-right tabular-nums">
+                          {fmtImporto(autoAltreSpese.media)}
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                  <p className="mt-2 text-[11px] text-muted-foreground">{t("fc.drillAsNota")}</p>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t("common.loading")}</p>
+              );
+            } else if (chiave === "stipendi") {
+              const [anno, mm] = drill.mese.split("-").map(Number);
+              const comp =
+                mm === 1 ? `${anno - 1}-12` : `${anno}-${String(mm - 1).padStart(2, "0")}`;
+              const netti = drillStip?.netti?.find((x) => x.mese === comp);
+              const pagatiSet = new Set(drillStip?.pagatiPerMese?.[comp] ?? []);
+              corpo = !drillStip ? (
+                <p className="text-xs text-muted-foreground">{t("common.loading")}</p>
+              ) : !netti ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("fc.drillStipVuoto")} ({comp})
+                </p>
+              ) : (
+                <>
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    {t("fc.drillStipDesc")} {comp}.
+                  </p>
+                  <div className="max-h-80 overflow-y-auto">
+                    <table className="w-full text-[13px]">
+                      <thead>
+                        <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                          <th className="py-1 pr-3">{t("common.employee")}</th>
+                          <th className="py-1 pr-3 text-right">{t("fc.drillSaldo")}</th>
+                          <th className="py-1 text-center">{t("stip.colPagato")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...netti.dipendenti]
+                          .sort((a, b) => b.saldo - a.saldo)
+                          .map((d, i) => (
+                            <tr key={`${d.nome}|${i}`} className="border-b border-border/40">
+                              <td className="py-0.5 pr-3">{d.nome}</td>
+                              <td className="py-0.5 pr-3 text-right tabular-nums">
+                                {fmtImporto(d.saldo)}
+                              </td>
+                              <td className="py-0.5 text-center">
+                                {pagatiSet.has(chiaveNome(d.nome)) ? "✓" : "—"}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="mt-2 text-xs font-medium">
+                    {t("fc.drillStipTot")} {fmtImporto(netti.totaleSaldo)} ·{" "}
+                    {t("fc.drillStipPagati")}{" "}
+                    {fmtImporto(
+                      netti.dipendenti
+                        .filter((d) => pagatiSet.has(chiaveNome(d.nome)))
+                        .reduce((s2, d) => s2 + d.saldo, 0),
+                    )}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{t("fc.drillStipNota")}</p>
+                </>
+              );
+            } else {
+              const cat = chiave === "costo fiscale rate" ? "rate" : "corrente";
+              const righeF = (fiscale?.scadenze ?? []).filter(
+                (x) =>
+                  !x.pagato &&
+                  x.categoria === cat &&
+                  (x.dataPagamento.slice(0, 7) === drill.mese ||
+                    (x.dataPagamento.slice(0, 7) < oggiISO.slice(0, 7) &&
+                      drill.mese === oggiISO.slice(0, 7))),
+              );
+              corpo = (
+                <>
+                  <p className="mb-2 text-xs text-muted-foreground">{t("fc.drillFiscDesc")}</p>
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                        <th className="py-1 pr-3">{t("fis.colData")}</th>
+                        <th className="py-1 pr-3">{t("fis.colVoce")}</th>
+                        <th className="py-1 pr-3">{t("fis.colDettaglio")}</th>
+                        <th className="py-1 text-right">{t("fis.colImporto")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {righeF.map((x, i) => (
+                        <tr key={x.id ?? i} className="border-b border-border/40">
+                          <td className="py-0.5 pr-3 whitespace-nowrap">
+                            {x.dataPagamento.slice(8)}/{x.dataPagamento.slice(5, 7)}
+                          </td>
+                          <td className="py-0.5 pr-3">{x.voce}</td>
+                          <td className="max-w-52 truncate py-0.5 pr-3 text-muted-foreground">
+                            {x.voceOld ?? x.periodo ?? ""}
+                          </td>
+                          <td className="py-0.5 text-right tabular-nums">
+                            {fmtImporto(x.importo)}
+                          </td>
+                        </tr>
+                      ))}
+                      {righeF.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-3 text-center text-muted-foreground">
+                            {t("fc.drillFiscVuoto")}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                    {righeF.length > 0 && (
+                      <tfoot>
+                        <tr className="border-t border-border font-semibold">
+                          <td colSpan={3} className="py-1 pr-3">
+                            {t("fc.colTotale")}
+                          </td>
+                          <td className="py-1 text-right tabular-nums">
+                            {fmtImporto(righeF.reduce((s2, x) => s2 + x.importo, 0))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </>
+              );
+            }
+            return (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                onClick={chiudi}
+              >
+                <div
+                  className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="mb-3 flex items-center gap-3">
+                    <span className="text-sm font-semibold">{drill.voce}</span>
+                    {chiave !== "altre spese" && selMese}
+                    {manuale && (
+                      <span className="rounded-full bg-status-absent/15 px-2 py-0.5 text-[11px] text-status-absent">
+                        {t("fc.drillManuale")} {fmtImporto(manuale.importo)}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={chiudi}
+                      className="ml-auto rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted"
+                    >
+                      {t("common.close")}
+                    </button>
+                  </div>
+                  {corpo}
+                </div>
+              </div>
+            );
+          })()}
         <div className="mt-3 space-y-1 text-[11px] text-muted-foreground">
           <p>{t("fc.notaSegni")}</p>
           {modo === "settimana" && <p>{t("fc.notaSettimana")}</p>}

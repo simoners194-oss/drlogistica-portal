@@ -5747,7 +5747,7 @@ export interface FlussoCassaRiga {
    *  "girata" = regola "se entra fattura dal cliente X gira il P% al
    *  fornitore Y": Title = fornitore, Importo = percentuale, Note =
    *  "cliente | termini oggetto (facoltativi, virgola)". */
-  genere: "voce" | "esclusione" | "preset" | "girata";
+  genere: "voce" | "esclusione" | "preset" | "girata" | "asvoce";
   /** Voce: mese di competenza YYYY-MM. Esclusione/preset: da mese (opzionale). */
   mese?: string;
   /** Esclusione/preset: fino a mese YYYY-MM (opzionale). */
@@ -5787,7 +5787,9 @@ export async function fetchFlussiCassa(): Promise<FlussoCassaRiga[]> {
             ? "preset"
             : gen === "girata"
               ? "girata"
-              : "voce") as "voce" | "esclusione" | "preset" | "girata",
+              : gen === "asvoce"
+                ? "asvoce"
+                : "voce") as "voce" | "esclusione" | "preset" | "girata" | "asvoce",
         mese: /^\d{4}-\d{2}$/.test(mese) ? mese : undefined,
         meseFine: /^\d{4}-\d{2}$/.test(meseFine) ? meseFine : undefined,
         importo: F.Importo ? Number(f[F.Importo] ?? 0) || 0 : 0,
@@ -5815,12 +5817,12 @@ export async function upsertFlussoCassa(input: Omit<FlussoCassaRiga, "id">): Pro
   if (F.MeseFine) fields[F.MeseFine] = input.meseFine ?? "";
   fields[F.Importo] = input.importo;
   if (F.Note) fields[F.Note] = input.note ?? "";
-  if (input.genere === "voce" && input.mese) {
+  if ((input.genere === "voce" && input.mese) || input.genere === "asvoce") {
     const esistenti = await fetchFlussiCassa();
     const gia = esistenti.find(
       (x) =>
-        x.genere === "voce" &&
-        x.mese === input.mese &&
+        x.genere === input.genere &&
+        (input.genere === "asvoce" || x.mese === input.mese) &&
         x.nome.trim().toLowerCase() === input.nome.trim().toLowerCase(),
     );
     if (gia) {

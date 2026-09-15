@@ -805,6 +805,25 @@ const en = {
     "Exact amount from the tax schedule for this month (a hand-written value wins). Click to overwrite.",
   "fc.notaPagati":
     'Stipendi row with active "Paid" ticks (Payroll tab): the real table counts ONLY the people marked paid — unless a hand-written value exists for that month, which always wins; the "invoicing only" table counts the full month total.',
+  "fc.drillTip": "Click to see what this row includes",
+  "fc.drillManuale": "Hand-written value for this month wins:",
+  "fc.drillAsDesc":
+    "General, non-invoiced costs (no invoice ref, supplier not in the invoice archive; Salaries, Consulting and POST EBITDA excluded by default) — average of",
+  "fc.drillMedia": "Average",
+  "fc.drillInclusa": "Included",
+  "fc.drillMediaRisultante": "Resulting monthly average (the row's automatic value)",
+  "fc.drillAsNota":
+    "Toggle a row to include/exclude that type from the average: the choice is saved and applies from now on. Invoiced costs stay out regardless (they already flow through payables).",
+  "fc.drillStipDesc": "Net payable per employee (Stipendi Dr), accrual month",
+  "fc.drillStipVuoto": "No payroll data for the accrual month",
+  "fc.drillSaldo": "Net payable",
+  "fc.drillStipTot": "Month total:",
+  "fc.drillStipPagati": "of which marked paid:",
+  "fc.drillStipNota":
+    "Ticks are edited in the Payroll tab; with at least one tick, the real table counts only the paid ones.",
+  "fc.drillFiscDesc":
+    "Unpaid tax deadlines composing this month's cell (overdue ones roll into the current month).",
+  "fc.drillFiscVuoto": "No deadlines in this month for this row.",
   "fc.fiscaleUltima": "last deadline:",
   "fc.cumulatoTip":
     "Each column shows the running total up to that point: September = overdue + September, October = overdue + September + October, and so on.",
@@ -923,8 +942,9 @@ const en = {
     "Movements classified by this rule feed the monthly average of the 'Other expenses' row in Cash flow",
   "fin.spiegaVaiRegola": "Open this rule for editing",
   "fc.autoTip":
-    "Automatic average of the last 2 months (rules flagged with €). Click to type a manual value.",
-  "fc.notaAuto": "≈ Other expenses: automatic average of",
+    "Automatic value (for Other expenses: 2-month average of non-invoiced general costs — click the row NAME to see and adjust what it includes). Click the cell to type a manual value, which always wins.",
+  "fc.notaAuto":
+    "≈ Other expenses: average of non-invoiced general costs (click the row name to see and adjust what it includes) over",
   "rt.prStornato": "Credited",
   "rt.prVuoto": "Nothing due by that date in the selection.",
   "rt.nessunoIncassare": "No overdue receivable in the selection.",
@@ -2403,6 +2423,25 @@ const it: Record<DictKey, string> = {
     "Importo esatto dallo scadenziario fiscale per questo mese (il valore scritto a mano vince). Clicca per sovrascrivere.",
   "fc.notaPagati":
     'Riga Stipendi con spunte "Pagato" attive (tab Stipendi): la tabella reale conta SOLO chi è segnato pagato — salvo un valore scritto a mano su quel mese, che vince sempre; la tabella "solo fatturazioni" conta il totale del mese.',
+  "fc.drillTip": "Clicca per vedere cosa comprende questa riga",
+  "fc.drillManuale": "Su questo mese vince il valore scritto a mano:",
+  "fc.drillAsDesc":
+    "Costi generali NON fatturati (senza nr fattura e con fornitore fuori dall'archivio fatture; Salari, Consulenze e POST EBITDA esclusi di default) — media di",
+  "fc.drillMedia": "Media",
+  "fc.drillInclusa": "Inclusa",
+  "fc.drillMediaRisultante": "Media mensile risultante (il valore automatico della riga)",
+  "fc.drillAsNota":
+    "Spunta/togli una riga per includere o escludere quella tipologia dalla media: la scelta si salva e vale da qui in avanti. I costi fatturati restano comunque fuori (viaggiano già tra le fatture da pagare).",
+  "fc.drillStipDesc": "Netto da pagare per dipendente (Stipendi Dr), competenza",
+  "fc.drillStipVuoto": "Nessun dato paghe per la competenza",
+  "fc.drillSaldo": "Netto da pagare",
+  "fc.drillStipTot": "Totale mese:",
+  "fc.drillStipPagati": "di cui segnati pagati:",
+  "fc.drillStipNota":
+    "Le spunte si modificano nella tab Stipendi; con almeno una spunta la tabella reale conta solo i pagati.",
+  "fc.drillFiscDesc":
+    "Scadenze fiscali non pagate che compongono la cella del mese (le scadute passano sul mese corrente).",
+  "fc.drillFiscVuoto": "Nessuna scadenza nel mese per questa riga.",
   "fc.fiscaleUltima": "ultima scadenza:",
   "fc.cumulatoTip":
     "Ogni colonna mostra il progressivo fino a quel momento: a settembre scaduto + settembre, a ottobre scaduto + settembre + ottobre, e così via.",
@@ -2521,8 +2560,9 @@ const it: Record<DictKey, string> = {
     "I movimenti classificati da questa regola alimentano la media mensile della riga 'Altre spese' nei Flussi di cassa",
   "fin.spiegaVaiRegola": "Apri la regola in modifica",
   "fc.autoTip":
-    "Media automatica degli ultimi 2 mesi (regole flaggate con €). Clicca per scrivere un valore manuale.",
-  "fc.notaAuto": "≈ Altre spese: media automatica di",
+    "Valore automatico (per Altre spese: media 2 mesi dei costi generali non fatturati — clicca il NOME della riga per vedere e regolare cosa comprende). Clicca la cella per scrivere un valore manuale, che vince sempre.",
+  "fc.notaAuto":
+    "≈ Altre spese: media dei costi generali non fatturati (clicca il nome della riga per vedere e regolare cosa comprende) di",
   "rt.prStornato": "Stornato",
   "rt.prVuoto": "Niente in scadenza entro quella data nella selezione.",
   "rt.nessunoIncassare": "Nessuna fattura da incassare in ritardo nella selezione.",
