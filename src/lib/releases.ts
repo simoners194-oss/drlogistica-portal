@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.72.3",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Fatture: celle allineate alle nuove colonne",
+        description:
+          "Nella 1.72.2 l'intestazione era nell'ordine nuovo ma le celle delle righe erano rimaste in quello vecchio: i valori finivano sotto le colonne sbagliate. Ora intestazione, righe e CSV coincidono.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.72.2",
     date: "2026-09-15",
     entries: [

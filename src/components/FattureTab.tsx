@@ -4260,92 +4260,9 @@ export function FattureTab({
                             </div>
                           )}
                         </td>
-                        {/* Imponibile e IVA come dichiarati nell'XML della
-                          fattura (per le NC restano col segno del documento). */}
-                        <td className="py-1 pr-2 text-right whitespace-nowrap tabular-nums text-muted-foreground">
-                          {x.f.imponibile ? fmtImporto(x.f.imponibile) : "—"}
-                        </td>
-                        <td className="py-1 pr-2 text-right whitespace-nowrap tabular-nums text-muted-foreground">
-                          {x.f.iva ? fmtImporto(x.f.iva) : "—"}
-                        </td>
-                        <td
-                          className="max-w-36 truncate py-1 pr-2 text-[12px] text-muted-foreground"
-                          title={x.f.metodoPagamento}
-                        >
-                          {x.f.metodoPagamento || "—"}
-                        </td>
-                        <td className="py-1 pr-2 text-right whitespace-nowrap text-status-present">
-                          {x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""}
-                        </td>
-                        <td
-                          className={`py-1.5 pr-3 whitespace-nowrap ${x.s.inRitardo ? "text-status-absent font-medium" : "text-muted-foreground"}`}
-                        >
-                          {x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)}
-                        </td>
-                        <td
-                          className={`py-1.5 pr-3 text-right tabular-nums whitespace-nowrap ${x.s.giorniRitardo > 0 ? "text-status-absent font-medium" : "text-muted-foreground"}`}
-                        >
-                          {x.s.giorniRitardo > 0 ? x.s.giorniRitardo : "—"}
-                        </td>
-                        {/* Le due letture, affiancate: nessuna prevale. */}
-                        <td className="py-1 pr-2 whitespace-nowrap">
-                          {badgeStato(x, x.s.statoFatturazione, true)}
-                          {x.f.dataIncasso && (
-                            <span className="ml-1 text-[11px] text-muted-foreground">
-                              {fmtData(x.f.dataIncasso)}
-                            </span>
-                          )}
-                        </td>
-                        {/* Incassi REGISTRATI su Aruba: stato + importo, con i
-                          parziali quantificati (report movimenti). */}
-                        <td className="py-1 pr-2 whitespace-nowrap">
-                          {x.s.statoIncassi == null ? (
-                            <span
-                              className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
-                              title={t("ft.senzaMovimentiTip")}
-                            >
-                              {t("ft.senzaMovimenti")}
-                            </span>
-                          ) : (
-                            <>
-                              {badgeStato(x, x.s.statoIncassi, false)}
-                              <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
-                                {fmtImporto(x.s.incassatoIncassi ?? 0)}
-                              </span>
-                            </>
-                          )}
-                        </td>
-                        <td className="py-1 pr-2 whitespace-nowrap">
-                          {/* Zero movimenti collegati NON significa "non pagata":
-                            significa che nessun bonifico e' stato abbinato.
-                            Sulle passive è la norma — molti costi non passano
-                            dal c/c aziendale — e lo si dice apertamente. */}
-                          {x.s.statoBanca === "Non incassata" && x.s.incassatoBanca === 0 ? (
-                            <span
-                              className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
-                              title={ricevute ? t("ft.fuoriBancaTip") : undefined}
-                            >
-                              {tp("ft.nessunAbbinamento", "ft.fuoriBanca")}
-                            </span>
-                          ) : (
-                            <>
-                              {badgeStato(x, x.s.statoBanca, false)}
-                              {/* Importo abbinato, come per la colonna incassi:
-                                le due letture si confrontano a colpo d'occhio. */}
-                              <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
-                                {fmtImporto(x.s.incassatoBanca)}
-                              </span>
-                            </>
-                          )}
-                          {x.s.discordante && (
-                            <span
-                              className="ml-1 text-[11px] text-status-absent"
-                              title={tp("ft.discordante", "ft.discordantePassiva")}
-                            >
-                              ⚠
-                            </span>
-                          )}
-                        </td>
+                        {/* CLASSIFICAZIONE subito dopo il Totale (richiesta
+                          Simone 15/09, come nei Movimenti): stesso ordine
+                          dell'intestazione e del CSV. */}
                         {(() => {
                           const cl = classificaDi(x.f);
                           const stile =
@@ -4469,6 +4386,92 @@ export function FattureTab({
                             </>
                           );
                         })()}
+                        {/* Imponibile e IVA come dichiarati nell'XML della
+                          fattura (per le NC restano col segno del documento). */}
+                        <td className="py-1 pr-2 text-right whitespace-nowrap tabular-nums text-muted-foreground">
+                          {x.f.imponibile ? fmtImporto(x.f.imponibile) : "—"}
+                        </td>
+                        <td className="py-1 pr-2 text-right whitespace-nowrap tabular-nums text-muted-foreground">
+                          {x.f.iva ? fmtImporto(x.f.iva) : "—"}
+                        </td>
+                        <td
+                          className="max-w-36 truncate py-1 pr-2 text-[12px] text-muted-foreground"
+                          title={x.f.metodoPagamento}
+                        >
+                          {x.f.metodoPagamento || "—"}
+                        </td>
+                        <td className="py-1 pr-2 text-right whitespace-nowrap text-status-present">
+                          {x.s.incassatoBanca ? fmtImporto(x.s.incassatoBanca) : ""}
+                        </td>
+                        <td
+                          className={`py-1.5 pr-3 whitespace-nowrap ${x.s.inRitardo ? "text-status-absent font-medium" : "text-muted-foreground"}`}
+                        >
+                          {x.s.stato === "NC" ? "—" : fmtData(x.s.scadenza)}
+                        </td>
+                        <td
+                          className={`py-1.5 pr-3 text-right tabular-nums whitespace-nowrap ${x.s.giorniRitardo > 0 ? "text-status-absent font-medium" : "text-muted-foreground"}`}
+                        >
+                          {x.s.giorniRitardo > 0 ? x.s.giorniRitardo : "—"}
+                        </td>
+                        {/* Le due letture, affiancate: nessuna prevale. */}
+                        <td className="py-1 pr-2 whitespace-nowrap">
+                          {badgeStato(x, x.s.statoFatturazione, true)}
+                          {x.f.dataIncasso && (
+                            <span className="ml-1 text-[11px] text-muted-foreground">
+                              {fmtData(x.f.dataIncasso)}
+                            </span>
+                          )}
+                        </td>
+                        {/* Incassi REGISTRATI su Aruba: stato + importo, con i
+                          parziali quantificati (report movimenti). */}
+                        <td className="py-1 pr-2 whitespace-nowrap">
+                          {x.s.statoIncassi == null ? (
+                            <span
+                              className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                              title={t("ft.senzaMovimentiTip")}
+                            >
+                              {t("ft.senzaMovimenti")}
+                            </span>
+                          ) : (
+                            <>
+                              {badgeStato(x, x.s.statoIncassi, false)}
+                              <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
+                                {fmtImporto(x.s.incassatoIncassi ?? 0)}
+                              </span>
+                            </>
+                          )}
+                        </td>
+                        <td className="py-1 pr-2 whitespace-nowrap">
+                          {/* Zero movimenti collegati NON significa "non pagata":
+                            significa che nessun bonifico e' stato abbinato.
+                            Sulle passive è la norma — molti costi non passano
+                            dal c/c aziendale — e lo si dice apertamente. */}
+                          {x.s.statoBanca === "Non incassata" && x.s.incassatoBanca === 0 ? (
+                            <span
+                              className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                              title={ricevute ? t("ft.fuoriBancaTip") : undefined}
+                            >
+                              {tp("ft.nessunAbbinamento", "ft.fuoriBanca")}
+                            </span>
+                          ) : (
+                            <>
+                              {badgeStato(x, x.s.statoBanca, false)}
+                              {/* Importo abbinato, come per la colonna incassi:
+                                le due letture si confrontano a colpo d'occhio. */}
+                              <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">
+                                {fmtImporto(x.s.incassatoBanca)}
+                              </span>
+                            </>
+                          )}
+                          {x.s.discordante && (
+                            <span
+                              className="ml-1 text-[11px] text-status-absent"
+                              title={tp("ft.discordante", "ft.discordantePassiva")}
+                            >
+                              ⚠
+                            </span>
+                          )}
+                        </td>
                         <td
                           className="max-w-44 truncate py-1 pr-2 text-[12px] text-muted-foreground"
                           title={x.f.causaleDoc}
