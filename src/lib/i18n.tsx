@@ -754,6 +754,7 @@ const en = {
   "fc.girAggiungi": "Add rule",
   "fc.girataTip":
     "Pass-through row: share of the client's REAL collections (from 01/09/2026) owed to this supplier, net of the transfers already made — it accrues only when the money actually lands. Configure under Exclusions.",
+  "fc.esclAltre": "more — refine the search to see them",
   "fc.esclDa": "From month (optional)",
   "fc.esclA": "To month (optional)",
   "fc.esclAggiungi": "Exclude",
@@ -2324,6 +2325,7 @@ const it: Record<DictKey, string> = {
   "fc.girAggiungi": "Aggiungi girata",
   "fc.girataTip":
     "Riga girata: quota degli incassi REALI dal cliente (dal 01/09/2026) dovuta a questo fornitore, al netto dei bonifici già fatti — matura solo quando i soldi entrano davvero. Si configura dal pannello Esclusioni.",
+  "fc.esclAltre": "altre — affina la ricerca per vederle",
   "fc.esclDa": "Dal mese (facoltativo)",
   "fc.esclA": "Al mese (facoltativo)",
   "fc.esclAggiungi": "Escludi",

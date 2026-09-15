@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.71.1",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Flussi: esclusioni trovano tutte le controparti",
+        description:
+          "La checklist delle esclusioni tagliava l'elenco alle prime 400 controparti in ordine alfabetico: tutto ciò che veniva dopo la S (es. Univex) non compariva nemmeno cercandolo. Ora la ricerca guarda l'elenco completo e il taglio vale solo per la lista mostrata senza ricerca; anche l'autocomplete dei fornitori nelle girate è completo.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.71.0",
     date: "2026-09-15",
     entries: [

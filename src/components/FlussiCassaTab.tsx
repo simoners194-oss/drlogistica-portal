@@ -1032,17 +1032,20 @@ export function FlussiCassaTab() {
   const loading = fattureEm == null || fattureRic == null || flussi == null;
 
   // Fornitori per la tendina/autocomplete delle girate (dalle passive).
+  // NIENTE slice qui: un taglio alfabetico lasciava fuori tutto dopo la S
+  // (caso Univex, 15/09) — è il browser a filtrare il datalist mentre scrivi.
   const fornitoriNote = useMemo(() => {
     const set = new Set<string>();
     for (const x of passive) set.add(x.f.cliente);
-    return [...set].sort((a, b) => a.localeCompare(b)).slice(0, 400);
+    return [...set].sort((a, b) => a.localeCompare(b));
   }, [passive]);
 
-  // Controparti per la checklist del form esclusioni.
+  // Controparti per la checklist del form esclusioni (tutte: il tetto per
+  // non gonfiare il DOM sta a valle, DOPO il filtro di ricerca).
   const contropartiNote = useMemo(() => {
     const set = new Set<string>();
     for (const x of [...attive, ...passive]) set.add(x.f.cliente);
-    return [...set].sort((a, b) => a.localeCompare(b)).slice(0, 400);
+    return [...set].sort((a, b) => a.localeCompare(b));
   }, [attive, passive]);
 
   // Checklist: fuori le controparti GIA' coperte da un'esclusione (con
@@ -1050,7 +1053,7 @@ export function FlussiCassaTab() {
   // e quelle che non passano il filtro di ricerca.
   const contropartiEscludibili = useMemo(() => {
     const cerca = exCerca.trim().toLowerCase();
-    return contropartiNote.filter((c) => {
+    const tutte = contropartiNote.filter((c) => {
       const chiave = clienteGroupKey(c) || c.toLowerCase();
       const giaEsclusa = esclusioni.some((e) => {
         const token = clienteGroupKey(e.nome) || e.nome.trim().toLowerCase();
@@ -1059,6 +1062,8 @@ export function FlussiCassaTab() {
       if (giaEsclusa) return false;
       return !cerca || c.toLowerCase().includes(cerca);
     });
+    // Il tetto arriva DOPO la ricerca: cercando, si trova sempre tutto.
+    return { visibili: tutte.slice(0, 400), oltre: Math.max(0, tutte.length - 400) };
   }, [contropartiNote, esclusioni, exCerca]);
 
   const inputCls =
@@ -1333,7 +1338,7 @@ export function FlussiCassaTab() {
               </button>
             </div>
             <div className="mt-2 grid max-h-56 grid-cols-1 gap-x-4 gap-y-0.5 overflow-y-auto rounded-lg border border-border/60 p-2 sm:grid-cols-2 lg:grid-cols-3">
-              {contropartiEscludibili.map((c) => (
+              {contropartiEscludibili.visibili.map((c) => (
                 <label
                   key={c}
                   className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-muted"
@@ -1356,7 +1361,12 @@ export function FlussiCassaTab() {
                   </span>
                 </label>
               ))}
-              {contropartiEscludibili.length === 0 && (
+              {contropartiEscludibili.oltre > 0 && (
+                <span className="text-xs italic text-muted-foreground">
+                  +{contropartiEscludibili.oltre} {t("fc.esclAltre")}
+                </span>
+              )}
+              {contropartiEscludibili.visibili.length === 0 && (
                 <span className="text-xs text-muted-foreground">{t("fc.esclTutteFuori")}</span>
               )}
             </div>
