@@ -33,7 +33,12 @@ import {
   spStipendiSalvaMese,
   spStipendiSalvaNetti,
 } from "@/lib/stipendi.functions";
-import { spGetDettagliDistinte, spUpsertFlussoCassa } from "@/lib/sharepoint.functions";
+import {
+  spGetDettagliDistinte,
+  spGetRosterDipendenti,
+  spUpsertFlussoCassa,
+} from "@/lib/sharepoint.functions";
+import { matchDipendenteNome, type DipendenteRoster } from "@/lib/finanza-logic";
 import type { DettaglioDistinta } from "@/lib/sharepoint.server";
 
 const inputCls =
@@ -93,6 +98,9 @@ export function StipendiTab() {
   const [confermaElimina, setConfermaElimina] = useState(false);
   // Distinte stipendi (report BPM "Esiti pagamenti"): per l'EFFETTIVO versato.
   const [distinte, setDistinte] = useState<DettaglioDistinta[] | null>(null);
+  // Roster anagrafica (nome + appalto): sostituisce le etichette non-sede
+  // dei file paghe (giugno = codice azienda "311", luglio = nome dipendente).
+  const [roster, setRoster] = useState<DipendenteRoster[]>([]);
   // Import "Stipendi Dr.xlsx" (netti da bonificare, un foglio per mese).
   const [showNetti, setShowNetti] = useState(false);
   const [parsingN, setParsingN] = useState(false);
@@ -135,6 +143,9 @@ export function StipendiTab() {
     spGetDettagliDistinte()
       .then((l) => setDistinte(l as DettaglioDistinta[]))
       .catch(() => setDistinte([]));
+    spGetRosterDipendenti()
+      .then((l) => setRoster(l as DipendenteRoster[]))
+      .catch(() => setRoster([]));
   }, []);
 
   const mese = useMemo(() => db?.mesi.find((m) => m.mese === meseSel) ?? null, [db, meseSel]);
@@ -144,16 +155,45 @@ export function StipendiTab() {
     return i > 0 ? db.mesi[i - 1] : null;
   }, [db, mese]);
 
+  // SEDE per riga (richiesta Simone 15/09): l'etichetta del file quando è una
+  // sede vera; quando invece è vuota, solo cifre (il "311" del file di giugno)
+  // o il nome del dipendente stesso (file di luglio col nome in prima
+  // colonna), si usa l'appalto dell'anagrafica portale — stesso motore di
+  // match dei nomi delle distinte, ambiguità = si tiene l'etichetta org.
+  const sediMese = useMemo(() => {
+    const nomiRoster = roster.map((r) => r.nome);
+    const appaltoDi = new Map(roster.map((r) => [chiaveNome(r.nome), r.appalto ?? ""]));
+    const m = new Map<string, string>();
+    for (const d of mese?.dipendenti ?? []) {
+      const e = (d.etichetta ?? "").trim();
+      const nonSede =
+        !e || /^\d+$/.test(e) || chiaveNome(e) === chiaveNome(`${d.cognome} ${d.nome}`);
+      let sede = e;
+      if (nonSede && nomiRoster.length) {
+        const hit = matchDipendenteNome(`${d.cognome} ${d.nome}`, nomiRoster);
+        sede = (hit ? appaltoDi.get(chiaveNome(hit)) : "") || e;
+      }
+      m.set(`${d.codice}|${d.cognome} ${d.nome}|${d.etichetta}`, sede);
+    }
+    return m;
+  }, [mese, roster]);
+  const sedeDi = (d: StipendioDipendente) =>
+    sediMese.get(`${d.codice}|${d.cognome} ${d.nome}|${d.etichetta}`) ?? d.etichetta;
   const etichette = useMemo(
-    () => [...new Set((mese?.dipendenti ?? []).map((d) => d.etichetta).filter(Boolean))].sort(),
-    [mese],
+    () => [...new Set((mese?.dipendenti ?? []).map((d) => sedeDi(d)).filter(Boolean))].sort(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mese, sediMese],
   );
   const righe = useMemo(() => {
     const ql = q.trim().toLowerCase();
     return (mese?.dipendenti ?? [])
-      .filter((d) => !etichettaF || d.etichetta === etichettaF)
-      .filter((d) => !ql || `${d.cognome} ${d.nome} ${d.etichetta}`.toLowerCase().includes(ql));
-  }, [mese, q, etichettaF]);
+      .filter((d) => !etichettaF || sedeDi(d) === etichettaF)
+      .filter(
+        (d) =>
+          !ql || `${d.cognome} ${d.nome} ${d.etichetta} ${sedeDi(d)}`.toLowerCase().includes(ql),
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mese, q, etichettaF, sediMese]);
   const totRighe = useMemo(
     () => ({
       totale: righe.reduce((a, d) => a + d.totaleCosto, 0),
@@ -541,7 +581,7 @@ export function StipendiTab() {
       ],
       mese.dipendenti.map((d) => [
         mese.mese,
-        d.etichetta,
+        sedeDi(d),
         d.codice,
         d.cognome,
         d.nome,
@@ -1016,8 +1056,15 @@ export function StipendiTab() {
                     key={`${d.codice}|${d.cognome} ${d.nome}|${d.etichetta}`}
                     className="border-b border-border/60 hover:bg-muted/40"
                   >
-                    <td className="max-w-44 truncate px-3 py-1.5 text-xs text-muted-foreground">
-                      {d.etichetta || "—"}
+                    <td
+                      className="max-w-44 truncate px-3 py-1.5 text-xs text-muted-foreground"
+                      title={
+                        sedeDi(d) !== d.etichetta
+                          ? `${t("stip.etichettaFileTip")}: ${d.etichetta || "—"}`
+                          : undefined
+                      }
+                    >
+                      {sedeDi(d) || "—"}
                     </td>
                     <td className="px-3 py-1.5 font-medium">
                       {d.cognome} {d.nome}

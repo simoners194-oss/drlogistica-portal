@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.74.2",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Stipendi: filtro sedi anche sui mesi vecchi",
+        description:
+          "Nei mesi i cui file paghe non portavano l'appalto (giugno con il solo codice azienda, luglio con il nome del dipendente al posto della sede) la colonna e il filtro Etichetta ora mostrano la sede presa dall'anagrafica appalti del portale. Il valore originale del file resta visibile passando il mouse sulla cella.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.74.1",
     date: "2026-09-15",
     entries: [
