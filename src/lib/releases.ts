@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.70.0",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Flussi: girate solo a incasso avvenuto",
+        description:
+          "Le righe girata (es. quota DR Logistics sulle iMile facchinaggio) non mostrano più quote previsionali sulle scadenze attese dei mesi futuri: la quota matura SOLO quando l'incasso del cliente arriva davvero (dal 01/09/2026) e resta nello Scaduto al netto dei bonifici reali già fatti al fornitore — lo stesso regime nato per la FPR 220/26, ora esteso a tutte le fatture e a tutte le regole, in entrambe le tabelle.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.69.1",
     date: "2026-09-15",
     entries: [

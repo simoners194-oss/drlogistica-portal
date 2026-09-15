@@ -699,7 +699,7 @@ const en = {
   "fc.presetConfirm": "Replace the current exclusions with preset",
   "fc.presetVuoto": "No exclusions to save.",
   "fc.girDesc":
-    "Pass-through rules: when an invoice comes in from a given client, a percentage is owed to a supplier — each rule adds its own row among the outflows, named after the supplier.",
+    "Pass-through rules: when an invoice comes in from a given client, a percentage is owed to a supplier — each rule adds its own row among the outflows, named after the supplier. The share accrues ONLY when the client's collection actually lands (from 01/09/2026): it sits in Overdue net of the real transfers already made to the supplier — no forecast shares on expected due dates.",
   "fc.girNessuna": "No pass-through rules.",
   "fc.girSe": "When an invoice comes in from",
   "fc.girPerc": "pass",
@@ -708,7 +708,7 @@ const en = {
   "fc.girOggettoPh": "only if the description contains… (optional, comma-separated)",
   "fc.girAggiungi": "Add rule",
   "fc.girataTip":
-    "Pass-through row: percentage of the client's expected collections owed to this supplier in the same period. Configure under Exclusions.",
+    "Pass-through row: share of the client's REAL collections (from 01/09/2026) owed to this supplier, net of the transfers already made — it accrues only when the money actually lands. Configure under Exclusions.",
   "fc.esclDa": "From month (optional)",
   "fc.esclA": "To month (optional)",
   "fc.esclAggiungi": "Exclude",
@@ -2224,7 +2224,7 @@ const it: Record<DictKey, string> = {
   "fc.presetConfirm": "Sostituire le esclusioni attuali con il preset",
   "fc.presetVuoto": "Non ci sono esclusioni da salvare.",
   "fc.girDesc":
-    "Girate: quando entra una fattura da un certo cliente, una percentuale va girata a un fornitore — ogni regola aggiunge la sua riga tra le uscite, intitolata al fornitore.",
+    "Girate: quando entra una fattura da un certo cliente, una percentuale va girata a un fornitore — ogni regola aggiunge la sua riga tra le uscite, intitolata al fornitore. La quota matura SOLO a incasso avvenuto (dal 01/09/2026): sta nello Scaduto al netto dei bonifici reali già fatti al fornitore — niente quote previsionali sulle scadenze attese.",
   "fc.girNessuna": "Nessuna girata configurata.",
   "fc.girSe": "Se entra una fattura da",
   "fc.girPerc": "gira il",
@@ -2233,7 +2233,7 @@ const it: Record<DictKey, string> = {
   "fc.girOggettoPh": "solo se l'oggetto contiene… (facoltativo, termini separati da virgola)",
   "fc.girAggiungi": "Aggiungi girata",
   "fc.girataTip":
-    "Riga girata: percentuale degli incassi attesi dal cliente dovuta a questo fornitore nello stesso periodo. Si configura dal pannello Esclusioni.",
+    "Riga girata: quota degli incassi REALI dal cliente (dal 01/09/2026) dovuta a questo fornitore, al netto dei bonifici già fatti — matura solo quando i soldi entrano davvero. Si configura dal pannello Esclusioni.",
   "fc.esclDa": "Dal mese (facoltativo)",
   "fc.esclA": "Al mese (facoltativo)",
   "fc.esclAggiungi": "Escludi",

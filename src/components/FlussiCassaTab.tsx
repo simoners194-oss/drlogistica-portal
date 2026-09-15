@@ -408,9 +408,12 @@ export function FlussiCassaTab() {
   // Esclusioni e salvate sulla lista FlussiCassa (genere "girata": Title =
   // fornitore, Importo = percentuale, Note = "cliente | termini oggetto
   // facoltativi"). Ogni regola genera la SUA riga tra le uscite, intitolata
-  // al fornitore, come le altre (niente corsivo/colore). Caso speciale DR
-  // Logistics (FR 10/09): il 90% della facchinaggio di LUGLIO (FPR 220/26,
-  // incassata) resta in Scaduto al netto dei bonifici reali al fornitore.
+  // al fornitore, come le altre (niente corsivo/colore).
+  // REGIME UNICO "A INCASSO AVVENUTO" (decisione Simone 15/09, estende a
+  // tutte le fatture quello nato per la FPR 220/26 il 10/09): la quota
+  // matura SOLO sugli incassi reali registrati (da GIRATA_INCASSI_DA in poi)
+  // e resta in Scaduto al netto dei bonifici reali già fatti al fornitore —
+  // niente quote previsionali sulle scadenze attese nei mesi futuri.
   const GIRATA_INCASSI_DA = "2026-09-01";
   const girate = useMemo(
     () =>
@@ -433,64 +436,63 @@ export function FlussiCassaTab() {
     [flussi],
   );
   const girataQuote = useMemo(() => {
-    const out = girate.map((g) => ({
-      fornitore: g.fornitore,
-      perc: g.perc,
-      cliente: g.cliente,
-      scaduto: 0,
-      perPeriodo: new Map<string, number>(),
-    }));
-    girate.forEach((g, gi) => {
-      const q = out[gi];
+    // UNA riga per FORNITORE: più regole verso lo stesso fornitore sommano
+    // le maturate e i bonifici reali si scalano UNA volta sola (scalarli a
+    // ogni regola sottostimava il dovuto complessivo).
+    const perFornitore = new Map<
+      string,
+      { fornitore: string; maturata: number; scaduto: number; perPeriodo: Map<string, number> }
+    >();
+    for (const g of girate) {
+      const kf = g.fornitore.trim().toLowerCase();
+      let q = perFornitore.get(kf);
+      if (!q) {
+        q = { fornitore: g.fornitore, maturata: 0, scaduto: 0, perPeriodo: new Map() };
+        perFornitore.set(kf, q);
+      }
       const matcha = (x: (typeof attive)[number]) => {
         if (!x.f.cliente.toLowerCase().includes(g.cliente)) return false;
         if (!g.oggettoTermini.length) return true;
         const testo = `${x.f.oggetto ?? ""} ${x.f.causaleDoc ?? ""}`.toLowerCase();
         return g.oggettoTermini.every((t2) => testo.includes(t2));
       };
+      // Quota MATURATA: percentuale degli incassi reali registrati (dal
+      // 01/09 in poi) su ogni fattura che matcha la regola. Le NC compensate
+      // entrano in NEGATIVO (incassatoRegistrato = -|totale|): la quota è
+      // sul netto, come nel Resoconto. LIMITE NOTO: incassato e dataIncasso
+      // sono aggregati per fattura (la data è dell'ULTIMA rata) — una
+      // fattura con acconti pre-01/09 e saldo dopo conterebbe tutto; oggi
+      // non esiste un caso simile e, se capitasse, si sana scrivendo il
+      // valore a mano.
       for (const x of attive) {
         if (!matcha(x)) continue;
-        const residuo = residuoAperto(x);
-        if (residuo <= 1) continue;
-        if (!x.s.scadenza) continue;
-        const scad = x.s.scadenza.slice(0, 10);
-        if (esclusa(x.f.cliente, scad.slice(0, 7))) continue;
-        if (/^\d{4}-\d{2}-\d{2}$/.test(daData) && !x.s.inRitardo && scad < daData) continue;
-        if (/^\d{4}-\d{2}-\d{2}$/.test(finoA) && scad > finoA) continue;
-        const v = Math.round(residuo * g.perc * 100) / 100;
-        if (x.s.inRitardo) q.scaduto += v;
-        else {
-          const kp = chiaveDi(scad);
-          if (!chiaviPeriodo.has(kp)) continue;
-          q.perPeriodo.set(kp, (q.perPeriodo.get(kp) ?? 0) + v);
-        }
+        const inc = incassatoRegistrato(x);
+        if (inc === 0) continue;
+        const dataInc = (x.f.dataIncasso ?? "").slice(0, 10);
+        if (!dataInc || dataInc < GIRATA_INCASSI_DA) continue;
+        q.maturata += inc * g.perc;
       }
-      if (/dr logistics/i.test(g.fornitore)) {
-        // SOLO la facchinaggio di luglio gia' incassata (FPR 220/26).
-        let maturata = 0;
-        for (const x of attive) {
-          if (!matcha(x)) continue;
-          if (!x.f.numero.includes("220/26")) continue;
-          const inc = incassatoRegistrato(x);
-          if (inc <= 0) continue;
-          const dataInc = (x.f.dataIncasso ?? "").slice(0, 10);
-          if (!dataInc || dataInc < GIRATA_INCASSI_DA) continue;
-          maturata += inc * g.perc;
-        }
-        let versato = 0;
-        for (const m of movimenti ?? []) {
-          if (m.importo >= 0) continue;
-          if (m.dataContabile < GIRATA_INCASSI_DA) continue;
-          if (!`${m.cliente} ${m.descrizione}`.toLowerCase().includes(g.fornitore.toLowerCase()))
-            continue;
-          versato += -m.importo;
-        }
-        q.scaduto += Math.max(0, Math.round((maturata - versato) * 100) / 100);
+    }
+    const out = [...perFornitore.values()];
+    for (const q of out) {
+      // Meno i bonifici REALI già usciti verso il fornitore. ASSUNTO (vale
+      // per DR Logistics, che non ha altre partite aperte con noi): ogni
+      // bonifico verso il fornitore estingue quota girata. Per un fornitore
+      // che avesse ANCHE fatture passive ordinarie in tabella il netting
+      // sovrastimerebbe i pagamenti della quota: da rivedere se si aggiunge
+      // una girata verso un fornitore del genere.
+      let versato = 0;
+      for (const m of movimenti ?? []) {
+        if (m.importo >= 0) continue;
+        if (m.dataContabile < GIRATA_INCASSI_DA) continue;
+        if (!`${m.cliente} ${m.descrizione}`.toLowerCase().includes(q.fornitore.toLowerCase()))
+          continue;
+        versato += -m.importo;
       }
-    });
+      q.scaduto = Math.max(0, Math.round((q.maturata - versato) * 100) / 100);
+    }
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [girate, attive, movimenti, periodi, esclusioni, daData, finoA]);
+  }, [girate, attive, movimenti]);
   const girateScadutoTot = girataQuote.reduce((s, q) => s + q.scaduto, 0);
   const girataTotaleDi = (q: (typeof girataQuote)[number]) =>
     q.scaduto + [...q.perPeriodo.values()].reduce((s, v) => s + v, 0);
@@ -854,8 +856,7 @@ export function FlussiCassaTab() {
     return Math.round(v * 100) / 100;
   };
 
-  // Saldo della tabella "solo fatturazioni" (niente girate/voci/prefatture:
-  // è fatturato puro, entrate meno uscite).
+  // Saldo della tabella "solo fatturazioni":
   // STESSA formula del saldo sopra (girate, prefatture e voci comprese),
   // cambiano solo entrate/uscite (a fatturato pieno). Lo Scaduto coincide
   // con quello sopra per costruzione.
