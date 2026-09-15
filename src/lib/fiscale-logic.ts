@@ -9,6 +9,15 @@
 // ("Da rateizzare") che si segnalano soltanto.
 
 export interface ScadenzaFiscale {
+  /** Id stabile per modifiche puntuali dal portale (assegnato dal server). */
+  id?: string;
+  /** "portale" = creata/modificata su DR Portal: un re-import del file NON
+   *  la tocca (le righe da file vengono invece sostituite in blocco). */
+  origine?: "file" | "portale";
+  /** Chiave contenuto della riga come stava NEL FILE (voce|anno|periodo|
+   *  data|importo): serve al re-import per non duplicare le righe da file
+   *  poi modificate sul portale e per non far risorgere quelle eliminate. */
+  chiaveFile?: string;
   voce: string; // IVA, INPS, IRAP, IRES, MOD 770, REDDITI, …
   voceOld?: string; // etichetta storica del consulente ("IVA II TRIM25"…)
   anno?: number; // anno di competenza
@@ -35,6 +44,8 @@ export interface FiscaleDb {
   versione: number;
   scadenze: ScadenzaFiscale[];
   daRateizzare: DaRateizzareFiscale[];
+  /** Chiavi file delle righe eliminate dal portale: il re-import le salta. */
+  tombstones?: string[];
   fonteFile?: string;
   aggiornatoIl?: string;
   aggiornatoDa?: string;
@@ -42,6 +53,10 @@ export interface FiscaleDb {
 
 export function emptyFiscaleDb(): FiscaleDb {
   return { versione: 0, scadenze: [], daRateizzare: [] };
+}
+
+export function chiaveScadenzaFile(s: ScadenzaFiscale): string {
+  return [s.voce, s.anno ?? "", s.periodo ?? "", s.dataPagamento, s.importo.toFixed(2)].join("|");
 }
 
 const norm = (s: unknown) =>

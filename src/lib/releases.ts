@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.71.0",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Nuova tab Fiscale: lo scadenziario si compila sul portale",
+        description:
+          "Le viste dell'Excel di Sabrina diventano native: elenco scadenze con filtri e modifica riga per riga (nuova scadenza, importo, data, pagata SI/NO, elimina), pivot «Da pagare» e «Pagato» per voce e mese, export CSV di ogni vista. Ogni modifica aggiorna subito le voci «Costo fiscale» dei Flussi di cassa. L'import dell'Excel resta per la transizione: sostituisce le righe da file e conserva quelle inserite sul portale.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.70.1",
     date: "2026-09-15",
     entries: [

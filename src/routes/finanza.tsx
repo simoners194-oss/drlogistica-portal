@@ -31,6 +31,7 @@ import {
   ChevronDown,
   RefreshCw,
   Banknote,
+  Landmark,
 } from "lucide-react";
 import { FattureTab } from "@/components/FattureTab";
 import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
@@ -41,6 +42,7 @@ import { PivotClassificazione, type RigaPivot } from "@/components/PivotClassifi
 import { ResocontoTab } from "@/components/ResocontoTab";
 import { FlussiCassaTab } from "@/components/FlussiCassaTab";
 import { StipendiTab } from "@/components/StipendiTab";
+import { FiscaleTab } from "@/components/FiscaleTab";
 import { useLang } from "@/lib/i18n";
 import { readSession, type SessionUser } from "@/lib/session";
 import { haVistaDirezione } from "@/lib/richieste-logic";
@@ -257,6 +259,7 @@ type Tab =
   | "resoconto"
   | "flussi"
   | "stipendi"
+  | "fiscale"
   | "pivot"
   | "attive"
   | "passive"
@@ -2984,6 +2987,7 @@ function FinanzaPage() {
           {tabBtn("resoconto", <Users className="h-4 w-4" />, t("fin.tabResoconto"))}
           {tabBtn("flussi", <Banknote className="h-4 w-4" />, t("fin.tabFlussi"))}
           {tabBtn("stipendi", <Users className="h-4 w-4" />, t("fin.tabStipendi"))}
+          {tabBtn("fiscale", <Landmark className="h-4 w-4" />, t("fin.tabFiscale"))}
           {tabBtn("pivot", <TrendingUp className="h-4 w-4" />, t("fin.tabPivot"))}
           {tabBtn("attive", <Receipt className="h-4 w-4" />, t("fin.tabAttive"))}
           {tabBtn("passive", <ReceiptText className="h-4 w-4" />, t("fin.tabPassive"))}
@@ -3020,6 +3024,8 @@ function FinanzaPage() {
 
       {/* --- Stipendi (file paghe COSTI mese, richiesta Simone 14/09) --------- */}
       {tab === "stipendi" && <StipendiTab />}
+
+      {tab === "fiscale" && <FiscaleTab />}
 
       {/* ------------------------------- Movimenti ------------------------- */}
       {tab === "pivot" && (
