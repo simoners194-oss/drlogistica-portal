@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.73.0",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Fiscale: vista Piani (il foglio DR) e totali per voce",
+        description:
+          "Nuova vista «Piani»: un rigo per piano di rateizzo (rate pagate/totali, importo, pagato, residuo, prossima e ultima rata) espandibile sulle singole rate con la spunta pagata direttamente lì — è il foglio «DR» del file, ma vivo. Sotto la pivot Da pagare compaiono i totali per voce (da pagare / pagato / complessivo, la terza tabellina del foglio DA PAGARE). Con queste, tutte le tabelle dello scadenziario Excel esistono sul portale.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.72.3",
     date: "2026-09-15",
     entries: [

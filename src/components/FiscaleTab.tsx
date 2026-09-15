@@ -6,7 +6,7 @@
 // L'import del file (pannello nei Flussi) resta per la transizione: un
 // re-import sostituisce le righe DA FILE e conserva quelle del portale.
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useLang } from "@/lib/i18n";
@@ -97,7 +97,9 @@ export function FiscaleTab() {
   const { t } = useLang();
   const [db, setDb] = useState<FiscaleDb | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
-  const [vista, setVista] = useState<"scadenze" | "dapagare" | "pagato">("scadenze");
+  const [vista, setVista] = useState<"scadenze" | "dapagare" | "pagato" | "piani">("scadenze");
+  // Piani espansi nella vista Piani (chiave piano).
+  const [pianiAperti, setPianiAperti] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
   const [statoF, setStatoF] = useState<"aperte" | "pagate" | "tutte">("aperte");
   const [voceF, setVoceF] = useState("");
@@ -181,6 +183,50 @@ export function FiscaleTab() {
     const vociOrd = [...perVoce.keys()].sort();
     return { cols, perVoce, vociOrd };
   };
+  // PIANI DI RATEIZZO (foglio "DR" del file): un piano = stessa VOCE OLD
+  // (fallback voce+anno+periodo); le rate sono le sue scadenze in ordine
+  // di data, pagate e non.
+  const piani = useMemo(() => {
+    const per = new Map<string, ScadenzaFiscale[]>();
+    for (const s of scadenze) {
+      const k = (
+        s.voceOld?.trim() || `${s.voce} ${s.anno ?? ""} ${s.periodo ?? ""}`.trim()
+      ).toUpperCase();
+      if (!per.has(k)) per.set(k, []);
+      per.get(k)!.push(s);
+    }
+    return [...per.entries()]
+      .map(([chiave, rate]) => {
+        const ord = [...rate].sort((a, b) => (a.dataPagamento < b.dataPagamento ? -1 : 1));
+        const pagate = ord.filter((r) => r.pagato);
+        const residuo = ord.reduce((a, r) => a + (r.pagato ? 0 : r.importo), 0);
+        const prossima = ord.find((r) => !r.pagato);
+        return {
+          chiave,
+          voce: ord[0].voce,
+          rate: ord,
+          nPagate: pagate.length,
+          totale: ord.reduce((a, r) => a + r.importo, 0),
+          pagato: pagate.reduce((a, r) => a + r.importo, 0),
+          residuo: Math.round(residuo * 100) / 100,
+          prossima: prossima?.dataPagamento ?? "",
+          ultima: ord[ord.length - 1].dataPagamento,
+        };
+      })
+      .sort((a, b) => b.residuo - a.residuo || (a.prossima < b.prossima ? -1 : 1));
+  }, [scadenze]);
+  // Totali per voce (terza pivot del foglio DA PAGARE: NO/SI/complessivo).
+  const totaliVoce = useMemo(() => {
+    const per = new Map<string, { no: number; si: number }>();
+    for (const s of scadenze) {
+      const r = per.get(s.voce) ?? { no: 0, si: 0 };
+      if (s.pagato) r.si += s.importo;
+      else r.no += s.importo;
+      per.set(s.voce, r);
+    }
+    return [...per.entries()].sort((a, b) => b[1].no - a[1].no);
+  }, [scadenze]);
+
   const pivotDaPagare = useMemo(() => pivot(aperte), [aperte, annoRif]); // eslint-disable-line react-hooks/exhaustive-deps
   const pivotPagato = useMemo(
     () => pivot(scadenze.filter((s) => s.pagato)),
@@ -653,7 +699,7 @@ export function FiscaleTab() {
         {/* Selettore vista + filtri */}
         <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
           <div className="flex rounded-lg border border-border overflow-hidden">
-            {(["scadenze", "dapagare", "pagato"] as const).map((v) => (
+            {(["scadenze", "dapagare", "pagato", "piani"] as const).map((v) => (
               <button
                 key={v}
                 type="button"
@@ -665,7 +711,9 @@ export function FiscaleTab() {
                     ? "fis.vistaScadenze"
                     : v === "dapagare"
                       ? "fis.vistaDaPagare"
-                      : "fis.vistaPagato",
+                      : v === "pagato"
+                        ? "fis.vistaPagato"
+                        : "fis.vistaPiani",
                 )}
               </button>
             ))}
@@ -840,8 +888,168 @@ export function FiscaleTab() {
           </>
         )}
 
-        {vista === "dapagare" && pivotUI(pivotDaPagare, "fiscale-da-pagare", false)}
+        {vista === "dapagare" && (
+          <>
+            {pivotUI(pivotDaPagare, "fiscale-da-pagare", false)}
+            <div className="mt-4 border-t border-border/60 pt-3">
+              <p className="mb-1 text-xs font-semibold">{t("fis.totaliVoce")}</p>
+              <div className="overflow-x-auto">
+                <table className="min-w-[420px] text-[13px]">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                      <th className="py-1 pr-3">{t("fis.colVoce")}</th>
+                      <th className="py-1 pr-3 text-right">{t("fis.filtroAperte")}</th>
+                      <th className="py-1 pr-3 text-right">{t("fis.filtroPagate")}</th>
+                      <th className="py-1 text-right">{t("fis.colTotale")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {totaliVoce.map(([v, r]) => (
+                      <tr key={v} className="border-b border-border/40">
+                        <td className="py-0.5 pr-3 whitespace-nowrap">{v}</td>
+                        <td className="py-0.5 pr-3 text-right tabular-nums">{eur(r.no)}</td>
+                        <td className="py-0.5 pr-3 text-right tabular-nums text-muted-foreground">
+                          {eur(r.si)}
+                        </td>
+                        <td className="py-0.5 text-right font-medium tabular-nums">
+                          {eur(r.no + r.si)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
         {vista === "pagato" && pivotUI(pivotPagato, "fiscale-pagato", true)}
+        {vista === "piani" && (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-[13px]">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                  <th className="py-1.5 pr-3">{t("fis.colPiano")}</th>
+                  <th className="py-1.5 pr-3">{t("fis.colVoce")}</th>
+                  <th className="py-1.5 pr-3 text-right">{t("fis.colRate")}</th>
+                  <th className="py-1.5 pr-3 text-right">{t("fis.colTotale")}</th>
+                  <th className="py-1.5 pr-3 text-right">{t("fis.filtroPagate")}</th>
+                  <th className="py-1.5 pr-3 text-right">{t("fis.colResiduo")}</th>
+                  <th className="py-1.5 pr-3">{t("fis.colProssima")}</th>
+                  <th className="py-1.5">{t("fis.colUltimaRata")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {piani.map((pi) => (
+                  <Fragment key={pi.chiave}>
+                    <tr className="border-b border-border/40">
+                      <td className="max-w-64 truncate py-1 pr-3" title={pi.chiave}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPianiAperti((set) => {
+                              const ns = new Set(set);
+                              if (ns.has(pi.chiave)) ns.delete(pi.chiave);
+                              else ns.add(pi.chiave);
+                              return ns;
+                            })
+                          }
+                          className="font-medium hover:text-primary"
+                        >
+                          {pianiAperti.has(pi.chiave) ? "▾" : "▸"} {pi.chiave}
+                        </button>
+                      </td>
+                      <td className="py-1 pr-3 whitespace-nowrap">{pi.voce}</td>
+                      <td className="py-1 pr-3 text-right tabular-nums">
+                        {pi.nPagate}/{pi.rate.length}
+                      </td>
+                      <td className="py-1 pr-3 text-right tabular-nums">{eur(pi.totale)}</td>
+                      <td className="py-1 pr-3 text-right tabular-nums text-muted-foreground">
+                        {eur(pi.pagato)}
+                      </td>
+                      <td className="py-1 pr-3 text-right font-medium tabular-nums">
+                        {pi.residuo > 0 ? eur(pi.residuo) : "—"}
+                      </td>
+                      <td className="py-1 pr-3 whitespace-nowrap">
+                        {pi.prossima ? dataIt(pi.prossima) : "—"}
+                      </td>
+                      <td className="py-1 whitespace-nowrap text-muted-foreground">
+                        {dataIt(pi.ultima)}
+                      </td>
+                    </tr>
+                    {pianiAperti.has(pi.chiave) &&
+                      pi.rate.map((r, i) => (
+                        <tr
+                          key={r.id ?? pi.chiave + "|" + i}
+                          className="border-b border-border/20 bg-muted/20 text-[12px]"
+                        >
+                          <td className="py-0.5 pl-6 pr-3 text-muted-foreground">
+                            {t("fis.rataN")} {i + 1}
+                          </td>
+                          <td className="py-0.5 pr-3">{r.modalita ?? "—"}</td>
+                          <td className="py-0.5 pr-3" />
+                          <td className="py-0.5 pr-3 text-right tabular-nums">{eur(r.importo)}</td>
+                          <td className="py-0.5 pr-3 text-center" colSpan={2}>
+                            <label className="inline-flex items-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                className="accent-primary"
+                                checked={r.pagato}
+                                disabled={busy || !r.id}
+                                onChange={() => void togglePagato(r)}
+                              />
+                              <span className={r.pagato ? "" : "text-status-absent"}>
+                                {r.pagato ? t("fis.filtroPagate") : t("fis.filtroAperte")}
+                              </span>
+                            </label>
+                          </td>
+                          <td className="py-0.5 pr-3 whitespace-nowrap">
+                            {dataIt(r.dataPagamento)}
+                          </td>
+                          <td
+                            className="max-w-52 truncate py-0.5 text-muted-foreground"
+                            title={r.note}
+                          >
+                            {r.note ?? ""}
+                          </td>
+                        </tr>
+                      ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+            <button
+              type="button"
+              onClick={() =>
+                esportaCsvFile(
+                  "fiscale-piani",
+                  [
+                    t("fis.colPiano"),
+                    t("fis.colVoce"),
+                    t("fis.colRate"),
+                    t("fis.colTotale"),
+                    t("fis.filtroPagate"),
+                    t("fis.colResiduo"),
+                    t("fis.colProssima"),
+                    t("fis.colUltimaRata"),
+                  ],
+                  piani.map((pi) => [
+                    pi.chiave,
+                    pi.voce,
+                    pi.nPagate + "/" + pi.rate.length,
+                    csvNum(pi.totale),
+                    csvNum(pi.pagato),
+                    csvNum(pi.residuo),
+                    pi.prossima,
+                    pi.ultima,
+                  ]),
+                )
+              }
+              className="mt-2 rounded-lg border border-border px-3 py-1 text-[13px] hover:bg-muted"
+            >
+              {t("common.exportCsv")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
