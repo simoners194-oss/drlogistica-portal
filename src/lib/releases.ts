@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.72.2",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Fatture: classificazione subito dopo il Totale",
+        description:
+          "Come già nei Movimenti: nelle Fatture attive e passive le colonne di classificazione (mese di competenza, tipologia, sottocategoria e allocazioni sulle passive, servizio sulle attive) stanno subito dopo il Totale, prima di stati e dettagli. Vale anche per l'ordine del CSV.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.72.1",
     date: "2026-09-15",
     entries: [

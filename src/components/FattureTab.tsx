@@ -1010,6 +1010,43 @@ export function FattureTab({
               : x.f.totale,
           ),
       },
+      // CLASSIFICAZIONE SUBITO DOPO IL TOTALE (richiesta Simone 15/09, come
+      // nei Movimenti v1.59.1): competenza, tipologia e allocazioni sono il
+      // colpo d'occhio; stati e dettagli fiscali vengono dopo.
+      {
+        key: "competenza",
+        label: t("ft.colCompetenza"),
+        get: (x: (typeof conStato)[number]) => classificaDi(x.f).mese,
+      },
+      ...(ricevute
+        ? [
+            {
+              key: "tipologia",
+              label: t("ft.colTipologia"),
+              get: (x: (typeof conStato)[number]) => classificaDi(x.f).tipologia || "—",
+            },
+            {
+              key: "sottocategoria",
+              label: t("fin.sottocat"),
+              get: (x: (typeof conStato)[number]) => classificaDi(x.f).sottocategoria || "—",
+            },
+            {
+              key: "allocpri",
+              label: t("fin.allocPri"),
+              get: (x: (typeof conStato)[number]) => classificaDi(x.f).allocPrimaria || "—",
+            },
+            {
+              key: "allocsec",
+              label: t("fin.allocSec"),
+              get: (x: (typeof conStato)[number]) => classificaDi(x.f).allocSecondaria || "—",
+            },
+          ]
+        : []),
+      {
+        key: "clienterif",
+        label: ricevute ? t("ft.colClienteRif") : t("ft.colServizio"),
+        get: (x: (typeof conStato)[number]) => classificaDi(x.f).clienteRif || "—",
+      },
       {
         key: "imponibile",
         label: t("ft.colImponibile"),
@@ -1050,40 +1087,6 @@ export function FattureTab({
         get: testoStatoI,
       },
       { key: "banca", label: t("ft.colBanca"), get: testoStatoB },
-      {
-        key: "competenza",
-        label: t("ft.colCompetenza"),
-        get: (x: (typeof conStato)[number]) => classificaDi(x.f).mese,
-      },
-      ...(ricevute
-        ? [
-            {
-              key: "tipologia",
-              label: t("ft.colTipologia"),
-              get: (x: (typeof conStato)[number]) => classificaDi(x.f).tipologia || "—",
-            },
-            {
-              key: "sottocategoria",
-              label: t("fin.sottocat"),
-              get: (x: (typeof conStato)[number]) => classificaDi(x.f).sottocategoria || "—",
-            },
-            {
-              key: "allocpri",
-              label: t("fin.allocPri"),
-              get: (x: (typeof conStato)[number]) => classificaDi(x.f).allocPrimaria || "—",
-            },
-            {
-              key: "allocsec",
-              label: t("fin.allocSec"),
-              get: (x: (typeof conStato)[number]) => classificaDi(x.f).allocSecondaria || "—",
-            },
-          ]
-        : []),
-      {
-        key: "clienterif",
-        label: ricevute ? t("ft.colClienteRif") : t("ft.colServizio"),
-        get: (x: (typeof conStato)[number]) => classificaDi(x.f).clienteRif || "—",
-      },
       {
         key: "oggettodoc",
         label: t("ft.colOggettoDoc"),
