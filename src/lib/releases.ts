@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.72.1",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Fatture: Incassata per le attive, Pagata per le passive",
+        description:
+          "Gli stati mostrati (badge, colonne Fatturazione/Incassi/Banca, filtri, CSV) ora seguono la direzione: una fattura attiva chiusa è «Incassata», una passiva è «Pagata» (e «Non pagata» invece di «Non incassata»). Solo etichette: i conteggi non cambiano.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.72.0",
     date: "2026-09-15",
     entries: [

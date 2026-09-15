@@ -933,6 +933,15 @@ export function FattureTab({
   // a cascata (i valori proposti tengono conto degli altri filtri attivi).
   // I getter producono il TESTO mostrato in tabella: filtro e occhio
   // coincidono sempre.
+  // ETICHETTE PER DIREZIONE (richiesta Simone 15/09): "Pagata" se passiva,
+  // "Incassata" se attiva — gli stati interni restano com'erano, cambia
+  // solo il testo mostrato (e il CSV, che passa da qui).
+  const etichettaStato = (v: string): string => {
+    if (v === "Pagata" || v === "Incassata")
+      return ricevute ? t("ft.pagata") : t("ft.incassataStato");
+    if (v === "Non incassata") return ricevute ? t("ft.nonPagata") : t("ft.nonIncassata");
+    return v;
+  };
   const testoStatoF = (x: (typeof conStato)[number]): string =>
     x.s.annullataDaNC
       ? t("ft.annullataNC")
@@ -940,13 +949,13 @@ export function FattureTab({
         ? t("ft.nc")
         : x.s.statoFatturazione == null
           ? t("ft.nonGestita")
-          : x.s.statoFatturazione;
+          : etichettaStato(x.s.statoFatturazione);
   const testoStatoI = (x: (typeof conStato)[number]): string =>
     x.s.stato === "NC"
       ? t("ft.nc")
       : x.s.statoIncassi == null
         ? t("ft.senzaMovimenti")
-        : x.s.statoIncassi;
+        : etichettaStato(x.s.statoIncassi);
   const testoStatoB = (x: (typeof conStato)[number]): string =>
     x.s.annullataDaNC
       ? t("ft.annullataNC")
@@ -954,7 +963,7 @@ export function FattureTab({
         ? t("ft.nc")
         : x.s.statoBanca === "Non incassata" && x.s.incassatoBanca === 0
           ? t("ft.nessunAbbinamento")
-          : x.s.statoBanca;
+          : etichettaStato(x.s.statoBanca);
   type ColFiltro = {
     key: string;
     label: string;
@@ -2851,7 +2860,7 @@ export function FattureTab({
     if (stato === "Pagata")
       return (
         <span className="rounded-full bg-status-present/15 px-2 py-0.5 text-[11px] font-medium text-status-present">
-          {t("ft.pagata")}
+          {x.f.direzione === "Ricevuta" ? t("ft.pagata") : t("ft.incassataStato")}
         </span>
       );
     const inRitardo = mostraRitardo && x.s.inRitardo;
@@ -3061,7 +3070,7 @@ export function FattureTab({
                   ["ritardo", t("ft.fRitardo")],
                   ["nonIncassata", ricevute ? t("ft.nonPagata") : t("ft.nonIncassata")],
                   ["parziale", t("ft.parziale")],
-                  ["pagata", t("ft.pagata")],
+                  ["pagata", ricevute ? t("ft.pagata") : t("ft.incassataStato")],
                   ["discordante", t("ft.fDiscordanti")],
                   ["nonGestita", t("ft.fNonGestita")],
                 ] as [Exclude<StatoFiltro, "tutte">, string][]
@@ -3252,7 +3261,10 @@ export function FattureTab({
                     });
                   const vecchio = (iso: string) =>
                     Date.now() - new Date(iso).getTime() > 26 * 3600 * 1000;
-                  const pezzo = (chiave: "ft.salutePrimaNota" | "ft.saluteStati", iso: string | null) =>
+                  const pezzo = (
+                    chiave: "ft.salutePrimaNota" | "ft.saluteStati",
+                    iso: string | null,
+                  ) =>
                     iso ? (
                       <span key={chiave}>
                         {" · "}
@@ -5099,7 +5111,7 @@ export function FattureTab({
                                 className={`py-1 pr-2 text-right tabular-nums ${media != null && media > termine ? "text-status-absent font-medium" : "text-muted-foreground"}`}
                                 title={
                                   media != null
-                                    ? `${r.nGg} ${t("ft.pagata").toLowerCase()}`
+                                    ? `${r.nGg} ${t(ricevute ? "ft.pagata" : "ft.incassataStato").toLowerCase()}`
                                     : undefined
                                 }
                               >
