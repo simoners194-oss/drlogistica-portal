@@ -1871,20 +1871,49 @@ export async function fetchTimbratureDaISO(fromISO: string): Promise<SpTimbratur
   const lookupId = lookupIdFieldName(dipendenteField);
 
   const filter = encodeURIComponent(`fields/${dataOraField} ge '${fromISO}'`);
-  const basePath = `/sites/${cfg.siteId}/lists/${cfg.listTimbrature}/items?expand=fields&$top=999`;
+  // Solo le colonne davvero lette dalla mappatura: expand=fields nudo
+  // trascina tutti i campi di sistema e il payload raddoppia/triplica (stesso
+  // motivo di soloColonne per i Movimenti). Il lookup dipendente si seleziona
+  // col suffisso LookupId, che è il nome sotto cui Graph lo restituisce.
+  const selCols = [
+    dataOraField,
+    eventoField,
+    `${dipendenteField}LookupId`,
+    F.Origine,
+    F.Posizione,
+    F.Esito,
+    F.Note,
+  ]
+    .filter(Boolean)
+    .join(",");
+  const basePath = `/sites/${cfg.siteId}/lists/${cfg.listTimbrature}/items?expand=fields(select=${selCols})&$top=999`;
   const filteredPath = `${basePath}&$orderby=fields/${dataOraField} asc&$filter=${filter}`;
-  let res: GraphListResponse<Record<string, unknown>>;
+  // DataOra NON è indicizzata su SharePoint: Graph rifiuta filtro/ordinamento
+  // sulle colonne non indicizzate a prescindere dalla dimensione, salvo
+  // l'header Prefer qui sotto (affidabile sotto le ~5.000 righe). Il vecchio
+  // ripiego "prima pagina nuda" ($top=999 = i 999 item PIÙ VECCHI per ID) ha
+  // nascosto TUTTE le timbrature recenti dal 07/09/2026 sera, appena la lista
+  // ha superato i 999 item: tutti "Assente", entrate ripetute accettate e
+  // uscite rifiutate. Ora: query filtrata (paginata) e, se Graph la rifiuta,
+  // scansione COMPLETA della lista pagina per pagina con filtro client-side —
+  // mai più troncature silenziose.
+  let items: GraphListItem<Record<string, unknown>>[];
   try {
-    res = await withDiscoveryRetry(() =>
-      gatewayJson<GraphListResponse<Record<string, unknown>>>(filteredPath),
+    items = await fetchMovimentiPages(filteredPath, {
+      headers: { Prefer: "HonorNonIndexedQueriesWarningMayFailRandomly" },
+    });
+  } catch (err) {
+    logSp(
+      "warn",
+      "fetch.timbrature",
+      `Filtro DataOra rifiutato da Graph — scansione completa della lista (${
+        err instanceof Error ? err.message.slice(0, 140) : String(err)
+      })`,
     );
-  } catch {
-    res = await withDiscoveryRetry(() =>
-      gatewayJson<GraphListResponse<Record<string, unknown>>>(basePath),
-    );
+    items = await fetchMovimentiPages(basePath);
   }
   const startMs = new Date(fromISO).getTime();
-  return res.value
+  return items
     .map((it): SpTimbratura | null => {
       const f = it.fields ?? {};
       const evento = parseEvento(f[eventoField]);
@@ -3858,6 +3887,7 @@ function mapMovimento(cfg: SpDiscovered, it: GraphListItem<Record<string, unknow
 // @odata.nextLink convertendo l'URL Graph assoluto nel path del gateway.
 async function fetchMovimentiPages(
   firstPath: string,
+  init: RequestInit = {},
 ): Promise<GraphListItem<Record<string, unknown>>[]> {
   const out: GraphListItem<Record<string, unknown>>[] = [];
   let path: string | null = firstPath;
@@ -3868,6 +3898,7 @@ async function fetchMovimentiPages(
       await withDiscoveryRetry(() =>
         gatewayJson<GraphListResponse<Record<string, unknown>> & { "@odata.nextLink"?: string }>(
           path as string,
+          init,
         ),
       );
     out.push(...(res.value ?? []));
@@ -3878,6 +3909,21 @@ async function fetchMovimentiPages(
     } else {
       path = null;
     }
+  }
+  if (path) {
+    // MAI restituire dati parziali in silenzio: con l'ordinamento di default
+    // (ID crescente) le pagine lette sarebbero le righe PIÙ VECCHIE e quelle
+    // recenti sparirebbero — la stessa classe di bug delle timbrature
+    // invisibili (v1.74.1), solo con soglia 30×999. Meglio un errore visibile
+    // in Amministrazione che un "tutti Assente" senza spiegazione.
+    logSp(
+      "error",
+      "gateway",
+      `Lista oltre ${guard} pagine — lettura incompleta su ${firstPath.split("?")[0]}`,
+    );
+    throw new Error(
+      "Lettura SharePoint incompleta: la lista supera le 30 pagine (~30.000 righe). Archiviare le righe vecchie o alzare il limite.",
+    );
   }
   return out;
 }

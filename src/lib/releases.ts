@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.74.1",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Timbrature di nuovo funzionanti",
+        description:
+          "Dall'8 settembre il portale non vedeva più le timbrature recenti (superate le 999 righe la lettura si fermava alle più vecchie): stato sempre Assente, entrate ripetute e uscite rifiutate. La lettura ora scorre tutta la lista e non perde più nulla.",
+        tag: "fix",
+        audience: "tutti",
+      },
+    ],
+  },
+  {
     version: "1.74.0",
     date: "2026-09-15",
     entries: [
