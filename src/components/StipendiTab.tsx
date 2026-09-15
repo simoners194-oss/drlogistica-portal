@@ -28,6 +28,7 @@ import {
   spStipendiEliminaMese,
   spStipendiGet,
   spStipendiMensilita,
+  spStipendiPagati,
   spStipendiSalvaAnagrafica,
   spStipendiSalvaMese,
   spStipendiSalvaNetti,
@@ -257,6 +258,39 @@ export function StipendiTab() {
     if (ov != null) return { val: ov, stima: false };
     const s = mensPerNome.get(nameKey(`${d.cognome} ${d.nome}`));
     return s != null ? { val: s, stima: true } : null;
+  };
+
+  // PAGATO SI/NO manuale (richiesta Simone 15/09): spunta per dipendente sul
+  // mese di competenza; guida la riga Stipendi dei Flussi. La spunta in
+  // testata marca/smarca TUTTE le righe filtrate (es. un appalto intero).
+  const [pagBusy, setPagBusy] = useState(false);
+  const pagatiSet = useMemo(() => new Set(db?.pagatiPerMese?.[meseSel] ?? []), [db, meseSel]);
+  const pagatoDi = (d: StipendioDipendente) => pagatiSet.has(nameKey(`${d.cognome} ${d.nome}`));
+  const cambiaPagati = async (aggiungi: string[], togli: string[]) => {
+    if (!aggiungi.length && !togli.length) return;
+    setPagBusy(true);
+    try {
+      const res = await spStipendiPagati({ data: { mese: meseSel, aggiungi, togli } });
+      setDb(res);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPagBusy(false);
+    }
+  };
+  const togglePagato = (d: StipendioDipendente) => {
+    const k = nameKey(`${d.cognome} ${d.nome}`);
+    void cambiaPagati(pagatoDi(d) ? [] : [k], pagatoDi(d) ? [k] : []);
+  };
+  const tuttiPagati = righe.length > 0 && righe.every(pagatoDi);
+  const toggleTuttiPagati = () => {
+    const chiavi = righe.map((d) => nameKey(`${d.cognome} ${d.nome}`));
+    if (tuttiPagati) void cambiaPagati([], chiavi);
+    else
+      void cambiaPagati(
+        chiavi.filter((k) => !pagatiSet.has(k)),
+        [],
+      );
   };
 
   const salvaMensilita = async (d: StipendioDipendente) => {
@@ -502,6 +536,7 @@ export function StipendiTab() {
         "Anticipo",
         "Saldo",
         "Versato in banca",
+        "Pagato",
         "Costo medio",
       ],
       mese.dipendenti.map((d) => [
@@ -526,6 +561,7 @@ export function StipendiTab() {
         nettoDi(d)?.anticipo || "",
         nettoDi(d)?.saldo ?? "",
         versatoDi(d) ?? "",
+        pagatoDi(d) ? "SI" : "NO",
         d.costoMedio,
       ]),
     );
@@ -961,6 +997,16 @@ export function StipendiTab() {
                   <th className="px-3 py-2 text-right">{t("stip.colAnt")}</th>
                   <th className="px-3 py-2 text-right">{t("stip.colSaldo")}</th>
                   <th className="px-3 py-2 text-right">{t("stip.versatoCol")}</th>
+                  <th className="px-3 py-2 text-center" title={t("stip.pagatoTuttiTip")}>
+                    <span className="mr-1">{t("stip.colPagato")}</span>
+                    <input
+                      type="checkbox"
+                      className="accent-primary align-middle"
+                      checked={tuttiPagati}
+                      disabled={pagBusy || righe.length === 0}
+                      onChange={toggleTuttiPagati}
+                    />
+                  </th>
                   <th className="px-3 py-2 text-right">{t("stip.medio")}</th>
                 </tr>
               </thead>
@@ -1056,6 +1102,16 @@ export function StipendiTab() {
                     <td className="px-3 py-1.5 text-right tabular-nums">
                       {versatoDi(d) != null ? eur(versatoDi(d)!) : "—"}
                     </td>
+                    <td className="px-3 py-1.5 text-center">
+                      <input
+                        type="checkbox"
+                        className="accent-primary"
+                        checked={pagatoDi(d)}
+                        disabled={pagBusy}
+                        onChange={() => togglePagato(d)}
+                        title={t("stip.pagatoTip")}
+                      />
+                    </td>
                     <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
                       {d.costoMedio ? eur(d.costoMedio) : "—"}
                     </td>
@@ -1086,6 +1142,9 @@ export function StipendiTab() {
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {eur(righe.reduce((a, d) => a + (versatoDi(d) ?? 0), 0))}
+                  </td>
+                  <td className="px-3 py-2 text-center text-xs">
+                    {righe.filter(pagatoDi).length}/{righe.length}
                   </td>
                   <td className="px-3 py-2" />
                 </tr>

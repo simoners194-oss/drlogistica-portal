@@ -122,7 +122,9 @@ export async function replaceFiscale(
     nuove.push(s);
   }
   db.scadenze = [...nuove, ...portale];
-  db.daRateizzare = daRateizzare;
+  // Appena il "da registrare" viene gestito dal portale, l'Excel non lo
+  // comanda più: niente righe risorte né aggiunte manuali cancellate.
+  if (!db.daRateizzarePortale) db.daRateizzare = daRateizzare;
   db.fonteFile = fonte;
   return salvaFiscaleDb(db, utente);
 }
@@ -157,6 +159,18 @@ export async function upsertScadenzaFiscale(
   } else {
     db.scadenze.push(scadenza);
   }
+  return salvaFiscaleDb(db, utente);
+}
+
+/** Sostituisce l'elenco "da registrare in futuro" (importi noti senza data,
+ *  fuori dal cash flow) — compilabile dal portale come il resto. */
+export async function setDaRateizzareFiscale(
+  lista: DaRateizzareFiscale[],
+  utente: string,
+): Promise<FiscaleDb> {
+  const db = await loadFiscaleDb();
+  db.daRateizzare = lista;
+  db.daRateizzarePortale = true;
   return salvaFiscaleDb(db, utente);
 }
 

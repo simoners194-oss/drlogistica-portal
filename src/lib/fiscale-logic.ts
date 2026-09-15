@@ -46,6 +46,9 @@ export interface FiscaleDb {
   daRateizzare: DaRateizzareFiscale[];
   /** Chiavi file delle righe eliminate dal portale: il re-import le salta. */
   tombstones?: string[];
+  /** true dal primo salvataggio del "da registrare" dal portale: da lì in
+   *  poi il re-import del file NON tocca più quell'elenco. */
+  daRateizzarePortale?: boolean;
   fonteFile?: string;
   aggiornatoIl?: string;
   aggiornatoDa?: string;

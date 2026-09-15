@@ -9,6 +9,7 @@ import {
   eliminaScadenzaFiscale,
   loadFiscaleDb,
   replaceFiscale,
+  setDaRateizzareFiscale,
   upsertScadenzaFiscale,
 } from "./fiscale.server";
 import type { DaRateizzareFiscale, FiscaleDb, ScadenzaFiscale } from "./fiscale-logic";
@@ -73,6 +74,22 @@ export const spFiscaleUpsertScadenza = createServerFn({ method: "POST" })
     const s = data.scadenza;
     s.voce = s.voce.trim().toUpperCase();
     return upsertScadenzaFiscale(s, me.codice || me.id);
+  });
+
+/** Elenco "da registrare in futuro" (senza data, fuori dal cash flow). */
+export const spFiscaleDaRateizzare = createServerFn({ method: "POST" })
+  .inputValidator((input: { lista: DaRateizzareFiscale[] }) => {
+    if (!Array.isArray(input?.lista)) throw new Error("Elenco non valido.");
+    for (const d of input.lista) {
+      if (!d?.voce?.trim()) throw new Error("Voce mancante in una riga.");
+      if (!Number.isFinite(d.importo) || d.importo <= 0)
+        throw new Error("Importo non valido in una riga.");
+    }
+    return input;
+  })
+  .handler(async ({ data }): Promise<FiscaleDb> => {
+    const me = await utenteFiscale();
+    return setDaRateizzareFiscale(data.lista, me.codice || me.id);
   });
 
 export const spFiscaleEliminaScadenza = createServerFn({ method: "POST" })

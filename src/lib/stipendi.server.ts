@@ -140,12 +140,67 @@ export async function setStipendiMensilita(
   return saveStipendiDb(db, utente);
 }
 
+/** Segna/toglie il PAGATO manuale per una lista di dipendenti (chiavi nome)
+ *  su un mese di competenza — un solo giro per la selezione multipla. */
+export async function setPagatiStipendi(
+  mese: string,
+  aggiungi: string[],
+  togli: string[],
+  utente: string,
+): Promise<StipendiDb> {
+  const db = await loadStipendiDb();
+  const mappa = { ...(db.pagatiPerMese ?? {}) };
+  const set = new Set(mappa[mese] ?? []);
+  for (const k of aggiungi) set.add(k);
+  for (const k of togli) set.delete(k);
+  if (set.size > 0) mappa[mese] = [...set].sort();
+  else delete mappa[mese];
+  db.pagatiPerMese = mappa;
+  return saveStipendiDb(db, utente);
+}
+
+/** Riga Stipendi dei Flussi (per MESE DI PAGAMENTO = competenza+1):
+ *  totale = somma saldi del mese; pagati = somma saldi dei soli flaggati
+ *  "pagato sì"; flaggati = quanti nomi sono spuntati (0 = nessuno usa
+ *  ancora la spunta per quel mese e la tabella reale usa il totale). */
+export async function flussiStipendi(): Promise<{
+  stima: { media: number; mesi: string[] } | null;
+  perMese: Record<string, { totale: number; pagati: number; flaggati: number }>;
+}> {
+  const db = await loadStipendiDb();
+  const perMese: Record<string, { totale: number; pagati: number; flaggati: number }> = {};
+  for (const n of db.netti ?? []) {
+    const chiaviPagati = new Set(db.pagatiPerMese?.[n.mese] ?? []);
+    let pagati = 0;
+    // flaggati = SOLO le spunte che matchano una riga dei netti: una spunta
+    // su un nome senza saldo (riga COSTI fuori da "Stipendi Dr") non deve
+    // far scattare il regime "solo pagati" azzerando la riga dei Flussi.
+    let flaggati = 0;
+    for (const d of n.dipendenti)
+      if (chiaviPagati.has(chiaveNome(d.nome))) {
+        pagati += d.saldo;
+        flaggati++;
+      }
+    const [anno, mm] = n.mese.split("-").map(Number);
+    const mesePag = mm === 12 ? `${anno + 1}-01` : `${anno}-${String(mm + 1).padStart(2, "0")}`;
+    perMese[mesePag] = {
+      totale: Math.round(n.totaleSaldo * 100) / 100,
+      pagati: Math.round(pagati * 100) / 100,
+      flaggati,
+    };
+  }
+  return { stima: await stimaStipendiMensileDa(db), perMese };
+}
+
 /** Stima dello stipendio mensile FUTURO per i Flussi di cassa (richiesta
  *  Simone 14/09): media del NETTO DOVUTO degli ultimi 2 mesi caricati da
  *  "Stipendi Dr.xlsx". Si usa il netto dovuto e non il saldo perché i saldi
  *  recenti sono abbattuti dagli anticipi già versati. */
 export async function stimaStipendiMensile(): Promise<{ media: number; mesi: string[] } | null> {
-  const db = await loadStipendiDb();
+  return stimaStipendiMensileDa(await loadStipendiDb());
+}
+
+function stimaStipendiMensileDa(db: StipendiDb): { media: number; mesi: string[] } | null {
   const netti = (db.netti ?? [])
     .filter((n) => n.totaleStipendio > 0)
     .sort((a, b) => (a.mese < b.mese ? -1 : 1));

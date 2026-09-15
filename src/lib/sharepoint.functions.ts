@@ -1309,7 +1309,7 @@ export const spUpdateMovimento = createServerFn({ method: "POST" })
           ? String(input.allocSecondaria).slice(0, 60)
           : undefined,
       cliente: input.cliente !== undefined ? String(input.cliente).slice(0, 120) : undefined,
-      nrFattura: input.nrFattura !== undefined ? String(input.nrFattura).slice(0, 160) : undefined,
+      nrFattura: input.nrFattura !== undefined ? String(input.nrFattura).slice(0, 240) : undefined,
       note: input.note !== undefined ? String(input.note).slice(0, 500) : undefined,
       daVerificare: input.daVerificare !== undefined ? Boolean(input.daVerificare) : undefined,
     };

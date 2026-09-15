@@ -96,6 +96,11 @@ export interface StipendiDb {
   /** Anagrafica contrattuale dalla "Mappatura Dipendenti". */
   anagrafica?: AnagraficaDipendente[];
   anagraficaFonte?: string;
+  /** PAGATO SI/NO manuale (richiesta Simone 15/09): per mese di COMPETENZA,
+   *  le chiavi nome (chiaveNome) dei dipendenti segnati come pagati. Guida
+   *  la riga Stipendi dei Flussi: tabella reale = solo i sì, tabella "solo
+   *  fatturazioni" = tutti. */
+  pagatiPerMese?: Record<string, string[]>;
   aggiornatoIl?: string;
   aggiornatoDa?: string;
 }

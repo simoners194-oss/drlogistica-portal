@@ -36,6 +36,40 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.72.0",
+    date: "2026-09-15",
+    entries: [
+      {
+        title: "Stipendi: colonna Pagato sì/no che guida i Flussi",
+        description:
+          "Nuova spunta manuale «Pagato» per dipendente sul mese selezionato, con selezione multipla dalla testata (marca/smarca tutte le righe filtrate, es. un appalto intero col filtro Etichetta). Appena esiste almeno una spunta, la riga Stipendi della tabella REALE dei Flussi conta solo chi è segnato pagato, mentre la tabella «solo fatturazioni» conta il totale del mese. Colonna anche nel CSV.",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Fiscale completa: drill-down e «Da registrare»",
+        description:
+          "Cliccando una cella delle pivot Da pagare/Pagato si aprono le scadenze che la compongono (come il dettaglio del file). L'elenco «Da registrare in futuro» è ora compilabile dal portale (aggiungi/elimina).",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Resoconto: riquadri Tutte da incassare / da pagare",
+        description:
+          "Accanto ai riquadri dei ritardi, due riquadri gemelli con TUTTE le fatture aperte a prescindere dal ritardo (prima le più in ritardo, poi le future).",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Movimenti: Nr fattura non più troncato",
+        description:
+          "L'estrazione dei riferimenti fattura dalla descrizione si fermava a 4 numeri e 120 caratteri: un bonifico che salda molte fatture usciva monco nel CSV. Ora fino a 12 riferimenti e 240 caratteri (vale per i movimenti importati da qui in avanti).",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.71.1",
     date: "2026-09-15",
     entries: [

@@ -12,11 +12,12 @@ import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { esportaCsvFile } from "@/lib/csv";
 import {
+  spFiscaleDaRateizzare,
   spFiscaleEliminaScadenza,
   spFiscaleGet,
   spFiscaleUpsertScadenza,
 } from "@/lib/fiscale.functions";
-import type { FiscaleDb, ScadenzaFiscale } from "@/lib/fiscale-logic";
+import type { DaRateizzareFiscale, FiscaleDb, ScadenzaFiscale } from "@/lib/fiscale-logic";
 
 const inputCls =
   "rounded-lg border border-border bg-background px-2 py-1 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
@@ -100,6 +101,13 @@ export function FiscaleTab() {
   const [q, setQ] = useState("");
   const [statoF, setStatoF] = useState<"aperte" | "pagate" | "tutte">("aperte");
   const [voceF, setVoceF] = useState("");
+  // Filtro periodo dal drill-down delle pivot: "2026-09" (mese) o "2027".
+  const [meseF, setMeseF] = useState("");
+  // Form "da registrare in futuro" (voce/anno/periodo/importo).
+  const [drVoce, setDrVoce] = useState("");
+  const [drAnno, setDrAnno] = useState("");
+  const [drPeriodo, setDrPeriodo] = useState("");
+  const [drImporto, setDrImporto] = useState("");
   const [busy, setBusy] = useState(false);
   // Form nuova scadenza / modifica (stesso form, id pieno = modifica).
   const [form, setForm] = useState<FormScadenza | null>(null);
@@ -126,6 +134,9 @@ export function FiscaleTab() {
     return scadenze
       .filter((s) => (statoF === "tutte" ? true : statoF === "pagate" ? s.pagato : !s.pagato))
       .filter((s) => !voceF || s.voce === voceF)
+      .filter((s) =>
+        !meseF ? true : s.dataPagamento.slice(0, meseF.length === 7 ? 7 : 4) === meseF,
+      )
       .filter(
         (s) =>
           !ql ||
@@ -134,7 +145,7 @@ export function FiscaleTab() {
             .includes(ql),
       )
       .sort((a, b) => (a.dataPagamento < b.dataPagamento ? -1 : 1));
-  }, [scadenze, q, statoF, voceF]);
+  }, [scadenze, q, statoF, voceF, meseF]);
 
   const totFiltrate = useMemo(() => filtrate.reduce((a, s) => a + s.importo, 0), [filtrate]);
 
@@ -223,6 +234,20 @@ export function FiscaleTab() {
       setDb(res);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const salvaDaRateizzare = async (lista: DaRateizzareFiscale[]): Promise<boolean> => {
+    setBusy(true);
+    try {
+      const res = await spFiscaleDaRateizzare({ data: { lista } });
+      setDb(res);
+      return true;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -324,11 +349,6 @@ export function FiscaleTab() {
           onChange={(e) => setForm({ ...form, voce: e.target.value })}
           className={inputCls}
         />
-        <datalist id="fis-voci">
-          {voci.map((v) => (
-            <option key={v} value={v} />
-          ))}
-        </datalist>
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs text-muted-foreground">{t("fis.colAnno")}</span>
@@ -417,7 +437,15 @@ export function FiscaleTab() {
     </div>
   );
 
-  const pivotUI = (p: ReturnType<typeof pivot>, nomeCsv: string) => (
+  const apriDettaglio = (voce: string, colonna: string, pagate: boolean) => {
+    setVista("scadenze");
+    setStatoF(pagate ? "pagate" : "aperte");
+    setVoceF(voce);
+    setMeseF(colonna);
+    setQ("");
+  };
+
+  const pivotUI = (p: ReturnType<typeof pivot>, nomeCsv: string, pagate: boolean) => (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[700px] text-[13px]">
         <thead>
@@ -440,7 +468,18 @@ export function FiscaleTab() {
                 <td className="py-1 pr-3 whitespace-nowrap">{v}</td>
                 {p.cols.map((c) => (
                   <td key={c.chiave} className="py-1 pr-3 text-right tabular-nums">
-                    {r.get(c.chiave) ? eur(r.get(c.chiave)!) : "—"}
+                    {r.get(c.chiave) ? (
+                      <button
+                        type="button"
+                        onClick={() => apriDettaglio(v, c.chiave, pagate)}
+                        title={t("fis.dettaglioTip")}
+                        className="rounded px-1 hover:bg-muted hover:text-primary"
+                      >
+                        {eur(r.get(c.chiave)!)}
+                      </button>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 ))}
                 <td className="py-1 text-right font-medium tabular-nums">{eur(tot)}</td>
@@ -486,6 +525,13 @@ export function FiscaleTab() {
 
   return (
     <div className="space-y-4">
+      {/* Datalist sempre nel DOM: lo usano sia il form scadenze sia il
+          "da registrare" (dentro il form non esisteva a form chiuso). */}
+      <datalist id="fis-voci">
+        {voci.map((v) => (
+          <option key={v} value={v} />
+        ))}
+      </datalist>
       {/* Riepilogo */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
@@ -517,14 +563,92 @@ export function FiscaleTab() {
           {t("fis.desc")}
           {db.fonteFile ? ` ${t("fis.fonte")} ${db.fonteFile}.` : ""}
         </p>
-        {db.daRateizzare.length > 0 && (
-          <p className="mb-3 text-xs text-status-absent">
-            {t("fc.fiscaleDaRat")}{" "}
-            {db.daRateizzare
-              .map((d) => `${d.voce} ${d.periodo ?? ""} ${d.anno ?? ""} ${eur(d.importo)} €`)
-              .join(" · ")}
-          </p>
-        )}
+        <div className="mb-3 rounded-xl border border-border/60 p-3">
+          <p className="mb-1 text-xs font-semibold">{t("fis.drTitolo")}</p>
+          <p className="mb-2 text-[11px] text-muted-foreground">{t("fis.drNota")}</p>
+          <div className="mb-2 flex flex-wrap gap-2">
+            {db.daRateizzare.map((d, i) => (
+              <span
+                key={`${d.voce}|${d.anno ?? ""}|${d.periodo ?? ""}|${d.importo}|${i}`}
+                className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs"
+              >
+                {d.voce} {d.periodo ?? ""} {d.anno ?? ""} — {eur(d.importo)} €
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void salvaDaRateizzare(db.daRateizzare.filter((_, j) => j !== i))}
+                  title={t("common.delete")}
+                >
+                  <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                </button>
+              </span>
+            ))}
+            {db.daRateizzare.length === 0 && (
+              <span className="text-xs text-muted-foreground">{t("fis.drVuoto")}</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-end gap-2 text-[13px]">
+            <input
+              list="fis-voci"
+              value={drVoce}
+              onChange={(e) => setDrVoce(e.target.value)}
+              placeholder={t("fis.colVoce")}
+              className={`${inputCls} w-32`}
+            />
+            <input
+              value={drAnno}
+              onChange={(e) => setDrAnno(e.target.value)}
+              placeholder={t("fis.colAnno")}
+              className={`${inputCls} w-20`}
+            />
+            <input
+              value={drPeriodo}
+              onChange={(e) => setDrPeriodo(e.target.value)}
+              placeholder={t("fis.colPeriodo")}
+              className={`${inputCls} w-28`}
+            />
+            <input
+              value={drImporto}
+              onChange={(e) => setDrImporto(e.target.value)}
+              placeholder="0,00"
+              className={`${inputCls} w-28 text-right`}
+            />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                const imp = numDaTesto(drImporto);
+                if (!drVoce.trim() || !Number.isFinite(imp) || imp <= 0) {
+                  toast.error(t("fis.errImporto"));
+                  return;
+                }
+                const annoTxt = drAnno.trim();
+                if (annoTxt && !/^\d{4}$/.test(annoTxt)) {
+                  toast.error(t("fis.errAnno"));
+                  return;
+                }
+                void salvaDaRateizzare([
+                  ...db.daRateizzare,
+                  {
+                    voce: drVoce.trim().toUpperCase(),
+                    anno: annoTxt ? Number(annoTxt) : undefined,
+                    periodo: drPeriodo.trim() || undefined,
+                    importo: Math.round(imp * 100) / 100,
+                  },
+                ]).then((ok) => {
+                  if (!ok) return; // a salvataggio fallito i campi restano
+                  setDrVoce("");
+                  setDrAnno("");
+                  setDrPeriodo("");
+                  setDrImporto("");
+                });
+              }}
+              className="rounded-lg border border-border px-3 py-1 hover:bg-muted"
+            >
+              {t("fis.drAggiungi")}
+            </button>
+          </div>
+        </div>
 
         {/* Selettore vista + filtri */}
         <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
@@ -571,6 +695,14 @@ export function FiscaleTab() {
                   </option>
                 ))}
               </select>
+              {meseF && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary">
+                  {meseF}
+                  <button type="button" onClick={() => setMeseF("")} title={t("common.delete")}>
+                    ×
+                  </button>
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => setForm({ ...FORM_VUOTO, dataPagamento: oggiISO })}
@@ -708,8 +840,8 @@ export function FiscaleTab() {
           </>
         )}
 
-        {vista === "dapagare" && pivotUI(pivotDaPagare, "fiscale-da-pagare")}
-        {vista === "pagato" && pivotUI(pivotPagato, "fiscale-pagato")}
+        {vista === "dapagare" && pivotUI(pivotDaPagare, "fiscale-da-pagare", false)}
+        {vista === "pagato" && pivotUI(pivotPagato, "fiscale-pagato", true)}
       </div>
     </div>
   );

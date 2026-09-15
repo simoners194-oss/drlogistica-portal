@@ -8,8 +8,10 @@ import { readSessionUser, type ServerSessionUser } from "./auth.server";
 import { haVistaDirezione } from "./richieste-logic";
 import {
   deleteStipendiMese,
+  flussiStipendi,
   loadStipendiDb,
   replaceStipendiAnagrafica,
+  setPagatiStipendi,
   setStipendiMensilita,
   stimaStipendiMensile,
   upsertStipendiMese,
@@ -80,6 +82,27 @@ export const spStipendiStima = createServerFn({ method: "GET" }).handler(
     return stimaStipendiMensile();
   },
 );
+
+/** PAGATO SI/NO manuale per mese di competenza (anche in blocco). */
+export const spStipendiPagati = createServerFn({ method: "POST" })
+  .inputValidator((input: { mese: string; aggiungi?: string[]; togli?: string[] }) => {
+    if (!/^\d{4}-\d{2}$/.test(input?.mese ?? "")) throw new Error("Mese non valido.");
+    const ok = (l?: string[]) => l == null || (Array.isArray(l) && l.every((x) => x.trim()));
+    if (!ok(input.aggiungi) || !ok(input.togli)) throw new Error("Elenco nomi non valido.");
+    if (!input.aggiungi?.length && !input.togli?.length)
+      throw new Error("Nessun dipendente indicato.");
+    return input;
+  })
+  .handler(async ({ data }): Promise<StipendiDb> => {
+    const me = await utenteStipendi();
+    return setPagatiStipendi(data.mese, data.aggiungi ?? [], data.togli ?? [], firma(me));
+  });
+
+/** Dati per la riga Stipendi dei Flussi: stima + totale/pagati per mese. */
+export const spStipendiFlussi = createServerFn({ method: "GET" }).handler(async () => {
+  await utenteStipendi();
+  return flussiStipendi();
+});
 
 export const spStipendiSalvaNetti = createServerFn({ method: "POST" })
   .inputValidator((input: { mesi: NettiMese[] }) => {

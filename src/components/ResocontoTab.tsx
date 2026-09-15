@@ -494,6 +494,42 @@ export function ResocontoTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [attive, clientiSel, fasceSel],
   );
+  // TUTTE le fatture aperte (richiesta Simone 15/09): stessi riquadri dei
+  // ritardi ma a prescindere dal ritardo — prima le più in ritardo, poi le
+  // future in ordine di scadenza. Le fasce di ritardo qui non filtrano.
+  const tutteAperte = (righe: typeof attive, sel: string[]) =>
+    righe
+      .filter((x) => residuoDi(x) > 1 && inSelezione(x.f.cliente, sel))
+      .sort((a, b) => ggRitardoVis(b) - ggRitardoVis(a));
+  const tutteAtt = useMemo(
+    () =>
+      clientiSel.includes(NESSUNO)
+        ? []
+        : tutteAperte(
+            attive,
+            espandiGruppi(
+              clientiSel.filter((x) => x !== NESSUNO),
+              opzioniClienti,
+            ),
+          ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [attive, clientiSel],
+  );
+  const tuttePas = useMemo(
+    () =>
+      fornitoriSel.includes(NESSUNO)
+        ? []
+        : tutteAperte(
+            passive,
+            espandiGruppi(
+              fornitoriSel.filter((x) => x !== NESSUNO),
+              opzioniFornitori,
+            ),
+          ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [passive, fornitoriSel],
+  );
+
   const ritardiPas = useMemo(
     () =>
       fornitoriSel.includes(NESSUNO)
@@ -731,6 +767,11 @@ export function ResocontoTab() {
               ))}
             </tbody>
           </table>
+          {righe.length > 200 && (
+            <p className="mt-1 text-[11px] italic text-muted-foreground">
+              +{righe.length - 200} {t("rt.oltreLimite")}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -1092,6 +1133,12 @@ export function ResocontoTab() {
               ritardiPas,
               t("rt.nessunoPagare"),
             )}
+          </div>
+
+          {/* TUTTE le aperte, ritardo o no (richiesta Simone 15/09). */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {cardRitardi(t("rt.tutteIncassare"), tutteAtt, t("rt.tutteNessunaIn"), true)}
+            {cardRitardi(t("rt.tuttePagare"), tuttePas, t("rt.tutteNessunaPa"))}
           </div>
 
           {/* ELENCO TOTALE attive/passive: chiuso di default, senza data,

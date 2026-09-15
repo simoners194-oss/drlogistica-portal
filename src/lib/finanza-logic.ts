@@ -560,9 +560,12 @@ export function estraiNrFattura(descrizione: string): string {
   for (const m of lower.matchAll(RE_FATTURA)) {
     const ref = m[1].replace(/[\s.,-]+$/g, "").trim();
     if (ref && !found.includes(ref)) found.push(ref);
-    if (found.length >= 4) break;
+    // Un bonifico può saldare MOLTE fatture insieme (segnalazione Simone
+    // 15/09: il CSV usciva monco): il tetto serve solo da paracadute.
+    if (found.length >= 12) break;
   }
-  return found.join("; ").slice(0, 120);
+  // 240 = sotto il limite di una colonna testo SharePoint (255).
+  return found.join("; ").slice(0, 240);
 }
 
 // --- Classificazione completa -----------------------------------------------
@@ -629,7 +632,8 @@ export function classificaMovimento(raw: MovimentoRaw): {
   // classifica. Restano le tipologie TECNICHE della causale ABI
   // (commissioni, bolli, F24, carte, SDD...): quelle sono fatti, non
   // ipotesi. Il cliente estratto resta: serve alle regole per agganciarlo.
-  const generica = tipologia === "Bonifico uscita" || tipologia === "Altro" || tipologia === "Estero";
+  const generica =
+    tipologia === "Bonifico uscita" || tipologia === "Altro" || tipologia === "Estero";
   return {
     tipologia: generica ? "" : tipologia,
     cliente,

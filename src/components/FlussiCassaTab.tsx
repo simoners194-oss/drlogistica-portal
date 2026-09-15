@@ -37,7 +37,7 @@ import {
   spGetRegoleFinanza,
   spGetMovimenti,
 } from "@/lib/sharepoint.functions";
-import { spStipendiStima } from "@/lib/stipendi.functions";
+import { spStipendiFlussi } from "@/lib/stipendi.functions";
 import {
   parseScadenzario,
   totaliFiscaliPerMese,
@@ -100,6 +100,13 @@ export function FlussiCassaTab() {
   // Stima Stipendi per i mesi senza dato (media netto dovuto ultimi 2 mesi
   // da "Stipendi Dr.xlsx" — richiesta Simone 14/09).
   const [autoStipendi, setAutoStipendi] = useState<{ media: number; mesi: string[] } | null>(null);
+  // Totale/pagati per MESE DI PAGAMENTO dalla spunta "Pagato" della tab
+  // Stipendi (richiesta Simone 15/09): tabella reale = solo i si',
+  // "solo fatturazioni" = tutti.
+  const [stipendiMesi, setStipendiMesi] = useState<Record<
+    string,
+    { totale: number; pagati: number; flaggati: number }
+  > | null>(null);
   // Scadenziario fiscale (Fiscale\SCADENZARIO FISCALE__aggiornato.xlsx di
   // Sabrina — richiesta Simone 14/09): riempie "Costo fiscale rate" e
   // "Costo fiscale corrente" per i mesi senza valore manuale.
@@ -150,9 +157,15 @@ export function FlussiCassaTab() {
   useEffect(() => {
     // Stima stipendi per i mesi futuri (media netto dovuto ultimi 2 mesi).
     // Nell'effetto, non nel corpo: nel corpo partiva una fetch a OGNI render.
-    spStipendiStima()
-      .then((s) => setAutoStipendi(s))
-      .catch(() => setAutoStipendi(null));
+    spStipendiFlussi()
+      .then((r) => {
+        setAutoStipendi(r.stima);
+        setStipendiMesi(r.perMese);
+      })
+      .catch(() => {
+        setAutoStipendi(null);
+        setStipendiMesi(null);
+      });
     // Scadenziario fiscale per le due voci "Costo fiscale".
     spFiscaleGet()
       .then((f) => setFiscale(f))
@@ -585,7 +598,11 @@ export function FlussiCassaTab() {
   /** Valore effettivo di una voce nel mese: manuale se c'e', altrimenti — per
    *  la sola riga "Altre spese", dai mesi correnti in poi — la media
    *  automatica delle regole flaggate (in negativo: e' un'uscita). */
-  const valoreVoce = (nome: string, mese: string): { importo: number; auto: boolean } | null => {
+  const valoreVoce = (
+    nome: string,
+    mese: string,
+    fatturato = false,
+  ): { importo: number; auto: boolean } | null => {
     const man = vocePer(nome, mese);
     if (man) return { importo: man.importo, auto: false };
     // Voci fiscali dallo scadenziario di Sabrina (importi ESATTI, non stime:
@@ -608,13 +625,18 @@ export function FlussiCassaTab() {
     // Stipendi futuri senza dato reale: stima = media del netto dovuto degli
     // ultimi 2 mesi di "Stipendi Dr.xlsx" (il dato vero, quando arriva
     // dall'import, vince perché è una voce manuale).
-    if (
-      nome.trim().toLowerCase() === "stipendi" &&
-      autoStipendi &&
-      autoStipendi.media > 0 &&
-      mese >= oggiISO.slice(0, 7)
-    )
-      return { importo: -autoStipendi.media, auto: true };
+    if (nome.trim().toLowerCase() === "stipendi" && mese >= oggiISO.slice(0, 7)) {
+      // Dati veri del mese di pagamento (da "Stipendi Dr" + spunte Pagato):
+      // tabella reale = somma dei soli segnati "pagato si'" (appena esiste
+      // almeno una spunta), "solo fatturazioni" = saldo totale del mese.
+      const st = stipendiMesi?.[mese];
+      if (st && st.totale > 0) {
+        const importo = fatturato || st.flaggati === 0 ? st.totale : st.pagati;
+        return { importo: -importo, auto: true };
+      }
+      if (autoStipendi && autoStipendi.media > 0)
+        return { importo: -autoStipendi.media, auto: true };
+    }
     return null;
   };
 
@@ -867,7 +889,7 @@ export function FlussiCassaTab() {
       girataQuote.reduce((s, q) => s + (q.perPeriodo.get(chiave) ?? 0), 0);
     if (modo === "mese") {
       v += (prefPer.att.get(mese) ?? 0) - (prefPer.pas.get(mese) ?? 0);
-      for (const nome of nomiVoci) v += valoreVoce(nome, mese)?.importo ?? 0;
+      for (const nome of nomiVoci) v += valoreVoce(nome, mese, true)?.importo ?? 0;
     }
     return Math.round(v * 100) / 100;
   };
@@ -1017,8 +1039,8 @@ export function FlussiCassaTab() {
         righe.push([
           nome,
           "",
-          ...periodi.map((p) => num(valoreVoce(nome, p.mese)?.importo ?? 0)),
-          num(periodi.reduce((s, p) => s + (valoreVoce(nome, p.mese)?.importo ?? 0), 0)),
+          ...periodi.map((p) => num(valoreVoce(nome, p.mese, true)?.importo ?? 0)),
+          num(periodi.reduce((s, p) => s + (valoreVoce(nome, p.mese, true)?.importo ?? 0), 0)),
         ]);
     righe.push([
       t("fc.saldo"),
@@ -1830,15 +1852,17 @@ export function FlussiCassaTab() {
                       <tr key={`fv:${nome}`} className="border-t border-border/40">
                         <td className="py-1 pr-3">{nome}</td>
                         <td className={tdN}>—</td>
-                        {serie(0, (_c, m) => valoreVoce(nome, m)?.importo ?? 0).map((v, i) => (
-                          <td key={periodi[i].chiave} className={tdN}>
-                            {fmt(v)}
-                          </td>
-                        ))}
+                        {serie(0, (_c, m) => valoreVoce(nome, m, true)?.importo ?? 0).map(
+                          (v, i) => (
+                            <td key={periodi[i].chiave} className={tdN}>
+                              {fmt(v)}
+                            </td>
+                          ),
+                        )}
                         <td className={tdN}>
                           {fmt(
                             periodi.reduce(
-                              (s, p) => s + (valoreVoce(nome, p.mese)?.importo ?? 0),
+                              (s, p) => s + (valoreVoce(nome, p.mese, true)?.importo ?? 0),
                               0,
                             ),
                           )}
@@ -1886,6 +1910,11 @@ export function FlussiCassaTab() {
               {fmtImporto(autoStipendi.media)} €
             </p>
           )}
+          {modo === "mese" &&
+            stipendiMesi &&
+            Object.entries(stipendiMesi).some(
+              ([m, x]) => x.flaggati > 0 && m >= oggiISO.slice(0, 7),
+            ) && <p>{t("fc.notaPagati")}</p>}
           {modo === "mese" && totFiscali && fiscale && (
             <p>
               {t("fc.notaFiscale")} {fiscale.fonteFile}

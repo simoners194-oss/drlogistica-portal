@@ -641,6 +641,12 @@ const en = {
   "fis.errCampi": "Item and payment date are required.",
   "fis.vuoto": "No deadlines for these filters.",
   "fis.scadenzeLbl": "deadlines",
+  "fis.dettaglioTip": "Open the deadlines behind this cell",
+  "fis.drTitolo": "To be scheduled (no date yet — NOT in the cash flow)",
+  "fis.drNota":
+    "Known amounts waiting for an instalment plan: once the plan exists, delete the entry here and add the real deadlines above.",
+  "fis.drVuoto": "Nothing waiting to be scheduled.",
+  "fis.drAggiungi": "Add",
   "stip.mese": "Month",
   "stip.cerca": "Employee, label…",
   "stip.etichetta": "Label",
@@ -682,6 +688,9 @@ const en = {
     "Monthly salary payments — click to set them by hand (12–15, empty = back to the estimate from payroll accruals; ≈ = estimated)",
   "stip.mensErr":
     "Monthly payments: whole number between 12 and 15 (empty to go back to the estimate).",
+  "stip.colPagato": "Paid",
+  "stip.pagatoTip": "Mark PAID yes/no by hand — drives the Stipendi row in Cash flow",
+  "stip.pagatoTuttiTip": "Mark/unmark ALL currently filtered rows (e.g. one whole contract)",
   "stip.mappaIndet": "open-ended",
   "stip.colLivello": "Level",
   "stip.colContratto": "Contract",
@@ -786,6 +795,8 @@ const en = {
     "Tax rows without a manual value = exact amounts from the schedule (≈ only marks the automatic source):",
   "fc.autoTipFiscale":
     "Exact amount from the tax schedule for this month (a hand-written value wins). Click to overwrite.",
+  "fc.notaPagati":
+    'Stipendi row with active "Paid" ticks (Payroll tab): the real table counts ONLY the people marked paid — unless a hand-written value exists for that month, which always wins; the "invoicing only" table counts the full month total.',
   "fc.fiscaleUltima": "last deadline:",
   "fc.cumulatoTip":
     "Each column shows the running total up to that point: September = overdue + September, October = overdue + September + October, and so on.",
@@ -868,6 +879,13 @@ const en = {
   "rt.gg": "Delay [days]",
   "ft.ritardoGg": "Delay [days]",
   "rt.ritardiIncassare": "Overdue — to collect",
+  "rt.tutteIncassare": "All — to collect",
+  "rt.oltreLimite":
+    "more rows not shown (totals above include them) — use the full list or the CSV",
+  "fis.errAnno": "Year: four digits (e.g. 2026).",
+  "rt.tuttePagare": "All — to pay",
+  "rt.tutteNessunaIn": "No open receivable in the selection.",
+  "rt.tutteNessunaPa": "No open payable in the selection.",
   "rt.ritardiPagare": "Overdue — to pay",
   "rt.alData": "Snapshot as of…",
   "rt.alDataOggi": "Back to today",
@@ -2212,6 +2230,12 @@ const it: Record<DictKey, string> = {
   "fis.errCampi": "Voce e data pagamento sono obbligatorie.",
   "fis.vuoto": "Nessuna scadenza per questi filtri.",
   "fis.scadenzeLbl": "scadenze",
+  "fis.dettaglioTip": "Apri le scadenze dietro questa cella",
+  "fis.drTitolo": "Da registrare in futuro (senza data — NON nel cash flow)",
+  "fis.drNota":
+    "Importi noti in attesa di rateizzazione: quando il piano c'è, elimina la riga qui e inserisci le scadenze vere sopra.",
+  "fis.drVuoto": "Niente in attesa di registrazione.",
+  "fis.drAggiungi": "Aggiungi",
   "stip.mese": "Mese",
   "stip.cerca": "Dipendente, etichetta…",
   "stip.etichetta": "Etichetta",
@@ -2253,6 +2277,9 @@ const it: Record<DictKey, string> = {
   "stip.mensTip":
     "Mensilità — clicca per impostarle a mano (12–15, vuoto = torna alla stima dai ratei paghe; ≈ = stimata)",
   "stip.mensErr": "Mensilità: numero intero tra 12 e 15 (vuoto per tornare alla stima).",
+  "stip.colPagato": "Pagato",
+  "stip.pagatoTip": "Segna PAGATO sì/no a mano — guida la riga Stipendi dei Flussi di cassa",
+  "stip.pagatoTuttiTip": "Segna/togli TUTTE le righe filtrate (es. un appalto intero)",
   "stip.mappaIndet": "indeterminati",
   "stip.colLivello": "Livello",
   "stip.colContratto": "Contratto",
@@ -2357,6 +2384,8 @@ const it: Record<DictKey, string> = {
     "Voci fiscali senza valore manuale = importi esatti dallo scadenziario (il ≈ segnala solo la fonte automatica):",
   "fc.autoTipFiscale":
     "Importo esatto dallo scadenziario fiscale per questo mese (il valore scritto a mano vince). Clicca per sovrascrivere.",
+  "fc.notaPagati":
+    'Riga Stipendi con spunte "Pagato" attive (tab Stipendi): la tabella reale conta SOLO chi è segnato pagato — salvo un valore scritto a mano su quel mese, che vince sempre; la tabella "solo fatturazioni" conta il totale del mese.',
   "fc.fiscaleUltima": "ultima scadenza:",
   "fc.cumulatoTip":
     "Ogni colonna mostra il progressivo fino a quel momento: a settembre scaduto + settembre, a ottobre scaduto + settembre + ottobre, e così via.",
@@ -2440,6 +2469,13 @@ const it: Record<DictKey, string> = {
   "ft.ritardoGg": "Ritardo [gg]",
   "rt.ritardiIncassare": "In ritardo — da incassare",
   "rt.ritardiPagare": "In ritardo — da pagare",
+  "rt.tutteIncassare": "Tutte — da incassare",
+  "rt.oltreLimite":
+    "altre righe non mostrate (i totali sopra le includono) — usa l'elenco totale o il CSV",
+  "fis.errAnno": "Anno: quattro cifre (es. 2026).",
+  "rt.tuttePagare": "Tutte — da pagare",
+  "rt.tutteNessunaIn": "Nessuna fattura aperta da incassare nella selezione.",
+  "rt.tutteNessunaPa": "Nessuna fattura aperta da pagare nella selezione.",
   "rt.alData": "Situazione al…",
   "rt.alDataOggi": "Torna a oggi",
   "rt.alDataNota":
