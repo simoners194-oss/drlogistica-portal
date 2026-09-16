@@ -679,6 +679,35 @@ export function ResocontoTab() {
     );
   };
 
+  // Export CSV della lista COMPLETA (non solo le 200 righe mostrate) —
+  // richiesta urgente Simone 16/09.
+  const esportaRitardi = (titolo: string, righe: typeof attive) =>
+    esportaCsvFile(
+      `resoconto-${titolo
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")}`,
+      [
+        t("ft.numero"),
+        t("fin.cliente"),
+        t("ft.scadenza"),
+        t("rt.gg"),
+        t("ft.residuo"),
+        t("rt.composizione"),
+      ],
+      righe.map((x) => [
+        x.f.numero,
+        x.f.cliente,
+        x.s.scadenza ?? "",
+        String(ggRitardoVis(x)),
+        fmtImporto(residuoDi(x)),
+        x.nc && x.nc.importo > 0
+          ? `${fmtImporto(x.f.totale)} - NC ${x.nc.numeri.join("+")} ${fmtImporto(x.nc.importo)}`
+          : x.f.netto > 0 && x.f.netto < x.f.totale - 0.01
+            ? `${t("rt.compTot")} ${fmtImporto(x.f.totale)} -> ${t("rt.compNetto")} ${fmtImporto(x.f.netto)}`
+            : "",
+      ]),
+    );
   const cardRitardi = (
     titolo: string,
     righe: typeof attive,
@@ -691,6 +720,15 @@ export function ResocontoTab() {
         <span className="text-xs text-muted-foreground">
           {righe.length} · {fmtImporto(righe.reduce((s, x) => s + residuoDi(x), 0))} €
         </span>
+        {righe.length > 0 && (
+          <button
+            type="button"
+            onClick={() => esportaRitardi(titolo, righe)}
+            className="ml-auto rounded-lg border border-border px-2.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {t("common.exportCsv")}
+          </button>
+        )}
       </div>
       {righe.length === 0 ? (
         <p className="text-sm text-muted-foreground">{vuoto}</p>

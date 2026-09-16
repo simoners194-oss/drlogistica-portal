@@ -33,6 +33,45 @@ export interface EventoConOra {
   ora: string; // ISO
 }
 
+// Attribuzione A TURNI (v1.75.0, caso DR011 04/08): ogni evento appartiene
+// al giorno dell'ENTRATA che ha aperto il suo turno — l'uscita notturna
+// delle 03:30 è l'ULTIMO passo del giorno prima, non il primo del giorno
+// dopo. Un evento senza turno alle spalle (o con turno scaduto oltre il
+// tetto) resta sul suo giorno di calendario. Lo stream va passato ordinato
+// per dataOra crescente. CONDIVISA tra vista giornata dell'operatore,
+// riscrittura delle correzioni e "Le mie ore": le due estremità della
+// pipeline devono usare la STESSA regola, o le correzioni cancellano e
+// reinseriscono insiemi diversi di eventi.
+export function attribuzioneTurni<T extends { evento: string; dataOra: string }>(
+  stream: readonly T[],
+): { ev: T; giorno: string }[] {
+  const out: { ev: T; giorno: string }[] = [];
+  let giornoTurno: string | null = null;
+  let precMs = 0;
+  for (const t of stream) {
+    const ms = new Date(t.dataOra).getTime();
+    if (giornoTurno != null && ms - precMs > MAX_TURNO_ORE * 3600_000) giornoTurno = null;
+    // Solo la PRIMA entrata apre il turno (una doppia entrata ravvicinata,
+    // retaggio del bug di settembre, non deve spostare la coda del turno
+    // sul giorno dopo — stessa regola di orePerGiornoDaTurni).
+    if (t.evento === "entrata" && giornoTurno == null) giornoTurno = t.dataOra.slice(0, 10);
+    out.push({ ev: t, giorno: giornoTurno ?? t.dataOra.slice(0, 10) });
+    if (t.evento === "uscita") giornoTurno = null;
+    precMs = ms;
+  }
+  return out;
+}
+
+/** Gli eventi attribuiti al turno del giorno indicato (vedi attribuzioneTurni). */
+export function eventiDelTurno<T extends { evento: string; dataOra: string }>(
+  stream: readonly T[],
+  dataISO: string,
+): T[] {
+  return attribuzioneTurni(stream)
+    .filter((x) => x.giorno === dataISO)
+    .map((x) => x.ev);
+}
+
 const MAX_TURNO_MS = () => MAX_TURNO_ORE * 3600_000;
 
 /** Ora (ISO) di apertura del turno ANCORA in corso, oppure null se il

@@ -41,6 +41,7 @@ import {
 import {
   anomalieDaStream,
   aperturaTurnoCorrente,
+  eventiDelTurno,
   MAX_TURNO_ORE,
   ultimoEventoEffettivo,
   UNDO_TIMBRATURA_MINUTI,
@@ -2491,14 +2492,23 @@ export async function annullaUltimaTimbratura(dipendenteId: string): Promise<SpT
 }
 
 // Timbrature di UN dipendente in UN giorno (vista correzione operatore).
+// L'attribuzione a turni vive in presenze-logic (eventiDelTurno): è la
+// stessa regola usata da "Le mie ore" e dal resoconto giorno.
+// Finestra ±1 giorno e attribuzione a turni: la card del 4 mostra (e la
+// riscrittura della giornata cancella) anche l'uscita notturna del 5.
 export async function fetchTimbratureGiorno(
   dipendenteId: string,
   dataISO: string, // YYYY-MM-DD
 ): Promise<SpTimbratura[]> {
-  const dayStart = new Date(`${dataISO}T00:00:00`).toISOString();
-  const dayEnd = new Date(`${dataISO}T23:59:59.999`).toISOString();
-  const tutte = await fetchTimbratureDaISO(dayStart);
-  return tutte.filter((t) => t.dipendenteId === dipendenteId && t.dataOra <= dayEnd);
+  const prevStart = new Date(`${dataISO}T00:00:00`);
+  prevStart.setDate(prevStart.getDate() - 1);
+  const nextEnd = new Date(`${dataISO}T23:59:59.999`);
+  nextEnd.setDate(nextEnd.getDate() + 1);
+  const tutte = await fetchTimbratureDaISO(prevStart.toISOString());
+  const mie = tutte
+    .filter((t) => t.dipendenteId === dipendenteId && t.dataOra <= nextEnd.toISOString())
+    .sort((a, b) => a.dataOra.localeCompare(b.dataOra));
+  return eventiDelTurno(mie, dataISO);
 }
 
 // Resoconto di UN giorno per sede: TUTTI i dipendenti (delle sedi che
@@ -2564,8 +2574,9 @@ export async function resocontoGiorno(
     const stream = (perDipFinestra.get(d.id) ?? []).sort((a, b) =>
       a.dataOra.localeCompare(b.dataOra),
     );
-    // In tabella si mostrano SOLO gli eventi del giorno richiesto.
-    const eventi = stream.filter((t) => t.dataOra.slice(0, 10) === dataISO);
+    // In tabella si mostrano gli eventi DEL TURNO del giorno richiesto:
+    // l'uscita notturna appartiene al giorno dell'entrata (caso DR011).
+    const eventi = eventiDelTurno(stream, dataISO);
     const ore = d.oreSettimanali;
     const rilevaPausa = !(ore != null && ore <= 16);
     out.push({
@@ -7516,15 +7527,41 @@ export async function decideCorrezione(
       );
     // Riscrittura della giornata: via le timbrature esistenti, dentro quelle
     // approvate (marcate Manuale e tracciate in nota).
+    const dipInt = Number(c.dipendenteId);
+    // SCAVALLAMENTO MEZZANOTTE (caso DR011 04/08): un orario che torna
+    // indietro rispetto al passo precedente ("entrata 14:30 … uscita 03:30")
+    // appartiene al giorno DOPO. Prima veniva scritto tutto sul giorno della
+    // card e l'uscita notturna finiva alle 03:30 del giorno sbagliato,
+    // PRIMA dell'entrata.
+    let giornoOffset = 0;
+    let oraPrec = "";
+    const daInserire: { evento: EventoTimbratura; quando: Date }[] = [];
+    for (const p of proposti) {
+      if (oraPrec && p.ora < oraPrec) giornoOffset++;
+      oraPrec = p.ora;
+      const quando = new Date(`${c.giorno}T${p.ora}:00`);
+      quando.setDate(quando.getDate() + giornoOffset);
+      daInserire.push({ evento: p.evento, quando });
+    }
+    // GUARDIA REFUSI: col rollover un'"uscita 08:00" scritta per sbaglio
+    // prima dell'entrata diventerebbe un turno di 23 ore salvato in
+    // silenzio. Un turno oltre il tetto è sempre un refuso: ci si ferma
+    // QUI, prima di cancellare qualsiasi cosa.
+    const spanMs =
+      daInserire[daInserire.length - 1].quando.getTime() - daInserire[0].quando.getTime();
+    if (spanMs > MAX_TURNO_ORE * 3600_000)
+      throw new Error(
+        `Gli orari proposti coprono più di ${MAX_TURNO_ORE} ore: controllare la sequenza (un orario che torna indietro rispetto al precedente vale come giorno dopo).`,
+      );
+    // Riscrittura della giornata: via gli eventi DEL TURNO, dentro i proposti.
     const esistenti = await fetchTimbratureGiorno(c.dipendenteId, c.giorno);
     for (const e of esistenti) await deleteTimbratura(e.id);
-    const dipInt = Number(c.dipendenteId);
-    for (const p of proposti) {
+    for (const p of daInserire) {
       await insertManuale(
         cfg,
         dipInt,
         p.evento,
-        new Date(`${c.giorno}T${p.ora}:00`).toISOString(),
+        p.quando.toISOString(),
         `Correzione approvata #${correzioneId}`,
       );
     }

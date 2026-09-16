@@ -54,6 +54,20 @@ export const RELEASES: readonly Release[] = [
         audience: "direzione",
       },
       {
+        title: "Resoconto: liste esportabili in CSV",
+        description:
+          "Le quattro liste del Resoconto (in ritardo e complete, da incassare e da pagare) hanno il bottone Esporta CSV: scarica la lista intera, non solo le 200 righe mostrate a schermo.",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Turni notturni: la giornata è del turno, non del calendario",
+        description:
+          "Nella gestione timbrature la card di un giorno ora mostra il TURNO aperto quel giorno: l'uscita delle 03:30 compare come ultimo passo del turno di ieri, non come primo evento di oggi (caso DR011). E inserendo o correggendo un turno notturno, gli orari che scavallano la mezzanotte finiscono da soli sul giorno giusto — prima un'uscita alle 03:30 veniva salvata alle 03:30 del giorno sbagliato, PRIMA dell'entrata.",
+        tag: "fix",
+        audience: "gestione",
+      },
+      {
         title: "Pivot più maneggevole",
         description:
           "I gruppi si comprimono ed espandono cliccando direttamente sul nome del gruppo (non solo sulla riga del totale in fondo), e sopra la tabella ci sono i bottoni ◀ ▶ per scorrere i mesi senza litigare con le freccine della barra di Windows.",

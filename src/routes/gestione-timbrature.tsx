@@ -34,7 +34,7 @@ import type {
   SpTimbratura,
   ResocontoGiornoRiga,
 } from "@/lib/sharepoint.server";
-import { EVENTI_ATTIVI, type EventoTimbratura } from "@/lib/presenze-logic";
+import { EVENTI_ATTIVI, MAX_TURNO_ORE, type EventoTimbratura } from "@/lib/presenze-logic";
 import { formatOra, type SedeId } from "@/lib/mock-data";
 import { useLang } from "@/lib/i18n";
 
@@ -344,14 +344,32 @@ function GestioneTimbraturePage() {
         if (!entrataOra || !uscitaOra) return toast.error(t("gt.needInOut"));
         const conPausa = Boolean(pausaInizio || pausaFine);
         if (conPausa && (!pausaInizio || !pausaFine)) return toast.error(t("gt.needBreakBoth"));
+        // SCAVALLAMENTO MEZZANOTTE (caso DR011 04/08): nel turno notturno
+        // pausa e uscita cadono il giorno DOPO — un orario che torna
+        // indietro rispetto al passo precedente scala di un giorno
+        // (14:30 → 22:00 → 22:30 → 03:30 = 03:30 dell'indomani).
+        const passi = [entrataOra, ...(conPausa ? [pausaInizio, pausaFine] : []), uscitaOra];
+        let scala = 0;
+        const isoTurno: string[] = [];
+        for (let i = 0; i < passi.length; i++) {
+          if (i > 0 && passi[i] < passi[i - 1]) scala++;
+          const d = new Date(`${data}T${passi[i]}`);
+          d.setDate(d.getDate() + scala);
+          isoTurno.push(d.toISOString());
+        }
+        // GUARDIA REFUSI: col rollover un'uscita scritta per sbaglio prima
+        // dell'entrata diventerebbe un turno di 23 ore salvato in silenzio.
+        const spanMs =
+          new Date(isoTurno[isoTurno.length - 1]).getTime() - new Date(isoTurno[0]).getTime();
+        if (spanMs > MAX_TURNO_ORE * 3600_000) return toast.error(t("gt.turnoTroppoLungo"));
         const res = (await spCreateTurnoManuale({
           data: {
             operatoreId: session.id,
             dipendenteId,
-            entrata: toIso(data, entrataOra),
-            uscita: toIso(data, uscitaOra),
-            inizioPausa: conPausa ? toIso(data, pausaInizio) : undefined,
-            finePausa: conPausa ? toIso(data, pausaFine) : undefined,
+            entrata: isoTurno[0],
+            uscita: isoTurno[isoTurno.length - 1],
+            inizioPausa: conPausa ? isoTurno[1] : undefined,
+            finePausa: conPausa ? isoTurno[2] : undefined,
             note: note.trim() || undefined,
           },
         })) as unknown[];

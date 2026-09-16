@@ -14,6 +14,7 @@ import {
 } from "@/lib/sharepoint.functions";
 import type { SpTimbratura, SpCorrezione } from "@/lib/sharepoint.server";
 import { orePerGiornoDaTurni } from "@/lib/rendiconto-logic";
+import { attribuzioneTurni } from "@/lib/presenze-logic";
 import { useLang } from "@/lib/i18n";
 import { formatOra } from "@/lib/mock-data";
 
@@ -95,12 +96,16 @@ function LeMieOrePage() {
   const giorni = useMemo(() => {
     const eventi = (tim ?? []).map((e) => ({ evento: e.evento, ora: e.dataOra }));
     const calc = orePerGiornoDaTurni(eventi);
+    // Attribuzione A TURNI condivisa (presenze-logic): l'uscita notturna
+    // sta sulla riga del giorno dell'entrata, come le ore — e la correzione
+    // precompilata porta con sé anche quell'uscita (prima restava sul
+    // giorno di calendario e la riscrittura la perdeva).
+    const ordinati = [...(tim ?? [])].sort((a, b) => a.dataOra.localeCompare(b.dataOra));
     const perGiorno = new Map<string, SpTimbratura[]>();
-    for (const e of tim ?? []) {
-      const g = e.dataOra.slice(0, 10);
-      const l = perGiorno.get(g) ?? [];
-      l.push(e);
-      perGiorno.set(g, l);
+    for (const { ev, giorno } of attribuzioneTurni(ordinati)) {
+      const l = perGiorno.get(giorno) ?? [];
+      l.push(ev);
+      perGiorno.set(giorno, l);
     }
     const chiavi = new Set<string>([...perGiorno.keys(), ...calc.oreGiorno.keys()]);
     return [...chiavi]

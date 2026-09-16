@@ -109,6 +109,8 @@ In entrambi i casi: timbra l'entrata adesso e segnala la giornata da sistemare a
     titolo: "Correggere una giornata (per preposti e operatori)",
     testo: `Le giornate non si aggiustano cancellando timbrature a mano: si usano le correzioni, che riscrivono la giornata intera con gli orari indicati. Così resta traccia di tutto e le ore del Rendiconto tornano da sole.
 
+La giornata è quella del TURNO: per un turno notturno (entrata 14:30, uscita 03:30) si lavora sulla card del giorno dell'entrata, e l'uscita delle 03:30 compare lì come ultimo passo — il portale la salva da solo sul giorno dopo. Basta scrivere gli orari in sequenza: quando un orario "torna indietro" rispetto al precedente, vuol dire che è scattata la mezzanotte.
+
 Regola d'oro: mai cancellare, sempre correggere. Il cestino di SharePoint tiene 93 giorni ed è già servito una volta a recuperare timbrature sparite — meglio non doverci tornare.`,
     chiavi:
       "correzione giornata preposto operatore riscrivere manuale gestione timbrature cancellare",
@@ -245,7 +247,7 @@ Il modo più veloce di smaltirle è a gruppi: si raggruppano per controparte o d
     titolo: "Come si legge il Resoconto",
     testo: `Il Resoconto guarda le fatture aperte alla data scelta ("Situazione al…"): quanto c'è da incassare, quanto da pagare, con le fasce di ritardo e la colonna che dice da quanti giorni una fattura è scaduta (o tra quanti scade). Le passive sono col segno meno, così incollando in Excel i totali si sommano da soli.
 
-Sotto ci sono anche gli elenchi completi — tutte le fatture da incassare e da pagare, in ritardo o no. I giorni nella colonna sono rossi quando la scadenza è già passata e verdi quando deve ancora arrivare.`,
+Sotto ci sono anche gli elenchi completi — tutte le fatture da incassare e da pagare, in ritardo o no. I giorni nella colonna sono rossi quando la scadenza è già passata e verdi quando deve ancora arrivare. Ogni lista ha il suo bottone Esporta CSV, che scarica la lista intera (non solo le 200 righe mostrate a schermo).`,
     chiavi:
       "resoconto situazione ritardi fasce scaduto da incassare da pagare verde rosso giorni colori",
   },
