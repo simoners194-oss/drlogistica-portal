@@ -19,6 +19,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PresenzeRouteImport } from './routes/presenze'
 import { Route as NovitaRouteImport } from './routes/novita'
 import { Route as MezziRouteImport } from './routes/mezzi'
+import { Route as ManualeRouteImport } from './routes/manuale'
 import { Route as LeMieOreRouteImport } from './routes/le-mie-ore'
 import { Route as GestioneTimbratureRouteImport } from './routes/gestione-timbrature'
 import { Route as FinanzaRouteImport } from './routes/finanza'
@@ -84,6 +85,11 @@ const NovitaRoute = NovitaRouteImport.update({
 const MezziRoute = MezziRouteImport.update({
   id: '/mezzi',
   path: '/mezzi',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ManualeRoute = ManualeRouteImport.update({
+  id: '/manuale',
+  path: '/manuale',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LeMieOreRoute = LeMieOreRouteImport.update({
@@ -184,6 +190,7 @@ export interface FileRoutesByFullPath {
   '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/le-mie-ore': typeof LeMieOreRoute
+  '/manuale': typeof ManualeRoute
   '/mezzi': typeof MezziRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
@@ -212,6 +219,7 @@ export interface FileRoutesByTo {
   '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/le-mie-ore': typeof LeMieOreRoute
+  '/manuale': typeof ManualeRoute
   '/mezzi': typeof MezziRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
@@ -241,6 +249,7 @@ export interface FileRoutesById {
   '/finanza': typeof FinanzaRoute
   '/gestione-timbrature': typeof GestioneTimbratureRoute
   '/le-mie-ore': typeof LeMieOreRoute
+  '/manuale': typeof ManualeRoute
   '/mezzi': typeof MezziRoute
   '/novita': typeof NovitaRoute
   '/presenze': typeof PresenzeRoute
@@ -271,6 +280,7 @@ export interface FileRouteTypes {
     | '/finanza'
     | '/gestione-timbrature'
     | '/le-mie-ore'
+    | '/manuale'
     | '/mezzi'
     | '/novita'
     | '/presenze'
@@ -299,6 +309,7 @@ export interface FileRouteTypes {
     | '/finanza'
     | '/gestione-timbrature'
     | '/le-mie-ore'
+    | '/manuale'
     | '/mezzi'
     | '/novita'
     | '/presenze'
@@ -327,6 +338,7 @@ export interface FileRouteTypes {
     | '/finanza'
     | '/gestione-timbrature'
     | '/le-mie-ore'
+    | '/manuale'
     | '/mezzi'
     | '/novita'
     | '/presenze'
@@ -356,6 +368,7 @@ export interface RootRouteChildren {
   FinanzaRoute: typeof FinanzaRoute
   GestioneTimbratureRoute: typeof GestioneTimbratureRoute
   LeMieOreRoute: typeof LeMieOreRoute
+  ManualeRoute: typeof ManualeRoute
   MezziRoute: typeof MezziRoute
   NovitaRoute: typeof NovitaRoute
   PresenzeRoute: typeof PresenzeRoute
@@ -438,6 +451,13 @@ declare module '@tanstack/react-router' {
       path: '/mezzi'
       fullPath: '/mezzi'
       preLoaderRoute: typeof MezziRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manuale': {
+      id: '/manuale'
+      path: '/manuale'
+      fullPath: '/manuale'
+      preLoaderRoute: typeof ManualeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/le-mie-ore': {
@@ -572,6 +592,7 @@ const rootRouteChildren: RootRouteChildren = {
   FinanzaRoute: FinanzaRoute,
   GestioneTimbratureRoute: GestioneTimbratureRoute,
   LeMieOreRoute: LeMieOreRoute,
+  ManualeRoute: ManualeRoute,
   MezziRoute: MezziRoute,
   NovitaRoute: NovitaRoute,
   PresenzeRoute: PresenzeRoute,

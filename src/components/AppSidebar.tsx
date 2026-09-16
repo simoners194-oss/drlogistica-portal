@@ -21,6 +21,7 @@ import { canAccess, readSession, type Ruolo, type SessionSede } from "@/lib/sess
 import { sedeTimbra, anySedeTimbra } from "@/lib/mock-data";
 import { isSedeStorica, haVistaDirezione } from "@/lib/richieste-logic";
 import { useLang } from "@/lib/i18n";
+import { APP_INFO } from "@/lib/version";
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -161,12 +162,19 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {!collapsed && (
-          <div className="mt-auto px-4 py-3 text-[10px] text-muted-foreground border-t border-sidebar-border flex items-center gap-2">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-present opacity-70" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-status-present" />
-            </span>
-            Connesso a Microsoft 365
+          <div className="mt-auto">
+            {/* Versione sempre in vista (richiesta Simone 16/09): niente più
+                scroll fino al footer per capire se il publish è arrivato. */}
+            <div className="px-4 pb-1.5 text-[10px] font-medium text-muted-foreground">
+              {APP_INFO.name} v{APP_INFO.version}
+            </div>
+            <div className="px-4 py-3 text-[10px] text-muted-foreground border-t border-sidebar-border flex items-center gap-2">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-present opacity-70" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-status-present" />
+              </span>
+              Connesso a Microsoft 365
+            </div>
           </div>
         )}
       </SidebarContent>

@@ -31,6 +31,17 @@ const en = {
   "mezzi.subtitle": "Fleet management: deadlines, assignments, contracts, fines, LTZ, workshop.",
   "module.amministrazione": "Administration",
   "module.novita": "What's new",
+  "module.manuale": "Manual",
+  "fin.pivotGruppoTip": "Click to collapse or expand this group",
+  "fin.pivotScorriTip": "Scroll the months",
+  "man.title": "Manual",
+  "man.subtitle": "Got a doubt? Search it and you'll find what to do.",
+  "man.cerca": 'Search a doubt — e.g. "rule not applied", "overdue salaries", "paid on Aruba"…',
+  "man.tutte": "All sections",
+  "man.nessuna":
+    "Nothing found. Try fewer or different words — or report the gap: the manual grows with the portal.",
+  "man.nota":
+    "The manual is updated together with the portal: every new feature comes with its entry here. If an answer is missing, ask for it — it will be added.",
   "nav.modules": "Modules",
   "nav.comingSoon": "Coming soon",
   "nav.notActive": "Not active",
@@ -660,6 +671,8 @@ const en = {
   "stip.etichetta": "Label",
   "stip.etichettaFileTip": "Label in the payroll file",
   "stip.sedeAltri": "Others",
+  "fc.stipScadTip":
+    "Unpaid salaries from past payment months (total minus those marked paid in the Salaries tab).",
   "stip.importBtn": "Import COSTI file",
   "stip.importTitle": "Import monthly payroll file (xlsx)",
   "stip.importDesc":
@@ -1665,6 +1678,17 @@ const it: Record<DictKey, string> = {
   "mezzi.subtitle": "Gestione parco mezzi: scadenze, affidamenti, contratti, multe, ZTL, officina.",
   "module.amministrazione": "Amministrazione",
   "module.novita": "Novità",
+  "module.manuale": "Manuale",
+  "fin.pivotGruppoTip": "Clicca per comprimere o espandere il gruppo",
+  "fin.pivotScorriTip": "Scorri i mesi",
+  "man.title": "Manuale",
+  "man.subtitle": "Hai un dubbio? Cercalo e trovi cosa fare.",
+  "man.cerca": 'Cerca un dubbio — es. "regola non presa", "stipendi scaduto", "pagata su Aruba"…',
+  "man.tutte": "Tutte le sezioni",
+  "man.nessuna":
+    "Nessuna voce trovata. Prova con meno parole o con parole diverse — oppure segnala il buco: il manuale cresce col portale.",
+  "man.nota":
+    "Il manuale si aggiorna insieme al portale: ogni novità arriva con la sua voce qui dentro. Se una risposta manca, chiedila — verrà aggiunta.",
   "nav.modules": "Moduli",
   "nav.comingSoon": "In arrivo",
   "nav.notActive": "Non attivo",
@@ -2280,6 +2304,8 @@ const it: Record<DictKey, string> = {
   "stip.etichetta": "Etichetta",
   "stip.etichettaFileTip": "Etichetta nel file paghe",
   "stip.sedeAltri": "Altri",
+  "fc.stipScadTip":
+    "Stipendi non pagati dei mesi di pagamento già passati (totale meno i segnati pagati nella tab Stipendi).",
   "stip.importBtn": "Importa file COSTI",
   "stip.importTitle": "Importa il file paghe del mese (xlsx)",
   "stip.importDesc":

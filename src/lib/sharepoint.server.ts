@@ -4915,8 +4915,12 @@ async function fetchRegoleObbligatorie(): Promise<RegolaFinanza[]> {
   };
   return prova().catch(async () => {
     await new Promise((r) => setTimeout(r, 1500));
-    return prova().catch(() => {
-      throw new Error("Regole non caricabili in questo momento: operazione rimandata (ritenta).");
+    return prova().catch((err) => {
+      // La DIAGNOSI delle guardie (quale colonna manca, quante righe lette)
+      // deve arrivare fino al log e alla UI: l'errore generico che la
+      // scartava lasciava l'incidente delle 07:15 senza spiegazione.
+      const dettaglio = err instanceof Error ? err.message : String(err);
+      throw new Error(`Regole non caricabili (${dettaglio}) — operazione rimandata, ritentare.`);
     });
   });
 }
@@ -4932,7 +4936,40 @@ export async function fetchRegoleFinanza(): Promise<RegolaFinanza[]> {
   const items = await fetchMovimentiPages(
     `/sites/${cfg.siteId}/lists/${cfg.listRegoleFinanza}/items?expand=fields&$top=999`,
   );
-  return items.map((it) => mapRegola(cfg, it)).filter((r) => r.pattern.trim());
+  if (!items.length) return [];
+  // GUARDIE MAPPING E COMPLETEZZA (incidente 16/09/2026, sync 07:15: 4 F24
+  // classificati a euristica nonostante la regola 188 esistesse intatta).
+  // mapRegola degrada IN SILENZIO quando la mappa colonne esce monca dalla
+  // discovery: campo → "cliente", modo → "esatto", pattern → "" (e la riga
+  // sparisce col filtro) — le regole "esistono" ma non combaciano più.
+  // Con item presenti, le colonne portanti DEVONO essere mappate; e una
+  // lettura molto sotto la dimensione storica dell'archivio (92 regole al
+  // 16/09, solo in crescita) è una pagina Graph monca, non un archivio vero.
+  const F = cfg.regoleFinanzaFields;
+  for (const col of ["Pattern", "CampoMatch", "ModoMatch", "Tipologia"]) {
+    if (!F[col])
+      throw new Error(
+        `Mappa colonne RegoleFinanza incompleta (manca ${col}): classificazione rimandata — riprovare o fare "Riscopri" in Amministrazione.`,
+      );
+  }
+  const REGOLE_MINIME = 40;
+  if (items.length < REGOLE_MINIME)
+    throw new Error(
+      `Lettura regole sospetta: ${items.length} righe (attese almeno ${REGOLE_MINIME}) — classificazione rimandata.`,
+    );
+  const mappate = items.map((it) => mapRegola(cfg, it));
+  const conPattern = mappate.filter((r) => r.pattern.trim());
+  if (!conPattern.length)
+    throw new Error(
+      `${items.length} regole lette ma nessun pattern valorizzato: mapping rotto, classificazione rimandata.`,
+    );
+  if (conPattern.length < mappate.length)
+    logSp(
+      "warn",
+      "sync.regole",
+      `${mappate.length - conPattern.length} regole su ${mappate.length} senza pattern`,
+    );
+  return conPattern;
 }
 
 export async function createRegolaFinanza(input: RegolaFinanza): Promise<RegolaFinanza> {

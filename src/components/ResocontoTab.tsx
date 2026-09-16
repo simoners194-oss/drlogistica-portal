@@ -717,7 +717,13 @@ export function ResocontoTab() {
                     {fmtData(x.s.scadenza)}
                   </td>
                   <td
-                    className={`py-0.5 pr-2 text-right tabular-nums whitespace-nowrap ${dataRiferimento ? "text-primary" : "text-status-absent"}`}
+                    className={`py-0.5 pr-2 text-right tabular-nums whitespace-nowrap ${
+                      dataRiferimento
+                        ? "text-primary"
+                        : ggRitardoVis(x) > 0
+                          ? "text-status-absent"
+                          : "text-status-present"
+                    }`}
                   >
                     {ggRitardoVis(x)}
                   </td>

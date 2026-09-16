@@ -503,7 +503,44 @@ export function FlussiCassaTab() {
   const girateScadutoTot = girataQuote.reduce((s, q) => s + q.scaduto, 0);
   const girataTotaleDi = (q: (typeof girataQuote)[number]) =>
     q.scaduto + [...q.perPeriodo.values()].reduce((s, v) => s + v, 0);
-  const saldoScaduto = entrate.tot.scaduto - uscite.tot.scaduto - girateScadutoTot;
+  // SCADUTO STIPENDI (richiesta Simone 16/09): i mesi di PAGAMENTO arrivati
+  // (corrente compreso) con la spunta "Pagato" in uso portano il residuo non
+  // pagato (totale − pagati) nella colonna Scaduto della riga Stipendi ed
+  // entrano nel saldo — la cella del mese mostra i soli pagati, quindi
+  // scaduto + cella = totale del mese, senza doppi conteggi. Nella tabella
+  // "solo fatturazioni" la cella del mese corrente porta già il TOTALE
+  // pieno: lì in Scaduto vanno solo i mesi di pagamento GIÀ PASSATI. I mesi
+  // passati SENZA spunte restano fuori: storia già regolata in banca.
+  const stipendiScaduto = useMemo(() => {
+    if (!stipendiMesi) return { reale: 0, fatturato: 0 };
+    const corrente = oggiISO.slice(0, 7);
+    let passati = 0;
+    let resCorrente = 0;
+    for (const [mm, st] of Object.entries(stipendiMesi)) {
+      if (st.flaggati <= 0) continue;
+      const res = Math.max(0, st.totale - st.pagati);
+      if (mm < corrente) passati += res;
+      else if (mm === corrente) resCorrente += res;
+    }
+    return {
+      reale: Math.round((passati + resCorrente) * 100) / 100,
+      fatturato: Math.round(passati * 100) / 100,
+    };
+  }, [stipendiMesi, oggiISO]);
+  // Vista per settimana: le voci mensili non sono renderizzate (né in UI né
+  // nel CSV), quindi lo scaduto stipendi resta fuori anche dal saldo — la
+  // colonna Scaduto deve sempre quadrare per somma verticale delle righe.
+  const scadutoVoce = (nome: string, fatturato = false) =>
+    modo === "mese" && nome.trim().toLowerCase() === "stipendi"
+      ? fatturato
+        ? stipendiScaduto.fatturato
+        : stipendiScaduto.reale
+      : 0;
+  const saldoScaduto =
+    entrate.tot.scaduto -
+    uscite.tot.scaduto -
+    girateScadutoTot -
+    (modo === "mese" ? stipendiScaduto.reale : 0);
 
   // --- Prefatture (stessa copertura della Previsione) ------------------------
   const prefPer = useMemo(() => {
@@ -951,7 +988,11 @@ export function FlussiCassaTab() {
     }
     return Math.round(v * 100) / 100;
   };
-  const saldoFatScaduto = entrateFat.tot.scaduto - usciteFat.tot.scaduto - girateScadutoTot;
+  const saldoFatScaduto =
+    entrateFat.tot.scaduto -
+    usciteFat.tot.scaduto -
+    girateScadutoTot -
+    (modo === "mese" ? stipendiScaduto.fatturato : 0);
 
   const fmt = (v: number) => (Math.abs(v) >= 0.005 ? `${fmtImporto(v)}` : "—");
 
@@ -1029,9 +1070,14 @@ export function FlussiCassaTab() {
       for (const nome of nomiVoci)
         righe.push([
           nome,
-          "",
+          scadutoVoce(nome) > 0 ? num(-scadutoVoce(nome)) : "",
           ...periodi.map((p) => num(valoreVoce(nome, p.mese)?.importo ?? 0)),
-          num(periodi.reduce((s, p) => s + (valoreVoce(nome, p.mese)?.importo ?? 0), 0)),
+          num(
+            periodi.reduce(
+              (s, p) => s + (valoreVoce(nome, p.mese)?.importo ?? 0),
+              -scadutoVoce(nome),
+            ),
+          ),
         ]);
     righe.push([
       t("fc.saldo"),
@@ -1096,9 +1142,14 @@ export function FlussiCassaTab() {
       for (const nome of nomiVoci)
         righe.push([
           nome,
-          "",
+          scadutoVoce(nome, true) > 0 ? num(-scadutoVoce(nome, true)) : "",
           ...periodi.map((p) => num(valoreVoce(nome, p.mese, true)?.importo ?? 0)),
-          num(periodi.reduce((s, p) => s + (valoreVoce(nome, p.mese, true)?.importo ?? 0), 0)),
+          num(
+            periodi.reduce(
+              (s, p) => s + (valoreVoce(nome, p.mese, true)?.importo ?? 0),
+              -scadutoVoce(nome, true),
+            ),
+          ),
         ]);
     righe.push([
       t("fc.saldo"),
@@ -1742,9 +1793,17 @@ export function FlussiCassaTab() {
                           nome
                         )}
                       </td>
-                      <td className={tdN}>—</td>
+                      <td
+                        className={`${tdN} ${scadutoVoce(nome) > 0 ? "text-status-absent" : ""}`}
+                        title={scadutoVoce(nome) > 0 ? t("fc.stipScadTip") : undefined}
+                      >
+                        {scadutoVoce(nome) > 0 ? fmt(-scadutoVoce(nome)) : "—"}
+                      </td>
                       {cumulato
-                        ? serie(0, (_c, m) => valoreVoce(nome, m)?.importo ?? 0).map((v, i) => (
+                        ? serie(
+                            -scadutoVoce(nome),
+                            (_c, m) => valoreVoce(nome, m)?.importo ?? 0,
+                          ).map((v, i) => (
                             <td key={periodi[i].chiave} className={tdN}>
                               {fmt(v)}
                             </td>
@@ -1756,7 +1815,10 @@ export function FlussiCassaTab() {
                           ))}
                       <td className={tdN}>
                         {fmt(
-                          periodi.reduce((s, p) => s + (valoreVoce(nome, p.mese)?.importo ?? 0), 0),
+                          periodi.reduce(
+                            (s, p) => s + (valoreVoce(nome, p.mese)?.importo ?? 0),
+                            -scadutoVoce(nome),
+                          ),
                         )}
                       </td>
                     </tr>
@@ -1922,19 +1984,25 @@ export function FlussiCassaTab() {
                     nomiVoci.map((nome) => (
                       <tr key={`fv:${nome}`} className="border-t border-border/40">
                         <td className="py-1 pr-3">{nome}</td>
-                        <td className={tdN}>—</td>
-                        {serie(0, (_c, m) => valoreVoce(nome, m, true)?.importo ?? 0).map(
-                          (v, i) => (
-                            <td key={periodi[i].chiave} className={tdN}>
-                              {fmt(v)}
-                            </td>
-                          ),
-                        )}
+                        <td
+                          className={`${tdN} ${scadutoVoce(nome, true) > 0 ? "text-status-absent" : ""}`}
+                          title={scadutoVoce(nome, true) > 0 ? t("fc.stipScadTip") : undefined}
+                        >
+                          {scadutoVoce(nome, true) > 0 ? fmt(-scadutoVoce(nome, true)) : "—"}
+                        </td>
+                        {serie(
+                          cumulato ? -scadutoVoce(nome, true) : 0,
+                          (_c, m) => valoreVoce(nome, m, true)?.importo ?? 0,
+                        ).map((v, i) => (
+                          <td key={periodi[i].chiave} className={tdN}>
+                            {fmt(v)}
+                          </td>
+                        ))}
                         <td className={tdN}>
                           {fmt(
                             periodi.reduce(
                               (s, p) => s + (valoreVoce(nome, p.mese, true)?.importo ?? 0),
-                              0,
+                              -scadutoVoce(nome, true),
                             ),
                           )}
                         </td>

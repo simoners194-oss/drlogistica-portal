@@ -23,6 +23,7 @@ import {
   ShoppingCart,
   Landmark,
   Truck,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 import type { Ruolo } from "./session";
@@ -194,6 +195,16 @@ export const MODULES: readonly AppModule[] = [
     ready: true,
     description: "Parco mezzi: scadenze, affidamenti, contratti, multe, ZTL, officina.",
     roles: ["responsabile", "amministratore_sistema"],
+    soloDirettore: true,
+  },
+  {
+    id: "manuale",
+    title: "Manuale",
+    url: "/manuale",
+    icon: BookOpen,
+    ready: true,
+    description: "Il manuale interno: cerca un dubbio e trovi cosa fare.",
+    roles: ["amministratore_sistema"],
     soloDirettore: true,
   },
   {

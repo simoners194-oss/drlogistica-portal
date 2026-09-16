@@ -36,6 +36,54 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.75.0",
+    date: "2026-09-16",
+    entries: [
+      {
+        title: "Flussi: stipendi arretrati nella colonna Scaduto",
+        description:
+          "Gli stipendi non ancora pagati dei mesi di pagamento arrivati (mese corrente compreso) compaiono nella colonna Scaduto della riga Stipendi ed entrano nel saldo: la cella del mese mostra i pagati, lo Scaduto il resto, e la somma torna al totale. Vale dove la spunta Pagato è in uso; CSV allineato.",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Nasce il Manuale interno",
+        description:
+          'Nuovo modulo Manuale nel menù: cerchi un dubbio ("regola non presa", "pagata su Aruba", "versato vuoto") e trovi cosa fare, sezione per sezione. Si aggiorna insieme al portale: ogni novità arriva con la sua voce. Per ora è visibile a chi ha l\'abilitazione Finanze.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Pivot più maneggevole",
+        description:
+          "I gruppi si comprimono ed espandono cliccando direttamente sul nome del gruppo (non solo sulla riga del totale in fondo), e sopra la tabella ci sono i bottoni ◀ ▶ per scorrere i mesi senza litigare con le freccine della barra di Windows.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+      {
+        title: "Resoconto: giorni futuri in verde",
+        description:
+          "Negli elenchi da incassare e da pagare la colonna dei giorni ora distingue a colpo d'occhio: rosso se la scadenza è passata, verde se deve ancora arrivare.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+      {
+        title: "Versione in vista nella barra laterale",
+        description:
+          "Il numero di versione compare sotto il menù, sopra a “Connesso a Microsoft 365”: per capire se un aggiornamento è arrivato non serve più scorrere fino al fondo della pagina.",
+        tag: "improvement",
+        audience: "tutti",
+      },
+      {
+        title: "Classificazione più blindata al sync",
+        description:
+          "Il 16/09 il sync delle 07:15 ha classificato i movimenti con l'euristica nonostante le regole esistessero (mapping colonne momentaneamente rotto: regole caricate ma senza pattern). Ora un elenco di regole tutte senza pattern ferma l'operazione come un errore, invece di classificare male in silenzio; i movimenti di stamattina sono stati risistemati col Riapplica.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.74.3",
     date: "2026-09-15",
     entries: [

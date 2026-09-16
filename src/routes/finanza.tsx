@@ -1728,7 +1728,13 @@ function FinanzaPage() {
   const loadRegole = () => {
     spGetRegoleFinanza()
       .then((l) => setRegole(l as RegolaFinanza[]))
-      .catch(() => setRegole([]));
+      .catch((err) => {
+        // MAI degradare in silenzio a "archivio vuoto": con le guardie di
+        // fetchRegoleFinanza (mappa colonne monca, lettura sospetta) l'elenco
+        // vuoto senza messaggio inviterebbe a ricreare le regole (v1.75.0).
+        setRegole([]);
+        toast.error(err instanceof Error ? err.message : String(err));
+      });
     // Termini d'incasso per cliente: vivono nella stessa tab.
     spGetTerminiPagamento()
       .then((l) => setTermini(l as TermineRiga[]))

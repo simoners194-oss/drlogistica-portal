@@ -5,7 +5,7 @@
 // fiscal week e conto. Le colonne dei valori restano i mesi + Totale.
 // Due sezioni: SINTESI (allocazione × tipologia, subtotali) chiusa di
 // default e DETTAGLIO aperto; subtotali comprimibili; export CSV.
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useLang } from "../lib/i18n";
 import { esportaCsvFile } from "../lib/csv";
 import { MultiSelect } from "./MultiSelect";
@@ -121,6 +121,8 @@ function Tabella({
   totaleLabel,
   comprimiLabel,
   espandiLabel,
+  gruppoTip,
+  scorriTip,
 }: {
   righe: RigaEstesa[];
   livelli: readonly Campo[];
@@ -129,15 +131,34 @@ function Tabella({
   totaleLabel: string;
   comprimiLabel: string;
   espandiLabel: string;
+  gruppoTip: string;
+  scorriTip: string;
 }) {
   const { mesi, gruppi, sub, totMese, totale } = useMemo(
     () => aggrega(righe, livelli),
     [righe, livelli],
   );
-  // Gruppi del primo livello COMPRESSI: click sul subtotale (o comprimi
-  // tutto) e restano solo le righe di totale — lettura veloce del direttore.
+  // Gruppi del primo livello COMPRESSI: click sul subtotale, sul NOME del
+  // gruppo in una riga qualsiasi (richiesta Simone 16/09: cliccava le righe
+  // e "non si apriva niente" — il solo subtotale in fondo non bastava) o su
+  // comprimi tutto — restano le righe di totale, lettura veloce.
   const [chiusi, setChiusi] = useState<Set<string>>(new Set());
   const conSub = livelli.length > 1;
+  // Scorrimento orizzontale coi bottoni: le freccine della barra nativa di
+  // Windows sono minuscole e inaffidabili ("9 volte su 10 non va").
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scorri = (dir: 1 | -1) =>
+    scrollRef.current?.scrollBy({
+      left: dir * Math.max(240, scrollRef.current.clientWidth * 0.6),
+      behavior: "smooth",
+    });
+  const toggleGruppo = (nome: string) =>
+    setChiusi((prev) => {
+      const next = new Set(prev);
+      if (next.has(nome)) next.delete(nome);
+      else next.add(nome);
+      return next;
+    });
 
   if (!righe.length) return null;
   const cellaNum = (v: number | undefined, extra = "") => (
@@ -154,14 +175,7 @@ function Tabella({
     corpo.push(
       <tr
         key={`sub-${nome}`}
-        onClick={() =>
-          setChiusi((prev) => {
-            const next = new Set(prev);
-            if (next.has(nome)) next.delete(nome);
-            else next.add(nome);
-            return next;
-          })
-        }
+        onClick={() => toggleGruppo(nome)}
         className="cursor-pointer border-t border-border bg-muted/50 font-semibold hover:bg-muted"
       >
         <td colSpan={livelli.length} className="py-1 pr-2">
@@ -183,8 +197,11 @@ function Tabella({
         {g.vals.map((v, i) => (
           <td
             key={livelli[i]}
-            className="max-w-52 truncate py-1 pr-2 text-foreground"
-            title={v || vuotaLabel}
+            className={`max-w-52 truncate py-1 pr-2 text-foreground ${
+              conSub && i === 0 ? "cursor-pointer hover:text-primary" : ""
+            }`}
+            title={conSub && i === 0 ? gruppoTip : v || vuotaLabel}
+            onClick={conSub && i === 0 ? () => toggleGruppo(g.vals[0]) : undefined}
           >
             {v || <span className="text-muted-foreground">{vuotaLabel}</span>}
           </td>
@@ -197,25 +214,45 @@ function Tabella({
   if (conSub && gruppoCorr != null) emettiSub(gruppoCorr);
   return (
     <div>
-      {conSub && (
-        <div className="mb-1 flex gap-3 text-[11px]">
+      <div className="mb-1 flex items-center gap-3 text-[11px]">
+        {conSub && (
+          <>
+            <button
+              type="button"
+              onClick={() => setChiusi(new Set(sub.keys()))}
+              className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              {comprimiLabel}
+            </button>
+            <button
+              type="button"
+              onClick={() => setChiusi(new Set())}
+              className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              {espandiLabel}
+            </button>
+          </>
+        )}
+        <span className="ml-auto flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setChiusi(new Set(sub.keys()))}
-            className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            onClick={() => scorri(-1)}
+            title={scorriTip}
+            className="rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            {comprimiLabel}
+            ◀
           </button>
           <button
             type="button"
-            onClick={() => setChiusi(new Set())}
-            className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            onClick={() => scorri(1)}
+            title={scorriTip}
+            className="rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            {espandiLabel}
+            ▶
           </button>
-        </div>
-      )}
-      <div className="max-h-[70vh] overflow-auto">
+        </span>
+      </div>
+      <div ref={scrollRef} className="max-h-[70vh] overflow-auto">
         <table className="w-full text-[12px] leading-tight">
           <thead className="sticky top-0 z-10 bg-card">
             <tr className="border-b border-border text-left text-[11px] text-muted-foreground">
@@ -414,6 +451,8 @@ export function PivotClassificazione({
             totaleLabel={t("fin.pivotTotale")}
             comprimiLabel={t("fin.pivotComprimi")}
             espandiLabel={t("fin.pivotEspandi")}
+            gruppoTip={t("fin.pivotGruppoTip")}
+            scorriTip={t("fin.pivotScorriTip")}
           />
         </div>
       )}
@@ -462,6 +501,8 @@ export function PivotClassificazione({
                 totaleLabel={t("fin.pivotTotale")}
                 comprimiLabel={t("fin.pivotComprimi")}
                 espandiLabel={t("fin.pivotEspandi")}
+                gruppoTip={t("fin.pivotGruppoTip")}
+                scorriTip={t("fin.pivotScorriTip")}
               />
             </div>
           </>
