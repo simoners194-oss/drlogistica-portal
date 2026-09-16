@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.75.1",
+    date: "2026-09-16",
+    entries: [
+      {
+        title: "Card giornata: un turno mai chiuso non si mangia più il giorno dopo",
+        description:
+          "Con un turno rimasto senza uscita, la card del giorno inglobava anche l'intera giornata successiva (visto sulla card di DR011 del 04/08). Ora un'entrata apre sempre la propria giornata, punto.",
+        tag: "fix",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.75.0",
     date: "2026-09-16",
     entries: [
