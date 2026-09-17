@@ -21,6 +21,7 @@ python estrai_costo_orario.py \
   --presenze "Ore IMILE" \
   --stipendi "STIPENDI GENNAIO-AGOSTO.xlsx" \
   --fatture "fatture-emesse-2026.csv" \
+  --detrazioni "detrazioni.csv" \
   --out "costo-orario-imile.xlsx"
 ```
 
@@ -32,6 +33,29 @@ python estrai_costo_orario.py \
   il foglio "Fatturato e girata" resta con la sola colonna del riconosciuto.
   Filtri regolabili: `--cliente` (default `imile`), `--oggetto` (default
   `facchinagg`), `--quota-subappalto` (default `0.90`).
+- `--detrazioni` è **facoltativo**: le voci da togliere agli stipendi per isolare
+  il personale operativo dell'hub (vedi sotto).
+- `--mesi-senza-ore` fa ricomparire, come righe grigie fuori dai totali, i mesi
+  che hanno gli stipendi ma non il prospetto presenze. Di default sono omessi:
+  senza monte ore non producono un costo orario.
+
+## Le detrazioni sugli stipendi
+
+Il file stipendi porta il totale aziendale del mese. Chi non lavora all'hub non
+deve pesare sul suo costo orario, quindi le voci estranee si tolgono con un CSV:
+
+```
+mese;costo ufficio;costo extra
+marzo;3161,00;16802,00
+aprile;3161,00;16802,00
+```
+
+Prima colonna il mese in italiano, **una colonna per voce** — il nome
+dell'intestazione finisce nel foglio "Note e fonti", che riporta mese per mese
+cosa è stato tolto e quanto. Aggiungere una voce = aggiungere una colonna.
+
+Le colonne del foglio "Costo orario" non cambiano: la sottrazione avviene prima
+di scrivere, e *Stipendi netti* è già il valore depurato.
 
 Lo script stampa ore e importo di ogni mese letto e il costo orario complessivo:
 è il primo controllo che sia andato tutto bene.

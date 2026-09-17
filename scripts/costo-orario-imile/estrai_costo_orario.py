@@ -184,6 +184,44 @@ def leggi_fatture(percorso, filtro_cliente, filtro_oggetto):
     return per_mese, righe, scartate
 
 
+def leggi_detrazioni(percorso):
+    """Voci da togliere agli stipendi, per mese.
+
+    CSV con separatore ';': prima colonna il nome del mese in italiano, tutte
+    le altre sono voci da sottrarre (una colonna per voce, il nome
+    dell'intestazione serve solo per la tracciabilita' nel foglio Note).
+
+        mese;costo ufficio;costo extra
+        marzo;3161,00;16802,00
+
+    Servono a isolare il personale operativo dell'hub: quello che non lavora
+    all'hub non deve pesare sul suo costo orario.
+    """
+    def num(t):
+        t = (t or "").strip()
+        t = t.replace(".", "").replace(",", ".") if "," in t else t
+        try:
+            return float(t)
+        except ValueError:
+            return 0.0
+
+    per_mese, voci = {}, []
+    with open(percorso, encoding="utf-8-sig", newline="") as fh:
+        lettore = csv.reader(fh, delimiter=";")
+        intestazione = next(lettore, None)
+        if not intestazione or len(intestazione) < 2:
+            raise SystemExit(f"{percorso}: attese almeno due colonne (mese + una voce)")
+        voci = [c.strip() for c in intestazione[1:]]
+        for riga in lettore:
+            if not riga or not riga[0].strip():
+                continue
+            m = mese_da_nome(riga[0])
+            if not m:
+                continue
+            per_mese[m] = [num(c) for c in riga[1:]]
+    return per_mese, voci
+
+
 def intesta(ws, riga, etichette, larghezze):
     for i, (t, w) in enumerate(zip(etichette, larghezze), start=1):
         c = ws.cell(row=riga, column=i, value=t)
@@ -523,7 +561,7 @@ def foglio_fatturato(wb, mesi_ord, ore, stip, fatt, quota):
     ws.freeze_panes = f"A{R0 + 1}"
 
 
-def foglio_note(wb, fonte_presenze, fonte_stipendi, mesi_ok, mesi_ko):
+def foglio_note(wb, fonte_presenze, fonte_stipendi, mesi_ok, mesi_ko, detr=None, voci_detr=None):
     ws = wb.create_sheet("Note e fonti")
     ws.sheet_view.showGridLines = False
     ws.column_dimensions["A"].width = 118
@@ -559,6 +597,20 @@ def foglio_note(wb, fonte_presenze, fonte_stipendi, mesi_ok, mesi_ko):
         ("P", "C. Il margine calcolato copre il solo costo del personale. Attrezzature, materiali di consumo, "
               "struttura e oneri di sede non sono in questi numeri."),
         ("", ""),
+        ("S", "Voci tolte agli stipendi"),
+    ] + ([
+        ("P", "La colonna Stipendi netti e' gia' al netto di: " + ", ".join(voci_detr) + "."),
+    ] + [
+        ("P", "   " + m.capitalize() + ": " + " + ".join(
+            f"{v} {i:,.2f} \u20ac".replace(",", "X").replace(".", ",").replace("X", ".")
+            for v, i in zip(voci_detr, detr[m])) + "   (totale " +
+            f"{sum(detr[m]):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " \u20ac)")
+        for m in [x for x in MESI if x in detr]
+    ] + [
+        ("P", "Servono a isolare il personale operativo dell'hub: chi non lavora all'hub non deve "
+              "pesare sul suo costo orario."),
+        ("", ""),
+    ] if detr else [("P", "Nessuna: gli stipendi sono quelli pieni del file di origine."), ("", "")]) + [
         ("S", "Perimetro"),
         ("P", "Mesi con ore e stipendi (entrano nei totali): " + ", ".join(m.capitalize() for m in mesi_ok)),
         ("P", "Mesi con i soli stipendi (esclusi dai totali): " +
@@ -591,6 +643,12 @@ def main():
     ap.add_argument("--stipendi", required=True, help="file xlsx con gli stipendi mensili (mese in col. A, importo in col. B)")
     ap.add_argument("--out", default="costo-orario-imile.xlsx", help="workbook di analisi da produrre")
     ap.add_argument("--fatture", help="export CSV delle fatture attive dal portale (facoltativo)")
+    ap.add_argument("--mesi-senza-ore", action="store_true",
+                    help="mostra anche i mesi che hanno gli stipendi ma non il prospetto presenze "
+                         "(righe grigie, fuori dai totali); di default sono omessi")
+    ap.add_argument("--detrazioni",
+                    help="CSV delle voci da togliere agli stipendi (facoltativo): "
+                         "mese in prima colonna, una colonna per voce")
     ap.add_argument("--cliente", default="imile", help="filtro sul cliente delle fatture (default: imile)")
     ap.add_argument("--oggetto", default="facchinagg",
                     help="filtro sull'oggetto delle fatture (default: facchinagg)")
@@ -622,10 +680,23 @@ def main():
               + (f", {scartate} senza mese utilizzabile" if scartate else ""))
 
     stip = leggi_stipendi(a.stipendi)
+
+    # Le detrazioni si applicano qui, una volta sola: da qui in poi "stip" e'
+    # il netto del solo personale operativo e i fogli non sanno nulla del resto.
+    detr, voci_detr = ({}, [])
+    if a.detrazioni:
+        detr, voci_detr = leggi_detrazioni(a.detrazioni)
+        for m, importi in detr.items():
+            if m in stip:
+                stip[m] = round(stip[m] - sum(importi), 2)
+        print(f"  detrazioni: {' + '.join(voci_detr)} su {len(detr)} mesi, "
+              f"{sum(sum(v) for v in detr.values()):,.2f} \u20ac in tutto")
     if not ore:
         raise SystemExit("nessun prospetto presenze leggibile nella cartella indicata")
 
-    mesi_ord = [m for m in MESI if m in ore or m in stip]
+    # Un mese senza prospetto presenze non produce un costo orario: di default
+    # resta fuori del tutto, con --mesi-senza-ore ricompare come riga grigia.
+    mesi_ord = [m for m in MESI if m in ore or (a.mesi_senza_ore and m in stip)]
     mesi_ok = [m for m in mesi_ord if m in ore]
     mesi_ko = [m for m in mesi_ord if m not in ore]
 
@@ -640,7 +711,7 @@ def main():
     foglio_dettaglio(wb, mesi_ord, ore)
     foglio_giornaliero(wb, mesi_ord, giorni)
     foglio_fatturato(wb, mesi_ord, ore, stip, fatt, a.quota_subappalto)
-    foglio_note(wb, fonte_presenze, fonte_stipendi, mesi_ok, mesi_ko)
+    foglio_note(wb, fonte_presenze, fonte_stipendi, mesi_ok, mesi_ko, detr, voci_detr)
     wb.save(a.out)
 
     tot_ore = sum(ore[m]["ore"] for m in mesi_ok)
