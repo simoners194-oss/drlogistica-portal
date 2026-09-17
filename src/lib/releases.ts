@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.75.3",
+    date: "2026-09-17",
+    entries: [
+      {
+        title: "Ogni timbratura dice da dove arriva",
+        description:
+          'Le timbrature registrano indirizzo IP e tipo di apparecchio (es. "Android · Chrome") — anche gli inserimenti manuali, con i dati di chi li ha fatti. In Gestione timbrature si vedono passando il mouse sulla timbratura. Niente posizione GPS.',
+        tag: "improvement",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.75.2",
     date: "2026-09-17",
     entries: [

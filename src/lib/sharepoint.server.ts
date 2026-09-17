@@ -141,6 +141,11 @@ export const SP_DISPLAY = {
     Origine: "Dispositivo",
     Esito: "Esito",
     Note: "Note",
+    // Dati TECNICI del punto di timbratura (Simone 17/09, caso "quale
+    // dispositivo?"): IP e tipo di apparecchio/browser, per capire da dove
+    // è partita una timbratura quando qualcosa non torna. Niente posizione.
+    IndirizzoIP: "IndirizzoIP",
+    DispName: "DispName",
     // NB: la posizione/geolocalizzazione NON è tra le colonne attese: non viene
     // raccolta (implicazioni GDPR / Art. 4 Statuto dei Lavoratori). Il codice
     // mantiene comunque il "gancio" opzionale (F.Posizione) se un domani la si
@@ -1830,6 +1835,39 @@ export interface SpTimbratura {
   posizione?: string;
   esito?: string;
   note?: string;
+  /** IP pubblico da cui è partita la timbratura (diagnostica). */
+  indirizzoIP?: string;
+  /** Apparecchio/browser in forma leggibile, es. "Android · Chrome". */
+  dispNome?: string;
+}
+
+// "Android · Chrome", "iPhone/iPad · Safari", "Windows · Edge"… — quanto
+// basta per rispondere a "da quale dispositivo ha timbrato?".
+function dispositivoLeggibile(ua?: string): string | undefined {
+  if (!ua) return undefined;
+  const so = /iphone|ipad/i.test(ua)
+    ? "iPhone/iPad"
+    : /android/i.test(ua)
+      ? "Android"
+      : /windows/i.test(ua)
+        ? "Windows"
+        : /mac os/i.test(ua)
+          ? "Mac"
+          : /linux/i.test(ua)
+            ? "Linux"
+            : "Altro";
+  const br = /edg\//i.test(ua)
+    ? "Edge"
+    : /samsungbrowser/i.test(ua)
+      ? "Samsung Internet"
+      : /firefox|fxios/i.test(ua)
+        ? "Firefox"
+        : /chrome|crios/i.test(ua)
+          ? "Chrome"
+          : /safari/i.test(ua)
+            ? "Safari"
+            : "Altro";
+  return `${so} · ${br}`;
 }
 
 function todayIsoStart(): string {
@@ -1884,6 +1922,8 @@ export async function fetchTimbratureDaISO(fromISO: string): Promise<SpTimbratur
     F.Posizione,
     F.Esito,
     F.Note,
+    F.IndirizzoIP,
+    F.DispName,
   ]
     .filter(Boolean)
     .join(",");
@@ -1930,6 +1970,8 @@ export async function fetchTimbratureDaISO(fromISO: string): Promise<SpTimbratur
             posizione: F.Posizione ? (f[F.Posizione] as string | undefined) : undefined,
             esito: F.Esito ? (f[F.Esito] as string | undefined) : undefined,
             note: F.Note ? (f[F.Note] as string | undefined) : undefined,
+            indirizzoIP: F.IndirizzoIP ? (f[F.IndirizzoIP] as string | undefined) : undefined,
+            dispNome: F.DispName ? (f[F.DispName] as string | undefined) : undefined,
           }
         : null;
     })
@@ -2423,6 +2465,12 @@ export async function createTimbratura(input: CreateTimbraturaInput): Promise<Sp
   if (F.Esito) fields[F.Esito] = input.esito ?? "Accettata";
   if (F.Posizione && input.posizione) fields[F.Posizione] = input.posizione;
   if (F.Note && input.note) fields[F.Note] = input.note;
+  // IP e apparecchio di chi timbra (Simone 17/09): la prossima volta che
+  // "la timbratrice non funziona" si vede subito da DOVE timbrava chi.
+  // Best-effort: fuori da una richiesta web i campi restano vuoti.
+  const ctx = psuContext();
+  if (F.IndirizzoIP && ctx.ip) fields[F.IndirizzoIP] = ctx.ip;
+  if (F.DispName && ctx.userAgent) fields[F.DispName] = dispositivoLeggibile(ctx.userAgent);
 
   const created = await withDiscoveryRetry(() =>
     gatewayJson<GraphListItem<Record<string, unknown>>>(
@@ -2682,6 +2730,11 @@ async function insertManuale(
   if (F.Origine) fields[F.Origine] = "Manuale";
   if (F.Esito) fields[F.Esito] = "Accettata";
   if (F.Note && note) fields[F.Note] = note.trim();
+  // Anche sui manuali: IP e apparecchio di CHI HA INSERITO (l'operatore) —
+  // audit di chi ha scritto cosa, dopo il caso delle giornate riscritte.
+  const ctx = psuContext();
+  if (F.IndirizzoIP && ctx.ip) fields[F.IndirizzoIP] = ctx.ip;
+  if (F.DispName && ctx.userAgent) fields[F.DispName] = dispositivoLeggibile(ctx.userAgent);
   const created = await withDiscoveryRetry(() =>
     gatewayJson<GraphListItem<Record<string, unknown>>>(
       `/sites/${cfg.siteId}/lists/${cfg.listTimbrature}/items`,

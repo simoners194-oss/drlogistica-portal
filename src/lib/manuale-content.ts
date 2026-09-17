@@ -117,6 +117,16 @@ Regola d'oro: mai cancellare, sempre correggere. Il cestino di SharePoint tiene 
       "correzione giornata preposto operatore riscrivere manuale gestione timbrature cancellare",
   },
 
+  {
+    id: "pre-dispositivo",
+    sezione: "Presenze e timbrature",
+    titolo: "Da quale dispositivo è partita una timbratura",
+    testo: `Dalla versione 1.75.3 ogni timbratura registra anche l'indirizzo IP e il tipo di apparecchio (per esempio "Android · Chrome"). In Gestione timbrature basta fermarsi col mouse su una timbratura per vederli, insieme all'origine Web o Manuale.
+
+Serve per la diagnostica: se qualcuno dice "non mi ha preso la timbratura", si vede subito da dove timbrava e con cosa. Le timbrature più vecchie non hanno il dato — c'è solo da quando la funzione esiste. La posizione GPS non viene raccolta.`,
+    chiavi: "ip dispositivo apparecchio browser da dove timbrato diagnostica tooltip",
+  },
+
   // --- Richieste ----------------------------------------------------------------
   {
     id: "ric-inviare",

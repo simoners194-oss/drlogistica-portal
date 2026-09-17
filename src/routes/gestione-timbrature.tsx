@@ -796,7 +796,9 @@ function GestioneTimbraturePage() {
                             <span
                               key={tim.id}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-[12px]"
-                              title={`${tim.origine || "Web"}${tim.note ? ` · ${tim.note}` : ""}`}
+                              title={[tim.origine || "Web", tim.dispNome, tim.indirizzoIP, tim.note]
+                                .filter(Boolean)
+                                .join(" · ")}
                             >
                               {tVal("evento", tim.evento)}
                               <b className="tabular-nums text-primary">{formatOra(tim.dataOra)}</b>
