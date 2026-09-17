@@ -30,6 +30,7 @@
 # ---------------------------------------------------------------------------
 
 import argparse
+import csv
 import glob
 import os
 import re
@@ -88,7 +89,7 @@ def leggi_presenze(percorso):
         return float(v) if isinstance(v, (int, float)) else 0.0
 
     giorni = []
-    tot = dict(gg=0, ore=0.0, ord=0.0, str=0.0, dom=0.0, costo=0.0, pres=0.0, punta=0)
+    tot = dict(gg=0, ore=0.0, ord=0.0, str=0.0, dom=0.0, costo=0.0, pres=0.0, punta=0, anno=None)
     for r in ws.iter_rows(min_row=3, values_only=True):
         if not isinstance(r[C_GIORNO], (int, float)):   # salta la riga "Total" del cliente
             continue
@@ -103,6 +104,8 @@ def leggi_presenze(percorso):
             ord=n(r[C_ORD]), str=n(r[C_STR]),
             costo_ord=n(r[C_COSTO_ORD]), costo_str=n(r[C_COSTO_STR]), costo=n(r[C_COSTO]),
         ))
+        if tot["anno"] is None and hasattr(dt, "year"):
+            tot["anno"] = dt.year
         tot["gg"] += 1
         tot["ore"] += ore
         tot["ord"] += n(r[C_ORD])
@@ -134,6 +137,53 @@ def leggi_stipendi(percorso):
     return fuori
 
 
+def leggi_fatture(percorso, filtro_cliente, filtro_oggetto):
+    """Imponibile fatturato per mese, dall'export CSV del portale.
+
+    Tracciato dell'export (Finanza -> Fatture attive -> Esporta CSV, vedi
+    src/lib/csv.ts): separatore ';', BOM UTF-8, importi con la virgola
+    decimale, colonna "Mese" gia' pronta come aaaa-mm. Le colonne si
+    riconoscono per INTESTAZIONE, mai per posizione: l'export cambia
+    larghezza fra attive e passive.
+
+    Le note di credito (tipo TD04 / "nota di credito") si sottraggono.
+    """
+    def num(t):
+        # L'export scrive "393213,62": virgola decimale, niente separatore di
+        # migliaia. Se pero' il file e' stato rimaneggiato a mano il punto puo'
+        # essere decimale: il punto si butta via SOLO quando c'e' anche la virgola.
+        t = (t or "").strip()
+        t = t.replace(".", "").replace(",", ".") if "," in t else t
+        try:
+            return float(t)
+        except ValueError:
+            return 0.0
+
+    per_mese, righe, scartate = {}, 0, 0
+    with open(percorso, encoding="utf-8-sig", newline="") as fh:
+        for riga in csv.DictReader(fh, delimiter=";"):
+            intestazioni = {(k or "").strip().lower(): (v or "") for k, v in riga.items()}
+            cliente = intestazioni.get("cliente", "") or intestazioni.get("fornitore", "")
+            oggetto = f"{intestazioni.get('oggetto fattura', '')} {intestazioni.get('descrizione', '')}"
+            mese = (intestazioni.get("mese", "") or intestazioni.get("mese competenza", "")).strip()[:7]
+            if filtro_cliente and filtro_cliente not in cliente.lower():
+                continue
+            if filtro_oggetto and filtro_oggetto not in oggetto.lower():
+                continue
+            if not re.match(r"^\d{4}-\d{2}$", mese):
+                scartate += 1
+                continue
+            imponibile = num(intestazioni.get("imponibile"))
+            if imponibile == 0:
+                imponibile = num(intestazioni.get("totale"))
+            tipo = intestazioni.get("tipo", "").lower()
+            if "nota di credito" in tipo or "td04" in tipo:
+                imponibile = -abs(imponibile)
+            per_mese[mese] = per_mese.get(mese, 0.0) + imponibile
+            righe += 1
+    return per_mese, righe, scartate
+
+
 def intesta(ws, riga, etichette, larghezze):
     for i, (t, w) in enumerate(zip(etichette, larghezze), start=1):
         c = ws.cell(row=riga, column=i, value=t)
@@ -155,19 +205,22 @@ def foglio_costo(wb, mesi_ord, ore, stip, fonte_presenze, fonte_stipendi):
                 "gli stipendi mensili effettivamente pagati.")
     ws["A2"].font = SOTTOTIT
 
-    ws["A4"] = "Carico aggiuntivo su stipendi"
+    ws["A4"] = "Da netto a costo azienda"
     ws["A4"].font = NERO_B
     ws["B4"] = 0.0
     ws["B4"].font = BLU
     ws["B4"].fill = FILL_INPUT
     ws["B4"].number_format = F_PCT
     ws["B4"].border = Border(*[Side(style="thin", color="BF8F00")] * 4)
-    ws["C4"] = ("<-- cella da compilare. 0% se la colonna Stipendi e' gia' il costo azienda pieno. "
-                "Se e' la sola retribuzione, inserire qui contributi + TFR + ratei (tipicamente 25-40%).")
+    ws["C4"] = ("<-- cella da compilare. La colonna Stipendi porta i NETTI pagati ai dipendenti: "
+                "per arrivare al costo azienda mancano lordo, contributi, INAIL, TFR e ratei di 13a/14a. "
+                "Sul CCNL logistica il netto vale grosso modo la meta' del costo pieno, quindi l'ordine di "
+                "grandezza e' +80/100%, non il +25/40% che si userebbe partendo da un lordo. A 0% le colonne "
+                "Costo leggono il NETTO per ora, che non e' la spesa dell'azienda.")
     ws["C4"].font = SOTTOTIT
 
     testate = ["Mese", "Ore riconosciute", "Riconosciuto\n€", "€/h\nriconosciuto",
-               "Stipendi\n€", "Costo azienda\n€", "Costo\n€/h",
+               "Stipendi netti\n€", "Costo azienda\n€", "Costo\n€/h",
                "Margine\n€", "Margine\n€/h", "Margine\n%"]
     larghezze = [13, 17, 15, 13, 15, 15, 11, 15, 11, 10]
     R0 = 6
@@ -242,7 +295,7 @@ def foglio_costo(wb, mesi_ord, ore, stip, fonte_presenze, fonte_stipendi):
         "Come si leggono le colonne",
         "  Ore riconosciute / Riconosciuto € = somma dei giorni del prospetto presenze iMile,",
         "     ricalcolata riga per riga (foglio Giornaliero) e non copiata dal totale del cliente.",
-        "  Costo azienda € = Stipendi × (1 + carico di B4).",
+        "  Costo azienda € = Stipendi netti × (1 + B4). A B4 = 0% legge il NETTO, non la spesa azienda.",
         "  Costo €/h = Costo azienda ÷ Ore riconosciute: e' la risposta alla domanda del proprietario.",
         "  Margine = differenza fra riconosciuto e costo del personale. E' LORDO: non toglie",
         "     attrezzature, materiali, struttura e oneri di sede.",
@@ -365,6 +418,111 @@ def foglio_giornaliero(wb, mesi_ord, giorni_per_mese):
     ws.freeze_panes = "A5"
 
 
+def foglio_fatturato(wb, mesi_ord, ore, stip, fatt, quota):
+    """Riconosciuto dal prospetto vs fatturato, e la ripartizione col subappalto.
+
+    Il 90/10 si calcola sul fatturato quando c'e', altrimenti ripiega sul
+    riconosciuto del prospetto: cosi' il foglio dice qualcosa anche prima che
+    l'export fatture sia disponibile.
+    """
+    ws = wb.create_sheet("Fatturato e girata")
+    ws.sheet_view.showGridLines = False
+
+    ws["A1"] = "Riconosciuto, fatturato e quota al subappalto"
+    ws["A1"].font = TIT
+    ws["A2"] = ("DR Logistica fattura a iMile il 100% del prospetto e gira una quota a DR Logistics, "
+                "che lavora in subappalto sull'hub.")
+    ws["A2"].font = SOTTOTIT
+
+    ws["A4"] = "Quota al subappalto"
+    ws["A4"].font = NERO_B
+    ws["B4"] = quota
+    ws["B4"].font = BLU
+    ws["B4"].fill = FILL_INPUT
+    ws["B4"].number_format = F_PCT
+    ws["C4"] = "<-- cella da compilare: la percentuale girata a DR Logistics. Il resto resta in casa."
+    ws["C4"].font = SOTTOTIT
+
+    testate = ["Mese", "Riconosciuto \u20ac\n(prospetto)", "Fatturato \u20ac\n(imponibile)",
+               "Scostamento\n\u20ac", "Scostamento\n%", "Base\nripartizione \u20ac",
+               "Al subappalto\n\u20ac", "Trattenuto\n\u20ac", "Stipendi netti\n\u20ac",
+               "Trattenuto \u2212 netti\n\u20ac"]
+    R0 = 6
+    intesta(ws, R0, testate, [13, 16, 16, 13, 12, 15, 14, 13, 14, 15])
+
+    r = R0 + 1
+    primo = r
+    for m in mesi_ord:
+        o = ore.get(m)
+        if not o:
+            continue
+        ws.cell(row=r, column=1, value=m.capitalize()).font = NERO_B
+        ws.cell(row=r, column=2, value=round(o["costo"], 2)).font = BLU
+        # Il CSV fatture indicizza per aaaa-mm; qui i mesi girano per nome.
+        chiave = f"{o['anno']}-{MESI.index(m) + 1:02d}" if o.get("anno") else None
+        imp = fatt.get(chiave) if fatt and chiave else None
+        c = ws.cell(row=r, column=3, value=round(imp, 2) if imp is not None else None)
+        c.font = BLU
+        if imp is None:
+            c.fill = FILL_FUORI
+        ws.cell(row=r, column=4, value=f'=IF(C{r}="","",C{r}-B{r})')
+        ws.cell(row=r, column=5, value=f'=IF(OR(C{r}="",B{r}=0),"",D{r}/B{r})')
+        ws.cell(row=r, column=6, value=f'=IF(C{r}="",B{r},C{r})')
+        ws.cell(row=r, column=7, value=f"=F{r}*$B$4")
+        ws.cell(row=r, column=8, value=f"=F{r}-G{r}")
+        ws.cell(row=r, column=9, value=round(stip.get(m, 0.0), 2)).font = BLU
+        ws.cell(row=r, column=10, value=f"=H{r}-I{r}")
+        r += 1
+    ultimo = r - 1
+
+    ws.cell(row=r, column=1, value="Totale").font = NERO_B
+    vuoto = f"COUNT(C{primo}:C{ultimo})=0"
+    for col in (2, 9):
+        L = get_column_letter(col)
+        ws.cell(row=r, column=col, value=f"=SUM({L}{primo}:{L}{ultimo})")
+    for col in (3, 4):
+        L = get_column_letter(col)
+        ws.cell(row=r, column=col, value=f'=IF({vuoto},"",SUM({L}{primo}:{L}{ultimo}))')
+    ws.cell(row=r, column=5, value=f'=IF(OR({vuoto},B{r}=0),"",D{r}/B{r})')
+    for col in (6, 7, 8, 10):
+        L = get_column_letter(col)
+        ws.cell(row=r, column=col, value=f"=SUM({L}{primo}:{L}{ultimo})")
+    for col in range(1, 11):
+        c = ws.cell(row=r, column=col)
+        c.font = NERO_B
+        c.fill = FILL_TOT
+        c.border = BORDO_SOPRA
+
+    for rr in range(R0 + 1, r + 1):
+        for col in range(2, 11):
+            c = ws.cell(row=rr, column=col)
+            if rr != r and (c.font is None or c.font.color is None or c.font.color.rgb != "000000FF"):
+                c.font = NERO
+            c.number_format = F_PCT if col == 5 else F_EUR0
+
+    note = [
+        "",
+        "Come leggerlo",
+        "  Scostamento = fatturato meno riconosciuto dal prospetto. Diverso da zero vuol dire che a iMile",
+        "     e' stato fatturato un monte ore diverso da quello che il suo stesso prospetto riconosce:",
+        "     e' la prima cosa da guardare, prima di qualunque ragionamento sul margine.",
+        "  Base ripartizione = il fatturato quando c'e', altrimenti il riconosciuto del prospetto.",
+        "  Trattenuto \u2212 netti = quello che resta in casa meno i netti pagati ai dipendenti.",
+        "",
+        "Attenzione a cosa NON dice l'ultima colonna",
+        "  I netti in colonna I sono l'importo del file stipendi, che non distingue la sede e non e' il",
+        "  costo azienda (mancano lordo, contributi, INAIL, TFR e ratei). Finche' non si usa l'export",
+        "  COSTI per sede del portale, quella differenza indica un ordine di grandezza, non un risultato.",
+        "",
+        "Da chiarire per chiudere il conto: se gli operatori dell'hub sono dipendenti del subappaltatore,",
+        "i netti di colonna I non sono il costo di queste ore e il confronto va rifatto sulle sue fatture.",
+    ]
+    for i, t in enumerate(note):
+        c = ws.cell(row=r + 2 + i, column=1, value=t)
+        c.font = NERO_B if t and not t.startswith(" ") else SOTTOTIT
+    ws.freeze_panes = f"A{R0 + 1}"
+
+
 def foglio_note(wb, fonte_presenze, fonte_stipendi, mesi_ok, mesi_ko):
     ws = wb.create_sheet("Note e fonti")
     ws.sheet_view.showGridLines = False
@@ -393,9 +551,11 @@ def foglio_note(wb, fonte_presenze, fonte_stipendi, mesi_ok, mesi_ko):
               "Tutta l'analisi assume che quell'importo sia esattamente e soltanto il personale dell'hub iMile. "
               "Se comprende altre sedi il costo orario risulta gonfiato; se esclude capi turno o "
               "amministrativi di sede, e' sottostimato."),
-        ("P", "B. \"Stipendi\" non e' automaticamente \"costo azienda\". Se l'importo e' la sola retribuzione, "
-              "mancano contributi, TFR e ratei di tredicesima e quattordicesima: e' esattamente a questo "
-              "che serve la cella gialla B4 del foglio \"Costo orario\"."),
+        ("P", "B. Gli stipendi in colonna sono NETTI (confermato). Fra il netto e la spesa dell'azienda "
+              "ci sono lordo, contributi, INAIL, TFR e ratei di 13a/14a: sul CCNL logistica il netto vale "
+              "grosso modo meta' del costo pieno. Finche' B4 resta a 0% la colonna Costo e' netto per ora, "
+              "non spesa. La strada pulita e' l'export COSTI per sede del portale (Finanza -> Stipendi), "
+              "dove \"Totale costo\" e' gia' retribuzione + contributi + INAIL + ferie + 13a/14a + TFR."),
         ("P", "C. Il margine calcolato copre il solo costo del personale. Attrezzature, materiali di consumo, "
               "struttura e oneri di sede non sono in questi numeri."),
         ("", ""),
@@ -430,6 +590,12 @@ def main():
     ap.add_argument("--presenze", required=True, help="cartella con i file PRESENZE IMILE <MESE>.xlsx")
     ap.add_argument("--stipendi", required=True, help="file xlsx con gli stipendi mensili (mese in col. A, importo in col. B)")
     ap.add_argument("--out", default="costo-orario-imile.xlsx", help="workbook di analisi da produrre")
+    ap.add_argument("--fatture", help="export CSV delle fatture attive dal portale (facoltativo)")
+    ap.add_argument("--cliente", default="imile", help="filtro sul cliente delle fatture (default: imile)")
+    ap.add_argument("--oggetto", default="facchinagg",
+                    help="filtro sull'oggetto delle fatture (default: facchinagg)")
+    ap.add_argument("--quota-subappalto", type=float, default=0.90,
+                    help="quota girata al subappaltatore, 0-1 (default: 0.90)")
     a = ap.parse_args()
 
     if not os.path.isdir(a.presenze):
@@ -449,6 +615,12 @@ def main():
         print(f"  {m:10s} {ore[m]['gg']:2d} giorni  {ore[m]['ore']:>10,.2f} ore  "
               f"{ore[m]['costo']:>12,.2f} € riconosciuti")
 
+    fatt = {}
+    if a.fatture:
+        fatt, righe, scartate = leggi_fatture(a.fatture, a.cliente.lower(), a.oggetto.lower())
+        print(f"  fatture: {righe} righe su {len(fatt)} mesi"
+              + (f", {scartate} senza mese utilizzabile" if scartate else ""))
+
     stip = leggi_stipendi(a.stipendi)
     if not ore:
         raise SystemExit("nessun prospetto presenze leggibile nella cartella indicata")
@@ -467,6 +639,7 @@ def main():
     foglio_costo(wb, mesi_ord, ore, stip, fonte_presenze, fonte_stipendi)
     foglio_dettaglio(wb, mesi_ord, ore)
     foglio_giornaliero(wb, mesi_ord, giorni)
+    foglio_fatturato(wb, mesi_ord, ore, stip, fatt, a.quota_subappalto)
     foglio_note(wb, fonte_presenze, fonte_stipendi, mesi_ok, mesi_ko)
     wb.save(a.out)
 
