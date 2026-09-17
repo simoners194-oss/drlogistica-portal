@@ -13,6 +13,30 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { LanguageProvider } from "@/lib/i18n";
+import { ricaricaSeAggiornato } from "@/lib/versione-client";
+
+// SENTINELLA D'AGGIORNAMENTO (caso timbratrice di Cerro, 16/09): dopo una
+// publish le schede rimaste aperte con la versione vecchia restano mute.
+// Ogni 4 minuti (e a ogni ritorno sulla scheda, o al ritorno della rete)
+// si confronta la versione propria con quella pubblicata su /versione:
+// se è cambiata, la pagina si ricarica da sola. Una sola ricarica per
+// versione vista: mai loop.
+function SentinellaAggiornamento() {
+  useEffect(() => {
+    const controlla = () => {
+      if (!document.hidden) void ricaricaSeAggiornato();
+    };
+    const timer = window.setInterval(controlla, 4 * 60_000);
+    document.addEventListener("visibilitychange", controlla);
+    window.addEventListener("online", controlla);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", controlla);
+      window.removeEventListener("online", controlla);
+    };
+  }, []);
+  return null;
+}
 
 function NotFoundComponent() {
   return (
@@ -41,6 +65,10 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    // Una scheda vecchia che crasha dopo una publish (chunk spariti) deve
+    // potersi auto-guarire anche da qui: la sentinella normale non è montata
+    // dentro la pagina d'errore.
+    void ricaricaSeAggiornato();
   }, [error]);
 
   return (
@@ -148,6 +176,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <LanguageProvider>
+        <SentinellaAggiornamento />
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
         <Toaster position="top-right" richColors closeButton />

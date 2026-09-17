@@ -34,7 +34,7 @@ const en = {
   "module.manuale": "Manual",
   "fin.pivotGruppoTip": "Click to collapse or expand this group",
   "gt.turnoTroppoLungo":
-    "The shift spans more than 16 hours: check the times (a time earlier than the previous step counts as the next day).",
+    "The shift spans more than 24 hours: check the times (a time earlier than the previous step counts as the next day).",
   "fin.pivotScorriTip": "Scroll the months",
   "man.title": "Manual",
   "man.subtitle": "Got a doubt? Search it and you'll find what to do.",
@@ -1683,7 +1683,7 @@ const it: Record<DictKey, string> = {
   "module.manuale": "Manuale",
   "fin.pivotGruppoTip": "Clicca per comprimere o espandere il gruppo",
   "gt.turnoTroppoLungo":
-    "Il turno supera le 16 ore: controlla gli orari (un orario che torna indietro rispetto al passo precedente vale come giorno dopo).",
+    "Il turno supera le 24 ore: controlla gli orari (un orario che torna indietro rispetto al passo precedente vale come giorno dopo).",
   "fin.pivotScorriTip": "Scorri i mesi",
   "man.title": "Manuale",
   "man.subtitle": "Hai un dubbio? Cercalo e trovi cosa fare.",

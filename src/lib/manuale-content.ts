@@ -41,8 +41,9 @@ export const MANUALE: readonly VoceManuale[] = [
     titolo: "La pagina sembra vecchia o si comporta in modo strano",
     testo: `Dopo un aggiornamento del portale il browser a volte tiene in memoria la versione precedente, e i sintomi sono i più vari: bottoni che non rispondono, colonne fuori posto, un dato appena corretto che sembra ancora sbagliato.
 
-Prima di qualsiasi altra cosa fai una ricarica forzata: Ctrl+F5 sul computer, trascina la pagina verso il basso sul telefono. Nove segnalazioni su dieci finiscono qui.`,
-    chiavi: "ctrl f5 refresh cache aggiorna non funziona bottone bloccato client stale",
+Dalla versione 1.75.2 ogni pagina controlla da sola la versione (ogni 4 minuti e quando torna in primo piano) e si ricarica quando è rimasta indietro: il problema della "timbratrice muta dopo l'aggiornamento" è chiuso lì. Se una pagina ti sembra comunque strana, la ricarica forzata resta la prima mossa: Ctrl+F5 sul computer, trascina la pagina verso il basso sul telefono.`,
+    chiavi:
+      "ctrl f5 refresh cache aggiorna non funziona bottone bloccato client stale timbratrice muta versione vecchia",
   },
   {
     id: "gen-versione",
@@ -91,9 +92,9 @@ Il turno di notte funziona: se entri alle 22 ed esci alle 2 la giornata resta un
     id: "pre-devi-entrata",
     sezione: "Presenze e timbrature",
     titolo: '"Devi prima registrare l\'entrata"',
-    testo: `Il portale te lo dice quando per lui non sei in servizio. Le cause tipiche sono due: hai dimenticato l'entrata, oppure ieri è rimasto un turno aperto (entrata senza uscita) e dopo troppe ore il portale è ripartito da zero.
+    testo: `Il portale te lo dice quando per lui non sei in servizio. Le cause tipiche sono due: hai dimenticato l'entrata, oppure ieri è rimasto un turno aperto (entrata senza uscita) e dopo 24 ore il portale è ripartito da zero.
 
-In entrambi i casi: timbra l'entrata adesso e segnala la giornata da sistemare al preposto.`,
+In entrambi i casi: timbra l'entrata adesso e segnala la giornata da sistemare al preposto. Caso inverso: se ieri hai dimenticato l'USCITA e oggi l'Entrata risulta bloccata, timbra prima l'Uscita (chiude il turno di ieri) e poi l'Entrata — la giornata di ieri la sistema il preposto con la correzione.`,
     chiavi: "devi prima registrare entrata errore uscita rifiutata non timbra",
   },
   {

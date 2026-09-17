@@ -40,6 +40,8 @@ import {
   spGetMiaSettimana,
 } from "@/lib/sharepoint.functions";
 import { accoda, isErroreRete, leggiCoda, salvaCoda, svuotaCoda } from "@/lib/timbratura-offline";
+import { ricaricaSeAggiornato, versioneViva } from "@/lib/versione-client";
+import { APP_INFO } from "@/lib/version";
 import { Undo2 } from "lucide-react";
 
 export const Route = createFileRoute("/presenze")({
@@ -174,15 +176,28 @@ function PresenzePage() {
     flushingRef.current = true;
     try {
       const esito = await svuotaCoda(async (item) => {
-        await spCreateTimbratura({
-          data: {
-            dipendenteId: me.id,
-            evento: item.evento,
-            origine: "Web",
-            note: "Recuperata offline",
-            dataOraClient: item.dataOra,
-          },
-        });
+        try {
+          await spCreateTimbratura({
+            data: {
+              dipendenteId: me.id,
+              evento: item.evento,
+              origine: "Web",
+              note: "Recuperata offline",
+              dataOraClient: item.dataOra,
+            },
+          });
+        } catch (err) {
+          // Scheda VECCHIA dopo una publish: l'endpoint risponde errore
+          // "vero" (non di rete) e svuotaCoda scarterebbe la timbratura per
+          // sempre. Se la versione pubblicata è diversa dalla nostra, il
+          // giro si ferma come fosse rete assente (coda conservata) e la
+          // sentinella ricarica la pagina: la coda riparte sul bundle nuovo.
+          if (!isErroreRete(err) && (await versioneViva()) !== APP_INFO.version) {
+            void ricaricaSeAggiornato();
+            throw new Error("fetch failed: versione vecchia, coda conservata");
+          }
+          throw err;
+        }
       });
       setCodaCount(esito.rimaste);
       if (esito.inviate > 0) {
@@ -296,6 +311,15 @@ function PresenzePage() {
           description: t("presenze.offlineQueuedMsg"),
           duration: 8000,
         });
+      } else if (
+        await ricaricaSeAggiornato(() => {
+          // Scheda vecchia dopo una publish: la timbratura NON va persa —
+          // in coda con l'ora VERA della pressione, poi la pagina si
+          // ricarica da sola e la coda parte sul portale aggiornato.
+          accoda(tipo, new Date().toISOString());
+        })
+      ) {
+        return;
       } else {
         toast.error(t("presenze.entryNotSaved"), {
           description: err instanceof Error ? err.message : String(err),

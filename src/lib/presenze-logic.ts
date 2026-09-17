@@ -22,10 +22,13 @@ export const UNDO_TIMBRATURA_MINUTI = 5;
 // mezzanotte: l'uscita chiude l'entrata aperta anche se il giorno è cambiato.
 // Oltre il tetto, il turno si considera dimenticato: l'Entrata torna
 // disponibile e il turno aperto finisce nelle anomalie da sanare.
-// 13 → 16 (ok Simone 11/09): i turni spezzati di Cerro al Lambro Zingali
-// (es. 4:00→18:00 con pausa lunga) sono 14h di calendario e il tetto a 13
-// rifiutava l'uscita con "devi prima registrare l'entrata".
-export const MAX_TURNO_ORE = 16;
+// 13 → 16 (ok Simone 11/09) → 24 (ordine Simone 17/09: "le persone fanno
+// turni spezzati lunghi" — es. entrata all'alba e uscita in tarda serata,
+// oltre le 16h di calendario l'uscita veniva rifiutata). Contropartita
+// accettata: un turno DIMENTICATO (senza uscita) blocca l'Entrata del
+// giorno dopo finché non sono passate 24h — si sana con la correzione
+// della giornata o timbrando prima l'Uscita del turno vecchio.
+export const MAX_TURNO_ORE = 24;
 
 /** Evento con orario, indipendente dal nome del campo client/server. */
 export interface EventoConOra {
@@ -55,7 +58,7 @@ export function attribuzioneTurni<T extends { evento: string; dataOra: string }>
     // turno precedente è rimasto aperto (senza uscita): il caso DR011
     // 04→05/08 mostrava l'INTERA giornata del 5 dentro la card del 4,
     // perché il turno del 4 mai chiuso arrivava a ridosso dell'entrata del
-    // 5 restando sotto il tetto delle 16 ore. Le doppie entrate ravvicinate
+    // 5 restando sotto il tetto del turno. Le doppie entrate ravvicinate
     // non esistono più (macchina a stati sana + pulizia doppioni 16/09).
     if (t.evento === "entrata") giornoTurno = t.dataOra.slice(0, 10);
     out.push({ ev: t, giorno: giornoTurno ?? t.dataOra.slice(0, 10) });

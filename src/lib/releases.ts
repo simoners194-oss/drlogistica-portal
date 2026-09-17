@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.75.2",
+    date: "2026-09-17",
+    entries: [
+      {
+        title: "Turni fino a 24 ore",
+        description:
+          "Il tetto del turno passa da 16 a 24 ore: i turni spezzati lunghi (entrata all'alba, uscita in tarda serata) non si vedono più rifiutare l'uscita. Attenzione al rovescio: chi dimentica l'uscita trova l'Entrata bloccata il giorno dopo finché non passano 24 ore — in quel caso si timbra prima l'Uscita del turno vecchio, o si chiede la correzione.",
+        tag: "improvement",
+        audience: "tutti",
+      },
+      {
+        title: "Il portale si aggiorna da solo: basta schede rimaste indietro",
+        description:
+          "Dopo ogni aggiornamento del portale, le pagine rimaste aperte con la versione vecchia smettevano di funzionare finché qualcuno non ricaricava — è il motivo per cui la timbratrice di sede si bloccava dopo le pubblicazioni. Ora ogni pagina controlla da sola la versione (ogni 4 minuti, e quando torna in primo piano) e si ricarica quando serve. E se una timbratura arriva proprio in quel momento, va in coda con l'orario vero e parte da sola dopo la ricarica: non si perde più.",
+        tag: "fix",
+        audience: "tutti",
+      },
+    ],
+  },
+  {
     version: "1.75.1",
     date: "2026-09-16",
     entries: [
