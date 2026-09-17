@@ -40,3 +40,6 @@ scripts/aruba-prima-nota/config.json
 scripts/aruba-prima-nota/scaricati/
 scripts/aruba-prima-nota/errori/
 scripts/aruba-prima-nota/ricognizione/
+
+# Costo orario iMile: i sorgenti e il workbook contengono buste paga
+scripts/costo-orario-imile/*.xlsx
