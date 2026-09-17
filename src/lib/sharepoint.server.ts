@@ -144,8 +144,11 @@ export const SP_DISPLAY = {
     // Dati TECNICI del punto di timbratura (Simone 17/09, caso "quale
     // dispositivo?"): IP e tipo di apparecchio/browser, per capire da dove
     // è partita una timbratura quando qualcosa non torna. Niente posizione.
+    // NB: la colonna si chiama "Apparecchio" (creata 17/09) — l'omonima
+    // "DispName" della lista è il sotto-campo di sistema della colonna GPS
+    // ("GPS: nome"), in sola lettura: la discovery la scarta da sola.
     IndirizzoIP: "IndirizzoIP",
-    DispName: "DispName",
+    DispName: "Apparecchio",
     // NB: la posizione/geolocalizzazione NON è tra le colonne attese: non viene
     // raccolta (implicazioni GDPR / Art. 4 Statuto dei Lavoratori). Il codice
     // mantiene comunque il "gancio" opzionale (F.Posizione) se un domani la si

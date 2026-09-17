@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.75.4",
+    date: "2026-09-17",
+    entries: [
+      {
+        title: "Apparecchio delle timbrature nella colonna giusta",
+        description:
+          'L\'IP arrivava, il tipo di apparecchio no: la colonna prevista era in realtà un campo di sistema della geolocalizzazione, in sola lettura. Creata la colonna vera (Apparecchio) e agganciata: dal prossimo aggiornamento ogni timbratura porta anche "Android · Chrome" e simili.',
+        tag: "fix",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.75.3",
     date: "2026-09-17",
     entries: [
