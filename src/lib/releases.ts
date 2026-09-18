@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.75.6",
+    date: "2026-09-18",
+    entries: [
+      {
+        title: "Anomalie dei turni: finestra allargata a 60 giorni",
+        description:
+          "La lista delle anomalie (turni e pause non chiusi) copriva 14 giorni: una giornata non sistemata in tempo spariva dalla lista pur restando aperta. Ora copre 60 giorni — le anomalie non escono più di scena prima di essere state corrette o scartate. Riapparirà anche il pregresso ancora aperto delle ultime settimane: è voluto.",
+        tag: "improvement",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.75.5",
     date: "2026-09-18",
     entries: [

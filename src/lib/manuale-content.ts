@@ -118,6 +118,15 @@ Regola d'oro: mai cancellare, sempre correggere. Il cestino di SharePoint tiene 
     chiavi:
       "correzione giornata preposto operatore riscrivere manuale gestione timbrature cancellare",
   },
+  {
+    id: "pre-anomalie-turni",
+    sezione: "Presenze e timbrature",
+    titolo: "Le anomalie dei turni (turno o pausa non chiusi)",
+    testo: `Il tab Anomalie di Gestione timbrature elenca le giornate passate con un turno o una pausa rimasti aperti: finché non vengono chiusi, le ore di quella giornata non si conteggiano. Il giorno corrente è escluso (il turno può essere ancora in corso); i turni rimasti aperti IERI hanno il loro riquadro in cima alla pagina.
+
+La lista copre gli ultimi 60 giorni: un'anomalia resta lì finché non la si corregge (bottone Correggi, che precompila l'inserimento) o non la si scarta perché il vuoto è giustificato (riposo, ferie, permesso). Non lasciarle invecchiare: dopo i 60 giorni spariscono dalla lista ma il buco nelle ore resta — a quel punto si sistema da Turni del giorno scegliendo la data a mano.`,
+    chiavi: "anomalie turno non chiuso pausa aperta 60 giorni correggi scarta ore mancanti",
+  },
 
   {
     id: "pre-dispositivo",

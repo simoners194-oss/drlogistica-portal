@@ -499,7 +499,7 @@ const en = {
   "gt.restrictedMsg": "This section is reserved for authorized back-office operators.",
   "gt.tabInsert": "Insert",
   "gt.tabAnomalies": "Anomalies",
-  "gt.anomaliesTitle": "Anomalies (last 14 days)",
+  "gt.anomaliesTitle": "Anomalies (last 60 days)",
   "gt.anomaliesDesc": "Past days with an unclosed shift or break. Today is excluded.",
   "gt.anomaliesNone": "No anomalies detected. All good. 🎉",
   "gt.fix": "Fix",
@@ -2136,7 +2136,7 @@ const it: Record<DictKey, string> = {
   "gt.restrictedMsg": "Questa sezione è riservata agli operatori abilitati.",
   "gt.tabInsert": "Inserimento",
   "gt.tabAnomalies": "Anomalie",
-  "gt.anomaliesTitle": "Anomalie (ultimi 14 giorni)",
+  "gt.anomaliesTitle": "Anomalie (ultimi 60 giorni)",
   "gt.anomaliesDesc":
     "Giornate passate con turno o pausa non chiusi. Il giorno corrente è escluso.",
   "gt.anomaliesNone": "Nessuna anomalia rilevata. Tutto in ordine. 🎉",

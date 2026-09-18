@@ -130,7 +130,9 @@ function GestioneTimbraturePage() {
   }
 
   function loadAnomalie() {
-    spGetAnomalie({ data: { giorni: 14 } })
+    // 60 giorni (era 14, deciso da Simone 18/09): le anomalie non possono
+    // uscire dalla lista prima di essere state chiuse o scartate.
+    spGetAnomalie({ data: { giorni: 60 } })
       .then((list) => setAnomalie(list as AnomaliaItem[]))
       .catch((err) => {
         setAnomalie([]);

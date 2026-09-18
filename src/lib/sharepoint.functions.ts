@@ -2218,7 +2218,7 @@ export const spCreateTurnoManuale = createServerFn({ method: "POST" })
 
 export const spGetAnomalie = createServerFn({ method: "GET" })
   .inputValidator((input?: { giorni?: number }) => ({
-    giorni: input?.giorni && input.giorni > 0 ? Math.floor(input.giorni) : 14,
+    giorni: input?.giorni && input.giorni > 0 ? Math.floor(input.giorni) : 60,
   }))
   .handler(async ({ data }): Promise<AnomaliaItem[]> => {
     const me = await currentUser();

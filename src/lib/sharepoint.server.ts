@@ -2052,7 +2052,7 @@ export async function scartaAnomalia(
   logSp("info", "anomalie.scarta", `Anomalia scartata: ${chiave} (${scartataDa})`);
 }
 
-export async function computeAnomalie(giorni = 14): Promise<AnomaliaItem[]> {
+export async function computeAnomalie(giorni = 60): Promise<AnomaliaItem[]> {
   const started = Date.now();
   // Finestra: dagli ultimi `giorni` fino a IERI (oggi è in corso → escluso).
   const from = new Date();
