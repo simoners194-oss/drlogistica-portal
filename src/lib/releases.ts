@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.76.0",
+    date: "2026-09-18",
+    entries: [
+      {
+        title: "Cambia il PIN da solo, con l'email",
+        description:
+          "Dalla pagina di accesso: \"PIN dimenticato? Cambialo con l'email\". Scrivi il tuo codice dipendente, ricevi un codice di verifica di 6 cifre all'email registrata in ufficio e scegli il PIN nuovo. Il codice vale 15 minuti e una volta sola. Se non hai un'email registrata, chiedi in ufficio di aggiungerla alla tua scheda.",
+        tag: "feature",
+        audience: "tutti",
+      },
+    ],
+  },
+  {
     version: "1.75.7",
     date: "2026-09-18",
     entries: [

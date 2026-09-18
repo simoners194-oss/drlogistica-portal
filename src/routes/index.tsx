@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useNavigate } from "@tanstack/react-router";
 import { Logo } from "@/components/Logo";
 import { useEffect, useState } from "react";
@@ -155,7 +155,15 @@ function Index() {
               </Button>
             </form>
 
-            <p className="mt-6 text-[11px] text-muted-foreground text-center">
+            <p className="mt-4 text-[12px] text-center">
+              <Link
+                to="/cambia-pin"
+                className="text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                {t("login.pinDimenticato")}
+              </Link>
+            </p>
+            <p className="mt-4 text-[11px] text-muted-foreground text-center">
               {t("login.msSoon")}
             </p>
           </div>

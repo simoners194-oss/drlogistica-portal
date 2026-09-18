@@ -194,6 +194,10 @@ import {
   getLastSyncAt,
   getSpLog,
   loginByCodicePin,
+  richiediCambioPin,
+  confermaCambioPin,
+  type RichiestaCambioPinResult,
+  type ConfermaCambioPinResult,
   markSync,
   runSelfTest,
   uploadGiustificativo,
@@ -344,6 +348,37 @@ export const spRunSelfTest = createServerFn({ method: "POST" }).handler(
     return runSelfTest();
   },
 );
+
+// Cambio PIN self-service: endpoint PUBBLICI come il login (niente sessione:
+// chi ha dimenticato il PIN per definizione non può autenticarsi). Le difese
+// stanno nel server: OTP hashato con scadenza 15', max 3 richieste aperte,
+// max 5 tentativi di verifica per riga.
+export const spRichiediCambioPin = createServerFn({ method: "POST" })
+  .inputValidator((input: { codice: string }) => {
+    if (typeof input?.codice !== "string") throw new Error("Codice non valido.");
+    return { codice: input.codice.slice(0, 20) };
+  })
+  .handler(async ({ data }): Promise<RichiestaCambioPinResult> => {
+    return richiediCambioPin(data.codice);
+  });
+
+export const spConfermaCambioPin = createServerFn({ method: "POST" })
+  .inputValidator((input: { codice: string; otp: string; nuovoPin: string }) => {
+    if (
+      typeof input?.codice !== "string" ||
+      typeof input?.otp !== "string" ||
+      typeof input?.nuovoPin !== "string"
+    )
+      throw new Error("Dati non validi.");
+    return {
+      codice: input.codice.slice(0, 20),
+      otp: input.otp.slice(0, 10),
+      nuovoPin: input.nuovoPin.slice(0, 12),
+    };
+  })
+  .handler(async ({ data }): Promise<ConfermaCambioPinResult> => {
+    return confermaCambioPin(data.codice, data.otp, data.nuovoPin);
+  });
 
 export const spLogin = createServerFn({ method: "POST" })
   .inputValidator((input: { codice: string; pin: string }) => {

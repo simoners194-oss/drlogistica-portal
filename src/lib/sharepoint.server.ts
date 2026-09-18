@@ -241,6 +241,15 @@ export const SP_DISPLAY = {
     Stato: "Stato",
     Mittente: "Mittente",
   },
+  // Cambio PIN self-service (Title = codice dipendente): OTP mandato
+  // all'email registrata in anagrafica, con scadenza e contatore tentativi.
+  // Lista OPZIONALE (creata 18/09/2026).
+  cambioPin: {
+    OtpHash: "OtpHash",
+    Scadenza: "Scadenza",
+    Tentativi: "Tentativi",
+    Usato: "Usato",
+  },
   // Movimenti bancari (sezione Finanza, solo direttore DR005). Lista OPZIONALE.
   // Title = chiave di deduplicazione (calcolata dai campi grezzi, vedi
   // finanza-logic.ts). I campi grezzi (DataContabile..Descrizione) sono
@@ -520,6 +529,7 @@ const LIST_NAMES = {
   voci: ["Voci", "Voce", "VociSpesa"],
   acquisti: ["RichiesteAcquisto", "RichiestaAcquisto", "Acquisti"],
   codaEmail: ["CodaEmail", "Coda Email", "EmailQueue"],
+  cambioPin: ["CambioPin", "Cambio Pin", "Cambio PIN"],
   movimenti: ["MovimentiBancari", "MovimentoBancario", "Movimenti"],
   regoleFinanza: ["RegoleFinanza", "RegolaFinanza", "RegoleBanca"],
   regoleFatture: ["RegoleFatture", "RegoleClassificazione", "RegoleFatturePassive"],
@@ -630,6 +640,10 @@ export interface SpDiscovered {
   listCodaEmailName: string | null;
   codaEmailFields: Record<string, string>;
   codaEmailMissing: string[];
+  listCambioPin: string | null;
+  listCambioPinName: string | null;
+  cambioPinFields: Record<string, string>;
+  cambioPinMissing: string[];
   listMovimenti: string | null;
   listMovimentiName: string | null;
   movimentiFields: Record<string, string>;
@@ -1019,6 +1033,7 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const aru = await softList(LIST_NAMES.arubaConfig, SP_DISPLAY.arubaConfig);
   const eb = await softList(LIST_NAMES.enableBanking, SP_DISPLAY.enableBanking);
   const corr = await softList(LIST_NAMES.correzioni, SP_DISPLAY.correzioni);
+  const cpin = await softList(LIST_NAMES.cambioPin, SP_DISPLAY.cambioPin);
 
   const now = Date.now();
   discoveredCache = {
@@ -1065,6 +1080,10 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
     listCodaEmailName: coda.name,
     codaEmailFields: coda.fields,
     codaEmailMissing: coda.missing,
+    listCambioPin: cpin.id,
+    listCambioPinName: cpin.name,
+    cambioPinFields: cpin.fields,
+    cambioPinMissing: cpin.missing,
     listMovimenti: mov.id,
     listMovimentiName: mov.name,
     movimentiFields: mov.fields,
@@ -1822,6 +1841,335 @@ export async function loginByCodicePin(
     durataMs: Date.now() - started,
   });
   return { ok: true, dipendente };
+}
+
+// ---------------------------------------------------------------------------
+// Cambio PIN self-service (18/09/2026, richiesta Simone): l'ufficio registra
+// l'email del dipendente in anagrafica; il dipendente da /cambia-pin chiede un
+// codice usa-e-getta (OTP) che arriva a quell'email via CodaEmail (il flusso
+// Power Automate spedisce), poi sceglie il PIN nuovo. L'OTP è salvato SOLO
+// come hash (stesso formato sha256$salt$hash del PIN, pepper incluso) sulla
+// lista CambioPin, con scadenza 15 minuti e massimo 5 tentativi di verifica.
+// ---------------------------------------------------------------------------
+const CAMBIO_PIN_SCADENZA_MS = 15 * 60 * 1000;
+const CAMBIO_PIN_MAX_RICHIESTE_APERTE = 3; // backstop DURABLE per codice
+const CAMBIO_PIN_MAX_TENTATIVI = 5;
+
+// Rate limit in-memory (best-effort sugli isolate, come loginAttempts): prima
+// barriera contro le raffiche sullo stesso codice; il backstop durable sono le
+// righe della lista. Emerso dalla review avversaria pre-release.
+const cambioPinRichieste = new Map<string, { count: number; resetAt: number }>();
+const cambioPinVerifiche = new Map<string, { count: number; resetAt: number }>();
+function superaRateLimit(
+  mappa: Map<string, { count: number; resetAt: number }>,
+  chiave: string,
+  max: number,
+  finestraMs: number,
+): boolean {
+  const now = Date.now();
+  const cur = mappa.get(chiave);
+  if (!cur || cur.resetAt <= now) {
+    mappa.set(chiave, { count: 1, resetAt: now + finestraMs });
+    return false;
+  }
+  cur.count++;
+  return cur.count > max;
+}
+
+function mascheraEmail(email: string): string {
+  const [utente, dominio] = email.split("@");
+  if (!dominio) return "***";
+  const visibile = utente.slice(0, 1);
+  return `${visibile}${"*".repeat(Math.max(2, utente.length - 1))}@${dominio}`;
+}
+
+function generaOtp(): string {
+  // 6 cifre da CSPRNG, senza modulo-bias percepibile (2^32 / 10^6).
+  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
+  return String(n).padStart(6, "0");
+}
+
+interface RigaCambioPin {
+  id: string;
+  otpHash: string;
+  scadenza: string;
+  tentativi: number;
+  usato: boolean;
+}
+
+// La lista va letta TUTTA (nextLink): una lettura troncata terrebbe le righe
+// più VECCHIE — la trappola già pagata con le timbrature invisibili (v1.74.1)
+// — e oltre la prima pagina la feature morirebbe in silenzio. La pulizia in
+// richiediCambioPin tiene comunque la lista piccola.
+async function fetchRigheCambioPin(cfg: SpDiscovered, codice: string): Promise<RigaCambioPin[]> {
+  if (!cfg.listCambioPin) return [];
+  const F = cfg.cambioPinFields;
+  const items = await fetchMovimentiPages(
+    `/sites/${cfg.siteId}/lists/${cfg.listCambioPin}/items?expand=fields&$top=500`,
+  );
+  return items
+    .filter((it) => normalizeCodice((it.fields ?? {})["Title"]) === codice)
+    .map((it) => {
+      const f = it.fields ?? {};
+      return {
+        id: String(it.id),
+        otpHash: String(F.OtpHash ? (f[F.OtpHash] ?? "") : "").trim(),
+        scadenza: String(F.Scadenza ? (f[F.Scadenza] ?? "") : "").trim(),
+        tentativi: parseSpNumber(F.Tentativi ? f[F.Tentativi] : undefined, 0) ?? 0,
+        usato: parseSpBool(F.Usato ? f[F.Usato] : undefined, false),
+      };
+    })
+    .sort((a, b) => Number(b.id) - Number(a.id));
+}
+
+// Guardia di configurazione: senza i campi risolti la feature NON deve
+// degradare in silenzio (riga senza hash + email comunque spedita = il
+// dipendente resta in un vicolo cieco e nessuno se ne accorge).
+function campiCambioPinMancanti(cfg: SpDiscovered): string | null {
+  const F = cfg.cambioPinFields;
+  const mancanti = (["OtpHash", "Scadenza", "Tentativi", "Usato"] as const).filter((c) => !F[c]);
+  return mancanti.length
+    ? `Lista CambioPin senza colonne ${mancanti.join(", ")}: crearle e fare Riscopri.`
+    : null;
+}
+
+async function eliminaRigaCambioPin(cfg: SpDiscovered, id: string): Promise<void> {
+  const res = await gatewayFetch(`/sites/${cfg.siteId}/lists/${cfg.listCambioPin}/items/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok && res.status !== 404)
+    throw new SpHttpError(res.status, `Pulizia CambioPin #${id} fallita`, "cambio-pin");
+}
+
+export interface RichiestaCambioPinResult {
+  ok: boolean;
+  emailMascherata?: string;
+  error?: string;
+}
+
+export async function richiediCambioPin(codiceInput: string): Promise<RichiestaCambioPinResult> {
+  const codice = normalizeCodice(codiceInput);
+  if (!codice) return { ok: false, error: "Inserisci il tuo codice dipendente." };
+  // Prima barriera in-memory: 3 richieste per codice ogni 15 minuti.
+  if (superaRateLimit(cambioPinRichieste, codice, 3, CAMBIO_PIN_SCADENZA_MS))
+    return {
+      ok: false,
+      error:
+        "Hai già chiesto troppi codici: controlla l'email (anche lo spam) o riprova tra un quarto d'ora.",
+    };
+  const cfg = await discoverSharePoint();
+  if (!cfg.listCambioPin)
+    return {
+      ok: false,
+      error: 'Funzione non configurata: manca la lista "CambioPin" su SharePoint (poi Riscopri).',
+    };
+  const configErr = campiCambioPinMancanti(cfg);
+  if (configErr) return { ok: false, error: configErr };
+  if (!cfg.listCodaEmail)
+    return { ok: false, error: "Invio email non configurato: manca la lista CodaEmail." };
+  const F = cfg.dipendentiFields;
+  const codiceField = F.Codice;
+  if (!codiceField) return { ok: false, error: "Anagrafica senza colonna Codice." };
+
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items?expand=fields&$top=999`,
+    ),
+  );
+  const candidato = res.value.find((it) => {
+    const f = it.fields ?? {};
+    const attivo = F.Attivo ? Boolean(f[F.Attivo]) : true;
+    return attivo && normalizeCodice(f[codiceField]) === codice;
+  });
+  // Il codice inesistente NON viene confermato né smentito (anti-enumerazione):
+  // stessa risposta neutra del caso "email partita".
+  if (!candidato) {
+    logSp("warn", "pin.cambio", `Richiesta cambio PIN per codice ignoto "${codice}"`);
+    return { ok: true, emailMascherata: undefined };
+  }
+  const email = String((candidato.fields ?? {})[F.Email ?? ""] ?? "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    // Qui serve il messaggio onesto: senza email registrata il flusso non può
+    // partire e il dipendente deve sapere COSA chiedere all'ufficio.
+    return {
+      ok: false,
+      error:
+        "Per questo codice non c'è un'email registrata: chiedi in ufficio di registrarla, poi riprova.",
+    };
+  }
+
+  const righe = await fetchRigheCambioPin(cfg, codice);
+  const adesso = Date.now();
+  // PULIZIA: le righe usate o scadute di questo codice si cancellano subito —
+  // la lista resta piccola e la paginazione non diventa mai un problema.
+  const daPulire = righe.filter(
+    (r) => r.usato || !r.scadenza || new Date(r.scadenza).getTime() <= adesso,
+  );
+  for (const r of daPulire) await eliminaRigaCambioPin(cfg, r.id).catch(() => undefined);
+  const aperte = righe.filter((r) => !daPulire.includes(r));
+  // Backstop DURABLE (regge anche dove la mappa in-memory non arriva).
+  if (aperte.length >= CAMBIO_PIN_MAX_RICHIESTE_APERTE)
+    return {
+      ok: false,
+      error:
+        "Hai già chiesto troppi codici: controlla l'email (anche lo spam) o riprova tra un quarto d'ora.",
+    };
+  // UN SOLO OTP valido per volta: le richieste aperte precedenti si bruciano
+  // (fail-closed: se non si riesce a bruciarle, non si emette il nuovo OTP).
+  // Senza questo, con due email in volo l'OTP "vecchio" verrebbe rifiutato
+  // pur essendo giusto, bruciando i tentativi della riga nuova.
+  const FC = cfg.cambioPinFields;
+  for (const r of aperte)
+    await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listCambioPin}/items/${r.id}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify({ [FC.Usato as string]: true }),
+    });
+
+  const otp = generaOtp();
+  const scadenza = new Date(adesso + CAMBIO_PIN_SCADENZA_MS).toISOString();
+  const fields: Record<string, unknown> = {
+    Title: codice,
+    [FC.OtpHash as string]: await makeStoredPin(otp),
+    [FC.Scadenza as string]: scadenza,
+    [FC.Tentativi as string]: 0,
+    [FC.Usato as string]: false,
+  };
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listCambioPin}/items`, {
+      method: "POST",
+      body: JSON.stringify({ fields }),
+    }),
+  );
+  // NOTA ACCETTATA: l'OTP viaggia in chiaro nel Corpo di CodaEmail (serve al
+  // flusso Power Automate per spedirlo). Chi può leggere quella lista può già
+  // amministrare i PIN dal portale; l'OTP comunque scade in 15 minuti.
+  await enqueueEmail({
+    destinatari: [email],
+    oggetto: "DR Portal — il tuo codice per cambiare il PIN",
+    corpo:
+      `Ciao,\n\nqualcuno (speriamo tu) ha chiesto di cambiare il PIN del codice ${codice} su DR Portal.\n\n` +
+      `Il codice di verifica è: ${otp}\n\nVale 15 minuti e vale solo l'ULTIMO codice richiesto: se hai chiesto più codici, usa quello dell'email più recente.\n\n` +
+      `Inseriscilo nella pagina "Cambia PIN" insieme al PIN nuovo.\n\n` +
+      `Se non sei stato tu, ignora questa email: il PIN resta quello di sempre.\n\nDR Portal`,
+  });
+  logSp("info", "pin.cambio", `OTP cambio PIN inviato per ${codice} → ${mascheraEmail(email)}`);
+  return { ok: true, emailMascherata: mascheraEmail(email) };
+}
+
+export interface ConfermaCambioPinResult {
+  ok: boolean;
+  error?: string;
+}
+
+export async function confermaCambioPin(
+  codiceInput: string,
+  otpInput: string,
+  nuovoPinInput: string,
+): Promise<ConfermaCambioPinResult> {
+  const codice = normalizeCodice(codiceInput);
+  const otp = String(otpInput ?? "").trim();
+  const nuovoPin = normalizePin(nuovoPinInput);
+  if (!codice || !/^\d{6}$/.test(otp))
+    return { ok: false, error: "Codice di verifica non valido: sono le 6 cifre dell'email." };
+  if (!/^\d{4,8}$/.test(nuovoPin))
+    return { ok: false, error: "Il PIN nuovo deve essere di 4-8 cifre." };
+  const cfg = await discoverSharePoint();
+  if (!cfg.listCambioPin)
+    return { ok: false, error: 'Funzione non configurata: manca la lista "CambioPin".' };
+  const F = cfg.dipendentiFields;
+  const FC = cfg.cambioPinFields;
+  const codiceField = F.Codice;
+  const pinField = F.PIN;
+  if (!codiceField || !pinField)
+    return { ok: false, error: "Anagrafica senza colonne Codice/PIN." };
+
+  // Prima barriera in-memory sui tentativi di verifica.
+  if (superaRateLimit(cambioPinVerifiche, codice, 10, CAMBIO_PIN_SCADENZA_MS))
+    return { ok: false, error: "Troppi tentativi: aspetta qualche minuto e riprova." };
+  const configErr = campiCambioPinMancanti(cfg);
+  if (configErr) return { ok: false, error: configErr };
+
+  const righe = await fetchRigheCambioPin(cfg, codice);
+  const adesso = Date.now();
+  const riga = righe.find(
+    (r) =>
+      !r.usato &&
+      r.otpHash &&
+      r.scadenza &&
+      new Date(r.scadenza).getTime() > adesso &&
+      r.tentativi < CAMBIO_PIN_MAX_TENTATIVI,
+  );
+  if (!riga)
+    return {
+      ok: false,
+      error: "Nessuna richiesta valida: il codice è scaduto o già usato. Richiedine uno nuovo.",
+    };
+  // CLAIM del tentativo PRIMA di verificare, fail-closed: se il contatore non
+  // si riesce a scrivere il tentativo non avviene. Contando prima, K conferme
+  // concorrenti non possono più aggirare il tetto leggendo tutte lo stesso
+  // snapshot a zero e l'errore di scrittura non regala tentativi gratis.
+  try {
+    await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listCambioPin}/items/${riga.id}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify({ [FC.Tentativi as string]: riga.tentativi + 1 }),
+    });
+  } catch {
+    return { ok: false, error: "Verifica momentaneamente non disponibile: riprova tra poco." };
+  }
+  const otpOk = await verifyStoredPin(otp, riga.otpHash);
+  if (!otpOk) {
+    logSp("warn", "pin.cambio", `OTP errato per ${codice} (tentativo ${riga.tentativi + 1})`);
+    return { ok: false, error: "Codice di verifica sbagliato. Controlla l'email e riprova." };
+  }
+
+  // OTP giusto: la riga si BRUCIA PRIMA di toccare il PIN (monouso davvero,
+  // fail-closed). Se poi il PATCH del PIN fallisse, si richiede un OTP nuovo:
+  // meglio un giro in più che un codice rigiocabile per un quarto d'ora.
+  try {
+    await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listCambioPin}/items/${riga.id}/fields`, {
+      method: "PATCH",
+      body: JSON.stringify({ [FC.Usato as string]: true }),
+    });
+  } catch {
+    return { ok: false, error: "Qualcosa è andato storto: richiedi un codice nuovo e riprova." };
+  }
+
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<GraphListResponse<Record<string, unknown>>>(
+      `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items?expand=fields&$top=999`,
+    ),
+  );
+  const candidato = res.value.find((it) => {
+    const f = it.fields ?? {};
+    const attivo = F.Attivo ? Boolean(f[F.Attivo]) : true;
+    return attivo && normalizeCodice(f[codiceField]) === codice;
+  });
+  if (!candidato) return { ok: false, error: "Codice dipendente non trovato." };
+  const storedAttuale = normalizePin((candidato.fields ?? {})[pinField]);
+  if (storedAttuale && (await verifyStoredPin(nuovoPin, storedAttuale)))
+    return { ok: false, error: "Il PIN nuovo è uguale a quello attuale: scegline un altro." };
+
+  try {
+    await gatewayJson(
+      `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items/${candidato.id}/fields`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ [pinField]: await makeStoredPin(nuovoPin) }),
+      },
+    );
+  } catch {
+    // Riga già bruciata per scelta: messaggio onesto, si riparte dal passo 1.
+    logSp("error", "pin.cambio", `PATCH PIN fallito per ${codice} dopo OTP valido`);
+    return {
+      ok: false,
+      error: "Il PIN non è stato salvato: richiedi un codice nuovo e riprova.",
+    };
+  }
+  // Igiene: la riga consumata si elimina subito (best-effort, la pulizia in
+  // richiediCambioPin fa comunque da rete).
+  await eliminaRigaCambioPin(cfg, riga.id).catch(() => undefined);
+  logSp("info", "pin.cambio", `PIN cambiato via email per ${codice}`);
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -8308,6 +8656,16 @@ export async function runSelfTest(): Promise<SpSelfTestResult> {
     if (disc.codaEmailMissing.length)
       throw new Error(`Colonne mancanti — [${disc.codaEmailMissing.join(", ")}]`);
     return disc.listCodaEmailName ?? undefined;
+  });
+
+  await step("list.cambiopin", "Cambio PIN self-service (lista CambioPin)", async () => {
+    if (!disc?.listCambioPin)
+      throw new Error(
+        "Lista 'CambioPin' non trovata — crearla (colonne OtpHash/Scadenza testo, Tentativi numero, Usato sì/no) e fare Riscopri",
+      );
+    if (disc.cambioPinMissing.length)
+      throw new Error(`Colonne mancanti — [${disc.cambioPinMissing.join(", ")}]`);
+    return disc.listCambioPinName ?? undefined;
   });
 
   // Finanza (direttore): lista movimenti bancari — opzionale.

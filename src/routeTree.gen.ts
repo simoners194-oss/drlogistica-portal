@@ -35,6 +35,7 @@ import { Route as CronGiroRouteImport } from './routes/cron-giro'
 import { Route as CronFattureRouteImport } from './routes/cron-fatture'
 import { Route as CronBancaRouteImport } from './routes/cron-banca'
 import { Route as ComunicazioniRouteImport } from './routes/comunicazioni'
+import { Route as CambiaPinRouteImport } from './routes/cambia-pin'
 import { Route as AmministrazioneRouteImport } from './routes/amministrazione'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -168,6 +169,11 @@ const ComunicazioniRoute = ComunicazioniRouteImport.update({
   path: '/comunicazioni',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CambiaPinRoute = CambiaPinRouteImport.update({
+  id: '/cambia-pin',
+  path: '/cambia-pin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AmministrazioneRoute = AmministrazioneRouteImport.update({
   id: '/amministrazione',
   path: '/amministrazione',
@@ -182,6 +188,7 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
+  '/cambia-pin': typeof CambiaPinRoute
   '/comunicazioni': typeof ComunicazioniRoute
   '/cron-banca': typeof CronBancaRoute
   '/cron-fatture': typeof CronFattureRoute
@@ -212,6 +219,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
+  '/cambia-pin': typeof CambiaPinRoute
   '/comunicazioni': typeof ComunicazioniRoute
   '/cron-banca': typeof CronBancaRoute
   '/cron-fatture': typeof CronFattureRoute
@@ -243,6 +251,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/amministrazione': typeof AmministrazioneRoute
+  '/cambia-pin': typeof CambiaPinRoute
   '/comunicazioni': typeof ComunicazioniRoute
   '/cron-banca': typeof CronBancaRoute
   '/cron-fatture': typeof CronFattureRoute
@@ -275,6 +284,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/amministrazione'
+    | '/cambia-pin'
     | '/comunicazioni'
     | '/cron-banca'
     | '/cron-fatture'
@@ -305,6 +315,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/amministrazione'
+    | '/cambia-pin'
     | '/comunicazioni'
     | '/cron-banca'
     | '/cron-fatture'
@@ -335,6 +346,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/amministrazione'
+    | '/cambia-pin'
     | '/comunicazioni'
     | '/cron-banca'
     | '/cron-fatture'
@@ -366,6 +378,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AmministrazioneRoute: typeof AmministrazioneRoute
+  CambiaPinRoute: typeof CambiaPinRoute
   ComunicazioniRoute: typeof ComunicazioniRoute
   CronBancaRoute: typeof CronBancaRoute
   CronFattureRoute: typeof CronFattureRoute
@@ -578,6 +591,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ComunicazioniRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cambia-pin': {
+      id: '/cambia-pin'
+      path: '/cambia-pin'
+      fullPath: '/cambia-pin'
+      preLoaderRoute: typeof CambiaPinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/amministrazione': {
       id: '/amministrazione'
       path: '/amministrazione'
@@ -598,6 +618,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AmministrazioneRoute: AmministrazioneRoute,
+  CambiaPinRoute: CambiaPinRoute,
   ComunicazioniRoute: ComunicazioniRoute,
   CronBancaRoute: CronBancaRoute,
   CronFattureRoute: CronFattureRoute,

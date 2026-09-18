@@ -36,6 +36,18 @@ export const SEZIONI_MANUALE = [
 export const MANUALE: readonly VoceManuale[] = [
   // --- In generale -----------------------------------------------------------
   {
+    id: "gen-cambia-pin",
+    sezione: "In generale",
+    titolo: "Ho dimenticato il PIN (o voglio cambiarlo)",
+    testo: `Dalla pagina di accesso tocca "PIN dimenticato? Cambialo con l'email". Scrivi il tuo codice dipendente (es. DR034): arriva un codice di verifica di 6 cifre all'email che l'ufficio ha registrato per te. Inserisci le 6 cifre e il PIN nuovo (4-8 cifre, due volte) e da quel momento entri col PIN nuovo.
+
+Il codice vale 15 minuti e funziona una volta sola; se sbagli troppe volte o scade, ne chiedi un altro. Se il portale dice che non c'è un'email registrata, chiedi in ufficio di aggiungerla alla tua scheda: senza email il cambio da soli non può partire e il PIN te lo reimposta l'ufficio.
+
+Per l'ufficio: l'email si registra nella colonna Email dell'anagrafica Dipendenti (anche via import massivo); le email partono dalla casella della segreteria tramite la coda già usata per le comunicazioni.`,
+    chiavi:
+      "pin dimenticato cambia pin email codice verifica otp reset password accesso non ricordo",
+  },
+  {
     id: "gen-ricarica",
     sezione: "In generale",
     titolo: "La pagina sembra vecchia o si comporta in modo strano",
