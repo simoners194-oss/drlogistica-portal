@@ -2243,6 +2243,13 @@ export const spScartaAnomalia = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     const me = await currentUser();
     assertCap(me.operatore || isAdmin(me));
+    // Si scarta SOLO l'informativa (deciso da Simone 18/09): scartare un
+    // turno o una pausa non chiusi nasconderebbe un turno incongruente e le
+    // ore resterebbero fuori dal conteggio per sempre, in silenzio.
+    if (data.tipo !== "senza-stacco")
+      throw new Error(
+        "Questa anomalia non si può scartare: il turno resterebbe incongruente e le ore fuori conteggio. Inserisci l'orario mancante con Correggi — o, se il turno non c'è mai stato, elimina l'entrata spuria dai Turni del giorno.",
+      );
     await scartaAnomalia(
       data.dipendenteId,
       data.giorno,

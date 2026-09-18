@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.75.7",
+    date: "2026-09-18",
+    entries: [
+      {
+        title: "I turni non chiusi non si possono più scartare",
+        description:
+          "Scartare un turno o una pausa non chiusi nascondeva un turno incongruente: l'anomalia spariva ma le ore restavano fuori dal conteggio per sempre. Ora il tasto Scarta resta solo per le informative (\"giornata lunga senza stacco\"); per il resto il bottone dice \"solo da correggere\" — si chiudono inserendo l'orario mancante, o eliminando l'entrata spuria se il turno non c'è mai stato. Il blocco vale anche lato server.",
+        tag: "improvement",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.75.6",
     date: "2026-09-18",
     entries: [

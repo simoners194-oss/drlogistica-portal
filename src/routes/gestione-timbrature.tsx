@@ -634,41 +634,54 @@ function GestioneTimbraturePage() {
                       {t("gt.fix")}
                     </Button>
                     {/* SCARTA: "vista, non e' un problema" — sparisce da
-                        elenco e badge (utile per le informative). Ripristino:
-                        riga da eliminare nella lista AnomalieScartate. */}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="text-muted-foreground"
-                      onClick={() => {
-                        void spScartaAnomalia({
-                          data: { dipendenteId: a.dipendenteId, giorno: a.data, tipo: a.tipo },
-                        })
-                          .then(() => {
-                            setAnomalie(
-                              (prev) =>
-                                prev?.filter(
-                                  (x) =>
-                                    !(
-                                      x.dipendenteId === a.dipendenteId &&
-                                      x.data === a.data &&
-                                      x.tipo === a.tipo
-                                    ),
-                                ) ?? prev,
-                            );
-                            toast.success(t("gt.scartataOk"));
+                        elenco e badge. SOLO per le informative (deciso da
+                        Simone 18/09): scartare un turno o una pausa non
+                        chiusi nasconderebbe un turno incongruente con le ore
+                        fuori conteggio. Quelle si chiudono solo correggendo
+                        (o eliminando l'entrata spuria dai Turni del giorno).
+                        Ripristino: riga da eliminare in AnomalieScartate. */}
+                    {a.tipo !== "senza-stacco" ? (
+                      <span
+                        className="px-2 text-[11px] text-muted-foreground"
+                        title={t("gt.soloCorreggereTip")}
+                      >
+                        {t("gt.soloCorreggere")}
+                      </span>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground"
+                        onClick={() => {
+                          void spScartaAnomalia({
+                            data: { dipendenteId: a.dipendenteId, giorno: a.data, tipo: a.tipo },
                           })
-                          .catch((err) =>
-                            toast.error(t("common.error"), {
-                              description: err instanceof Error ? err.message : String(err),
-                            }),
-                          );
-                      }}
-                    >
-                      <EyeOff className="h-4 w-4" />
-                      {t("gt.scarta")}
-                    </Button>
+                            .then(() => {
+                              setAnomalie(
+                                (prev) =>
+                                  prev?.filter(
+                                    (x) =>
+                                      !(
+                                        x.dipendenteId === a.dipendenteId &&
+                                        x.data === a.data &&
+                                        x.tipo === a.tipo
+                                      ),
+                                  ) ?? prev,
+                              );
+                              toast.success(t("gt.scartataOk"));
+                            })
+                            .catch((err) =>
+                              toast.error(t("common.error"), {
+                                description: err instanceof Error ? err.message : String(err),
+                              }),
+                            );
+                        }}
+                      >
+                        <EyeOff className="h-4 w-4" />
+                        {t("gt.scarta")}
+                      </Button>
+                    )}
                   </div>
                 </li>
               ))}

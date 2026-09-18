@@ -500,6 +500,9 @@ const en = {
   "gt.tabInsert": "Insert",
   "gt.tabAnomalies": "Anomalies",
   "gt.anomaliesTitle": "Anomalies (last 60 days)",
+  "gt.soloCorreggere": "fix-only",
+  "gt.soloCorreggereTip":
+    "Dismissing would hide an inconsistent shift and its hours would stay uncounted. Add the missing time with Fix — or delete the spurious entry from the Daily shifts view if the shift never happened.",
   "gt.anomaliesDesc": "Past days with an unclosed shift or break. Today is excluded.",
   "gt.anomaliesNone": "No anomalies detected. All good. 🎉",
   "gt.fix": "Fix",
@@ -2137,6 +2140,9 @@ const it: Record<DictKey, string> = {
   "gt.tabInsert": "Inserimento",
   "gt.tabAnomalies": "Anomalie",
   "gt.anomaliesTitle": "Anomalie (ultimi 60 giorni)",
+  "gt.soloCorreggere": "solo da correggere",
+  "gt.soloCorreggereTip":
+    "Scartare nasconderebbe un turno incongruente e le ore resterebbero fuori dal conteggio. Inserisci l'orario mancante con Correggi — o elimina l'entrata spuria dai Turni del giorno se il turno non c'è mai stato.",
   "gt.anomaliesDesc":
     "Giornate passate con turno o pausa non chiusi. Il giorno corrente è escluso.",
   "gt.anomaliesNone": "Nessuna anomalia rilevata. Tutto in ordine. 🎉",
