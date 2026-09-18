@@ -527,6 +527,8 @@ const en = {
   "gt.needInOut": "Enter clock in and clock out",
   "gt.needBreakBoth": "Break requires both start and end",
   "gt.entryInserted": "Entry inserted",
+  "gt.entryInsertedNight":
+    "Entry inserted on the NEXT day (night shift: the time comes before the shift's last step)",
   "gt.shiftInserted": "Shift inserted",
   "gt.insertFailed": "Insert failed",
   "gt.anomErr": "Anomaly calculation error",
@@ -2163,6 +2165,8 @@ const it: Record<DictKey, string> = {
   "gt.needInOut": "Inserisci entrata e uscita",
   "gt.needBreakBoth": "Per la pausa servono sia inizio sia fine",
   "gt.entryInserted": "Timbratura inserita",
+  "gt.entryInsertedNight":
+    "Timbratura registrata sul giorno DOPO (notturna: l'ora viene prima dell'ultimo passo del turno)",
   "gt.shiftInserted": "Turno inserito",
   "gt.insertFailed": "Inserimento non riuscito",
   "gt.anomErr": "Errore nel calcolo anomalie",

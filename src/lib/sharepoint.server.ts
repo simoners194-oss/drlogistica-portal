@@ -2755,6 +2755,58 @@ async function insertManuale(
   };
 }
 
+// SCAVALCO MEZZANOTTE per l'inserimento SINGOLO (caso DR012 10/09): il
+// preposto sta sulla card del giorno X e scrive l'ora della notturna (es.
+// uscita 02:45) — l'istante vero è X+1, ma il form la datava X e la card
+// mostrava l'uscita PRIMA dell'entrata. Si scala di un giorno SOLO quando:
+//   (a) l'istante come scritto sarebbe fuori ordine nello stream del
+//       dipendente (il passo precedente è un'uscita, o non esiste), E
+//   (b) spostato di 24h continua un turno ancora aperto entro MAX_TURNO_ORE.
+// Così l'operatore che mette la data giusta a mano (X+1 02:45) non viene
+// toccato: quel gesto è già coerente e non scala. Le entrate mai: aprono
+// sempre il proprio giorno.
+async function scavalcoMezzanotteSingola(
+  dipendenteId: string,
+  evento: EventoTimbratura,
+  when: Date,
+): Promise<Date> {
+  if (evento === "entrata") return when;
+  const w = when.getTime();
+  const w2 = w + 86_400_000;
+  const finestraDa = new Date(w - 26 * 3600_000);
+  let stream: SpTimbratura[];
+  try {
+    stream = (await fetchTimbratureDaISO(finestraDa.toISOString()))
+      .filter((t) => t.dipendenteId === dipendenteId)
+      .filter((t) => new Date(t.dataOra).getTime() <= w2 + 3600_000)
+      .sort((a, b) => a.dataOra.localeCompare(b.dataOra));
+  } catch {
+    // Se lo storico non si legge, meglio inserire come scritto che bloccare.
+    return when;
+  }
+  const prima = (limite: number) => {
+    let ultimo: SpTimbratura | undefined;
+    for (const t of stream) {
+      if (new Date(t.dataOra).getTime() <= limite) ultimo = t;
+      else break;
+    }
+    return ultimo;
+  };
+  // (a) Come scritto è coerente? Il passo precedente esiste e NON chiude.
+  const prev = prima(w);
+  if (prev && prev.evento !== "uscita") return when;
+  // (b) Scalato di 24h continua un turno aperto entro il tetto?
+  const prev2 = prima(w2);
+  if (!prev2 || prev2.evento === "uscita") return when;
+  const entrataTurno = stream
+    .filter((t) => t.evento === "entrata" && new Date(t.dataOra).getTime() <= w2)
+    .pop();
+  if (!entrataTurno) return when;
+  const span = w2 - new Date(entrataTurno.dataOra).getTime();
+  if (span <= 0 || span > MAX_TURNO_ORE * 3600_000) return when;
+  return new Date(w2);
+}
+
 export async function createTimbraturaManuale(
   input: CreateTimbraturaManualeInput,
 ): Promise<SpTimbratura> {
@@ -2764,8 +2816,17 @@ export async function createTimbraturaManuale(
   if (!Number.isFinite(dipInt)) throw new Error("dipendenteId non valido.");
   const evento = parseEvento(input.evento);
   if (!evento) throw new Error("Evento non valido.");
-  const when = new Date(input.dataOra);
+  let when = new Date(input.dataOra);
   if (Number.isNaN(when.getTime())) throw new Error("Data/ora non valida.");
+  const scalata = await scavalcoMezzanotteSingola(String(dipInt), evento, when);
+  if (scalata.getTime() !== when.getTime()) {
+    logSp(
+      "info",
+      "create.manuale",
+      `Scavalco mezzanotte: ${evento} dip=${input.dipendenteId} ${when.toISOString()} -> ${scalata.toISOString()}`,
+    );
+    when = scalata;
+  }
   const t = await insertManuale(cfg, dipInt, evento, when.toISOString(), input.note);
   logSp(
     "info",

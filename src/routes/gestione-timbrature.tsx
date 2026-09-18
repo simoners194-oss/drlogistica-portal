@@ -328,17 +328,23 @@ function GestioneTimbraturePage() {
       const chi = dip ? `${dip.cognome} ${dip.nome} · ` : "";
       if (mode === "singola") {
         if (!ora) return toast.error(t("gt.needTime"));
-        await spCreateTimbraturaManuale({
+        const dataOraChiesta = toIso(data, ora);
+        const creata = (await spCreateTimbraturaManuale({
           data: {
             operatoreId: session.id,
             dipendenteId,
             evento,
-            dataOra: toIso(data, ora),
+            dataOra: dataOraChiesta,
             note: note.trim() || undefined,
           },
-        });
-        toast.success(t("gt.entryInserted"), {
-          description: `${chi}${tVal("evento", evento)} · ${data} ${ora}`,
+        })) as SpTimbratura;
+        // Il server può aver scalato la notturna al giorno dopo (ora prima
+        // dell'ultimo passo del turno): l'operatore lo deve vedere subito.
+        const scalata = new Date(creata.dataOra).getTime() !== new Date(dataOraChiesta).getTime();
+        // Giorno LOCALE (DataOra è UTC vero: 00:30 locali stanno sul giorno UTC prima).
+        const giornoVero = new Date(creata.dataOra).toLocaleDateString("sv-SE");
+        toast.success(scalata ? t("gt.entryInsertedNight") : t("gt.entryInserted"), {
+          description: `${chi}${tVal("evento", evento)} · ${scalata ? giornoVero : data} ${ora}`,
         });
       } else {
         if (!entrataOra || !uscitaOra) return toast.error(t("gt.needInOut"));

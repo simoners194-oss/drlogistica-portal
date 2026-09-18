@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.75.5",
+    date: "2026-09-18",
+    entries: [
+      {
+        title: "Uscite notturne: il giorno giusto anche nell'inserimento singolo",
+        description:
+          "Se sull'inserimento singolo (o su \"Aggiungi timbratura mancante\") scrivi l'ora della notte — es. uscita 02:45 di un turno iniziato il pomeriggio — il portale la registra da solo sul giorno dopo, come già faceva il Turno intero. Lo fa soltanto quando l'ora scritta verrebbe prima dell'ultimo passo del turno ancora aperto; l'avviso verde dice chiaramente su che giorno è finita. Chi mette già la data del giorno dopo a mano non cambia nulla.",
+        tag: "improvement",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.75.4",
     date: "2026-09-17",
     entries: [

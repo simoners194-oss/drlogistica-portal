@@ -112,6 +112,8 @@ In entrambi i casi: timbra l'entrata adesso e segnala la giornata da sistemare a
 
 La giornata è quella del TURNO: per un turno notturno (entrata 14:30, uscita 03:30) si lavora sulla card del giorno dell'entrata, e l'uscita delle 03:30 compare lì come ultimo passo — il portale la salva da solo sul giorno dopo. Basta scrivere gli orari in sequenza: quando un orario "torna indietro" rispetto al precedente, vuol dire che è scattata la mezzanotte.
 
+Dalla versione 1.75.5 vale anche per l'inserimento SINGOLO e per "Aggiungi timbratura mancante": se sulla card del turno scrivi l'ora della notte (es. uscita 02:45), il portale la registra da solo sul giorno dopo e l'avviso verde ti dice su che giorno è finita. Lo fa solo quando l'ora scritta verrebbe prima dell'ultimo passo del turno ancora aperto: se metti già la data del giorno dopo a mano, non cambia nulla.
+
 Regola d'oro: mai cancellare, sempre correggere. Il cestino di SharePoint tiene 93 giorni ed è già servito una volta a recuperare timbrature sparite — meglio non doverci tornare.`,
     chiavi:
       "correzione giornata preposto operatore riscrivere manuale gestione timbrature cancellare",
