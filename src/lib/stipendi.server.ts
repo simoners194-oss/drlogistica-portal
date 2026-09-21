@@ -6,17 +6,25 @@
 // Concorrenza: read-modify-write per mutazione; ultimo-che-scrive-vince,
 // accettato (scrive di fatto una persona al mese).
 
+import * as XLSX from "xlsx";
 import {
+  cronToken,
   discoverSharePoint,
   gatewayJson,
   withDiscoveryRetry,
   logSp,
   SpHttpError,
+  TARGET_HOST,
+  tokenUguale,
+  upsertFlussoCassa,
 } from "./sharepoint.server";
 import {
   applicaModifiche,
   chiaveNome,
   emptyStipendiDb,
+  meseSuccessivo,
+  parseCostiFile,
+  parseStipendiDr,
   valoreDaFile,
   type AnagraficaDipendente,
   type CampoModificabile,
@@ -261,6 +269,236 @@ function stimaStipendiMensileDa(db: StipendiDb): { media: number; mesi: string[]
   const media =
     Math.round((ultimi.reduce((s, n) => s + n.totaleStipendio, 0) / ultimi.length) * 100) / 100;
   return { media, mesi: ultimi.map((n) => n.mese) };
+}
+
+// ---------------------------------------------------------------------------
+// LETTURA AUTOMATICA DAI FILE (1.79.0, domanda Simone 21/09 "ma non li
+// prende da solo da OneDrive?"). I file paghe stanno sul sito SharePoint
+// "DocumentiCondivisi" (quello sincronizzato su OneDrive come "Documenti
+// Condivisi - Documenti"), cartella Personale: Stipendi Dr.xlsx (netti, un
+// foglio per mese) e MENSILITA'/<MESE ANNO>/COSTI <MESE> <ANNO>.xlsx. Il
+// gateway Graph arriva a ogni sito del tenant: si scaricano e si passano
+// agli STESSI parser dell'import manuale. Le correzioni a mano (M), le
+// spunte Pagato e le mensilità dichiarate vivono a parte e restano.
+// ---------------------------------------------------------------------------
+const SITO_DOCUMENTI = "DocumentiCondivisi";
+const CARTELLA_PERSONALE = "Personale";
+const FILE_NETTI = "Stipendi Dr.xlsx";
+const CARTELLA_MENSILITA = "MENSILITA'";
+
+let sitoDocumentiCache: { id: string; at: number } | null = null;
+async function sitoDocumentiId(): Promise<string> {
+  if (sitoDocumentiCache && Date.now() - sitoDocumentiCache.at < 3600_000)
+    return sitoDocumentiCache.id;
+  const s = await withDiscoveryRetry(() =>
+    gatewayJson<{ id: string }>(`/sites/${TARGET_HOST}:/sites/${SITO_DOCUMENTI}`),
+  );
+  sitoDocumentiCache = { id: s.id, at: Date.now() };
+  return s.id;
+}
+
+interface DriveChild {
+  id: string;
+  name: string;
+  folder?: unknown;
+  file?: unknown;
+  lastModifiedDateTime?: string;
+  ["@microsoft.graph.downloadUrl"]?: string;
+}
+// Ogni segmento del percorso va codificato a parte (spazi, apostrofo di
+// MENSILITA', parentesi): Graph vuole "root:/Personale/MENSILITA'/…:/children".
+const encPath = (p: string) => p.split("/").map(encodeURIComponent).join("/");
+
+async function figliDrive(siteId: string, path: string): Promise<DriveChild[]> {
+  const res = await withDiscoveryRetry(() =>
+    gatewayJson<{ value: DriveChild[] }>(
+      `/sites/${siteId}/drive/root:/${encPath(path)}:/children?$select=id,name,folder,file,lastModifiedDateTime&$top=200`,
+    ),
+  );
+  return res.value ?? [];
+}
+
+type Fogli = { nome: string; matrix: unknown[][] }[];
+async function scaricaFogli(
+  siteId: string,
+  path: string,
+): Promise<{ nome: string; fogli: Fogli; modificatoIl: string }> {
+  const meta = await withDiscoveryRetry(() =>
+    gatewayJson<DriveChild>(
+      `/sites/${siteId}/drive/root:/${encPath(path)}?$select=id,name,lastModifiedDateTime`,
+    ),
+  );
+  const full = await withDiscoveryRetry(() =>
+    gatewayJson<DriveChild>(`/sites/${siteId}/drive/items/${meta.id}`),
+  );
+  const url = full["@microsoft.graph.downloadUrl"];
+  if (!url) throw new Error(`${meta.name}: downloadUrl non disponibile da Graph.`);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${meta.name}: download fallito (${res.status}).`);
+  const wb = XLSX.read(await res.arrayBuffer(), { cellDates: false });
+  const fogli: Fogli = wb.SheetNames.map((nome) => ({
+    nome,
+    matrix: XLSX.utils.sheet_to_json(wb.Sheets[nome], {
+      header: 1,
+      raw: true,
+      defval: null,
+    }) as unknown[][],
+  }));
+  return { nome: meta.name, fogli, modificatoIl: meta.lastModifiedDateTime ?? "" };
+}
+
+export interface SyncStipendiEsito {
+  nettiMesi: string[];
+  costiMesi: string[];
+  saltati: string[];
+  errori: string[];
+  flussiAggiornati: number;
+  durataMs: number;
+}
+
+/** Legge Stipendi Dr.xlsx e i COSTI mensili da SharePoint e aggiorna lo
+ *  snapshot. Idempotente: ogni mese trovato sostituisce l'omonimo (come
+ *  l'import manuale); i mesi assenti dai file restano com'erano. La riga
+ *  "Stipendi" dei Flussi si tocca SOLO se il saldo del mese è cambiato. */
+export async function syncStipendiDaSharePoint(
+  utente: string,
+): Promise<{ db: StipendiDb; esito: SyncStipendiEsito }> {
+  const started = Date.now();
+  const esito: SyncStipendiEsito = {
+    nettiMesi: [],
+    costiMesi: [],
+    saltati: [],
+    errori: [],
+    flussiAggiornati: 0,
+    durataMs: 0,
+  };
+  const siteId = await sitoDocumentiId();
+  const db = await loadStipendiDb();
+  const ora = new Date().toISOString();
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+
+  // --- NETTI (Stipendi Dr.xlsx) -------------------------------------------
+  try {
+    const f = await scaricaFogli(siteId, `${CARTELLA_PERSONALE}/${FILE_NETTI}`);
+    const mesi = parseStipendiDr(f.fogli, f.nome);
+    if (!mesi) esito.errori.push(`${FILE_NETTI}: nessun foglio riconosciuto`);
+    else {
+      const netti = [...(db.netti ?? [])];
+      for (const m of mesi) {
+        const i = netti.findIndex((x) => x.mese === m.mese);
+        const saldoPrima = i >= 0 ? netti[i].totaleSaldo : null;
+        m.caricatoIl = ora;
+        m.caricatoDa = utente;
+        if (i >= 0) netti[i] = m;
+        else netti.push(m);
+        esito.nettiMesi.push(m.mese);
+        // Riga Stipendi dei Flussi (mese di PAGAMENTO = competenza+1), come
+        // l'import manuale con la spunta accesa — ma solo se il saldo cambia.
+        if (
+          Math.abs(m.totaleSaldo) >= 0.005 &&
+          (saldoPrima == null || Math.abs(r2(saldoPrima) - r2(m.totaleSaldo)) >= 0.005)
+        ) {
+          try {
+            await upsertFlussoCassa({
+              nome: "Stipendi",
+              genere: "voce",
+              mese: meseSuccessivo(m.mese),
+              importo: -m.totaleSaldo,
+              note: `Netto stipendi da versare, competenza ${m.mese} (${f.nome}, lettura automatica)`,
+            });
+            esito.flussiAggiornati++;
+          } catch (err) {
+            esito.errori.push(
+              `Flussi ${m.mese}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+      }
+      netti.sort((a, b) => (a.mese < b.mese ? -1 : 1));
+      db.netti = netti;
+    }
+  } catch (err) {
+    esito.errori.push(`${FILE_NETTI}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // --- COSTI (MENSILITA'/<MESE ANNO>/COSTI *.xlsx) ---------------------------
+  try {
+    const cartelle = (await figliDrive(siteId, `${CARTELLA_PERSONALE}/${CARTELLA_MENSILITA}`))
+      .filter((c) => c.folder)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    for (const c of cartelle) {
+      const percorso = `${CARTELLA_PERSONALE}/${CARTELLA_MENSILITA}/${c.name}`;
+      let files: DriveChild[];
+      try {
+        files = (await figliDrive(siteId, percorso)).filter(
+          (x) => x.file && /^costi.*\.xlsx$/i.test(x.name),
+        );
+      } catch (err) {
+        esito.errori.push(`${c.name}: ${err instanceof Error ? err.message : String(err)}`);
+        continue;
+      }
+      if (files.length === 0) {
+        esito.saltati.push(`${c.name}: nessun file COSTI`);
+        continue;
+      }
+      for (const file of files) {
+        try {
+          const f = await scaricaFogli(siteId, `${percorso}/${file.name}`);
+          const res = parseCostiFile(f.fogli, file.name);
+          if (!res || res.dipendenti.length === 0 || !res.mese) {
+            esito.saltati.push(`${file.name}: tracciato non riconosciuto o mese assente`);
+            continue;
+          }
+          const mese: StipendiMese = {
+            mese: res.mese,
+            fonteFile: file.name,
+            caricatoIl: ora,
+            caricatoDa: utente,
+            dipendenti: res.dipendenti,
+          };
+          const i = db.mesi.findIndex((m) => m.mese === res.mese);
+          if (i >= 0) db.mesi[i] = mese;
+          else db.mesi.push(mese);
+          esito.costiMesi.push(res.mese);
+        } catch (err) {
+          esito.errori.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+    db.mesi.sort((a, b) => (a.mese < b.mese ? -1 : 1));
+  } catch (err) {
+    esito.errori.push(`${CARTELLA_MENSILITA}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  esito.durataMs = Date.now() - started;
+  db.ultimaSync = {
+    il: ora,
+    da: utente,
+    nettiMesi: esito.nettiMesi,
+    costiMesi: esito.costiMesi,
+    errori: esito.errori,
+  };
+  const salvato = await saveStipendiDb(db, utente);
+  logSp(
+    esito.errori.length ? "warn" : "info",
+    "stipendi.sync",
+    `Lettura file paghe: netti ${esito.nettiMesi.length} mesi, costi ${esito.costiMesi.length} mesi, flussi ${esito.flussiAggiornati}, saltati ${esito.saltati.length}, errori ${esito.errori.length}`,
+    { durataMs: esito.durataMs },
+  );
+  return { db: salvato, esito };
+}
+
+/** Innesco programmato (/cron-stipendi): vale il token "stipendi" oppure
+ *  quello "fatture" già in mano al PC del giro giornaliero. */
+export async function syncStipendiCron(token: string): Promise<SyncStipendiEsito> {
+  const ok =
+    tokenUguale(token, await cronToken("stipendi")) ||
+    tokenUguale(token, await cronToken("fatture"));
+  if (!ok) {
+    logSp("warn", "stipendi.sync", "Chiamata programmata con token non valido");
+    throw new Error("Token non valido.");
+  }
+  return (await syncStipendiDaSharePoint("cron")).esito;
 }
 
 /** Upsert dei NETTI da "Stipendi Dr.xlsx": ogni mese presente nel file

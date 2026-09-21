@@ -105,6 +105,14 @@ export interface StipendiDb {
    *  mesi importati, così un re-import del file non le cancella; la tabella
    *  mostra la "M" con chi/quando/prima. Vedi applicaModifiche. */
   modifiche?: ModificaManuale[];
+  /** Esito dell'ultima lettura automatica dei file da SharePoint (1.79.0). */
+  ultimaSync?: {
+    il: string;
+    da: string;
+    nettiMesi: string[];
+    costiMesi: string[];
+    errori: string[];
+  };
   aggiornatoIl?: string;
   aggiornatoDa?: string;
 }

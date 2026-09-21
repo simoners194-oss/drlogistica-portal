@@ -742,6 +742,16 @@ const en = {
   "stip.mensErr":
     "Monthly payments: whole number between 12 and 15 (empty to go back to the estimate).",
   "stip.colPagato": "Paid",
+  "stip.syncBtn": "Refresh from files",
+  "stip.syncTip":
+    "Reads Stipendi Dr.xlsx and the monthly COSTI files from SharePoint (Personale) and updates the table and the Stipendi row in Cash flow. Manual corrections and Paid ticks are kept.",
+  "stip.syncUltima": "Last automatic read: {il} ({da}). Click to read the files again now.",
+  "stip.syncOk": "Payroll files read",
+  "stip.syncParziale": "Payroll files read, with some issues",
+  "stip.syncErr": "Reading the files failed",
+  "stip.syncNetti": "net pay",
+  "stip.syncCosti": "costs",
+  "stip.syncFlussi": "Cash flow updated",
   "stip.modTip": "Double-click to correct the value by hand (empty = back to the file value)",
   "stip.modBadgeTip": "Value changed by hand",
   "stip.modTrace":
@@ -2415,6 +2425,16 @@ const it: Record<DictKey, string> = {
     "Mensilità — clicca per impostarle a mano (12–15, vuoto = torna alla stima dai ratei paghe; ≈ = stimata)",
   "stip.mensErr": "Mensilità: numero intero tra 12 e 15 (vuoto per tornare alla stima).",
   "stip.colPagato": "Pagato",
+  "stip.syncBtn": "Aggiorna dai file",
+  "stip.syncTip":
+    "Legge da SharePoint Stipendi Dr.xlsx e i COSTI mensili (Personale) e aggiorna la tabella e la riga Stipendi dei Flussi. Correzioni a mano e spunte Pagato restano.",
+  "stip.syncUltima": "Ultima lettura automatica: {il} ({da}). Clicca per rileggere i file adesso.",
+  "stip.syncOk": "File paghe letti",
+  "stip.syncParziale": "File paghe letti, con qualche problema",
+  "stip.syncErr": "Lettura dei file non riuscita",
+  "stip.syncNetti": "netti",
+  "stip.syncCosti": "costi",
+  "stip.syncFlussi": "Flussi aggiornati",
   "stip.modTip": "Doppio clic per correggere il valore a mano (vuoto = torna al valore del file)",
   "stip.modBadgeTip": "Valore modificato a mano",
   "stip.modTrace":

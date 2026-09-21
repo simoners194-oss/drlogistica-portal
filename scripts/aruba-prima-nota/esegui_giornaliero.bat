@@ -20,5 +20,8 @@ REM Diagnostica: quale interprete gira davvero sotto lo scheduler.
 "%PYEXE%" scarica_aruba.py >> log_esecuzioni.txt 2>&1
 "%PYEXE%" scarica_aruba.py incassi >> log_esecuzioni.txt 2>&1
 "%PYEXE%" scarica_aruba.py nclinks >> log_esecuzioni.txt 2>&1
+REM Stipendi (1.79.0): il portale legge da solo Stipendi Dr.xlsx e i COSTI
+REM mensili da SharePoint. Stesso token del cron fatture, cambia solo il path.
+"%PYEXE%" -c "import json,urllib.request;u=json.load(open('config.json'))['cron_fatture_url'].replace('/cron-fatture','/cron-stipendi');print('[stipendi]',urllib.request.urlopen(u,timeout=600).read().decode('utf-8','ignore')[:400])" >> log_esecuzioni.txt 2>&1
 echo (fine corsa) >> log_esecuzioni.txt
 del giro_in_corso.lock 2>nul

@@ -27,6 +27,7 @@ import { Route as FinanzaRouteImport } from './routes/finanza'
 import { Route as DocumentiRouteImport } from './routes/documenti'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CronTurniRouteImport } from './routes/cron-turni'
+import { Route as CronStipendiRouteImport } from './routes/cron-stipendi'
 import { Route as CronStatiRouteImport } from './routes/cron-stati'
 import { Route as CronNcRouteImport } from './routes/cron-nc'
 import { Route as CronMezziRouteImport } from './routes/cron-mezzi'
@@ -129,6 +130,11 @@ const CronTurniRoute = CronTurniRouteImport.update({
   path: '/cron-turni',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CronStipendiRoute = CronStipendiRouteImport.update({
+  id: '/cron-stipendi',
+  path: '/cron-stipendi',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CronStatiRoute = CronStatiRouteImport.update({
   id: '/cron-stati',
   path: '/cron-stati',
@@ -197,6 +203,7 @@ export interface FileRoutesByFullPath {
   '/cron-mezzi': typeof CronMezziRoute
   '/cron-nc': typeof CronNcRoute
   '/cron-stati': typeof CronStatiRoute
+  '/cron-stipendi': typeof CronStipendiRoute
   '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
@@ -228,6 +235,7 @@ export interface FileRoutesByTo {
   '/cron-mezzi': typeof CronMezziRoute
   '/cron-nc': typeof CronNcRoute
   '/cron-stati': typeof CronStatiRoute
+  '/cron-stipendi': typeof CronStipendiRoute
   '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
@@ -260,6 +268,7 @@ export interface FileRoutesById {
   '/cron-mezzi': typeof CronMezziRoute
   '/cron-nc': typeof CronNcRoute
   '/cron-stati': typeof CronStatiRoute
+  '/cron-stipendi': typeof CronStipendiRoute
   '/cron-turni': typeof CronTurniRoute
   '/dashboard': typeof DashboardRoute
   '/documenti': typeof DocumentiRoute
@@ -293,6 +302,7 @@ export interface FileRouteTypes {
     | '/cron-mezzi'
     | '/cron-nc'
     | '/cron-stati'
+    | '/cron-stipendi'
     | '/cron-turni'
     | '/dashboard'
     | '/documenti'
@@ -324,6 +334,7 @@ export interface FileRouteTypes {
     | '/cron-mezzi'
     | '/cron-nc'
     | '/cron-stati'
+    | '/cron-stipendi'
     | '/cron-turni'
     | '/dashboard'
     | '/documenti'
@@ -355,6 +366,7 @@ export interface FileRouteTypes {
     | '/cron-mezzi'
     | '/cron-nc'
     | '/cron-stati'
+    | '/cron-stipendi'
     | '/cron-turni'
     | '/dashboard'
     | '/documenti'
@@ -387,6 +399,7 @@ export interface RootRouteChildren {
   CronMezziRoute: typeof CronMezziRoute
   CronNcRoute: typeof CronNcRoute
   CronStatiRoute: typeof CronStatiRoute
+  CronStipendiRoute: typeof CronStipendiRoute
   CronTurniRoute: typeof CronTurniRoute
   DashboardRoute: typeof DashboardRoute
   DocumentiRoute: typeof DocumentiRoute
@@ -535,6 +548,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CronTurniRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cron-stipendi': {
+      id: '/cron-stipendi'
+      path: '/cron-stipendi'
+      fullPath: '/cron-stipendi'
+      preLoaderRoute: typeof CronStipendiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/cron-stati': {
       id: '/cron-stati'
       path: '/cron-stati'
@@ -627,6 +647,7 @@ const rootRouteChildren: RootRouteChildren = {
   CronMezziRoute: CronMezziRoute,
   CronNcRoute: CronNcRoute,
   CronStatiRoute: CronStatiRoute,
+  CronStipendiRoute: CronStipendiRoute,
   CronTurniRoute: CronTurniRoute,
   DashboardRoute: DashboardRoute,
   DocumentiRoute: DocumentiRoute,

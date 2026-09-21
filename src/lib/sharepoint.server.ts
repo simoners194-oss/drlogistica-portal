@@ -105,7 +105,7 @@ import {
 
 const GATEWAY_BASE = "https://connector-gateway.lovable.dev/microsoft_sharepoint";
 const CACHE_TTL_MS = Number(process.env.SP_CACHE_TTL_MS ?? 60 * 60 * 1000);
-const TARGET_HOST = "drlogisticaroma.sharepoint.com";
+export const TARGET_HOST = "drlogisticaroma.sharepoint.com";
 const TARGET_SITE_PATH = "DRPORTAL";
 
 // Display name attesi (usati per la risoluzione internalName in getListColumns).
@@ -8078,7 +8078,7 @@ export async function decideCorrezione(
 // Banca in Amministrazione.
 
 /** Token dell'innesco programmato, uno per tipo di lavoro. */
-export async function cronToken(job: "banca" | "turni" | "fatture"): Promise<string> {
+export async function cronToken(job: "banca" | "turni" | "fatture" | "stipendi"): Promise<string> {
   const pepper = pinPepper();
   if (!pepper) throw new Error("Segreto server assente: token non generabile.");
   const d = await crypto.subtle.digest(
@@ -8106,7 +8106,7 @@ export async function verificaTokenCronFatture(token: string): Promise<void> {
 }
 
 /** Confronto a tempo costante: non rivela quanti caratteri sono corretti. */
-function tokenUguale(a: string, b: string): boolean {
+export function tokenUguale(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);

@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.79.0",
+    date: "2026-09-21",
+    entries: [
+      {
+        title: "Stipendi: il portale legge i file da solo",
+        description:
+          'Stipendi Dr.xlsx e i COSTI mensili vengono letti direttamente da SharePoint (cartella Personale, la stessa di OneDrive): ogni notte col giro giornaliero e a richiesta col bottone "Aggiorna dai file". Basta tenere i file aggiornati al loro posto. Correzioni a mano (M), spunte Pagato e mensilità dichiarate restano; la riga Stipendi dei Flussi si aggiorna solo se cambia il saldo del mese.',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.78.0",
     date: "2026-09-21",
     entries: [

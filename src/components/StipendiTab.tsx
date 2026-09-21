@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Banknote, Loader2, Trash2, Upload } from "lucide-react";
+import { Banknote, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { esportaCsvFile } from "@/lib/csv";
 import {
@@ -36,6 +36,7 @@ import {
   spStipendiSalvaAnagrafica,
   spStipendiSalvaMese,
   spStipendiSalvaNetti,
+  spStipendiSync,
 } from "@/lib/stipendi.functions";
 import {
   spGetDettagliDistinte,
@@ -99,6 +100,28 @@ export function StipendiTab() {
       ),
     [dbRaw],
   );
+  // Lettura automatica dei file paghe da SharePoint (1.79.0).
+  const [syncing, setSyncing] = useState(false);
+  const aggiornaDaiFile = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const { db: nuovo, esito } = await spStipendiSync();
+      setDb(nuovo);
+      const riep = `${t("stip.syncNetti")} ${esito.nettiMesi.length} · ${t("stip.syncCosti")} ${esito.costiMesi.length}${esito.flussiAggiornati ? ` · ${t("stip.syncFlussi")} ${esito.flussiAggiornati}` : ""}`;
+      if (esito.errori.length)
+        toast.warning(t("stip.syncParziale"), {
+          description: `${riep} — ${esito.errori.join(" | ")}`,
+        });
+      else toast.success(t("stip.syncOk"), { description: riep });
+    } catch (err) {
+      toast.error(t("stip.syncErr"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
   // Editor inline dei valori (doppio clic sulla cella).
   const [modEdit, setModEdit] = useState<string | null>(null); // chiaveModifica
   const [modVal, setModVal] = useState("");
@@ -834,6 +857,26 @@ export function StipendiTab() {
           ))}
         </select>
         <div className="ml-auto flex gap-2">
+          <button
+            type="button"
+            onClick={() => void aggiornaDaiFile()}
+            disabled={syncing}
+            title={
+              dbRaw?.ultimaSync
+                ? t("stip.syncUltima")
+                    .replace("{il}", new Date(dbRaw.ultimaSync.il).toLocaleString("it-IT"))
+                    .replace("{da}", dbRaw.ultimaSync.da)
+                : t("stip.syncTip")
+            }
+            className="inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm text-foreground hover:bg-primary/10 disabled:opacity-60"
+          >
+            {syncing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}{" "}
+            {t("stip.syncBtn")}
+          </button>
           <button
             type="button"
             onClick={() => setShowImport((x) => !x)}

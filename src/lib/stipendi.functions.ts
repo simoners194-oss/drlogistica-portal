@@ -15,8 +15,11 @@ import {
   setPagatiStipendi,
   setStipendiMensilita,
   stimaStipendiMensile,
+  syncStipendiCron,
+  syncStipendiDaSharePoint,
   upsertStipendiMese,
   upsertStipendiNetti,
+  type SyncStipendiEsito,
 } from "./stipendi.server";
 import {
   CAMPI_MODIFICABILI,
@@ -158,6 +161,23 @@ export const spStipendiModifica = createServerFn({ method: "POST" })
     const me = await utenteStipendi();
     return setModificaStipendio(data, firma(me));
   });
+
+/** Lettura automatica dei file paghe da SharePoint (bottone in tab). */
+export const spStipendiSync = createServerFn({ method: "POST" }).handler(
+  async (): Promise<{ db: StipendiDb; esito: SyncStipendiEsito }> => {
+    const me = await utenteStipendi();
+    return syncStipendiDaSharePoint(firma(me));
+  },
+);
+
+/** Innesco programmato: PUBBLICO con token (come cron-turni). */
+export const spCronStipendi = createServerFn({ method: "POST" })
+  .inputValidator((input: { token: string }) => {
+    const token = String(input?.token ?? "").trim();
+    if (!token || token.length > 100) throw new Error("Token mancante.");
+    return { token };
+  })
+  .handler(async ({ data }): Promise<SyncStipendiEsito> => syncStipendiCron(data.token));
 
 export const spStipendiEliminaMese = createServerFn({ method: "POST" })
   .inputValidator((input: { mese: string }) => {

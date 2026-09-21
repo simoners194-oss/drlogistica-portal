@@ -396,7 +396,11 @@ Cliccando sul nome della voce si apre il dettaglio di cosa c'è dentro; nelle Al
     id: "sti-import",
     sezione: "Stipendi",
     titolo: "Caricare i file paghe",
-    testo: `La tab Stipendi si nutre di due famiglie di file: il COSTI del mese (il costo del personale per dipendente, dal consulente paghe) e Stipendi Dr (i netti da bonificare, un foglio per mese). Si caricano coi bottoni di import, sempre con l'anteprima prima di salvare: l'anteprima dice cosa ha letto e cosa aggiornerà, compresa la riga Stipendi dei Flussi.
+    testo: `La tab Stipendi si nutre di due famiglie di file: il COSTI del mese (il costo del personale per dipendente, dal consulente paghe) e Stipendi Dr (i netti da bonificare, un foglio per mese).
+
+Dalla versione 1.79.0 il portale li legge DA SOLO da SharePoint (cartella Personale del sito Documenti Condivisi, la stessa che vedi in OneDrive): ogni notte col giro giornaliero, e quando vuoi col bottone "Aggiorna dai file" in cima alla tab. Basta quindi tenere aggiornati i file al loro posto: Personale\\Stipendi Dr.xlsx e Personale\\MENSILITA'\\<MESE ANNO>\\COSTI <MESE> <ANNO>.xlsx. Le correzioni a mano (la M), le spunte Pagato e le mensilità dichiarate non vengono toccate; la riga Stipendi dei Flussi si aggiorna solo se il saldo del mese è cambiato.
+
+I bottoni di import restano per i casi particolari (un file in un'altra cartella, un tracciato per-appalto): sempre con l'anteprima prima di salvare, che dice cosa ha letto e cosa aggiornerà, compresa la riga Stipendi dei Flussi.
 
 Se un file non viene letto, quasi sempre è questione di tracciato: intestazioni diverse dal solito o foglio rinominato. Segnala il file esatto.`,
     chiavi: "import file costi stipendi dr netti anteprima carica mensile",
