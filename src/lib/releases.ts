@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.80.2",
+    date: "2026-09-21",
+    entries: [
+      {
+        title: "Stipendi: le finanziarie delle cessioni non sono più \"da chiarire\"",
+        description:
+          'Le righe di Stipendi Dr intestate a una società (Pitagora SpA, Cofidis, Prestitalia, Sigla, UniCredit) sono le rate delle cessioni del quinto, non dipendenti: ora vengono riconosciute dal nome e stanno in un riquadro a parte "Finanziarie (cessioni del quinto)" col totale, senza menù del motivo. Il conteggio "da chiarire" resta solo per le persone.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.80.1",
     date: "2026-09-21",
     entries: [

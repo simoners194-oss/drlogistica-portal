@@ -758,7 +758,10 @@ const en = {
   "stip.tuttoChiaro": "Every row without net pay has a reason.",
   "stip.nettiSenzaCosto": "In Stipendi Dr but without a cost row",
   "stip.nettiSenzaCostoDesc":
-    "Names in this month's net pay that match no row of the cost file: leavers with final settlement, cash regime, salary-assignment finance companies. They count in the Cash flow total.",
+    "Names in this month's net pay that match no row of the cost file: leavers with final settlement, cash regime. They count in the Cash flow total.",
+  "stip.finanziarie": "Finance companies (salary assignments)",
+  "stip.finanziarieDesc":
+    "Rows of Stipendi Dr made out to a company (SpA, Srl, S.A.…): salary-assignment instalments paid with the payroll transfer. Recognised automatically, nothing to clarify; they count in the Cash flow total.",
   "stip.syncBtn": "Refresh from files",
   "stip.syncTip":
     "Reads Stipendi Dr.xlsx and the monthly COSTI files from SharePoint (Personale) and updates the table and the Stipendi row in Cash flow. Manual corrections and Paid ticks are kept.",
@@ -2458,7 +2461,10 @@ const it: Record<DictKey, string> = {
   "stip.tuttoChiaro": "Tutte le righe senza stipendio hanno un motivo.",
   "stip.nettiSenzaCosto": "Nel foglio Stipendi Dr ma senza riga costi",
   "stip.nettiSenzaCostoDesc":
-    "Nomi presenti nei netti del mese che non corrispondono a nessuna riga del file costi: cessati con liquidazione, contanti, finanziarie delle cessioni. Contano nel totale dei Flussi.",
+    "Nomi presenti nei netti del mese che non corrispondono a nessuna riga del file costi: cessati con liquidazione, contanti. Contano nel totale dei Flussi.",
+  "stip.finanziarie": "Finanziarie (cessioni del quinto)",
+  "stip.finanziarieDesc":
+    "Righe di Stipendi Dr intestate a una società (SpA, Srl, S.A.…): le rate delle cessioni del quinto pagate con la distinta. Riconosciute da sole, niente da chiarire; contano nel totale dei Flussi.",
   "stip.syncBtn": "Aggiorna dai file",
   "stip.syncTip":
     "Legge da SharePoint Stipendi Dr.xlsx e i COSTI mensili (Personale) e aggiorna la tabella e la riga Stipendi dei Flussi. Correzioni a mano e spunte Pagato restano.",

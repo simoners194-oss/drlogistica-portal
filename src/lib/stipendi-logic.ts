@@ -183,6 +183,16 @@ export function chiaveMotivo(mese: string, chiave: string): string {
   return `${mese}|${chiave}`;
 }
 
+/** Riga del foglio Stipendi Dr intestata a una società, non a una persona:
+ *  le finanziarie delle cessioni del quinto (Pitagora SpA, Cofidis S.A.
+ *  succursale Italiana, PRESTITALIA S.P.A., SIGLA SRL, UniCredit S.p.A) sono
+ *  creditori pagati con la distinta, non dipendenti senza riga costi. */
+export function isFinanziaria(nome: string): boolean {
+  return /\bs\.?\s?p\.?\s?a\.?(?=\s|$)|\bs\.?\s?r\.?\s?l\.?(?=\s|$)|\bs\.a\.(?=\s|$)|\bsuccursale\b|\bfinanz|\bprestit/i.test(
+    nome,
+  );
+}
+
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Applica le modifiche manuali a una copia del db: i mesi COSTI e i netti

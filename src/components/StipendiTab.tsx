@@ -14,6 +14,7 @@ import {
   applicaModifiche,
   chiaveModifica,
   chiaveMotivo,
+  isFinanziaria,
   chiaveNome,
   MOTIVI_NETTO,
   mensilitaStimate,
@@ -365,11 +366,18 @@ export function StipendiTab() {
   }, [mese, nettoMese, nettiPerNome]);
   const nettoDi = (d: StipendioDipendente) =>
     nettiAbbinati.m.get(nameKey(`${d.cognome} ${d.nome}`)) ?? null;
-  // Netti del mese senza riga costi (Stipendi Dr sì, COSTI no).
-  const nettiSenzaCosto = useMemo(
-    () => (nettoMese?.dipendenti ?? []).filter((d) => !nettiAbbinati.usati.has(nameKey(d.nome))),
-    [nettoMese, nettiAbbinati],
-  );
+  // Netti del mese senza riga costi (Stipendi Dr sì, COSTI no). Le righe
+  // intestate a una società (finanziarie delle cessioni del quinto) tornano
+  // ogni mese e non sono dipendenti: vanno a parte, senza motivo da scegliere.
+  const { nettiSenzaCosto, nettiFinanziarie } = useMemo(() => {
+    const liberi = (nettoMese?.dipendenti ?? []).filter(
+      (d) => !nettiAbbinati.usati.has(nameKey(d.nome)),
+    );
+    return {
+      nettiSenzaCosto: liberi.filter((d) => !isFinanziaria(d.nome)),
+      nettiFinanziarie: liberi.filter((d) => isFinanziaria(d.nome)),
+    };
+  }, [nettoMese, nettiAbbinati]);
 
   // MOTIVO del netto assente / costo assente (risposte HR 21/09): vive a
   // parte e sopravvive ai re-import; la riga senza netto E senza motivo è
@@ -1549,6 +1557,29 @@ export function StipendiTab() {
                       <td className="py-1 pr-4 text-xs text-muted-foreground">{d.appalto ?? ""}</td>
                       <td className="py-1 pr-4 text-right tabular-nums">{eur(d.saldo)}</td>
                       <td className="py-1">{selectMotivo(nameKey(d.nome), d.nome)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {nettiFinanziarie.length > 0 && (
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
+              <p className="text-sm font-semibold text-foreground">
+                {t("stip.finanziarie")} ({nettiFinanziarie.length}) ·{" "}
+                <span className="tabular-nums">
+                  {eur(nettiFinanziarie.reduce((a, d) => a + d.saldo, 0))}
+                </span>
+              </p>
+              <p className="mb-2 text-[11px] text-muted-foreground">{t("stip.finanziarieDesc")}</p>
+              <table className="text-sm">
+                <tbody>
+                  {nettiFinanziarie.map((d, i) => (
+                    <tr key={`${d.nome}|${i}`} className="border-b border-border/60">
+                      <td className="py-1 pr-4 font-medium">{d.nome}</td>
+                      <td className="py-1 pr-4 text-xs text-muted-foreground">{d.appalto ?? ""}</td>
+                      <td className="py-1 text-right tabular-nums">{eur(d.saldo)}</td>
                     </tr>
                   ))}
                 </tbody>
