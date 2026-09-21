@@ -14,9 +14,13 @@ import {
   SpHttpError,
 } from "./sharepoint.server";
 import {
+  applicaModifiche,
   chiaveNome,
   emptyStipendiDb,
+  valoreDaFile,
   type AnagraficaDipendente,
+  type CampoModificabile,
+  type ModificaManuale,
   type NettiMese,
   type StipendiDb,
   type StipendiMese,
@@ -167,7 +171,9 @@ export async function flussiStipendi(): Promise<{
   stima: { media: number; mesi: string[] } | null;
   perMese: Record<string, { totale: number; pagati: number; flaggati: number }>;
 }> {
-  const db = await loadStipendiDb();
+  // Le correzioni a mano contano anche qui: i Flussi devono vedere gli
+  // stessi numeri della tabella Stipendi.
+  const db = applicaModifiche(await loadStipendiDb());
   const perMese: Record<string, { totale: number; pagati: number; flaggati: number }> = {};
   for (const n of db.netti ?? []) {
     const chiaviPagati = new Set(db.pagatiPerMese?.[n.mese] ?? []);
@@ -197,7 +203,53 @@ export async function flussiStipendi(): Promise<{
  *  "Stipendi Dr.xlsx". Si usa il netto dovuto e non il saldo perché i saldi
  *  recenti sono abbattuti dagli anticipi già versati. */
 export async function stimaStipendiMensile(): Promise<{ media: number; mesi: string[] } | null> {
-  return stimaStipendiMensileDa(await loadStipendiDb());
+  return stimaStipendiMensileDa(applicaModifiche(await loadStipendiDb()));
+}
+
+/** Correzione A MANO di un valore (costi o netti) per dipendente e mese:
+ *  valore=null toglie la correzione e si torna al file. La riga conserva
+ *  chi, quando e il valore che aveva il file ("prima"), che la tabella
+ *  mostra sulla "M". Vive fuori dai mesi importati: il re-import non la tocca. */
+export async function setModificaStipendio(
+  input: {
+    mese: string;
+    chiave: string;
+    nome: string;
+    campo: CampoModificabile;
+    valore: number | null;
+  },
+  utente: string,
+): Promise<StipendiDb> {
+  const db = await loadStipendiDb();
+  const lista = [...(db.modifiche ?? [])];
+  const i = lista.findIndex(
+    (x) => x.mese === input.mese && x.chiave === input.chiave && x.campo === input.campo,
+  );
+  if (input.valore == null) {
+    if (i < 0) return db; // niente da togliere, niente da salvare
+    lista.splice(i, 1);
+  } else {
+    const prima = i >= 0 ? lista[i].prima : valoreDaFile(db, input.mese, input.chiave, input.campo);
+    const rec: ModificaManuale = {
+      mese: input.mese,
+      chiave: input.chiave,
+      nome: input.nome,
+      campo: input.campo,
+      valore: Math.round(input.valore * 100) / 100,
+      prima,
+      da: utente,
+      il: new Date().toISOString(),
+    };
+    if (i >= 0) lista[i] = rec;
+    else lista.push(rec);
+  }
+  db.modifiche = lista;
+  logSp(
+    "info",
+    "stipendi.modifica",
+    `${input.valore == null ? "Tolta" : "Salvata"} correzione ${input.campo} ${input.mese} ${input.nome} → ${input.valore ?? "file"} (${utente})`,
+  );
+  return saveStipendiDb(db, utente);
 }
 
 function stimaStipendiMensileDa(db: StipendiDb): { media: number; mesi: string[] } | null {

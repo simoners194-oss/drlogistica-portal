@@ -11,13 +11,21 @@ import {
   flussiStipendi,
   loadStipendiDb,
   replaceStipendiAnagrafica,
+  setModificaStipendio,
   setPagatiStipendi,
   setStipendiMensilita,
   stimaStipendiMensile,
   upsertStipendiMese,
   upsertStipendiNetti,
 } from "./stipendi.server";
-import type { AnagraficaDipendente, NettiMese, StipendiDb, StipendiMese } from "./stipendi-logic";
+import {
+  CAMPI_MODIFICABILI,
+  type AnagraficaDipendente,
+  type CampoModificabile,
+  type NettiMese,
+  type StipendiDb,
+  type StipendiMese,
+} from "./stipendi-logic";
 
 async function utenteStipendi(): Promise<ServerSessionUser> {
   const me = await readSessionUser();
@@ -118,6 +126,37 @@ export const spStipendiSalvaNetti = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<StipendiDb> => {
     const me = await utenteStipendi();
     return upsertStipendiNetti(data.mesi, firma(me));
+  });
+
+/** Correzione a mano di un valore della tabella (costi o netti), con traccia
+ *  chi/quando/prima; valore null = si torna al file. */
+export const spStipendiModifica = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      mese: string;
+      chiave: string;
+      nome: string;
+      campo: CampoModificabile;
+      valore: number | null;
+    }) => {
+      if (!/^\d{4}-\d{2}$/.test(input?.mese ?? "")) throw new Error("Mese non valido.");
+      if (!input.chiave?.trim() || !input.nome?.trim()) throw new Error("Dipendente mancante.");
+      if (!(CAMPI_MODIFICABILI as readonly string[]).includes(input.campo))
+        throw new Error("Campo non modificabile.");
+      if (input.valore != null && (!Number.isFinite(input.valore) || Math.abs(input.valore) > 1e7))
+        throw new Error("Valore non valido.");
+      return {
+        mese: input.mese,
+        chiave: input.chiave.trim(),
+        nome: input.nome.trim().slice(0, 80),
+        campo: input.campo,
+        valore: input.valore,
+      };
+    },
+  )
+  .handler(async ({ data }): Promise<StipendiDb> => {
+    const me = await utenteStipendi();
+    return setModificaStipendio(data, firma(me));
   });
 
 export const spStipendiEliminaMese = createServerFn({ method: "POST" })

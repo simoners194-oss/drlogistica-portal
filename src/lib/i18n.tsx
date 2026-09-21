@@ -739,6 +739,15 @@ const en = {
   "stip.mensErr":
     "Monthly payments: whole number between 12 and 15 (empty to go back to the estimate).",
   "stip.colPagato": "Paid",
+  "stip.modTip": "Double-click to correct the value by hand (empty = back to the file value)",
+  "stip.modBadgeTip": "Value changed by hand",
+  "stip.modTrace":
+    "Changed by hand by {da} on {il} · file value: {prima}. Double-click to change, empty to go back to the file.",
+  "stip.modNota":
+    "Cost and net cells can be corrected with a double-click: the M marks a value changed by hand (who, when and the file value in the tooltip). Corrections survive a re-import of the file and count in Cash flow.",
+  "stip.modOk": "Correction saved",
+  "stip.modTolta": "Correction removed: the file value applies again",
+  "stip.modErr": "Invalid value: numbers only (e.g. 1,234.56).",
   "stip.pagatoTip": "Mark PAID yes/no by hand — drives the Stipendi row in Cash flow",
   "stip.pagatoTuttiTip": "Mark/unmark ALL currently filtered rows (e.g. one whole contract)",
   "stip.mappaIndet": "open-ended",
@@ -2400,6 +2409,15 @@ const it: Record<DictKey, string> = {
     "Mensilità — clicca per impostarle a mano (12–15, vuoto = torna alla stima dai ratei paghe; ≈ = stimata)",
   "stip.mensErr": "Mensilità: numero intero tra 12 e 15 (vuoto per tornare alla stima).",
   "stip.colPagato": "Pagato",
+  "stip.modTip": "Doppio clic per correggere il valore a mano (vuoto = torna al valore del file)",
+  "stip.modBadgeTip": "Valore modificato a mano",
+  "stip.modTrace":
+    "Modificato a mano da {da} il {il} · valore del file: {prima}. Doppio clic per cambiare, vuoto per tornare al file.",
+  "stip.modNota":
+    "Le celle dei costi e dei netti si correggono col doppio clic: la M segnala il valore modificato a mano (chi, quando e il valore del file nel tooltip). Le correzioni restano anche dopo un nuovo import del file e contano nei Flussi.",
+  "stip.modOk": "Correzione salvata",
+  "stip.modTolta": "Correzione tolta: vale di nuovo il valore del file",
+  "stip.modErr": "Valore non valido: usa solo numeri (es. 1.234,56).",
   "stip.pagatoTip": "Segna PAGATO sì/no a mano — guida la riga Stipendi dei Flussi di cassa",
   "stip.pagatoTuttiTip": "Segna/togli TUTTE le righe filtrate (es. un appalto intero)",
   "stip.mappaIndet": "indeterminati",

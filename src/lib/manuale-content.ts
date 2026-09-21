@@ -407,6 +407,18 @@ Le spunte guidano anche i Flussi: il mese mostra i pagati e il residuo va nello 
     chiavi: "pagato spunta colonna sede appalto selezione multipla bulk",
   },
   {
+    id: "sti-modifiche",
+    sezione: "Stipendi",
+    titolo: "Correggere un valore a mano (la M)",
+    testo: `Dalla versione 1.77.0 le celle dei costi (ordinario, straordinario, ferie, mensilità aggiuntive, TFR, totale) e dei netti (stipendio, anticipo, saldo) si correggono col doppio clic: scrivi il numero, Invio salva, Esc annulla. Se lasci la cella vuota, torna il valore del file.
+
+La cella corretta mostra una M: fermandoti col mouse vedi chi l'ha cambiata, quando e quanto valeva nel file. È la traccia: il file paghe resta com'è, la correzione vive a parte e sopravvive anche a un nuovo import dello stesso mese. Le correzioni ai netti contano anche nei Flussi di cassa e nella stima degli stipendi futuri.
+
+Serve anche a riempire un buco: se un dipendente ha la riga dei costi ma manca dal foglio Stipendi Dr del mese, scrivi stipendio e saldo nelle sue celle e la riga nasce da sola. Nel CSV la colonna "Modifiche manuali" elenca i campi corretti.`,
+    chiavi:
+      "modifica a mano correggere valore M manuale doppio clic traccia chi quando stipendio saldo costo",
+  },
+  {
     id: "sti-versato",
     sezione: "Stipendi",
     titolo: '"Versato in banca" vuoto o basso',

@@ -101,12 +101,148 @@ export interface StipendiDb {
    *  la riga Stipendi dei Flussi: tabella reale = solo i sì, tabella "solo
    *  fatturazioni" = tutti. */
   pagatiPerMese?: Record<string, string[]>;
+  /** Correzioni A MANO dei valori (richiesta Simone 21/09): vivono FUORI dai
+   *  mesi importati, così un re-import del file non le cancella; la tabella
+   *  mostra la "M" con chi/quando/prima. Vedi applicaModifiche. */
+  modifiche?: ModificaManuale[];
   aggiornatoIl?: string;
   aggiornatoDa?: string;
 }
 
 export function emptyStipendiDb(): StipendiDb {
   return { versione: 0, mesi: [] };
+}
+
+// --- Modifiche manuali ---------------------------------------------------------
+export const CAMPI_COSTI = [
+  "costoOrdinario",
+  "costoStraordinario",
+  "feriePermessi",
+  "mensilitaAggiuntive",
+  "tfr",
+  "totaleCosto",
+] as const;
+export const CAMPI_NETTI = ["stipendio", "anticipo", "saldo"] as const;
+export const CAMPI_MODIFICABILI = [...CAMPI_COSTI, ...CAMPI_NETTI] as const;
+export type CampoModificabile = (typeof CAMPI_MODIFICABILI)[number];
+
+export interface ModificaManuale {
+  mese: string; // YYYY-MM (competenza)
+  /** chiaveNome("Cognome Nome"): aggancia sia la riga COSTI sia quella dei netti. */
+  chiave: string;
+  /** "Cognome Nome" leggibile: serve alle righe sintetiche dei netti. */
+  nome: string;
+  campo: CampoModificabile;
+  valore: number;
+  /** Valore che aveva il file al momento della prima modifica (null = non c'era). */
+  prima: number | null;
+  da: string;
+  il: string; // ISO
+}
+
+export function chiaveModifica(mese: string, chiave: string, campo: string): string {
+  return `${mese}|${chiave}|${campo}`;
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Applica le modifiche manuali a una copia del db: i mesi COSTI e i netti
+ *  restano quelli del file, ma i valori corretti a mano vincono. Se un
+ *  dipendente ha netti modificati ma NON compare nel foglio Stipendi Dr del
+ *  mese (o il mese non è mai stato caricato), nasce una riga/un mese
+ *  sintetici: così si riempie a mano anche un buco, non solo un errore. */
+export function applicaModifiche(db: StipendiDb): StipendiDb {
+  const mods = db.modifiche ?? [];
+  if (mods.length === 0) return db;
+  const perMese = new Map<string, ModificaManuale[]>();
+  for (const m of mods) {
+    if (!perMese.has(m.mese)) perMese.set(m.mese, []);
+    perMese.get(m.mese)!.push(m);
+  }
+  const isCosto = (c: string) => (CAMPI_COSTI as readonly string[]).includes(c);
+  const isNetto = (c: string) => (CAMPI_NETTI as readonly string[]).includes(c);
+
+  const mesi = db.mesi.map((m) => {
+    const ms = (perMese.get(m.mese) ?? []).filter((x) => isCosto(x.campo));
+    if (ms.length === 0) return m;
+    return {
+      ...m,
+      dipendenti: m.dipendenti.map((d) => {
+        const k = chiaveNome(`${d.cognome} ${d.nome}`);
+        const mie = ms.filter((x) => x.chiave === k);
+        if (mie.length === 0) return d;
+        const nd: StipendioDipendente = { ...d };
+        for (const x of mie) (nd as unknown as Record<string, number>)[x.campo] = x.valore;
+        return nd;
+      }),
+    };
+  });
+
+  const nettiMap = new Map<string, NettiMese>((db.netti ?? []).map((n) => [n.mese, n]));
+  for (const [mese, lista] of perMese) {
+    const ms = lista.filter((x) => isNetto(x.campo));
+    if (ms.length === 0) continue;
+    const base = nettiMap.get(mese) ?? {
+      mese,
+      fonteFile: "manuale",
+      dipendenti: [],
+      totaleStipendio: 0,
+      totaleAnticipi: 0,
+      totaleSaldo: 0,
+    };
+    const dipendenti = base.dipendenti.map((d) => ({ ...d }));
+    const coperti = new Set<string>();
+    for (const d of dipendenti) {
+      const k = chiaveNome(d.nome);
+      const mie = ms.filter((x) => x.chiave === k);
+      if (mie.length === 0) continue;
+      coperti.add(k);
+      for (const x of mie) (d as unknown as Record<string, number>)[x.campo] = x.valore;
+    }
+    // Righe sintetiche per chi ha correzioni ma non sta nel foglio.
+    const nuove = new Map<string, NettoDipendente>();
+    for (const x of ms) {
+      if (coperti.has(x.chiave)) continue;
+      const d = nuove.get(x.chiave) ?? {
+        nome: x.nome,
+        stipendio: 0,
+        anticipo: 0,
+        addebito: 0,
+        saldo: 0,
+      };
+      (d as unknown as Record<string, number>)[x.campo] = x.valore;
+      nuove.set(x.chiave, d);
+    }
+    dipendenti.push(...nuove.values());
+    nettiMap.set(mese, {
+      ...base,
+      dipendenti,
+      totaleStipendio: r2(dipendenti.reduce((a, d) => a + d.stipendio, 0)),
+      totaleAnticipi: r2(dipendenti.reduce((a, d) => a + d.anticipo, 0)),
+      totaleSaldo: r2(dipendenti.reduce((a, d) => a + d.saldo, 0)),
+    });
+  }
+  const netti = [...nettiMap.values()].sort((a, b) => (a.mese < b.mese ? -1 : 1));
+  return { ...db, mesi, netti };
+}
+
+/** Valore del FILE (senza modifiche) per la traccia "prima: …". */
+export function valoreDaFile(
+  db: StipendiDb,
+  mese: string,
+  chiave: string,
+  campo: CampoModificabile,
+): number | null {
+  if ((CAMPI_COSTI as readonly string[]).includes(campo)) {
+    const d = db.mesi
+      .find((m) => m.mese === mese)
+      ?.dipendenti.find((x) => chiaveNome(`${x.cognome} ${x.nome}`) === chiave);
+    return d ? ((d as unknown as Record<string, number>)[campo] ?? null) : null;
+  }
+  const n = (db.netti ?? [])
+    .find((m) => m.mese === mese)
+    ?.dipendenti.find((x) => chiaveNome(x.nome) === chiave);
+  return n ? ((n as unknown as Record<string, number>)[campo] ?? null) : null;
 }
 
 export function totaleMese(m: StipendiMese): number {

@@ -11,6 +11,8 @@ import { Banknote, Loader2, Trash2, Upload } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { esportaCsvFile } from "@/lib/csv";
 import {
+  applicaModifiche,
+  chiaveModifica,
   chiaveNome,
   mensilitaStimate,
   meseSuccessivo,
@@ -19,6 +21,7 @@ import {
   parseStipendiDr,
   totaleMese,
   type AnagraficaDipendente,
+  type CampoModificabile,
   type NettiMese,
   type ParseCostiFileResult,
   type StipendiDb,
@@ -28,6 +31,7 @@ import {
   spStipendiEliminaMese,
   spStipendiGet,
   spStipendiMensilita,
+  spStipendiModifica,
   spStipendiPagati,
   spStipendiSalvaAnagrafica,
   spStipendiSalvaMese,
@@ -81,7 +85,24 @@ interface PreviewStip {
 
 export function StipendiTab() {
   const { t } = useLang();
-  const [db, setDb] = useState<StipendiDb | null>(null);
+  // dbRaw = il file com'è (con la lista delle modifiche a mano a parte);
+  // db = quello che si mostra, con le correzioni applicate. Tutto il resto
+  // del componente legge `db`, la "M" e la traccia leggono `dbRaw`.
+  const [dbRaw, setDb] = useState<StipendiDb | null>(null);
+  const db = useMemo(() => (dbRaw ? applicaModifiche(dbRaw) : null), [dbRaw]);
+  const modMap = useMemo(
+    () =>
+      new Map(
+        (dbRaw?.modifiche ?? []).map(
+          (x) => [chiaveModifica(x.mese, x.chiave, x.campo), x] as const,
+        ),
+      ),
+    [dbRaw],
+  );
+  // Editor inline dei valori (doppio clic sulla cella).
+  const [modEdit, setModEdit] = useState<string | null>(null); // chiaveModifica
+  const [modVal, setModVal] = useState("");
+  const [modBusy, setModBusy] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
   const [meseSel, setMeseSel] = useState("");
   const [q, setQ] = useState("");
@@ -347,6 +368,122 @@ export function StipendiTab() {
       );
   };
 
+  // CORREZIONE A MANO di un valore (richiesta Simone 21/09): doppio clic sulla
+  // cella, Invio salva, Esc annulla, vuoto = torna al valore del file. La
+  // cella corretta porta la "M" con chi/quando/prima nel tooltip.
+  const valoreCella = (d: StipendioDipendente, campo: CampoModificabile): number | null => {
+    if ((["stipendio", "anticipo", "saldo"] as string[]).includes(campo)) {
+      const n = nettoDi(d);
+      return n ? (n as unknown as Record<string, number>)[campo] : null;
+    }
+    return (d as unknown as Record<string, number>)[campo] ?? null;
+  };
+  const chiaveCella = (d: StipendioDipendente, campo: CampoModificabile) =>
+    chiaveModifica(meseSel, nameKey(`${d.cognome} ${d.nome}`), campo);
+  const apriModifica = (d: StipendioDipendente, campo: CampoModificabile) => {
+    if (modBusy) return;
+    const v = valoreCella(d, campo);
+    setModVal(v == null || v === 0 ? "" : String(v).replace(".", ","));
+    setModEdit(chiaveCella(d, campo));
+  };
+  const salvaModifica = async (d: StipendioDipendente, campo: CampoModificabile) => {
+    const grezzo = modVal.trim();
+    setModEdit(null);
+    let valore: number | null = null;
+    if (grezzo !== "") {
+      // Accetta "1.234,56", "1234,56" e "1234.56".
+      const s = grezzo.includes(",") ? grezzo.replace(/\./g, "").replace(",", ".") : grezzo;
+      valore = Number(s);
+      if (!Number.isFinite(valore)) {
+        toast.error(t("stip.modErr"));
+        return;
+      }
+      valore = Math.round(valore * 100) / 100;
+    }
+    const key = chiaveCella(d, campo);
+    const attuale = valoreCella(d, campo);
+    // Niente scrittura se non cambia nulla (né valore né stato manuale).
+    if (valore == null && !modMap.has(key)) return;
+    if (valore != null && attuale != null && Math.abs(valore - attuale) < 0.005) return;
+    setModBusy(true);
+    try {
+      const res = await spStipendiModifica({
+        data: {
+          mese: meseSel,
+          chiave: nameKey(`${d.cognome} ${d.nome}`),
+          nome: `${d.cognome} ${d.nome}`,
+          campo,
+          valore,
+        },
+      });
+      setDb(res);
+      toast.success(valore == null ? t("stip.modTolta") : t("stip.modOk"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setModBusy(false);
+    }
+  };
+  const tracciaModifica = (key: string): string | undefined => {
+    const m = modMap.get(key);
+    if (!m) return undefined;
+    return t("stip.modTrace")
+      .replace("{da}", m.da)
+      .replace("{il}", fmtDataIt(m.il))
+      .replace("{prima}", m.prima == null ? "—" : eur(m.prima));
+  };
+  /** Cella numerica modificabile: valore + eventuale "M". Funzione di
+   *  rendering (NON un componente): un componente definito qui dentro
+   *  cambierebbe identità a ogni render e l'input perderebbe il focus. */
+  const cellaMod = (
+    d: StipendioDipendente,
+    campo: CampoModificabile,
+    testo: string,
+    className?: string,
+  ) => {
+    const key = chiaveCella(d, campo);
+    const manuale = modMap.has(key);
+    if (modEdit === key) {
+      return (
+        <td className={`px-3 py-1.5 text-right tabular-nums ${className ?? ""}`}>
+          <input
+            autoFocus
+            inputMode="decimal"
+            value={modVal}
+            onChange={(e) => setModVal(e.target.value)}
+            onBlur={() => void salvaModifica(d, campo)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void salvaModifica(d, campo);
+              if (e.key === "Escape") setModEdit(null);
+            }}
+            className="w-24 rounded border border-primary bg-background px-1 py-0.5 text-right text-[12px]"
+          />
+        </td>
+      );
+    }
+    return (
+      <td
+        className={`cursor-text px-3 py-1.5 text-right tabular-nums ${className ?? ""}`}
+        title={tracciaModifica(key) ?? t("stip.modTip")}
+        onDoubleClick={() => apriModifica(d, campo)}
+      >
+        {testo}
+        {manuale && (
+          <span
+            className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded bg-primary/15 px-1 align-middle text-[10px] font-bold text-primary"
+            aria-label={t("stip.modBadgeTip")}
+          >
+            M
+          </span>
+        )}
+      </td>
+    );
+  };
+  const modificheDi = (d: StipendioDipendente): string[] =>
+    (dbRaw?.modifiche ?? [])
+      .filter((x) => x.mese === meseSel && x.chiave === nameKey(`${d.cognome} ${d.nome}`))
+      .map((x) => x.campo);
+
   const salvaMensilita = async (d: StipendioDipendente) => {
     const nome = anagDi(d)?.nome ?? `${d.cognome} ${d.nome}`;
     const grezzo = mensVal.trim();
@@ -592,6 +729,7 @@ export function StipendiTab() {
         "Versato in banca",
         "Pagato",
         "Costo medio",
+        "Modifiche manuali",
       ],
       mese.dipendenti.map((d) => [
         mese.mese,
@@ -617,6 +755,7 @@ export function StipendiTab() {
         versatoDi(d) ?? "",
         pagatoDi(d) ? "SI" : "NO",
         d.costoMedio,
+        modificheDi(d).join("; "),
       ]),
     );
   };
@@ -1029,6 +1168,7 @@ export function StipendiTab() {
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground">{t("stip.versatoNota")}</p>
+          <p className="text-[11px] text-muted-foreground">{t("stip.modNota")}</p>
 
           <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-[var(--shadow-card)]">
             <table className="w-full text-sm">
@@ -1139,27 +1279,23 @@ export function StipendiTab() {
                     <td className="px-3 py-1.5 text-right tabular-nums">
                       {d.oreStraordinarie || "—"}
                     </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{eur(d.costoOrdinario)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
-                      {d.costoStraordinario ? eur(d.costoStraordinario) : "—"}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{eur(d.feriePermessi)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
-                      {eur(d.mensilitaAggiuntive)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{eur(d.tfr)}</td>
-                    <td className="px-3 py-1.5 text-right font-semibold tabular-nums">
-                      {eur(d.totaleCosto)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
-                      {nettoDi(d) ? eur(nettoDi(d)!.stipendio) : "—"}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
-                      {nettoDi(d)?.anticipo ? eur(nettoDi(d)!.anticipo) : "—"}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
-                      {nettoDi(d) ? eur(nettoDi(d)!.saldo) : "—"}
-                    </td>
+                    {cellaMod(d, "costoOrdinario", eur(d.costoOrdinario))}
+                    {cellaMod(
+                      d,
+                      "costoStraordinario",
+                      d.costoStraordinario ? eur(d.costoStraordinario) : "—",
+                    )}
+                    {cellaMod(d, "feriePermessi", eur(d.feriePermessi))}
+                    {cellaMod(d, "mensilitaAggiuntive", eur(d.mensilitaAggiuntive))}
+                    {cellaMod(d, "tfr", eur(d.tfr))}
+                    {cellaMod(d, "totaleCosto", eur(d.totaleCosto), "font-semibold")}
+                    {cellaMod(d, "stipendio", nettoDi(d) ? eur(nettoDi(d)!.stipendio) : "—")}
+                    {cellaMod(
+                      d,
+                      "anticipo",
+                      nettoDi(d)?.anticipo ? eur(nettoDi(d)!.anticipo) : "—",
+                    )}
+                    {cellaMod(d, "saldo", nettoDi(d) ? eur(nettoDi(d)!.saldo) : "—")}
                     <td className="px-3 py-1.5 text-right tabular-nums">
                       {versatoDi(d) != null ? eur(versatoDi(d)!) : "—"}
                     </td>

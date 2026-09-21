@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.77.0",
+    date: "2026-09-21",
+    entries: [
+      {
+        title: "Stipendi: valori correggibili a mano, con la M",
+        description:
+          'Nella tabella Stipendi le celle dei costi e dei netti si correggono col doppio clic (Invio salva, vuoto = torna al file). La cella corretta porta una M: nel tooltip chi l\'ha cambiata, quando e il valore del file. Le correzioni sopravvivono ai nuovi import e contano nei Flussi; scrivendo stipendio e saldo a chi manca dal foglio Stipendi Dr si riempie anche un buco. Nel CSV la colonna "Modifiche manuali".',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.76.0",
     date: "2026-09-18",
     entries: [
