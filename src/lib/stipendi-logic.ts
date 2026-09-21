@@ -105,6 +105,11 @@ export interface StipendiDb {
    *  mesi importati, così un re-import del file non le cancella; la tabella
    *  mostra la "M" con chi/quando/prima. Vedi applicaModifiche. */
   modifiche?: ModificaManuale[];
+  /** Perché un dipendente NON ha il netto nel mese (aspettativa, infortunio,
+   *  cessato…) o compare nei netti senza costo (liquidazione, contanti):
+   *  risposte HR del 21/09. Vive a parte come le modifiche: il re-import non
+   *  la tocca. Vedi MOTIVI_NETTO. */
+  motiviNetto?: MotivoNetto[];
   /** Esito dell'ultima lettura automatica dei file da SharePoint (1.79.0). */
   ultimaSync?: {
     il: string;
@@ -150,6 +155,32 @@ export interface ModificaManuale {
 
 export function chiaveModifica(mese: string, chiave: string, campo: string): string {
   return `${mese}|${chiave}|${campo}`;
+}
+
+// --- Motivo del netto assente / del costo assente -------------------------------
+export const MOTIVI_NETTO = [
+  "aspettativa",
+  "infortunio",
+  "malattia",
+  "cessato",
+  "fuori-file",
+  "contanti",
+  "altro",
+] as const;
+export type MotivoNettoTipo = (typeof MOTIVI_NETTO)[number];
+
+export interface MotivoNetto {
+  mese: string; // YYYY-MM (competenza)
+  chiave: string; // chiaveNome("Cognome Nome")
+  nome: string;
+  motivo: MotivoNettoTipo;
+  nota?: string;
+  da: string;
+  il: string; // ISO
+}
+
+export function chiaveMotivo(mese: string, chiave: string): string {
+  return `${mese}|${chiave}`;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;

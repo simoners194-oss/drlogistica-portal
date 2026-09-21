@@ -434,7 +434,9 @@ Serve anche a riempire un buco: se un dipendente ha la riga dei costi ma manca d
     titolo: "Un dipendente ha il costo ma lo Stipendio vuoto",
     testo: `Il costo viene dal file COSTI del mese, lo stipendio netto dal file Stipendi Dr: le due righe si agganciano per nome. Se lo Stipendio è "—" mentre il costo c'è, quasi sempre il nome è scritto diverso nei due file (un refuso, "Anna Maria" contro "Annamaria", una parola in più, l'ordine invertito).
 
-Dalla versione 1.78.0 l'aggancio è tollerante: ordine delle parole, parole in più e troncamenti si risolvono da soli. I refusi veri no (è successo con "Giaggianesi" al posto di Gaggianesi): si corregge il nome nel file Stipendi Dr e si ricarica il file dal bottone di import — le correzioni a mano (la M) e le spunte Pagato restano. In alternativa, col doppio clic scrivi stipendio e saldo direttamente nelle celle.`,
+Dalla versione 1.78.0 l'aggancio è tollerante: ordine delle parole, parole in più e troncamenti si risolvono da soli. I refusi veri no (è successo con "Giaggianesi" al posto di Gaggianesi): si corregge il nome nel file Stipendi Dr e alla lettura successiva torna tutto — le correzioni a mano (la M) e le spunte Pagato restano. In alternativa, col doppio clic scrivi stipendio e saldo direttamente nelle celle.
+
+Poi ci sono i casi LEGITTIMI in cui il netto manca davvero: aspettativa non retribuita, infortunio, malattia, cessato, pagato fuori dal file. Dalla 1.80.0 in quella cella c'è un menù per scegliere il motivo: la riga smette di essere evidenziata e il motivo resta scritto (chi e quando). Le righe senza netto e senza motivo sono "da chiarire": il conteggio sta sopra la tabella ed è la lista da girare a HR. Sotto la tabella compaiono anche i nomi presenti in Stipendi Dr ma senza riga costi (liquidazioni, contanti, finanziarie delle cessioni), con lo stesso menù.`,
     chiavi:
       "stipendio vuoto trattino netto manca nome diverso refuso non combacia abbinamento ricaricare stipendi dr",
   },

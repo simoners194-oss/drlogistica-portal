@@ -29,6 +29,8 @@ import {
   type AnagraficaDipendente,
   type CampoModificabile,
   type ModificaManuale,
+  type MotivoNetto,
+  type MotivoNettoTipo,
   type NettiMese,
   type StipendiDb,
   type StipendiMese,
@@ -285,6 +287,9 @@ const SITO_DOCUMENTI = "DocumentiCondivisi";
 const CARTELLA_PERSONALE = "Personale";
 const FILE_NETTI = "Stipendi Dr.xlsx";
 const CARTELLA_MENSILITA = "MENSILITA'";
+// Tracciato per-appalto di gennaio–maggio 2026 ("0X - Costi Personale
+// <Mese> 2026.xlsx", un foglio per appalto, mese dal nome del file).
+const CARTELLA_GEN_MAG = "COSTI PERSONALE GENNAIO - MAGGIO";
 
 let sitoDocumentiCache: { id: string; at: number } | null = null;
 async function sitoDocumentiId(): Promise<string> {
@@ -421,7 +426,32 @@ export async function syncStipendiDaSharePoint(
     esito.errori.push(`${FILE_NETTI}: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // --- COSTI (MENSILITA'/<MESE ANNO>/COSTI *.xlsx) ---------------------------
+  // --- COSTI: un file per cartella-mese (MENSILITA'/<MESE ANNO>/COSTI *.xlsx)
+  //     più la cartella storica gennaio–maggio (tutti i file COSTI dentro).
+  const leggiCosti = async (percorso: string, file: DriveChild) => {
+    try {
+      const f = await scaricaFogli(siteId, `${percorso}/${file.name}`);
+      const res = parseCostiFile(f.fogli, file.name);
+      if (!res || res.dipendenti.length === 0 || !res.mese) {
+        esito.saltati.push(`${file.name}: tracciato non riconosciuto o mese assente`);
+        return;
+      }
+      const mese: StipendiMese = {
+        mese: res.mese,
+        fonteFile: file.name,
+        caricatoIl: ora,
+        caricatoDa: utente,
+        dipendenti: res.dipendenti,
+      };
+      const i = db.mesi.findIndex((m) => m.mese === res.mese);
+      if (i >= 0) db.mesi[i] = mese;
+      else db.mesi.push(mese);
+      esito.costiMesi.push(res.mese);
+    } catch (err) {
+      esito.errori.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  const fileCosti = (l: DriveChild[]) => l.filter((x) => x.file && /costi.*\.xlsx$/i.test(x.name));
   try {
     const cartelle = (await figliDrive(siteId, `${CARTELLA_PERSONALE}/${CARTELLA_MENSILITA}`))
       .filter((c) => c.folder)
@@ -430,9 +460,7 @@ export async function syncStipendiDaSharePoint(
       const percorso = `${CARTELLA_PERSONALE}/${CARTELLA_MENSILITA}/${c.name}`;
       let files: DriveChild[];
       try {
-        files = (await figliDrive(siteId, percorso)).filter(
-          (x) => x.file && /^costi.*\.xlsx$/i.test(x.name),
-        );
+        files = fileCosti(await figliDrive(siteId, percorso));
       } catch (err) {
         esito.errori.push(`${c.name}: ${err instanceof Error ? err.message : String(err)}`);
         continue;
@@ -441,34 +469,22 @@ export async function syncStipendiDaSharePoint(
         esito.saltati.push(`${c.name}: nessun file COSTI`);
         continue;
       }
-      for (const file of files) {
-        try {
-          const f = await scaricaFogli(siteId, `${percorso}/${file.name}`);
-          const res = parseCostiFile(f.fogli, file.name);
-          if (!res || res.dipendenti.length === 0 || !res.mese) {
-            esito.saltati.push(`${file.name}: tracciato non riconosciuto o mese assente`);
-            continue;
-          }
-          const mese: StipendiMese = {
-            mese: res.mese,
-            fonteFile: file.name,
-            caricatoIl: ora,
-            caricatoDa: utente,
-            dipendenti: res.dipendenti,
-          };
-          const i = db.mesi.findIndex((m) => m.mese === res.mese);
-          if (i >= 0) db.mesi[i] = mese;
-          else db.mesi.push(mese);
-          esito.costiMesi.push(res.mese);
-        } catch (err) {
-          esito.errori.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
+      for (const file of files) await leggiCosti(percorso, file);
     }
-    db.mesi.sort((a, b) => (a.mese < b.mese ? -1 : 1));
   } catch (err) {
     esito.errori.push(`${CARTELLA_MENSILITA}: ${err instanceof Error ? err.message : String(err)}`);
   }
+  try {
+    const percorso = `${CARTELLA_PERSONALE}/${CARTELLA_GEN_MAG}`;
+    const files = fileCosti(await figliDrive(siteId, percorso)).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+    for (const file of files) await leggiCosti(percorso, file);
+  } catch (err) {
+    // Cartella storica: se un giorno sparisce non è un errore della lettura.
+    esito.saltati.push(`${CARTELLA_GEN_MAG}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  db.mesi.sort((a, b) => (a.mese < b.mese ? -1 : 1));
 
   esito.durataMs = Date.now() - started;
   db.ultimaSync = {
@@ -486,6 +502,46 @@ export async function syncStipendiDaSharePoint(
     { durataMs: esito.durataMs },
   );
   return { db: salvato, esito };
+}
+
+/** Motivo per cui un dipendente non ha il netto del mese (o ha il netto senza
+ *  costo): null lo toglie. Traccia chi/quando. */
+export async function setMotivoNetto(
+  input: {
+    mese: string;
+    chiave: string;
+    nome: string;
+    motivo: MotivoNettoTipo | null;
+    nota?: string;
+  },
+  utente: string,
+): Promise<StipendiDb> {
+  const db = await loadStipendiDb();
+  const lista = [...(db.motiviNetto ?? [])];
+  const i = lista.findIndex((x) => x.mese === input.mese && x.chiave === input.chiave);
+  if (input.motivo == null) {
+    if (i < 0) return db;
+    lista.splice(i, 1);
+  } else {
+    const rec: MotivoNetto = {
+      mese: input.mese,
+      chiave: input.chiave,
+      nome: input.nome,
+      motivo: input.motivo,
+      nota: input.nota?.trim() || undefined,
+      da: utente,
+      il: new Date().toISOString(),
+    };
+    if (i >= 0) lista[i] = rec;
+    else lista.push(rec);
+  }
+  db.motiviNetto = lista;
+  logSp(
+    "info",
+    "stipendi.motivo",
+    `${input.motivo == null ? "Tolto" : "Salvato"} motivo ${input.mese} ${input.nome} → ${input.motivo ?? "nessuno"} (${utente})`,
+  );
+  return saveStipendiDb(db, utente);
 }
 
 /** Innesco programmato (/cron-stipendi): vale il token "stipendi" oppure

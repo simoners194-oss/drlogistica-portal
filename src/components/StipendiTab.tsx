@@ -13,7 +13,9 @@ import { esportaCsvFile } from "@/lib/csv";
 import {
   applicaModifiche,
   chiaveModifica,
+  chiaveMotivo,
   chiaveNome,
+  MOTIVI_NETTO,
   mensilitaStimate,
   meseSuccessivo,
   parseCostiFile,
@@ -22,6 +24,7 @@ import {
   totaleMese,
   type AnagraficaDipendente,
   type CampoModificabile,
+  type MotivoNettoTipo,
   type NettiMese,
   type ParseCostiFileResult,
   type StipendiDb,
@@ -32,6 +35,7 @@ import {
   spStipendiGet,
   spStipendiMensilita,
   spStipendiModifica,
+  spStipendiMotivo,
   spStipendiPagati,
   spStipendiSalvaAnagrafica,
   spStipendiSalvaMese,
@@ -78,6 +82,13 @@ function fmtDataIt(iso: string): string {
 
 // Chiave di confronto nomi tra fonti diverse (paghe, distinte, mappatura).
 const nameKey = chiaveNome;
+
+// "CERRO AL LAMBRO" → "Cerro Al Lambro" ("" e "None" → "").
+function titoloSede(s: string): string {
+  const t = s.trim();
+  if (!t || /^none$/i.test(t)) return "";
+  return t.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+}
 
 interface PreviewStip {
   fileName: string;
@@ -229,7 +240,13 @@ export function StipendiTab() {
           ? matchDipendenteNome(`${d.cognome} ${d.nome}`, nomiRoster)
           : null;
         sede =
-          sedePersona.get(k) || (hit ? appaltoDi.get(chiaveNome(hit)) : "") || t("stip.sedeAltri");
+          sedePersona.get(k) ||
+          (hit ? appaltoDi.get(chiaveNome(hit)) : "") ||
+          // Indicazione HR 21/09: la "Descrizione ripartizione 1" del file
+          // costi (es. SAVONA, CERRO AL LAMBRO) dice la sede quando il
+          // file non porta l'appalto.
+          titoloSede(d.ripartizione ?? "") ||
+          t("stip.sedeAltri");
       }
       m.set(`${d.codice}|${d.cognome} ${d.nome}|${d.etichetta}`, sede);
     }
@@ -330,22 +347,89 @@ export function StipendiTab() {
   const nettiAbbinati = useMemo(() => {
     const m = new Map<string, { stipendio: number; anticipo: number; saldo: number } | null>();
     const nomiNetti = (nettoMese?.dipendenti ?? []).map((d) => d.nome);
+    // Chiavi dei netti "consumati" da una riga costi: il resto sono i netti
+    // senza costo (cessati con liquidazione, contanti…) da mostrare a parte.
+    const usati = new Set<string>();
     for (const d of mese?.dipendenti ?? []) {
       const nome = `${d.cognome} ${d.nome}`;
       const k = nameKey(nome);
-      let hit = nettiPerNome.get(k) ?? null;
-      if (!hit && nomiNetti.length) {
+      let hitKey: string | null = nettiPerNome.has(k) ? k : null;
+      if (!hitKey && nomiNetti.length) {
         const match = matchDipendenteNome(nome, nomiNetti);
-        if (match) hit = nettiPerNome.get(nameKey(match)) ?? null;
+        if (match) hitKey = nameKey(match);
       }
-      m.set(k, hit);
+      if (hitKey) usati.add(hitKey);
+      m.set(k, hitKey ? (nettiPerNome.get(hitKey) ?? null) : null);
     }
-    return m;
+    return { m, usati };
   }, [mese, nettoMese, nettiPerNome]);
   const nettoDi = (d: StipendioDipendente) =>
-    nettiAbbinati.get(nameKey(`${d.cognome} ${d.nome}`)) ??
-    nettiPerNome.get(nameKey(`${d.cognome} ${d.nome}`)) ??
-    null;
+    nettiAbbinati.m.get(nameKey(`${d.cognome} ${d.nome}`)) ?? null;
+  // Netti del mese senza riga costi (Stipendi Dr sì, COSTI no).
+  const nettiSenzaCosto = useMemo(
+    () => (nettoMese?.dipendenti ?? []).filter((d) => !nettiAbbinati.usati.has(nameKey(d.nome))),
+    [nettoMese, nettiAbbinati],
+  );
+
+  // MOTIVO del netto assente / costo assente (risposte HR 21/09): vive a
+  // parte e sopravvive ai re-import; la riga senza netto E senza motivo è
+  // "da chiarire" e resta evidenziata finché qualcuno non la spiega.
+  const motiviMap = useMemo(
+    () =>
+      new Map((dbRaw?.motiviNetto ?? []).map((x) => [chiaveMotivo(x.mese, x.chiave), x] as const)),
+    [dbRaw],
+  );
+  const [motivoBusy, setMotivoBusy] = useState<string | null>(null);
+  const motivoDi = (chiave: string) => motiviMap.get(chiaveMotivo(meseSel, chiave)) ?? null;
+  const salvaMotivo = async (chiave: string, nome: string, motivo: MotivoNettoTipo | null) => {
+    setMotivoBusy(chiave);
+    try {
+      const res = await spStipendiMotivo({ data: { mese: meseSel, chiave, nome, motivo } });
+      setDb(res);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMotivoBusy(null);
+    }
+  };
+  const etichettaMotivo = (m: MotivoNettoTipo) => t(`stip.motivo.${m}`);
+  const selectMotivo = (chiave: string, nome: string) => {
+    const cur = motivoDi(chiave);
+    return (
+      <select
+        value={cur?.motivo ?? ""}
+        disabled={motivoBusy === chiave}
+        title={
+          cur
+            ? t("stip.motivoTrace").replace("{da}", cur.da).replace("{il}", fmtDataIt(cur.il))
+            : t("stip.motivoTip")
+        }
+        onChange={(e) =>
+          void salvaMotivo(chiave, nome, (e.target.value || null) as MotivoNettoTipo | null)
+        }
+        className={`max-w-36 rounded border px-1 py-0.5 text-[11px] ${cur ? "border-border bg-background text-foreground" : "border-status-absent/50 bg-status-absent/5 text-status-absent"}`}
+      >
+        <option value="">{t("stip.motivoDaChiarire")}</option>
+        {MOTIVI_NETTO.map((m) => (
+          <option key={m} value={m}>
+            {etichettaMotivo(m)}
+          </option>
+        ))}
+      </select>
+    );
+  };
+  const senzaNetto = (d: StipendioDipendente) => !nettoDi(d) && d.totaleCosto > 0;
+  const daChiarire = useMemo(
+    () =>
+      (mese?.dipendenti ?? []).filter(
+        (d) =>
+          !nettiAbbinati.m.get(nameKey(`${d.cognome} ${d.nome}`)) &&
+          d.totaleCosto > 0 &&
+          !motiviMap.has(chiaveMotivo(meseSel, nameKey(`${d.cognome} ${d.nome}`))),
+      ).length +
+      nettiSenzaCosto.filter((d) => !motiviMap.has(chiaveMotivo(meseSel, nameKey(d.nome)))).length,
+    [mese, nettiAbbinati, motiviMap, meseSel, nettiSenzaCosto],
+  );
   // Anagrafica contrattuale (Mappatura Dipendenti) per nome.
   const anagPerNome = useMemo(() => {
     const m = new Map<string, AnagraficaDipendente>();
@@ -776,6 +860,7 @@ export function StipendiTab() {
         "Pagato",
         "Costo medio",
         "Modifiche manuali",
+        "Motivo netto assente",
       ],
       mese.dipendenti.map((d) => [
         mese.mese,
@@ -802,6 +887,7 @@ export function StipendiTab() {
         pagatoDi(d) ? "SI" : "NO",
         d.costoMedio,
         modificheDi(d).join("; "),
+        motivoDi(nameKey(`${d.cognome} ${d.nome}`))?.motivo ?? "",
       ]),
     );
   };
@@ -1235,6 +1321,14 @@ export function StipendiTab() {
           </div>
           <p className="text-[11px] text-muted-foreground">{t("stip.versatoNota")}</p>
           <p className="text-[11px] text-muted-foreground">{t("stip.modNota")}</p>
+          {daChiarire > 0 ? (
+            <p className="inline-flex items-center gap-2 rounded-lg border border-status-absent/40 bg-status-absent/5 px-3 py-1.5 text-[12px] text-foreground">
+              <span className="font-semibold text-status-absent">{daChiarire}</span>{" "}
+              {t("stip.daChiarire")}
+            </p>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">{t("stip.tuttoChiaro")}</p>
+          )}
 
           <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-[var(--shadow-card)]">
             <table className="w-full text-sm">
@@ -1274,7 +1368,7 @@ export function StipendiTab() {
                 {righe.map((d) => (
                   <tr
                     key={`${d.codice}|${d.cognome} ${d.nome}|${d.etichetta}`}
-                    className="border-b border-border/60 hover:bg-muted/40"
+                    className={`border-b border-border/60 hover:bg-muted/40 ${senzaNetto(d) && !motivoDi(nameKey(`${d.cognome} ${d.nome}`)) ? "bg-status-absent/5" : ""}`}
                   >
                     <td
                       className="max-w-44 truncate px-3 py-1.5 text-xs text-muted-foreground"
@@ -1355,7 +1449,31 @@ export function StipendiTab() {
                     {cellaMod(d, "mensilitaAggiuntive", eur(d.mensilitaAggiuntive))}
                     {cellaMod(d, "tfr", eur(d.tfr))}
                     {cellaMod(d, "totaleCosto", eur(d.totaleCosto), "font-semibold")}
-                    {cellaMod(d, "stipendio", nettoDi(d) ? eur(nettoDi(d)!.stipendio) : "—")}
+                    {senzaNetto(d) && !modMap.has(chiaveCella(d, "stipendio")) ? (
+                      <td
+                        className="px-3 py-1.5 text-right"
+                        onDoubleClick={() => apriModifica(d, "stipendio")}
+                      >
+                        {modEdit === chiaveCella(d, "stipendio") ? (
+                          <input
+                            autoFocus
+                            inputMode="decimal"
+                            value={modVal}
+                            onChange={(e) => setModVal(e.target.value)}
+                            onBlur={() => void salvaModifica(d, "stipendio")}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void salvaModifica(d, "stipendio");
+                              if (e.key === "Escape") setModEdit(null);
+                            }}
+                            className="w-24 rounded border border-primary bg-background px-1 py-0.5 text-right text-[12px]"
+                          />
+                        ) : (
+                          selectMotivo(nameKey(`${d.cognome} ${d.nome}`), `${d.cognome} ${d.nome}`)
+                        )}
+                      </td>
+                    ) : (
+                      cellaMod(d, "stipendio", nettoDi(d) ? eur(nettoDi(d)!.stipendio) : "—")
+                    )}
                     {cellaMod(
                       d,
                       "anticipo",
@@ -1414,6 +1532,29 @@ export function StipendiTab() {
               </tbody>
             </table>
           </div>
+
+          {nettiSenzaCosto.length > 0 && (
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
+              <p className="text-sm font-semibold text-foreground">
+                {t("stip.nettiSenzaCosto")} ({nettiSenzaCosto.length})
+              </p>
+              <p className="mb-2 text-[11px] text-muted-foreground">
+                {t("stip.nettiSenzaCostoDesc")}
+              </p>
+              <table className="text-sm">
+                <tbody>
+                  {nettiSenzaCosto.map((d) => (
+                    <tr key={d.nome} className="border-b border-border/60">
+                      <td className="py-1 pr-4 font-medium">{d.nome}</td>
+                      <td className="py-1 pr-4 text-xs text-muted-foreground">{d.appalto ?? ""}</td>
+                      <td className="py-1 pr-4 text-right tabular-nums">{eur(d.saldo)}</td>
+                      <td className="py-1">{selectMotivo(nameKey(d.nome), d.nome)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {(db?.mesi.length ?? 0) > 1 && (
             <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">

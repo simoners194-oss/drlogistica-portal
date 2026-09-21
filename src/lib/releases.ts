@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.80.0",
+    date: "2026-09-21",
+    entries: [
+      {
+        title: "Stipendi: il motivo di chi non ha il netto nel mese",
+        description:
+          'Chi ha il costo ma non lo stipendio (aspettativa non retribuita, infortunio, malattia, cessato, pagato fuori file) si spiega con un menù nella cella: la riga smette di essere evidenziata e il motivo resta scritto. Sopra la tabella il conteggio delle righe ancora da chiarire; sotto, i nomi che stanno nei netti ma non nei costi (liquidazioni, contanti, finanziarie). Colonna "Motivo netto assente" nel CSV.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Stipendi: sede dal file costi e lettura anche di gennaio–maggio",
+        description:
+          'Quando il file costi non porta l\'appalto, la sede viene dalla "Descrizione ripartizione" del consulente (Savona, Cerro al Lambro…) prima della voce "Altri". La lettura automatica legge anche la cartella "COSTI PERSONALE GENNAIO - MAGGIO" (tracciato per appalto).',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.79.1",
     date: "2026-09-21",
     entries: [

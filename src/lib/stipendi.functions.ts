@@ -12,6 +12,7 @@ import {
   loadStipendiDb,
   replaceStipendiAnagrafica,
   setModificaStipendio,
+  setMotivoNetto,
   setPagatiStipendi,
   setStipendiMensilita,
   stimaStipendiMensile,
@@ -23,8 +24,10 @@ import {
 } from "./stipendi.server";
 import {
   CAMPI_MODIFICABILI,
+  MOTIVI_NETTO,
   type AnagraficaDipendente,
   type CampoModificabile,
+  type MotivoNettoTipo,
   type NettiMese,
   type StipendiDb,
   type StipendiMese,
@@ -160,6 +163,34 @@ export const spStipendiModifica = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<StipendiDb> => {
     const me = await utenteStipendi();
     return setModificaStipendio(data, firma(me));
+  });
+
+/** Motivo del netto assente (o del costo assente) per dipendente e mese. */
+export const spStipendiMotivo = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      mese: string;
+      chiave: string;
+      nome: string;
+      motivo: MotivoNettoTipo | null;
+      nota?: string;
+    }) => {
+      if (!/^\d{4}-\d{2}$/.test(input?.mese ?? "")) throw new Error("Mese non valido.");
+      if (!input.chiave?.trim() || !input.nome?.trim()) throw new Error("Dipendente mancante.");
+      if (input.motivo != null && !(MOTIVI_NETTO as readonly string[]).includes(input.motivo))
+        throw new Error("Motivo non valido.");
+      return {
+        mese: input.mese,
+        chiave: input.chiave.trim(),
+        nome: input.nome.trim().slice(0, 80),
+        motivo: input.motivo,
+        nota: input.nota?.slice(0, 200),
+      };
+    },
+  )
+  .handler(async ({ data }): Promise<StipendiDb> => {
+    const me = await utenteStipendi();
+    return setMotivoNetto(data, firma(me));
   });
 
 /** Lettura automatica dei file paghe da SharePoint (bottone in tab). */

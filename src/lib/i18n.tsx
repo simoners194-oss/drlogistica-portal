@@ -742,6 +742,23 @@ const en = {
   "stip.mensErr":
     "Monthly payments: whole number between 12 and 15 (empty to go back to the estimate).",
   "stip.colPagato": "Paid",
+  "stip.motivo.aspettativa": "Unpaid leave",
+  "stip.motivo.infortunio": "Work injury",
+  "stip.motivo.malattia": "Sick leave",
+  "stip.motivo.cessato": "Left / final settlement",
+  "stip.motivo.fuori-file": "Paid outside the file",
+  "stip.motivo.contanti": "Cash regime",
+  "stip.motivo.altro": "Other",
+  "stip.motivoDaChiarire": "to clarify…",
+  "stip.motivoTip":
+    "Cost without net pay this month: pick the reason (unpaid leave, injury, left…) so it stays documented. Double-click the cell to type a net amount by hand instead.",
+  "stip.motivoTrace": "Reason set by {da} on {il}",
+  "stip.daChiarire":
+    "rows to clarify: cost without net pay (or net pay without cost) with no reason",
+  "stip.tuttoChiaro": "Every row without net pay has a reason.",
+  "stip.nettiSenzaCosto": "In Stipendi Dr but without a cost row",
+  "stip.nettiSenzaCostoDesc":
+    "Names in this month's net pay that match no row of the cost file: leavers with final settlement, cash regime, salary-assignment finance companies. They count in the Cash flow total.",
   "stip.syncBtn": "Refresh from files",
   "stip.syncTip":
     "Reads Stipendi Dr.xlsx and the monthly COSTI files from SharePoint (Personale) and updates the table and the Stipendi row in Cash flow. Manual corrections and Paid ticks are kept.",
@@ -2425,6 +2442,23 @@ const it: Record<DictKey, string> = {
     "Mensilità — clicca per impostarle a mano (12–15, vuoto = torna alla stima dai ratei paghe; ≈ = stimata)",
   "stip.mensErr": "Mensilità: numero intero tra 12 e 15 (vuoto per tornare alla stima).",
   "stip.colPagato": "Pagato",
+  "stip.motivo.aspettativa": "Aspettativa non retribuita",
+  "stip.motivo.infortunio": "Infortunio",
+  "stip.motivo.malattia": "Malattia",
+  "stip.motivo.cessato": "Cessato / liquidazione",
+  "stip.motivo.fuori-file": "Pagato fuori file",
+  "stip.motivo.contanti": "Regime in contanti",
+  "stip.motivo.altro": "Altro",
+  "stip.motivoDaChiarire": "da chiarire…",
+  "stip.motivoTip":
+    "Costo senza stipendio nel mese: scegli il motivo (aspettativa, infortunio, cessato…) così resta documentato. Doppio clic sulla cella per scrivere invece un netto a mano.",
+  "stip.motivoTrace": "Motivo impostato da {da} il {il}",
+  "stip.daChiarire":
+    "righe da chiarire: costo senza stipendio (o stipendio senza costo) senza un motivo",
+  "stip.tuttoChiaro": "Tutte le righe senza stipendio hanno un motivo.",
+  "stip.nettiSenzaCosto": "Nel foglio Stipendi Dr ma senza riga costi",
+  "stip.nettiSenzaCostoDesc":
+    "Nomi presenti nei netti del mese che non corrispondono a nessuna riga del file costi: cessati con liquidazione, contanti, finanziarie delle cessioni. Contano nel totale dei Flussi.",
   "stip.syncBtn": "Aggiorna dai file",
   "stip.syncTip":
     "Legge da SharePoint Stipendi Dr.xlsx e i COSTI mensili (Personale) e aggiorna la tabella e la riga Stipendi dei Flussi. Correzioni a mano e spunte Pagato restano.",
