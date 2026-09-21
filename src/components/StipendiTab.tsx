@@ -298,8 +298,31 @@ export function StipendiTab() {
     }
     return m;
   }, [nettoMese]);
+  // Abbinamento TOLLERANTE (richiesta Simone 21/09, caso Gaggianesi/agosto):
+  // prima la chiave esatta; se manca, lo stesso motore delle distinte
+  // (matchDipendenteNome: pezzi di nome in ordine libero, tolleranza ai
+  // troncamenti, ambiguità = nessun match). Recupera "Anna Maria" vs
+  // "Annamaria", i nomi con una parola in più, l'ordine invertito — NON i
+  // refusi veri ("Giaggianesi"): quelli si correggono nel file e si ricarica.
+  const nettiAbbinati = useMemo(() => {
+    const m = new Map<string, { stipendio: number; anticipo: number; saldo: number } | null>();
+    const nomiNetti = (nettoMese?.dipendenti ?? []).map((d) => d.nome);
+    for (const d of mese?.dipendenti ?? []) {
+      const nome = `${d.cognome} ${d.nome}`;
+      const k = nameKey(nome);
+      let hit = nettiPerNome.get(k) ?? null;
+      if (!hit && nomiNetti.length) {
+        const match = matchDipendenteNome(nome, nomiNetti);
+        if (match) hit = nettiPerNome.get(nameKey(match)) ?? null;
+      }
+      m.set(k, hit);
+    }
+    return m;
+  }, [mese, nettoMese, nettiPerNome]);
   const nettoDi = (d: StipendioDipendente) =>
-    nettiPerNome.get(nameKey(`${d.cognome} ${d.nome}`)) ?? null;
+    nettiAbbinati.get(nameKey(`${d.cognome} ${d.nome}`)) ??
+    nettiPerNome.get(nameKey(`${d.cognome} ${d.nome}`)) ??
+    null;
   // Anagrafica contrattuale (Mappatura Dipendenti) per nome.
   const anagPerNome = useMemo(() => {
     const m = new Map<string, AnagraficaDipendente>();

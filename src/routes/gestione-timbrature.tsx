@@ -102,8 +102,13 @@ function GestioneTimbraturePage() {
   // Turno
   const [entrataOra, setEntrataOra] = useState("");
   const [uscitaOra, setUscitaOra] = useState("");
-  const [pausaInizio, setPausaInizio] = useState("");
-  const [pausaFine, setPausaFine] = useState("");
+  // Pause del turno intero: una riga per pausa, quante ne servono (turni
+  // spezzati a tre pezzi = due pause; richiesta preposto Cerro 21/09).
+  const [pause, setPause] = useState<{ inizio: string; fine: string }[]>([
+    { inizio: "", fine: "" },
+  ]);
+  const setPausa = (i: number, campo: "inizio" | "fine", v: string) =>
+    setPause((prev) => prev.map((p, j) => (j === i ? { ...p, [campo]: v } : p)));
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -196,8 +201,7 @@ function GestioneTimbraturePage() {
     setOra("");
     setEntrataOra("");
     setUscitaOra("");
-    setPausaInizio("");
-    setPausaFine("");
+    setPause([{ inizio: "", fine: "" }]);
     setNote("");
   }
 
@@ -350,13 +354,14 @@ function GestioneTimbraturePage() {
         });
       } else {
         if (!entrataOra || !uscitaOra) return toast.error(t("gt.needInOut"));
-        const conPausa = Boolean(pausaInizio || pausaFine);
-        if (conPausa && (!pausaInizio || !pausaFine)) return toast.error(t("gt.needBreakBoth"));
+        // Pause compilate: ogni riga o tutta piena o tutta vuota.
+        const pauseUsate = pause.filter((p) => p.inizio || p.fine);
+        if (pauseUsate.some((p) => !p.inizio || !p.fine)) return toast.error(t("gt.needBreakBoth"));
         // SCAVALLAMENTO MEZZANOTTE (caso DR011 04/08): nel turno notturno
         // pausa e uscita cadono il giorno DOPO — un orario che torna
         // indietro rispetto al passo precedente scala di un giorno
         // (14:30 → 22:00 → 22:30 → 03:30 = 03:30 dell'indomani).
-        const passi = [entrataOra, ...(conPausa ? [pausaInizio, pausaFine] : []), uscitaOra];
+        const passi = [entrataOra, ...pauseUsate.flatMap((p) => [p.inizio, p.fine]), uscitaOra];
         let scala = 0;
         const isoTurno: string[] = [];
         for (let i = 0; i < passi.length; i++) {
@@ -376,8 +381,11 @@ function GestioneTimbraturePage() {
             dipendenteId,
             entrata: isoTurno[0],
             uscita: isoTurno[isoTurno.length - 1],
-            inizioPausa: conPausa ? isoTurno[1] : undefined,
-            finePausa: conPausa ? isoTurno[2] : undefined,
+            // isoTurno = [entrata, p1.inizio, p1.fine, p2.inizio, p2.fine, …, uscita]
+            pause: pauseUsate.map((_, i) => ({
+              inizio: isoTurno[1 + i * 2],
+              fine: isoTurno[2 + i * 2],
+            })),
             note: note.trim() || undefined,
           },
         })) as unknown[];
@@ -1016,36 +1024,59 @@ function GestioneTimbraturePage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                      {t("gt.breakStart")}{" "}
-                      <span className="normal-case text-muted-foreground/70">
-                        {t("gt.optShort")}
-                      </span>
-                    </label>
-                    <input
-                      type="time"
-                      className={`${inputCls} mt-1`}
-                      value={pausaInizio}
-                      onChange={(e) => setPausaInizio(e.target.value)}
-                    />
+                {pause.map((p, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-end gap-3">
+                    <div>
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                        {pause.length > 1
+                          ? t("gt.pausaN").replace("{n}", String(i + 1))
+                          : t("gt.breakStart")}{" "}
+                        <span className="normal-case text-muted-foreground/70">
+                          {pause.length > 1 ? t("gt.breakStart").toLowerCase() : t("gt.optShort")}
+                        </span>
+                      </label>
+                      <input
+                        type="time"
+                        className={`${inputCls} mt-1`}
+                        value={p.inizio}
+                        onChange={(e) => setPausa(i, "inizio", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                        {t("gt.breakEnd")}{" "}
+                        <span className="normal-case text-muted-foreground/70">
+                          {t("gt.optShort")}
+                        </span>
+                      </label>
+                      <input
+                        type="time"
+                        className={`${inputCls} mt-1`}
+                        value={p.fine}
+                        onChange={(e) => setPausa(i, "fine", e.target.value)}
+                      />
+                    </div>
+                    {/* Togli la riga: sempre possibile tranne sull'unica rimasta. */}
+                    <button
+                      type="button"
+                      title={t("gt.togliPausa")}
+                      disabled={pause.length === 1}
+                      onClick={() => setPause((prev) => prev.filter((_, j) => j !== i))}
+                      className="mb-1 rounded-lg border border-border p-2 text-muted-foreground hover:text-status-absent disabled:opacity-30"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                      {t("gt.breakEnd")}{" "}
-                      <span className="normal-case text-muted-foreground/70">
-                        {t("gt.optShort")}
-                      </span>
-                    </label>
-                    <input
-                      type="time"
-                      className={`${inputCls} mt-1`}
-                      value={pausaFine}
-                      onChange={(e) => setPausaFine(e.target.value)}
-                    />
-                  </div>
-                </div>
+                ))}
+                {/* Turni spezzati (9-12:30, 14-15:30, 17:30-20:30): una pausa in
+                    più per ogni stacco — richiesta preposto Cerro 21/09. */}
+                <button
+                  type="button"
+                  onClick={() => setPause((prev) => [...prev, { inizio: "", fine: "" }])}
+                  className="inline-flex items-center gap-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <PlusCircle className="h-3.5 w-3.5" /> {t("gt.addPausa")}
+                </button>
               </div>
             )}
 

@@ -7,7 +7,7 @@
 // - un permesso (ore) riduce il previsto delle sue ore;
 // - smart working si timbra come un giorno normale.
 
-import { MAX_TURNO_ORE, type EventoTimbratura } from "./presenze-logic";
+import { MAX_TURNO_ORE, giornoLocale, type EventoTimbratura } from "./presenze-logic";
 
 export function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -63,12 +63,12 @@ export function orePerGiornoDaTurni(
   for (const e of sorted) {
     const ms = new Date(e.ora).getTime();
     if (e.evento === "entrata" || e.evento === "fine-pausa") {
-      if (e.evento === "entrata" && giornoTurno == null) giornoTurno = e.ora.slice(0, 10);
+      if (e.evento === "entrata" && giornoTurno == null) giornoTurno = giornoLocale(e.ora);
       if (apertura == null) {
-        apertura = { ms, giorno: giornoTurno ?? e.ora.slice(0, 10) };
+        apertura = { ms, giorno: giornoTurno ?? giornoLocale(e.ora) };
       } else if (ms - apertura.ms > maxMs) {
         giorniNonChiusi.add(apertura.giorno);
-        giornoTurno = e.ora.slice(0, 10);
+        giornoTurno = giornoLocale(e.ora);
         apertura = { ms, giorno: giornoTurno };
       }
     } else if (apertura != null) {

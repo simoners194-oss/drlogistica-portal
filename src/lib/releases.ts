@@ -36,6 +36,33 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.78.0",
+    date: "2026-09-21",
+    entries: [
+      {
+        title: "Turno intero con più pause",
+        description:
+          'Per i turni spezzati in tre o più pezzi (9-12:30, 14-15:30, 17:30-20:30) nel Turno intero di Gestione timbrature c\'è "Aggiungi una pausa": una riga per ogni stacco, quante ne servono. Lo scavalco di mezzanotte funziona anche con più pause.',
+        tag: "feature",
+        audience: "gestione",
+      },
+      {
+        title: "Timbrature tra mezzanotte e le 2: sul giorno giusto",
+        description:
+          "Un'entrata alle 01:45 finiva sulla card del giorno prima (il portale ragionava col giorno UTC, non con l'ora italiana): la giornata sembrava vuota e si rischiava di inserire doppioni. Ora card, anomalie e ore del Rendiconto usano il giorno italiano.",
+        tag: "fix",
+        audience: "gestione",
+      },
+      {
+        title: "Stipendi: nomi abbinati in modo tollerante",
+        description:
+          'Se il nome nel file Stipendi Dr e quello nel file COSTI non sono identici (ordine invertito, una parola in più, "Anna Maria" contro "Annamaria"), il netto si aggancia lo stesso al costo con lo stesso motore delle distinte bancarie. I refusi veri restano da correggere nel file (poi si ricarica).',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.77.0",
     date: "2026-09-21",
     entries: [

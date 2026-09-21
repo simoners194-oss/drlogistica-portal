@@ -3043,8 +3043,11 @@ export interface CreateTurnoManualeInput {
   dipendenteId: string;
   entrata: string; // ISO datetime
   uscita: string; // ISO datetime
-  inizioPausa?: string; // ISO datetime (opzionale)
+  inizioPausa?: string; // ISO datetime (opzionale) — prima pausa, forma storica
   finePausa?: string; // ISO datetime (opzionale)
+  /** Pause in più (turni spezzati: 9-12:30, 14-15:30, 17:30-20:30 = due
+   *  pause). Richiesta preposto Cerro 21/09 via Simone. */
+  pause?: { inizio: string; fine: string }[];
   note?: string;
 }
 
@@ -3201,16 +3204,33 @@ export async function createTurnoManuale(input: CreateTurnoManualeInput): Promis
   const eventi: { evento: EventoTimbratura; iso: string }[] = [
     { evento: "entrata", iso: input.entrata },
   ];
+  // Pause: la coppia storica (inizioPausa/finePausa) più l'elenco `pause`.
+  // Devono stare tutte tra entrata e uscita, in ordine e senza sovrapporsi.
+  const pause: { inizio: string; fine: string }[] = [];
   if (input.inizioPausa || input.finePausa) {
     if (!input.inizioPausa || !input.finePausa)
       throw new Error("Per la pausa servono sia l'inizio sia la fine.");
-    const ip = ms(input.inizioPausa);
-    const fp = ms(input.finePausa);
+    pause.push({ inizio: input.inizioPausa, fine: input.finePausa });
+  }
+  for (const p of input.pause ?? []) {
+    if (!p?.inizio || !p?.fine) throw new Error("Per ogni pausa servono sia l'inizio sia la fine.");
+    pause.push({ inizio: p.inizio, fine: p.fine });
+  }
+  pause.sort((a, b) => ms(a.inizio) - ms(b.inizio));
+  let cursore = entrata;
+  for (const [i, p] of pause.entries()) {
+    const ip = ms(p.inizio);
+    const fp = ms(p.fine);
     if (Number.isNaN(ip) || Number.isNaN(fp)) throw new Error("Orari della pausa non validi.");
-    if (!(entrata < ip && ip < fp && fp < uscita))
-      throw new Error("La pausa deve essere compresa tra entrata e uscita (inizio prima di fine).");
-    eventi.push({ evento: "inizio-pausa", iso: input.inizioPausa });
-    eventi.push({ evento: "fine-pausa", iso: input.finePausa });
+    if (!(cursore < ip && ip < fp && fp < uscita))
+      throw new Error(
+        pause.length > 1
+          ? `La pausa ${i + 1} deve stare tra entrata e uscita, dopo la pausa precedente (inizio prima di fine).`
+          : "La pausa deve essere compresa tra entrata e uscita (inizio prima di fine).",
+      );
+    eventi.push({ evento: "inizio-pausa", iso: p.inizio });
+    eventi.push({ evento: "fine-pausa", iso: p.fine });
+    cursore = fp;
   }
   eventi.push({ evento: "uscita", iso: input.uscita });
   eventi.sort((a, b) => ms(a.iso) - ms(b.iso));

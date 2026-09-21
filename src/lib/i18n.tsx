@@ -549,6 +549,9 @@ const en = {
   "gt.needTime": "Enter the time",
   "gt.needInOut": "Enter clock in and clock out",
   "gt.needBreakBoth": "Break requires both start and end",
+  "gt.addPausa": "Add a break",
+  "gt.togliPausa": "Remove this break",
+  "gt.pausaN": "Break {n}",
   "gt.entryInserted": "Entry inserted",
   "gt.entryInsertedNight":
     "Entry inserted on the NEXT day (night shift: the time comes before the shift's last step)",
@@ -2220,6 +2223,9 @@ const it: Record<DictKey, string> = {
   "gt.needTime": "Inserisci l'ora",
   "gt.needInOut": "Inserisci entrata e uscita",
   "gt.needBreakBoth": "Per la pausa servono sia inizio sia fine",
+  "gt.addPausa": "Aggiungi una pausa",
+  "gt.togliPausa": "Togli questa pausa",
+  "gt.pausaN": "Pausa {n}",
   "gt.entryInserted": "Timbratura inserita",
   "gt.entryInsertedNight":
     "Timbratura registrata sul giorno DOPO (notturna: l'ora viene prima dell'ultimo passo del turno)",

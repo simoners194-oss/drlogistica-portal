@@ -45,6 +45,23 @@ export interface EventoConOra {
 // riscrittura delle correzioni e "Le mie ore": le due estremità della
 // pipeline devono usare la STESSA regola, o le correzioni cancellano e
 // reinseriscono insiemi diversi di eventi.
+// Giorno ITALIANO di un istante ISO (le DataOra sono UTC vero): un'entrata
+// alle 01:41 del 1° settembre è "2026-08-31T23:41Z" e col giorno UTC finiva
+// sulla card del 31 — caso Vitulano 01/09 segnalato dalla preposta 21/09.
+// Vale per card, anomalie e ore del Rendiconto: tutti devono dire lo stesso
+// giorno. Intl con fuso esplicito funziona uguale nel browser e sui Workers.
+const fmtGiornoRoma = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Rome",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+export function giornoLocale(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  return fmtGiornoRoma.format(d); // en-CA → YYYY-MM-DD
+}
+
 export function attribuzioneTurni<T extends { evento: string; dataOra: string }>(
   stream: readonly T[],
 ): { ev: T; giorno: string }[] {
@@ -60,8 +77,8 @@ export function attribuzioneTurni<T extends { evento: string; dataOra: string }>
     // perché il turno del 4 mai chiuso arrivava a ridosso dell'entrata del
     // 5 restando sotto il tetto del turno. Le doppie entrate ravvicinate
     // non esistono più (macchina a stati sana + pulizia doppioni 16/09).
-    if (t.evento === "entrata") giornoTurno = t.dataOra.slice(0, 10);
-    out.push({ ev: t, giorno: giornoTurno ?? t.dataOra.slice(0, 10) });
+    if (t.evento === "entrata") giornoTurno = giornoLocale(t.dataOra);
+    out.push({ ev: t, giorno: giornoTurno ?? giornoLocale(t.dataOra) });
     if (t.evento === "uscita") giornoTurno = null;
     precMs = ms;
   }
@@ -354,7 +371,7 @@ export function anomalieDaStream(
   const staccoMs = SENZA_STACCO_MIN_ORE * 3600_000;
   const sorted = [...eventi].sort((a, b) => a.ora.localeCompare(b.ora));
   const t = (e: EventoConOra) => new Date(e.ora).getTime();
-  const giornoDi = (e: EventoConOra) => e.ora.slice(0, 10);
+  const giornoDi = (e: EventoConOra) => giornoLocale(e.ora);
   const out: AnomaliaGiorno[] = [];
   let apertura: EventoConOra | null = null; // inizio del segmento in servizio
   let pausaAperta: EventoConOra | null = null; // solo eventi legacy

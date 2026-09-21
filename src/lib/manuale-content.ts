@@ -126,6 +126,10 @@ La giornata è quella del TURNO: per un turno notturno (entrata 14:30, uscita 03
 
 Dalla versione 1.75.5 vale anche per l'inserimento SINGOLO e per "Aggiungi timbratura mancante": se sulla card del turno scrivi l'ora della notte (es. uscita 02:45), il portale la registra da solo sul giorno dopo e l'avviso verde ti dice su che giorno è finita. Lo fa solo quando l'ora scritta verrebbe prima dell'ultimo passo del turno ancora aperto: se metti già la data del giorno dopo a mano, non cambia nulla.
 
+Prima di inserire, guarda la card: se il dipendente ha timbrato da solo, gli eventi ci sono già e vanno solo sistemati (togliere quello sbagliato, aggiungere quello mancante), non reinseriti da capo — altrimenti nascono doppioni. Fino alla 1.77 una timbratura tra mezzanotte e le 2 finiva sulla card del giorno prima: dalla 1.78.0 sta sul giorno giusto.
+
+Turni spezzati in più pezzi (es. 9-12:30, 14-15:30, 17:30-20:30): nel Turno intero c'è "Aggiungi una pausa" — una riga di pausa per ogni stacco, quante ne servono (dalla 1.78.0). Nella correzione chiesta dal dipendente basta elencare tutti i passi in fila: entrata 09:00, inizio-pausa 12:30, fine-pausa 14:00, inizio-pausa 15:30, fine-pausa 17:30, uscita 20:30.
+
 Regola d'oro: mai cancellare, sempre correggere. Il cestino di SharePoint tiene 93 giorni ed è già servito una volta a recuperare timbrature sparite — meglio non doverci tornare.`,
     chiavi:
       "correzione giornata preposto operatore riscrivere manuale gestione timbrature cancellare",
@@ -417,6 +421,16 @@ La cella corretta mostra una M: fermandoti col mouse vedi chi l'ha cambiata, qua
 Serve anche a riempire un buco: se un dipendente ha la riga dei costi ma manca dal foglio Stipendi Dr del mese, scrivi stipendio e saldo nelle sue celle e la riga nasce da sola. Nel CSV la colonna "Modifiche manuali" elenca i campi corretti.`,
     chiavi:
       "modifica a mano correggere valore M manuale doppio clic traccia chi quando stipendio saldo costo",
+  },
+  {
+    id: "sti-stipendio-vuoto",
+    sezione: "Stipendi",
+    titolo: "Un dipendente ha il costo ma lo Stipendio vuoto",
+    testo: `Il costo viene dal file COSTI del mese, lo stipendio netto dal file Stipendi Dr: le due righe si agganciano per nome. Se lo Stipendio è "—" mentre il costo c'è, quasi sempre il nome è scritto diverso nei due file (un refuso, "Anna Maria" contro "Annamaria", una parola in più, l'ordine invertito).
+
+Dalla versione 1.78.0 l'aggancio è tollerante: ordine delle parole, parole in più e troncamenti si risolvono da soli. I refusi veri no (è successo con "Giaggianesi" al posto di Gaggianesi): si corregge il nome nel file Stipendi Dr e si ricarica il file dal bottone di import — le correzioni a mano (la M) e le spunte Pagato restano. In alternativa, col doppio clic scrivi stipendio e saldo direttamente nelle celle.`,
+    chiavi:
+      "stipendio vuoto trattino netto manca nome diverso refuso non combacia abbinamento ricaricare stipendi dr",
   },
   {
     id: "sti-versato",
