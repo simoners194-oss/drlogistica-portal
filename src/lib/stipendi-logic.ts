@@ -635,11 +635,29 @@ export function parseCostiFile(
 ): ParseCostiFileResult | null {
   const parziali: { nome: string; res: ParseCostiResult }[] = [];
   for (const f of fogli) {
+    // "Dettagli1", "Dettagli2"…: fogli che Excel genera da solo col doppio
+    // clic su una cella della pivot (caso COSTI GIUGNO 2026, 21/09): sono
+    // un ESTRATTO del foglio vero e sommarli raddoppia le persone.
+    if (/^dettagli\s*\d*$/i.test(f.nome.trim())) continue;
     const res = parseCostiMese(f.matrix, f.nome);
     if (res) parziali.push({ nome: f.nome, res });
   }
   if (parziali.length === 0) return null;
-  const dipendenti = parziali.flatMap((p) => p.res.dipendenti);
+  // Tracciato COMPLETO (righe col codice dipendente): la stessa persona può
+  // comparire in più fogli solo per copie/estratti → vince il foglio più
+  // ricco e ogni codice conta una volta. Nel tracciato per-appalto (senza
+  // codici, un foglio per appalto) la stessa persona in due fogli sono due
+  // costi veri e si sommano come prima.
+  parziali.sort((a, b) => b.res.dipendenti.length - a.res.dipendenti.length);
+  const visti = new Set<string>();
+  const dipendenti = parziali.flatMap((p) =>
+    p.res.dipendenti.filter((d) => {
+      if (!d.codice) return true;
+      if (visti.has(d.codice)) return false;
+      visti.add(d.codice);
+      return true;
+    }),
+  );
   const mese = parziali.map((p) => p.res.mese).find((m) => m) || meseDaNomeFile(nomeFile) || "";
   const totale = Math.round(dipendenti.reduce((a, d) => a + d.totaleCosto, 0) * 100) / 100;
   return {

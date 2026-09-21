@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.79.1",
+    date: "2026-09-21",
+    entries: [
+      {
+        title: 'File costi: i fogli "Dettagli" di Excel non contano più',
+        description:
+          'Alla prima lettura automatica il file di giugno risultava di 139 persone invece di 116: Excel aveva aggiunto un foglio "Dettagli1" (nasce col doppio clic su una cella della pivot) e il portale lo sommava al foglio COSTI. Ora quei fogli si ignorano e, nel tracciato completo, ogni codice dipendente conta una volta sola.',
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.79.0",
     date: "2026-09-21",
     entries: [

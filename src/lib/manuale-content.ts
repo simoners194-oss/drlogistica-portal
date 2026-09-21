@@ -402,6 +402,8 @@ Dalla versione 1.79.0 il portale li legge DA SOLO da SharePoint (cartella Person
 
 I bottoni di import restano per i casi particolari (un file in un'altra cartella, un tracciato per-appalto): sempre con l'anteprima prima di salvare, che dice cosa ha letto e cosa aggiornerà, compresa la riga Stipendi dei Flussi.
 
+Attenzione a non "sporcare" i file: nel file COSTI il portale legge il foglio con l'export del consulente; i fogli "Dettagli1, Dettagli2…" che Excel crea da solo quando si fa doppio clic su una cella della pivot vengono ignorati (dalla 1.79.1), ma altri fogli aggiunti a mano con la stessa struttura verrebbero letti. Meglio lasciare il file com'è arrivato.
+
 Se un file non viene letto, quasi sempre è questione di tracciato: intestazioni diverse dal solito o foglio rinominato. Segnala il file esatto.`,
     chiavi: "import file costi stipendi dr netti anteprima carica mensile",
   },
