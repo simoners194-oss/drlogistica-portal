@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.80.1",
+    date: "2026-09-21",
+    entries: [
+      {
+        title: "Stipendi: le note nel file costi non sono dipendenti",
+        description:
+          'Una riga con un testo nella colonna del cognome ma senza nessuna voce di indirizzamento ("COSTO EXTRA 1", "Nel costo sono inclusi…") viene scartata invece di comparire come persona a costo zero. Maggio passa da 114 a 111 dipendenti, il totale non cambia.',
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.80.0",
     date: "2026-09-21",
     entries: [

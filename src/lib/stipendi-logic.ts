@@ -372,6 +372,10 @@ export function parseCostiMese(
   const haEtichetta = C.cognome > 0;
 
   const perDip = new Map<string, StipendioDipendente>();
+  // Chiavi con almeno una riga di indirizzamento riconosciuta: una "persona"
+  // senza nemmeno una voce è una nota scritta nella colonna cognome
+  // ("COSTO EXTRA 1", "Nel costo sono inclusi…"), non un dipendente.
+  const conVoci = new Set<string>();
   const mesi = new Map<string, number>();
   let scartate = 0;
   for (const r of matrix.slice(headerIdx + 1)) {
@@ -414,6 +418,7 @@ export function parseCostiMese(
       C.indirizzamento >= 0
         ? String(r[C.indirizzamento] ?? "").trim()
         : codiceDaDescrizione(String(r[C.indirizzamentoDesc] ?? ""));
+    if (ind) conVoci.add(chiave);
     if (ind === "1") {
       d.costoOrdinario += componente;
       if (C.oreOrd >= 0) d.oreOrdinarie += numCell(r[C.oreOrd]);
@@ -436,6 +441,11 @@ export function parseCostiMese(
         mesi.set(k, (mesi.get(k) ?? 0) + 1);
       }
     }
+  }
+  for (const chiave of perDip.keys()) {
+    if (conVoci.has(chiave)) continue;
+    perDip.delete(chiave);
+    scartate++;
   }
   if (perDip.size === 0) return null;
 
