@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.80.3",
+    date: "2026-09-22",
+    entries: [
+      {
+        title: 'Anomalie: "giornata lunga senza stacco" dalle 7 ore',
+        description:
+          "La segnalazione informativa scatta quando un tratto di lavoro senza pausa né uscita supera le 7 ore (prima 6): a Cerro la pausa cade dopo la sesta ora e la lista si riempiva ogni giorno di avvisi non utili. Le anomalie vere (turno o pausa non chiusi) non cambiano.",
+        tag: "improvement",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.80.2",
     date: "2026-09-21",
     entries: [

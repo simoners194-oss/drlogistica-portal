@@ -345,7 +345,9 @@ export const LABEL_ANOMALIA: Record<TipoAnomalia, string> = {
 // Sopra questa durata continuativa, un turno senza alcuno stacco viene
 // segnalato come anomalia INFORMATIVA (nessun blocco): con i due tasti la
 // pausa non è più dichiarata, si vede solo come uscita+rientro.
-export const SENZA_STACCO_MIN_ORE = 6;
+// 7 ore (Simone 22/09): a Cerro la pausa cade regolarmente dopo la sesta
+// ora e con 6 la segnalazione usciva ogni giorno per mezza squadra.
+export const SENZA_STACCO_MIN_ORE = 7;
 
 export interface AnomaliaGiorno {
   giorno: string; // YYYY-MM-DD di ATTRIBUZIONE (giorno di inizio del turno)
