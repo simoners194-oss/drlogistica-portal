@@ -187,7 +187,9 @@ Il dettaglio per beneficiario sta nel report "Esiti pagamenti" di YouBusiness, c
     titolo: "Come vengono classificati i movimenti",
     testo: `Appena un movimento arriva, il portale prova ad applicare le Regole (vedi la sezione Regole). Se nessuna regola combacia, usa una classificazione di riserva ricavata dal testo della banca: la riconosci perché di solito la riga ha una tipologia generica e le allocazioni vuote.
 
-Una riga "di riserva" non è un errore del portale: è un movimento per cui non esiste ancora una regola. La soluzione stabile è creare la regola e poi premere "Riapplica tutte" — sistemare solo la riga a mano funziona, ma al prossimo movimento uguale sei daccapo.`,
+Una riga "di riserva" non è un errore del portale: è un movimento per cui non esiste ancora una regola. La soluzione stabile è creare la regola e poi premere "Riapplica tutte" — sistemare solo la riga a mano funziona, ma al prossimo movimento uguale sei daccapo.
+
+La controparte di un bonifico in uscita viene letta dal testo della banca dopo "FAVORE": il nome è seguito da code tecniche ("- ADD.TOT" sulla disposizione, "- ADD.SPE" sulla commissione della stessa disposizione) che il portale scarta. Se in Cliente/Fornitore compaiono due voci quasi uguali, tipo "beneficiari vari distinta" e "beneficiari vari distinta add.spe", è una coda non riconosciuta: dalla 1.80.4 tutte le code "ADD.xxx" vengono tolte, e le righe vecchie sono state riunite sotto un nome solo.`,
     chiavi:
       "euristica classificazione automatica tipologia allocazione vuota riserva regola non presa",
   },

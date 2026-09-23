@@ -516,10 +516,11 @@ function estraiClienteIncasso(descLower: string): { cliente: string; incerto: bo
 function estraiClienteUscita(descLower: string): { cliente: string; incerto: boolean } {
   const m = descLower.match(/favore\s+(.+)$/);
   if (!m) return { cliente: "", incerto: true };
-  // Il nome è seguito da spazi di riempimento e code tipo "- add.tot" /
-  // "notprovide": si taglia al primo blocco di 3+ spazi o alle code note.
+  // Il nome è seguito da spazi di riempimento e code tipo "- add.tot",
+  // "- add.spe" (la commissione della stessa disposizione) / "notprovide":
+  // si taglia al primo blocco di 3+ spazi o alle code note.
   let rest = m[1].split(/\s{3,}/)[0];
-  rest = rest.replace(/\s*-?\s*(add\.tot|notprovide|da contab).*$/i, "");
+  rest = rest.replace(/\s*-?\s*(add\.\w+|notprovide|da contab).*$/i, "");
   const cliente = canonicalCliente(clean(rest));
   return { cliente, incerto: cliente.length < 3 || cliente.length > 45 };
 }

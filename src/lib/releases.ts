@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.80.4",
+    date: "2026-09-23",
+    entries: [
+      {
+        title: "Movimenti: la commissione della distinta non crea una controparte a sé",
+        description:
+          'Nel testo della banca la commissione di un bonifico multiplo finisce con "- ADD.SPE" (la disposizione con "- ADD.TOT"): la coda non veniva tolta e nasceva la controparte fasulla "beneficiari vari distinta add.spe" accanto a quella vera. Ora ogni coda "ADD.xxx" viene scartata; le 9 righe già importate sono state riunite sotto "beneficiari vari distinta".',
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.80.3",
     date: "2026-09-22",
     entries: [
