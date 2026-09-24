@@ -422,6 +422,10 @@ export const SP_DISPLAY = {
     // Parole chiave sull'oggetto fattura (es. "locazione, affitto"):
     // il termine vale solo per le fatture che le contengono. OPZIONALE.
     Oggetto: "Oggetto",
+    // Opzioni per controparte (Sì/No, create il 24/09 per Univex): scadenza
+    // dal 1° del mese di emissione e competenza al mese precedente. OPZIONALI.
+    DecorrenzaMese: "DecorrenzaMese",
+    CompetenzaPrecedente: "CompetenzaPrecedente",
   },
   // Abbinamenti fattura ↔ movimento bancario (n:n con importo allocato).
   // Chiavi NATURALI (nome file + chiave movimento): sopravvivono a
@@ -6029,6 +6033,9 @@ export async function importTermini(
     direzione?: DirezioneFattura;
     email?: string;
     oggetto?: string;
+    /** undefined = non toccare (foglio contratti); true/false = imposta. */
+    decorrenzaMese?: boolean;
+    competenzaPrecedente?: boolean;
   }[],
 ): Promise<{ nuovi: number; aggiornati: number; invariati: number }> {
   const cfg = await discoverSharePoint();
@@ -6048,6 +6055,10 @@ export async function importTermini(
       F.Direzione && String((it.fields ?? {})[F.Direzione] ?? "").trim() === "Ricevuta"
         ? "Ricevuta"
         : "Emessa",
+    decorrenzaMese: F.DecorrenzaMese ? boolField((it.fields ?? {})[F.DecorrenzaMese]) : false,
+    competenzaPrecedente: F.CompetenzaPrecedente
+      ? boolField((it.fields ?? {})[F.CompetenzaPrecedente])
+      : false,
   }));
   const out = { nuovi: 0, aggiornati: 0, invariati: 0 };
   for (const r of rows) {
@@ -6068,6 +6079,18 @@ export async function importTermini(
       const patch: Record<string, unknown> = {};
       if (prev.giorni !== r.giorni) patch[F.Giorni ?? "Giorni"] = r.giorni;
       if (F.Email && r.email !== undefined && r.email !== prev.email) patch[F.Email] = r.email;
+      if (
+        F.DecorrenzaMese &&
+        r.decorrenzaMese !== undefined &&
+        r.decorrenzaMese !== prev.decorrenzaMese
+      )
+        patch[F.DecorrenzaMese] = r.decorrenzaMese;
+      if (
+        F.CompetenzaPrecedente &&
+        r.competenzaPrecedente !== undefined &&
+        r.competenzaPrecedente !== prev.competenzaPrecedente
+      )
+        patch[F.CompetenzaPrecedente] = r.competenzaPrecedente;
       if (!Object.keys(patch).length) {
         out.invariati++;
         continue;
@@ -6084,6 +6107,8 @@ export async function importTermini(
       if (F.Direzione) fields[F.Direzione] = dir;
       if (F.Email && r.email) fields[F.Email] = r.email;
       if (F.Oggetto && r.oggetto) fields[F.Oggetto] = r.oggetto.trim();
+      if (F.DecorrenzaMese && r.decorrenzaMese) fields[F.DecorrenzaMese] = true;
+      if (F.CompetenzaPrecedente && r.competenzaPrecedente) fields[F.CompetenzaPrecedente] = true;
       await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listTermini}/items`, {
         method: "POST",
         body: JSON.stringify({ fields }),
@@ -7006,11 +7031,24 @@ export async function fetchTerminiPagamento(): Promise<TerminePagamento[]> {
               : ("Emessa" as const),
           email: F.Email ? String(f[F.Email] ?? "").trim() || undefined : undefined,
           oggetto: F.Oggetto ? String(f[F.Oggetto] ?? "").trim() || undefined : undefined,
+          decorrenzaMese: F.DecorrenzaMese ? boolField(f[F.DecorrenzaMese]) || undefined : undefined,
+          competenzaPrecedente: F.CompetenzaPrecedente
+            ? boolField(f[F.CompetenzaPrecedente]) || undefined
+            : undefined,
         };
       })
       // 0 giorni (a vista) e' valido solo con parole chiave sull'oggetto.
       .filter((t) => t.cliente && (t.giorni > 0 || (t.giorni >= 0 && t.oggetto)))
   );
+}
+
+/** Colonna Sì/No di SharePoint: arriva come boolean, "1"/"0" o "true"/"false". */
+function boolField(v: unknown): boolean {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "")
+    .trim()
+    .toLowerCase();
+  return s === "1" || s === "true" || s === "sì" || s === "si" || s === "yes";
 }
 
 function requireAbbinamentiList(cfg: SpDiscovered): string {

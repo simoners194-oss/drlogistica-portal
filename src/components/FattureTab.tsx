@@ -42,6 +42,7 @@ import {
   parseMovimentiArubaMatrice,
   parseTerminiMatrice,
   giorniPerCliente,
+  fallbackMesePerCliente,
   meseCompetenza,
   classificazioneAuto,
   risolviClassificazione,
@@ -909,15 +910,20 @@ export function FattureTab({
     }
   };
 
+  // Ripiego del mese PER CONTROPARTE (termini di pagamento con "competenza
+  // al mese precedente", es. Univex): vince sulla regola generale.
+  const fallbackMeseDi = useMemo(() => fallbackMesePerCliente(termini ?? []), [termini]);
   const classMap = useMemo(
-    () => risolviClassificazioneTutte(fattureRic ?? [], regoleFatture, classAuto, meseRegola),
-    [fattureRic, regoleFatture, classAuto, meseRegola],
+    () =>
+      risolviClassificazioneTutte(fattureRic ?? [], regoleFatture, classAuto, meseRegola, fallbackMeseDi),
+    [fattureRic, regoleFatture, classAuto, meseRegola, fallbackMeseDi],
   );
   // Le ATTIVE hanno la loro mappa: niente regole-fornitore ne' proposte
   // dallo storico passivo — vale il dichiarato (o la regola del giorno 15).
   const classMapEm = useMemo(
-    () => risolviClassificazioneTutte(fattureEm ?? [], regoleFatture, new Map(), meseRegola),
-    [fattureEm, regoleFatture, meseRegola],
+    () =>
+      risolviClassificazioneTutte(fattureEm ?? [], regoleFatture, new Map(), meseRegola, fallbackMeseDi),
+    [fattureEm, regoleFatture, meseRegola, fallbackMeseDi],
   );
   const classificaDi = (f: FatturaRaw) =>
     (f.direzione === "Emessa" ? classMapEm : classMap).get(f.nomeFile) ??
@@ -926,6 +932,7 @@ export function FattureTab({
       regoleFatture,
       f.direzione === "Emessa" ? new Map() : classAuto,
       meseRegola,
+      fallbackMeseDi,
     );
 
   // --- Filtri di intestazione (stile Excel) ---------------------------------

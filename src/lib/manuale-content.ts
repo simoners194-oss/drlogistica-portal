@@ -326,6 +326,20 @@ Quindi: primo, Ctrl+F5 (magari è la pagina vecchia); secondo, guarda quando è 
     chiavi: "aruba pagata portale aperta stato giro pc sincronizza incasso non aggiornato",
   },
   {
+    id: "fat-termini-opzioni",
+    sezione: "Fatture",
+    titolo: "Scadenza dal 1° del mese e competenza al mese prima (accordi per cliente)",
+    testo: `Nei Termini di pagamento (Finanze → Regole, scheda Clienti) ogni cliente ha i suoi giorni. Dalla 1.81.0 ci sono due opzioni in più, pensate per l'accordo con Univex (24/09) ma valide per chiunque le abbia:
+
+"Scadenza dal 1° del mese della fattura": se la fattura NON dichiara una scadenza propria, i giorni partono dal primo del mese in cui è stata emessa, non dalla data fattura. Una fattura del 21/07 a 65 giorni scade il 4/09, non il 24/09. Se invece nell'XML c'è una scadenza vera (diversa dalla data fattura), vince quella. Per i clienti senza l'opzione resta la regola di sempre: termini dalla data fattura.
+
+"Competenza = mese precedente": quando il mese non è scritto nella descrizione della fattura, la competenza è il mese prima dell'emissione, qualunque sia il giorno (senza l'opzione vale la regola del giorno 15). Se il mese è scritto in fattura ("competenze giugno"), vince sempre quello.
+
+Le opzioni si vedono come etichette accanto al cliente nell'elenco dei termini ("dal 1° del mese", "mese prec.") e si tolgono rientrando nel termine con la matita. Cambiano solo scadenze, ritardi e mese di competenza: importi e stati d'incasso non si toccano.`,
+    chiavi:
+      "termini scadenza primo del mese decorrenza competenza mese precedente univex accordo ritardo sollecito",
+  },
+  {
     id: "fat-colonne",
     sezione: "Fatture",
     titolo: "Colonne, filtri ed export",

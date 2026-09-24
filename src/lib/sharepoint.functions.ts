@@ -1700,6 +1700,8 @@ export const spImportTermini = createServerFn({ method: "POST" })
         direzione?: string;
         email?: string;
         oggetto?: string;
+        decorrenzaMese?: boolean;
+        competenzaPrecedente?: boolean;
       }[];
     }) => {
       if (!Array.isArray(input?.rows) || input.rows.length === 0)
@@ -1713,6 +1715,9 @@ export const spImportTermini = createServerFn({ method: "POST" })
             direzione: (r?.direzione === "Ricevuta" ? "Ricevuta" : "Emessa") as DirezioneFattura,
             email: r?.email === undefined ? undefined : String(r.email).trim().slice(0, 120),
             oggetto: r?.oggetto ? String(r.oggetto).trim().slice(0, 120) : undefined,
+            decorrenzaMese: r?.decorrenzaMese === undefined ? undefined : !!r.decorrenzaMese,
+            competenzaPrecedente:
+              r?.competenzaPrecedente === undefined ? undefined : !!r.competenzaPrecedente,
           }))
           // 0 giorni (a vista) e' ammesso solo per le regole con parola chiave.
           .filter(

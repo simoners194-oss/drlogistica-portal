@@ -124,6 +124,14 @@ export interface TerminePagamento {
    *  termine generico della stessa controparte. Con le parole chiave anche
    *  0 giorni e' valido (pagamento a vista). */
   oggetto?: string;
+  /** Accordo con la controparte (Univex, 24/09): se la fattura non dichiara
+   *  una scadenza propria, i giorni partono dal 1° del mese di emissione,
+   *  non dalla data fattura; la scadenza dichiarata nell'XML (diversa dalla
+   *  data documento) vince comunque. */
+  decorrenzaMese?: boolean;
+  /** Competenza = mese PRECEDENTE all'emissione quando il mese non e'
+   *  scritto in fattura (descrizione/causale), qualunque sia il giorno. */
+  competenzaPrecedente?: boolean;
 }
 
 export interface AbbinamentoIncasso {
@@ -434,6 +442,17 @@ export function giorniPerCliente(
   /** Oggetto della fattura: attiva i termini con parole chiave. */
   oggettoFattura?: string,
 ): number {
+  return terminePerCliente(cliente, termini, direzione, oggettoFattura)?.giorni ?? TERMINI_DEFAULT_GIORNI;
+}
+
+/** Il TERMINE che vale per la fattura (giorni + opzioni per controparte):
+ *  null = nessun termine impostato, valgono i giorni di default. */
+export function terminePerCliente(
+  cliente: string,
+  termini: readonly TerminePagamento[],
+  direzione: DirezioneFattura = "Emessa",
+  oggettoFattura?: string,
+): TerminePagamento | null {
   const key = clienteGroupKey(cliente);
   // Termini DIREZIONALI: IMILE cliente paga a 30, IMILE fornitore va pagato
   // a 60 — due righe distinte. Le righe senza direzione valgono come Emessa.
@@ -459,7 +478,7 @@ export function giorniPerCliente(
           clienteGroupKey(a.cliente).split(" ").length,
       );
   }
-  if (!match.length) return TERMINI_DEFAULT_GIORNI;
+  if (!match.length) return null;
   // REGOLE PER OGGETTO: un termine con parole chiave (es. "locazione,
   // affitto") vale solo se una compare nell'oggetto della fattura; quando
   // scatta, vince sul termine generico della stessa controparte.
@@ -472,12 +491,12 @@ export function giorniPerCliente(
         .filter(Boolean)
         .some((k) => ogg.includes(k)),
     );
-    if (conChiave) return conChiave.giorni;
+    if (conChiave) return conChiave;
   }
   const generici = match.filter((t) => !t.oggetto?.trim() && t.giorni > 0);
-  if (!generici.length) return TERMINI_DEFAULT_GIORNI;
+  if (!generici.length) return null;
   const generico = generici.find((t) => !t.descrizione?.trim());
-  return (generico ?? generici[0]).giorni;
+  return generico ?? generici[0];
 }
 
 // --- Mese di competenza ------------------------------------------------------
@@ -506,7 +525,7 @@ const MESI_NOMI = [
 /** Ripiego del mese di competenza quando NON e' scritto nel testo:
  *  "g15" = regola del giorno 15 (standard), "successivo" = mese dopo
  *  l'emissione, "corrente" = mese di emissione. */
-export type RegolaMeseFallback = "g15" | "successivo" | "corrente";
+export type RegolaMeseFallback = "g15" | "successivo" | "corrente" | "precedente";
 
 export function meseCompetenza(
   dataDocumento: string,
@@ -543,12 +562,23 @@ export function meseCompetenza(
     const anno = meseDoc === 12 ? annoDoc + 1 : annoDoc;
     return `${anno}-${String(succ).padStart(2, "0")}`;
   }
-  if (giorno <= 15) {
+  // "precedente" (termine per controparte, es. Univex): sempre il mese prima,
+  // qualunque sia il giorno di emissione.
+  if (giorno <= 15 || fallback === "precedente") {
     const prec = meseDoc === 1 ? 12 : meseDoc - 1;
     const anno = meseDoc === 1 ? annoDoc - 1 : annoDoc;
     return `${anno}-${String(prec).padStart(2, "0")}`;
   }
   return `${annoDoc}-${String(meseDoc).padStart(2, "0")}`;
+}
+
+/** Ripiego del mese per controparte, dai termini di pagamento: chi ha
+ *  "competenza al mese precedente" lo ottiene qualunque sia il giorno. */
+export function fallbackMesePerCliente(
+  termini: readonly TerminePagamento[],
+): (cliente: string, direzione?: DirezioneFattura) => RegolaMeseFallback | undefined {
+  return (cliente, direzione = "Emessa") =>
+    terminePerCliente(cliente, termini, direzione)?.competenzaPrecedente ? "precedente" : undefined;
 }
 
 // --- Classificazione automatica dallo storico --------------------------------
@@ -694,8 +724,15 @@ export function risolviClassificazione(
   regole: readonly RegolaFattura[],
   auto: ReadonlyMap<string, { tipologia?: string; clienteRif?: string }>,
   fallbackMese: RegolaMeseFallback = "g15",
+  /** Ripiego PER CONTROPARTE (dai termini di pagamento): vince su quello generale. */
+  fallbackDi?: (cliente: string, direzione?: DirezioneFattura) => RegolaMeseFallback | undefined,
 ): ClassificazioneRisolta {
-  const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza, f.oggetto, fallbackMese);
+  const mese = meseCompetenza(
+    f.dataDocumento,
+    f.meseCompetenza,
+    f.oggetto,
+    fallbackDi?.(f.cliente, f.direzione) ?? fallbackMese,
+  );
   // CAMPO PER CAMPO: il manuale vince SOLO sui campi che ha davvero.
   // Prima il ramo era tutto-o-niente: bastava un Cliente rif manuale del
   // vecchio report per zittire la regola su tipologia, sottocategoria e
@@ -742,11 +779,17 @@ export function risolviClassificazioneTutte(
   regole: readonly RegolaFattura[],
   auto: ReadonlyMap<string, { tipologia?: string; clienteRif?: string }>,
   fallbackMese: RegolaMeseFallback = "g15",
+  fallbackDi?: (cliente: string, direzione?: DirezioneFattura) => RegolaMeseFallback | undefined,
 ): Map<string, ClassificazioneRisolta> {
   const compilate = compilaRegoleFatture(regole);
   const out = new Map<string, ClassificazioneRisolta>();
   for (const f of fatture) {
-    const mese = meseCompetenza(f.dataDocumento, f.meseCompetenza, f.oggetto, fallbackMese);
+    const mese = meseCompetenza(
+      f.dataDocumento,
+      f.meseCompetenza,
+      f.oggetto,
+      fallbackDi?.(f.cliente, f.direzione) ?? fallbackMese,
+    );
     // CAMPO PER CAMPO, come la versione singola (vedi commento la').
     const regola = compilate.find((rc) => matchRegolaFattura(f, rc))?.r;
     const proposta = auto.get(clienteGroupKey(f.cliente) || f.cliente);
@@ -883,9 +926,21 @@ export function computeStatoFattura(
   // cliente (foglio contratti del direttore; senza termine = 30 giorni): il
   // conteggio del ritardo parte da li'. Per le PASSIVE ("solo attive per
   // ora") vale ancora la scadenza dichiarata nell'XML, quando c'e'.
+  // Termine con "decorrenza dal 1° del mese" (accordo Univex, 24/09): vale
+  // la scadenza dichiarata nell'XML quando c'e' davvero (diversa dalla data
+  // fattura: "a vista" non e' una scadenza), altrimenti giorni dal 1° del
+  // mese di emissione. Senza quell'opzione resta la regola del direttore:
+  // per le attive contano SEMPRE i termini contrattuali dalla data fattura.
+  const termineEm = f.direzione === "Emessa" ? terminePerCliente(f.cliente, termini, "Emessa", f.oggetto) : null;
+  const dichiarata =
+    f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza) && f.scadenza !== f.dataDocumento
+      ? f.scadenza
+      : "";
   const scadenza =
     f.direzione === "Emessa"
-      ? scadenzaFattura(f.dataDocumento, giorniPerCliente(f.cliente, termini, "Emessa", f.oggetto))
+      ? termineEm?.decorrenzaMese
+        ? dichiarata || scadenzaFattura(`${f.dataDocumento.slice(0, 7)}-01`, termineEm.giorni)
+        : scadenzaFattura(f.dataDocumento, termineEm?.giorni ?? TERMINI_DEFAULT_GIORNI)
       : f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza)
         ? f.scadenza
         : scadenzaFattura(

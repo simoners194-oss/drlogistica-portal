@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.81.0",
+    date: "2026-09-24",
+    entries: [
+      {
+        title: "Termini per cliente: scadenza dal 1° del mese e competenza al mese prima",
+        description:
+          'Due opzioni nuove nei Termini di pagamento (accordo Univex): "Scadenza dal 1° del mese della fattura" fa partire i giorni dal primo del mese di emissione quando la fattura non dichiara una scadenza propria (se nell\'XML c\'è una scadenza vera, vince quella); "Competenza = mese precedente" mette la competenza al mese prima quando non è scritta in fattura, qualunque sia il giorno. Attive su Univex Healthcare e Univex Freight: le fatture di luglio risultano scadute e finiscono tra quelle da sollecitare.',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.80.4",
     date: "2026-09-23",
     entries: [

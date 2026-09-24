@@ -1810,11 +1810,18 @@ function FinanzaPage() {
     direzione?: "Emessa" | "Ricevuta";
     email?: string;
     oggetto?: string;
+    decorrenzaMese?: boolean;
+    competenzaPrecedente?: boolean;
   };
   const [termini, setTermini] = useState<TermineRiga[] | null>(null);
   const [tCliente, setTCliente] = useState("");
   const [tGiorni, setTGiorni] = useState("");
   const [tEmail, setTEmail] = useState("");
+  // Opzioni per controparte (accordo Univex 24/09): scadenza dal 1° del mese
+  // di emissione quando la fattura non ne dichiara una, competenza al mese
+  // precedente quando non e' scritta in fattura.
+  const [tDecorrenza, setTDecorrenza] = useState(false);
+  const [tCompPrec, setTCompPrec] = useState(false);
   // Parole chiave sull'oggetto fattura: rendono il termine una REGOLA
   // (es. IMILE + "locazione, affitto" -> 0 giorni, a vista).
   const [tOggetto, setTOggetto] = useState("");
@@ -1843,6 +1850,8 @@ function FinanzaPage() {
               direzione: tDirezione,
               email: tEmail.trim(),
               oggetto: oggetto || undefined,
+              decorrenzaMese: tDecorrenza,
+              competenzaPrecedente: tCompPrec,
             },
           ],
         },
@@ -1851,6 +1860,8 @@ function FinanzaPage() {
       setTGiorni("");
       setTEmail("");
       setTOggetto("");
+      setTDecorrenza(false);
+      setTCompPrec(false);
       loadRegole();
       toast.success(t("fin.termSalvato"));
     } catch (err) {
@@ -5321,6 +5332,26 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                   className={inputCls}
                 />
               </div>
+              {tDirezione === "Emessa" && (
+                <div className="flex flex-col gap-1 text-xs text-foreground">
+                  <label className="flex items-center gap-2" title={t("fin.termDecorrenzaTip")}>
+                    <input
+                      type="checkbox"
+                      checked={tDecorrenza}
+                      onChange={(e) => setTDecorrenza(e.target.checked)}
+                    />
+                    {t("fin.termDecorrenza")}
+                  </label>
+                  <label className="flex items-center gap-2" title={t("fin.termCompPrecTip")}>
+                    <input
+                      type="checkbox"
+                      checked={tCompPrec}
+                      onChange={(e) => setTCompPrec(e.target.checked)}
+                    />
+                    {t("fin.termCompPrec")}
+                  </label>
+                </div>
+              )}
               <button
                 type="button"
                 disabled={tBusy}
@@ -5354,6 +5385,22 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                         {x.email && (
                           <span className="ml-2 text-xs text-muted-foreground">{x.email}</span>
                         )}
+                        {x.decorrenzaMese && (
+                          <span
+                            className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                            title={t("fin.termDecorrenzaTip")}
+                          >
+                            {t("fin.termDecorrenzaBadge")}
+                          </span>
+                        )}
+                        {x.competenzaPrecedente && (
+                          <span
+                            className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                            title={t("fin.termCompPrecTip")}
+                          >
+                            {t("fin.termCompPrecBadge")}
+                          </span>
+                        )}
                       </span>
                       <b className="tabular-nums">
                         {x.giorni} {t("fin.termGg")}
@@ -5365,6 +5412,8 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                           setTGiorni(String(x.giorni));
                           setTEmail(x.email ?? "");
                           setTOggetto(x.oggetto ?? "");
+                          setTDecorrenza(!!x.decorrenzaMese);
+                          setTCompPrec(!!x.competenzaPrecedente);
                           // Il modulo sta in cima alla card: con 50+ righe il
                           // click sembrava non fare NULLA (successo il 08/09).
                           // Si scorre al modulo e si mette il focus sul campo.

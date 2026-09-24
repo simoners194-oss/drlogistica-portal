@@ -1047,6 +1047,14 @@ const en = {
   "fin.termEmail": "Reminder email address",
   "fin.termOggetto": "Subject keywords (optional)",
   "fin.termOggettoPh": "e.g. locazione, affitto",
+  "fin.termDecorrenza": "Due date from the 1st of the invoice month",
+  "fin.termDecorrenzaTip":
+    "When the invoice declares no due date of its own, the days run from the 1st of the month the invoice was issued in, not from the invoice date. A due date declared in the XML (different from the invoice date) still wins.",
+  "fin.termDecorrenzaBadge": "from the 1st",
+  "fin.termCompPrec": "Competence = previous month",
+  "fin.termCompPrecTip":
+    "When the month is not written in the invoice description, the competence month is the one before issue, whatever the day.",
+  "fin.termCompPrecBadge": "prev. month",
   "fin.termEmailPh": "administration@client.com (optional)",
   "fin.termClientiTab": "Clients (they pay us)",
   "fin.termFornitoriTab": "Suppliers (we pay)",
@@ -2750,6 +2758,14 @@ const it: Record<DictKey, string> = {
   "fin.termEmail": "Email per i solleciti",
   "fin.termOggetto": "Oggetto (parole chiave)",
   "fin.termOggettoPh": "es. locazione, affitto",
+  "fin.termDecorrenza": "Scadenza dal 1° del mese della fattura",
+  "fin.termDecorrenzaTip":
+    "Se la fattura non dichiara una scadenza propria, i giorni partono dal 1° del mese in cui è stata emessa, non dalla data fattura. La scadenza dichiarata nell'XML (diversa dalla data fattura) vince comunque.",
+  "fin.termDecorrenzaBadge": "dal 1° del mese",
+  "fin.termCompPrec": "Competenza = mese precedente",
+  "fin.termCompPrecTip":
+    "Quando il mese non è scritto nella descrizione della fattura, la competenza è il mese prima dell'emissione, qualunque sia il giorno.",
+  "fin.termCompPrecBadge": "mese prec.",
   "fin.termEmailPh": "amministrazione@cliente.it (facoltativa)",
   "fin.termClientiTab": "Clienti (ci pagano)",
   "fin.termFornitoriTab": "Fornitori (paghiamo noi)",
