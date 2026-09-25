@@ -87,7 +87,7 @@ Prima di segnalare, prova la ricarica forzata (Ctrl+F5): tanti "errori" sono sol
     id: "gen-stampa-export",
     sezione: "In generale",
     titolo: "Stampare o esportare un riepilogo delle ore",
-    testo: `Dalla 1.83.0 ogni pagina con un riepilogo delle ore ha gli stessi due tasti: "Esporta CSV" e "Stampa". Li trovi in Le mie ore (il mese del dipendente), La mia sede (Turni del giorno e Ore), Gestione timbrature → Turni del giorno e Rendiconto.
+    testo: `Dalla 1.83.0 ogni pagina con un riepilogo delle ore ha gli stessi due tasti: "Esporta CSV" e "Stampa". Li trovi in Le mie ore (il mese del dipendente), La mia sede (Turni del giorno e Ore), Gestione timbrature → Turni del giorno e Rendiconto. Il solo tasto Stampa c'è anche nella Dashboard presenze (accanto ad Aggiorna) e in Supervisione, nelle schede Richieste decise e Rimborsi, che il CSV lo avevano già (dalla 1.83.1).
 
 "Esporta CSV" scarica un file che si apre in Excel con i dati che vedi filtrati in quel momento (giorno, dipendente, ore, timbrature, anomalie…). "Stampa" apre la stampa del browser con la sola pagina dei dati: menù, filtri e bottoni restano fuori, in testa ci sono titolo, sottotitolo e data/ora. Dal telefono la stampa si può salvare come PDF scegliendo "Salva come PDF" come stampante.
 

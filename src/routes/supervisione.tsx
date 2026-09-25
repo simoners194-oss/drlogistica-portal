@@ -11,6 +11,7 @@ import {
   Clock,
   Receipt,
   Download,
+  Printer,
 } from "lucide-react";
 import { esportaCsvFile } from "@/lib/csv";
 import { useLang } from "@/lib/i18n";
@@ -226,6 +227,15 @@ function SupervisionePage() {
             <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
               <ShieldCheck className="h-4 w-4 text-primary" /> {t("sup.deciseTitle")}
             </div>
+            <div className="no-print flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                title={t("common.printTip")}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
+              >
+                <Printer className="h-4 w-4" /> {t("common.print")}
+              </button>
             {filtrate.length > 0 && (
               <button
                 type="button"
@@ -250,6 +260,7 @@ function SupervisionePage() {
                 <Download className="h-4 w-4" /> {t("common.exportCsv")}
               </button>
             )}
+            </div>
           </div>
 
           {/* Filtri */}
@@ -406,6 +417,15 @@ function SupervisionePage() {
             <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
               <Receipt className="h-4 w-4 text-primary" /> {t("sup.rimborsiTitle")}
             </div>
+            <div className="no-print flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                title={t("common.printTip")}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
+              >
+                <Printer className="h-4 w-4" /> {t("common.print")}
+              </button>
             {rimborsi.length > 0 && (
               <button
                 type="button"
@@ -429,6 +449,7 @@ function SupervisionePage() {
                 <Download className="h-4 w-4" /> {t("common.exportCsv")}
               </button>
             )}
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-4 mb-4">

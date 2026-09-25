@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.83.1",
+    date: "2026-09-25",
+    entries: [
+      {
+        title: "Stampa anche in Dashboard presenze e Supervisione",
+        description:
+          "Il tasto Stampa arriva anche nella Dashboard presenze (accanto ad Aggiorna) e in Supervisione, nelle schede Richieste decise e Rimborsi, accanto a Esporta CSV. Stessa stampa pulita delle altre pagine: solo i dati, con titolo e data.",
+        tag: "improvement",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.83.0",
     date: "2026-09-25",
     entries: [

@@ -17,6 +17,7 @@ import {
   FileText,
   Settings,
   Activity,
+  Printer,
 } from "lucide-react";
 import {
   aggregate,
@@ -228,6 +229,16 @@ function DashboardPage() {
                   <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
                   <span className="hidden sm:inline">{t("dash.refreshNow")}</span>
                   <span className="sm:hidden">{t("dash.refresh")}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  title={t("common.printTip")}
+                  aria-label={t("common.print")}
+                  className="shrink-0 inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 h-11 sm:h-9 text-sm text-foreground hover:bg-secondary transition-colors touch-manipulation"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span className="hidden sm:inline">{t("common.print")}</span>
                 </button>
               </div>
             </div>
