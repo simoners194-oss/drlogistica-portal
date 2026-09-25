@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.82.0",
+    date: "2026-09-25",
+    entries: [
+      {
+        title: "Timbratrice: un tocco basta",
+        description:
+          'Segnalazione da Posta Doc Fiano Romano: bisognava premere due o tre volte. Il tasto in realtà prendeva al primo tocco, ma restava identico per 2–4 secondi (chiamata al server + ricarica di tutto lo snapshot) e la gente ripremeva. Ora la pagina si aggiorna al tocco (ultima timbratura, stato, ore, timeline), il tasto mostra "Registrazione…" e il telefono vibra; il server conferma subito dopo con l\'orario ufficiale e l\'allineamento completo avviene in sottofondo. Un secondo tocco durante la registrazione viene ignorato.',
+        tag: "fix",
+        audience: "tutti",
+      },
+      {
+        title: "Presenze: i tasti in basso portano a pagine vere",
+        description:
+          'L\'"Accesso rapido" aveva "Storico" e "Profilo" in arrivo (spenti) e "Presenze" che riportava alla stessa pagina: sembravano rotti. Ora ci sono Le mie ore, Richieste, Manuale e Cambia PIN.',
+        tag: "improvement",
+        audience: "tutti",
+      },
+    ],
+  },
+  {
     version: "1.81.0",
     date: "2026-09-24",
     entries: [

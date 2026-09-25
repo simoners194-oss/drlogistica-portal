@@ -163,6 +163,36 @@ function mergeDipendentiTimbrature(dips: SpDipendente[], tims: SpTimbratura[]): 
   });
 }
 
+/** Applica una timbratura appena premuta al record LOCALE del dipendente,
+ *  con le stesse regole del merge (stato, ultima, ore): la timbratrice mostra
+ *  subito l'esito, senza aspettare il giro completo dello snapshot. */
+export function applicaEventoLocale(
+  d: Dipendente,
+  tipo: Timbratura["tipo"],
+  ora: string,
+): Dipendente {
+  const eventiOggi: Timbratura[] = [...(d.eventiOggi ?? []), { tipo, ora }];
+  const entrata = eventiOggi.find((e) => e.tipo === "entrata");
+  const stato: Dipendente["stato"] =
+    tipo === "entrata" || tipo === "fine-pausa"
+      ? "presente"
+      : tipo === "inizio-pausa"
+        ? "pausa"
+        : "uscito";
+  const ore = computeOreOggi(eventiOggi);
+  return {
+    ...d,
+    stato,
+    entrataOra: entrata?.ora,
+    ultimaTimbratura: { tipo, ora },
+    eventiOggi,
+    oreLavorateMinuti: ore.oreLavorateMinuti,
+    pausaMinuti: ore.pausaMinuti,
+    oltreOrarioMinuti: ore.oltreOrarioMinuti,
+    straordinariMinuti: ore.oltreOrarioMinuti,
+  };
+}
+
 // Snapshot filtrato (solo visibili) — alimenta dashboard, elenchi e conteggi.
 let cachedSnapshot: Dipendente[] = [];
 // Snapshot completo (inclusi i nascosti) — usato SOLO per l'auto-lettura del

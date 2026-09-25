@@ -90,6 +90,10 @@ Prima di segnalare, prova la ricarica forzata (Ctrl+F5): tanti "errori" sono sol
     titolo: "Timbrare: i quattro tasti",
     testo: `Entrata quando inizi, Inizio pausa quando stacchi, Fine pausa quando riprendi, Uscita quando finisci. Puoi fare più pause nello stesso giorno e anche due turni (esci e rientri: il portale ti fa timbrare una nuova entrata).
 
+Un tocco basta. Dalla 1.82.0 la pagina risponde subito: il tasto mostra "Registrazione…", il telefono vibra, l'ultima timbratura e la timeline si aggiornano al momento; la conferma del server arriva un attimo dopo con l'orario ufficiale. Se premi di nuovo mentre gira, il secondo tocco viene ignorato, non registrato due volte. Prima della 1.82.0 il tasto restava uguale per qualche secondo e sembrava non aver preso: era quello a far premere "due o tre volte".
+
+I tasti in basso ("Accesso rapido") portano a Le mie ore, Richieste, Manuale e Cambia PIN.
+
 Il turno di notte funziona: se entri alle 22 ed esci alle 2 la giornata resta unita e le ore sono contate giuste.`,
     chiavi: "entrata uscita pausa timbratura turno notturno spezzato",
   },

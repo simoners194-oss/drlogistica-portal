@@ -14,10 +14,10 @@ import {
   Hourglass,
   TrendingUp,
 } from "lucide-react";
-import { FileText, History, User } from "lucide-react";
+import { FileText, BookOpen, KeyRound, Loader2 } from "lucide-react";
 import { QuickAccess } from "@/components/QuickAccess";
 import { formatOra, type Dipendente, type Timbratura } from "@/lib/mock-data";
-import { dataService, displayStato, DISPLAY_DOT } from "@/lib/data-service";
+import { applicaEventoLocale, dataService, displayStato, DISPLAY_DOT } from "@/lib/data-service";
 import { readSession } from "@/lib/session";
 import { useLang } from "@/lib/i18n";
 import {
@@ -68,6 +68,8 @@ function PresenzePage() {
   const [me, setMe] = useState<Dipendente | undefined>(undefined);
   const [errore, setErrore] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Tasto appena premuto: mostra "Registrazione…" finché il server risponde.
+  const [pending, setPending] = useState<EventoTimbratura | null>(null);
   const [oreSett, setOreSett] = useState<number | null>(null);
   const avvisoOrarioRef = useRef(false);
   // Timbrature in coda offline (salvate sul dispositivo, in attesa di rete).
@@ -288,14 +290,44 @@ function PresenzePage() {
       now,
     );
     if (conferma && !window.confirm(t(`presenze.ask.${conferma}`))) return;
+    // FEEDBACK IMMEDIATO (Posta Doc, 25/09: "bisogna premere due o tre volte"):
+    // prima il giro era tap → chiamata → snapshot completo → aggiornamento, con
+    // il tasto identico a prima per 2-4 secondi, e la gente ripremeva. Ora la
+    // pagina si aggiorna al tocco (ultima timbratura, stato, ore, timeline),
+    // il tasto dice "Registrazione…", il telefono vibra; il server conferma
+    // e sistema l'orario; lo snapshot completo arriva dopo, in sottofondo.
+    const prima = me;
+    const oraTap = new Date().toISOString();
     setBusy(true);
+    setPending(tipo);
+    setMe(applicaEventoLocale(me, tipo, oraTap));
     try {
-      const updated = await dataService.timbra(me.id, tipo);
-      setMe(updated);
-      toast.success(`${t("presenze.entryRecorded")} ${t(`evento.${tipo}`)}`, {
-        description: `${formatOra(updated.ultimaTimbratura?.ora)} · ${t("presenze.statusLabel")} ${t(`dstato.${displayStato(updated)}`)}`,
+      navigator.vibrate?.(35);
+    } catch {
+      /* dispositivi senza vibrazione */
+    }
+    try {
+      const creata = await spCreateTimbratura({
+        data: { dipendenteId: me.id, evento: tipo, origine: "Web" },
       });
+      const oraServer = creata?.dataOra || oraTap;
+      const confermato = applicaEventoLocale(prima, tipo, oraServer);
+      setMe(confermato);
+      toast.success(`${t("presenze.entryRecorded")} ${t(`evento.${tipo}`)}`, {
+        description: `${formatOra(oraServer)} · ${t("presenze.statusLabel")} ${t(`dstato.${displayStato(confermato)}`)}`,
+      });
+      // Riallineamento completo in sottofondo (turno notturno, eventi inseriti
+      // dal preposto…): non fa aspettare nessuno.
+      void dataService
+        .getDipendenti()
+        .then(() => dataService.getDipendente(prima.id))
+        .then((u) => {
+          if (u) setMe(u);
+        })
+        .catch(() => null);
     } catch (err) {
+      // Torna com'era: l'evento locale non è più "registrato".
+      setMe(prima);
       if (isErroreRete(err)) {
         // Niente rete: l'evento va in coda sul dispositivo con l'ora REALE
         // della pressione e la pagina si aggiorna come se fosse registrato.
@@ -327,6 +359,7 @@ function PresenzePage() {
       }
     } finally {
       setBusy(false);
+      setPending(null);
     }
   };
 
@@ -536,12 +569,12 @@ function PresenzePage() {
             aria-label={`${a.label}${a.reason ? ` — ${a.reason}` : ""}`}
             className={`group relative rounded-2xl border p-4 sm:p-6 text-left transition-all min-h-[156px] sm:min-h-[176px] flex flex-col justify-between touch-manipulation
               disabled:cursor-not-allowed
-              ${a.enabled ? "border-border bg-card shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-elegant)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.98]" : "border-dashed border-border/70 bg-muted/50 opacity-70"}
+              ${a.enabled || pending === a.tipo ? "border-border bg-card shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-elegant)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.98]" : "border-dashed border-border/70 bg-muted/50 opacity-70"}
             `}
           >
             <div
               className={`inline-flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl text-white shadow-sm ${
-                !a.enabled
+                !a.enabled && pending !== a.tipo
                   ? "bg-muted-foreground/50"
                   : a.tone === "primary"
                     ? "bg-primary"
@@ -552,7 +585,11 @@ function PresenzePage() {
                         : "bg-status-absent"
               }`}
             >
-              <a.Icon className="h-6 w-6 sm:h-7 sm:w-7" />
+              {pending === a.tipo ? (
+                <Loader2 className="h-6 w-6 sm:h-7 sm:w-7 animate-spin" />
+              ) : (
+                <a.Icon className="h-6 w-6 sm:h-7 sm:w-7" />
+              )}
             </div>
             <div>
               <div className="text-base sm:text-lg font-semibold text-foreground leading-tight">
@@ -561,7 +598,11 @@ function PresenzePage() {
               <div
                 className={`text-[11px] sm:text-xs mt-1 leading-snug ${a.enabled ? "text-muted-foreground" : "text-muted-foreground/90"}`}
               >
-                {a.enabled ? t("presenze.tapToRecord") : (a.reason ?? t("presenze.notAvailable"))}
+                {pending === a.tipo
+                  ? t("presenze.saving")
+                  : a.enabled
+                    ? t("presenze.tapToRecord")
+                    : (a.reason ?? t("presenze.notAvailable"))}
               </div>
             </div>
           </button>
@@ -603,14 +644,17 @@ function PresenzePage() {
       </div>
 
       {/* Accesso rapido — link ai moduli disponibili per il Dipendente */}
+      {/* Solo pagine che esistono davvero: a Posta Doc (25/09) "Storico" e
+          "Profilo" in arrivo e "Presenze" che portava a se stessa sembravano
+          tasti rotti. */}
       <QuickAccess
         items={[
           {
-            label: t("presenze.quickAttendance"),
-            to: "/presenze",
-            Icon: Clock,
+            label: t("presenze.quickMyHours"),
+            to: "/le-mie-ore",
+            Icon: Hourglass,
             ready: true,
-            description: t("presenze.quickMyEntries"),
+            description: t("presenze.quickMyHoursDesc"),
           },
           {
             label: t("presenze.quickRequests"),
@@ -619,8 +663,20 @@ function PresenzePage() {
             ready: true,
             description: t("presenze.quickRequestsDesc"),
           },
-          { label: t("presenze.quickHistory"), Icon: History, ready: false },
-          { label: t("presenze.quickProfile"), Icon: User, ready: false },
+          {
+            label: t("presenze.quickManual"),
+            to: "/manuale",
+            Icon: BookOpen,
+            ready: true,
+            description: t("presenze.quickManualDesc"),
+          },
+          {
+            label: t("presenze.quickPin"),
+            to: "/cambia-pin",
+            Icon: KeyRound,
+            ready: true,
+            description: t("presenze.quickPinDesc"),
+          },
         ]}
       />
     </AppShell>
