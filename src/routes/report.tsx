@@ -2,7 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
-import { BarChart3, Lock, AlertTriangle, Download, CalendarDays } from "lucide-react";
+import { BarChart3, Lock, AlertTriangle, Download, CalendarDays, Printer } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
   spGetRendiconto,
@@ -373,13 +373,21 @@ function RendicontoPage() {
           </div>
 
           {filtrate.length > 0 && (
-            <div className="mb-3 flex justify-end">
+            <div className="no-print mb-3 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
                 onClick={() => esportaCsv(filtrate, periodo)}
                 className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
               >
                 <Download className="h-4 w-4" /> {t("common.exportCsv")}
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                title={t("common.printTip")}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary transition-colors"
+              >
+                <Printer className="h-4 w-4" /> {t("common.print")}
               </button>
             </div>
           )}

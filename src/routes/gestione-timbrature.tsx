@@ -2,6 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
+import { EsportaStampa } from "@/components/EsportaStampa";
 import { Button } from "@/components/ui/button";
 import {
   EyeOff,
@@ -778,6 +779,26 @@ function GestioneTimbraturePage() {
 
           {gReso != null && (
             <div className="mt-5">
+              <EsportaStampa
+                className="mb-3"
+                nomeFile={`turni-del-giorno-${gData}`}
+                testata={["Data", "Dipendente", "Codice", "Sede", "Timbrature", "Anomalie", "Malattia", "Ferie"]}
+                disabled={!gResoVisibile.length}
+                righe={() =>
+                  gResoVisibile.map((r) => [
+                    gData,
+                    r.nomeCompleto,
+                    r.codice,
+                    r.sede,
+                    r.eventi
+                      .map((e) => `${t(`evento.${e.evento}`)} ${formatOra(e.dataOra)}${e.origine === "Manuale" ? " (M)" : ""}`)
+                      .join(" · "),
+                    r.anomalie.map((a) => t(`anomalia.${a}`)).join(" · "),
+                    r.malattia ? "SI" : "",
+                    r.ferie ? "SI" : "",
+                  ])
+                }
+              />
               {gResoVisibile.length === 0 ? (
                 <div className="text-sm text-muted-foreground">{t("gt.dayEmpty")}</div>
               ) : (

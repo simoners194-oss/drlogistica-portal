@@ -5,6 +5,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
+import { EsportaStampa } from "@/components/EsportaStampa";
 import { CalendarDays, Loader2, PenLine, Clock, Hourglass, Send } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
@@ -166,6 +167,22 @@ function LeMieOrePage() {
             className={inputCls}
           />
         </div>
+        <EsportaStampa
+          nomeFile={`le-mie-ore-${mese}`}
+          testata={["Giorno", "Ore", "Turno aperto", "Timbrature", "Correzione"]}
+          disabled={!giorni.length}
+          righe={() =>
+            [...giorni].reverse().map((g) => [
+              g.giorno,
+              Math.round(g.ore * 100) / 100,
+              g.aperto ? "SI" : "",
+              g.eventi
+                .map((e) => `${ETICHETTA[e.evento]} ${formatOra(e.dataOra)}${e.origine === "Manuale" ? " (M)" : ""}`)
+                .join(" · "),
+              statoCorrezione(g.giorno)?.stato ?? "",
+            ])
+          }
+        />
         <div className="ml-auto rounded-xl border border-border bg-secondary/40 px-4 py-2 text-right">
           <div className="text-[11px] text-muted-foreground">{t("mie.totale")}</div>
           <div className="text-lg font-semibold tabular-nums text-foreground">{fmtOre(totale)}</div>

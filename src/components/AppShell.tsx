@@ -90,11 +90,21 @@ export function AppShell({
           <main
             className={`flex-1 w-full mx-auto px-5 md:px-8 py-6 md:py-8 animate-fade-in ${wide ? "max-w-none" : "max-w-[1400px]"}`}
           >
-            <div className="md:hidden mb-5">
+            <div className="md:hidden mb-5 no-print">
               <h1 className="text-[26px] leading-tight font-semibold text-foreground tracking-tight">
                 {title}
               </h1>
               {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+            </div>
+            {/* Intestazione della STAMPA (tasto Stampa dei riepiloghi ore):
+                titolo, sottotitolo e data, visibili solo su carta. */}
+            <div className="print-only hidden mb-4">
+              <h1 className="text-xl font-semibold">{title}</h1>
+              {subtitle && <p className="text-xs">{subtitle}</p>}
+              <p className="text-xs">
+                DR Portal ·{" "}
+                {new Date().toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" })}
+              </p>
             </div>
             {children}
           </main>

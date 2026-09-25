@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.83.0",
+    date: "2026-09-25",
+    entries: [
+      {
+        title: "Esporta CSV e Stampa su tutti i riepiloghi delle ore",
+        description:
+          'Gli stessi due tasti in Le mie ore, La mia sede (Turni del giorno e Ore), Gestione timbrature → Turni del giorno e Rendiconto. Il CSV esce con i dati filtrati che hai davanti e si apre in Excel; la stampa mostra solo la pagina dei dati con titolo e data, senza menù e bottoni (dal telefono si salva come PDF).',
+        tag: "feature",
+        audience: "tutti",
+      },
+    ],
+  },
+  {
     version: "1.82.1",
     date: "2026-09-25",
     entries: [

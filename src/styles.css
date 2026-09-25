@@ -219,3 +219,45 @@
   width: 0;
   height: 0;
 }
+
+/* Stampa dei riepiloghi (tasto "Stampa" delle pagine ore): resta solo il
+   contenuto della pagina — via menù laterale, intestazione, piè di pagina,
+   filtri e bottoni. Il titolo lo mette AppShell con .print-only. */
+@media print {
+  [data-sidebar],
+  [data-sidebar="sidebar"],
+  header,
+  footer,
+  nav,
+  button,
+  select,
+  input,
+  textarea,
+  .no-print,
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .shadow-\[var\(--shadow-card\)\],
+  .shadow-\[var\(--shadow-elegant\)\] {
+    box-shadow: none !important;
+  }
+  a[href]::after {
+    content: "";
+  }
+  @page {
+    margin: 12mm;
+  }
+}

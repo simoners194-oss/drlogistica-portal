@@ -6,6 +6,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
+import { EsportaStampa } from "@/components/EsportaStampa";
 import { CalendarSearch, Loader2, Lock, Users, Hourglass } from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
 import { spGetSedeGiorno, spGetSedeOre } from "@/lib/sharepoint.functions";
@@ -178,6 +179,26 @@ function SedePage() {
                 </select>
               </div>
             )}
+            <EsportaStampa
+              className="ml-auto"
+              nomeFile={`turni-${sede === "tutte" ? sedeF : sede}-${data}`}
+              testata={["Data", "Dipendente", "Codice", "Sede", "Timbrature", "Anomalie", "Malattia", "Ferie"]}
+              disabled={!righeVis.length}
+              righe={() =>
+                righeVis.map((r) => [
+                  data,
+                  r.nomeCompleto,
+                  r.codice,
+                  r.sede,
+                  r.senzaTimbrature && !r.malattia && !r.ferie
+                    ? ""
+                    : r.eventi.map((e) => `${t(`evento.${e.evento}`)} ${formatOra(e.dataOra)}`).join(" · "),
+                  r.anomalie.map((a) => t(`anomalia.${a}`)).join(" · "),
+                  r.malattia ? "SI" : "",
+                  r.ferie ? "SI" : "",
+                ])
+              }
+            />
           </div>
           {righe == null ? (
             <div className="py-8 text-center">
@@ -273,6 +294,22 @@ function SedePage() {
                 </select>
               </div>
             )}
+            <EsportaStampa
+              nomeFile={`ore-${sede === "tutte" ? sedeF : sede}-${from}-${to}`}
+              testata={["Dal", "Al", "Dipendente", "Sede", "Ore lavorate", "Straordinario", "Giorni aperti"]}
+              disabled={!oreVis.length}
+              righe={() =>
+                oreVis.map((r) => [
+                  from,
+                  to,
+                  r.nomeCompleto,
+                  r.sede,
+                  Math.round(r.oreLavorate * 100) / 100,
+                  r.straordinarioCalcolato ? Math.round(r.straordinarioCalcolato * 100) / 100 : "",
+                  r.giorniNonChiusi || "",
+                ])
+              }
+            />
             <div className="ml-auto rounded-xl border border-border bg-secondary/40 px-4 py-2 text-right">
               <div className="text-[11px] text-muted-foreground">{t("sede.totaleOre")}</div>
               <div className="text-lg font-semibold tabular-nums text-foreground">
