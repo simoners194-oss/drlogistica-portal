@@ -186,7 +186,10 @@ function DashboardPage() {
         <>
           {/* Sintesi presenze — riepilogo pulito per la direzione */}
           <section className="mb-6 rounded-2xl border border-border bg-card p-4 sm:p-5 md:p-6 shadow-[var(--shadow-card)] animate-fade-in">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 mb-5 sm:flex sm:items-center sm:justify-between">
+            {/* Sul telefono titolo sopra e comandi sotto a tutta larghezza: la
+                griglia a due colonne schiacciava il titolo in una colonna di
+                quattro lettere e spingeva "Aggiorna" fuori dalla card (25/09). */}
+            <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <h2 className="text-[17px] sm:text-lg md:text-xl font-semibold text-foreground tracking-tight leading-tight">
                   {t("dash.summaryTitle")}
@@ -202,10 +205,10 @@ function DashboardPage() {
                   </span>
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex w-full items-center gap-2 sm:w-auto sm:shrink-0">
                 <select
                   aria-label="Filtra per sede"
-                  className="h-11 sm:h-9 rounded-full border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  className="h-11 sm:h-9 min-w-0 flex-1 sm:flex-none rounded-full border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                   value={sedeFilter}
                   onChange={(e) => setSedeFilter(e.target.value)}
                 >

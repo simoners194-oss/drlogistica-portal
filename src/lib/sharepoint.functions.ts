@@ -42,6 +42,7 @@ import {
   decideRichiesta,
   discoverSharePoint,
   fetchDipendenti,
+  fetchDipendenteById,
   fetchRichieste,
   fetchRichiestePerSupervisore,
   fetchTimbratureManuali,
@@ -161,6 +162,7 @@ import {
   ebCronToken,
   cronToken,
   promemoriaUsciteAperte,
+  purgaTimbratureAdmin,
   type EbStato,
   type EbSyncResult,
   getCodiceDipendente,
@@ -319,6 +321,22 @@ export const spGetSnapshot = createServerFn({ method: "GET" }).handler(
       };
     }
     return { dipendenti, timbrature };
+  },
+);
+
+/** Stato del SOLO chiamante per la timbratrice: il proprio record (una
+ *  lettura di un item) e le proprie timbrature delle ultime 36 ore (filtro
+ *  per dipendente). Lo snapshot completo — tutti i dipendenti e tutte le
+ *  timbrature — restava la causa del primo caricamento lento sul telefono. */
+export const spGetMioStato = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ dipendente: SpDipendente | null; timbrature: SpTimbratura[] }> => {
+    const me = await currentUser();
+    await discoverSharePoint();
+    const [dipendente, timbrature] = await Promise.all([
+      fetchDipendenteById(me.id),
+      fetchTimbratureRecenti(36, me.id),
+    ]);
+    return { dipendente, timbrature: timbrature.filter((t) => t.dipendenteId === me.id) };
   },
 );
 
@@ -2056,7 +2074,18 @@ export const spCronTurni = createServerFn({ method: "POST" })
     if (!token || token.length > 100) throw new Error("Token mancante.");
     return { token };
   })
-  .handler(async ({ data }) => promemoriaUsciteAperte(data.token));
+  .handler(async ({ data }) => {
+    const esito = await promemoriaUsciteAperte(data.token);
+    // Stesso giro: via le timbrature di prova degli account ADM* (il token
+    // è già stato verificato dal promemoria). Un errore qui non deve
+    // bloccare gli avvisi.
+    try {
+      await purgaTimbratureAdmin();
+    } catch {
+      /* loggato dal server, si riprova al prossimo giro */
+    }
+    return esito;
+  });
 
 // Indirizzo del promemoria turni, visibile a operatore/admin.
 export const spCronTurniToken = createServerFn({ method: "GET" }).handler(

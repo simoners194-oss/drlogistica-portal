@@ -1280,8 +1280,41 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
       `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items?expand=fields&$top=999`,
     ),
   );
-  const out = res.value
-    .map((it) => {
+  const out = res.value.map((it) => mapDipendente(it, F)).filter((d) => d.attivo);
+  logSp("info", "fetch.dipendenti", `${out.length} dipendenti attivi`, {
+    durataMs: Date.now() - started,
+  });
+  return out;
+}
+
+/** Il SOLO record del dipendente (timbratrice: il proprio stato) — una
+ *  lettura di un item invece dell'intera lista. null se non esiste o non è
+ *  attivo. */
+export async function fetchDipendenteById(id: string): Promise<SpDipendente | null> {
+  const cfg = await discoverSharePoint();
+  if (!/^\d+$/.test(id)) return null;
+  try {
+    const it = await withDiscoveryRetry(() =>
+      gatewayJson<GraphListItem<Record<string, unknown>>>(
+        `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items/${id}?expand=fields`,
+      ),
+    );
+    const d = mapDipendente(it, cfg.dipendentiFields);
+    return d.attivo ? d : null;
+  } catch (err) {
+    logSp(
+      "warn",
+      "fetch.dipendente",
+      `Lettura singola del dipendente ${id} fallita: ${err instanceof Error ? err.message.slice(0, 140) : String(err)}`,
+    );
+    return null;
+  }
+}
+
+function mapDipendente(
+  it: GraphListItem<Record<string, unknown>>,
+  F: Record<string, string>,
+): SpDipendente {
       const f = it.fields ?? {};
       const nome = String(f[F.Nome ?? ""] ?? "").trim();
       const cognome = String(f[F.Cognome ?? ""] ?? "").trim();
@@ -1318,12 +1351,6 @@ export async function fetchDipendenti(): Promise<SpDipendente[]> {
           .toUpperCase(),
         codice: normalizeCodice(F.Codice ? f[F.Codice] : ""),
       };
-    })
-    .filter((d) => d.attivo);
-  logSp("info", "fetch.dipendenti", `${out.length} dipendenti attivi`, {
-    durataMs: Date.now() - started,
-  });
-  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -2256,7 +2283,13 @@ function lookupIdFieldName(internal: string): string {
 }
 
 // Legge le timbrature con DataOra >= fromISO (ordinate crescenti).
-export async function fetchTimbratureDaISO(fromISO: string): Promise<SpTimbratura[]> {
+export async function fetchTimbratureDaISO(
+  fromISO: string,
+  /** Solo le timbrature di UN dipendente (timbratrice: il proprio stato):
+   *  il filtro va a Graph insieme a quello sulla data, poche righe invece
+   *  di tutta la finestra; nel ripiego a scansione completa si filtra qui. */
+  soloDipendenteId?: string,
+): Promise<SpTimbratura[]> {
   const cfg = await discoverSharePoint();
   const F = cfg.timbratureFields;
   const dataOraField = requireField(F, "DataOra", "Timbrature");
@@ -2264,7 +2297,10 @@ export async function fetchTimbratureDaISO(fromISO: string): Promise<SpTimbratur
   const dipendenteField = requireField(F, "Dipendente", "Timbrature");
   const lookupId = lookupIdFieldName(dipendenteField);
 
-  const filter = encodeURIComponent(`fields/${dataOraField} ge '${fromISO}'`);
+  const soloId = soloDipendenteId && /^\d+$/.test(soloDipendenteId) ? soloDipendenteId : undefined;
+  const filter = encodeURIComponent(
+    `fields/${dataOraField} ge '${fromISO}'` + (soloId ? ` and fields/${lookupId} eq ${soloId}` : ""),
+  );
   // Solo le colonne davvero lette dalla mappatura: expand=fields nudo
   // trascina tutti i campi di sistema e il payload raddoppia/triplica (stesso
   // motivo di soloColonne per i Movimenti). Il lookup dipendente si seleziona
@@ -2330,7 +2366,12 @@ export async function fetchTimbratureDaISO(fromISO: string): Promise<SpTimbratur
           }
         : null;
     })
-    .filter((x): x is SpTimbratura => x !== null && new Date(x.dataOra).getTime() >= startMs)
+    .filter(
+      (x): x is SpTimbratura =>
+        x !== null &&
+        new Date(x.dataOra).getTime() >= startMs &&
+        (!soloId || x.dipendenteId === soloId),
+    )
     .sort((a, b) => a.dataOra.localeCompare(b.dataOra));
 }
 
@@ -2346,8 +2387,14 @@ export async function fetchTimbratureOggi(): Promise<SpTimbratura[]> {
 // Finestra "a cavallo di mezzanotte" (~36h): serve alla macchina a stati a
 // TURNI e allo snapshot dashboard — chi è entrato ieri sera alle 22 deve
 // poter uscire alle 2 e risultare presente nel frattempo.
-export async function fetchTimbratureRecenti(oreIndietro = 36): Promise<SpTimbratura[]> {
-  return fetchTimbratureDaISO(new Date(Date.now() - oreIndietro * 3600_000).toISOString());
+export async function fetchTimbratureRecenti(
+  oreIndietro = 36,
+  soloDipendenteId?: string,
+): Promise<SpTimbratura[]> {
+  return fetchTimbratureDaISO(
+    new Date(Date.now() - oreIndietro * 3600_000).toISOString(),
+    soloDipendenteId,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -2868,6 +2915,27 @@ export async function deleteTimbratura(id: string): Promise<void> {
     throw new SpHttpError(res.status, `DELETE timbratura ${id} → ${res.status}`, "delete");
   }
   logSp("info", "delete.timbratura", `Rimossa timbratura #${id}`);
+}
+
+/** Le timbrature degli account amministrativi (codice ADM*) sono prove del
+ *  portale, non presenze (Simone 25/09: "quelle di ADM001 cancellale
+ *  sempre"): si tolgono a ogni giro del promemoria turni. Finiscono nel
+ *  cestino di SharePoint come ogni altra cancellazione. */
+export async function purgaTimbratureAdmin(giorniIndietro = 7): Promise<number> {
+  const dips = await fetchDipendenti();
+  const adminIds = new Set(dips.filter((d) => /^ADM/i.test(d.codice ?? "")).map((d) => d.id));
+  if (!adminIds.size) return 0;
+  const recenti = await fetchTimbratureDaISO(
+    new Date(Date.now() - giorniIndietro * 86_400_000).toISOString(),
+  );
+  let rimosse = 0;
+  for (const t of recenti) {
+    if (!adminIds.has(t.dipendenteId)) continue;
+    await deleteTimbratura(t.id);
+    rimosse++;
+  }
+  if (rimosse) logSp("info", "purga.admin", `${rimosse} timbrature di prova (ADM*) rimosse`);
+  return rimosse;
 }
 
 // Annulla l'ULTIMA timbratura di oggi del dipendente, se registrata da meno di

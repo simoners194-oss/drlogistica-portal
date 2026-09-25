@@ -16,6 +16,7 @@ import { computeOreOggi, tagliaEventiVisibili } from "./presenze-logic";
 import {
   spCreateTimbratura,
   spGetDiagnostics,
+  spGetMioStato,
   spGetSnapshot,
   spRunSelfTest,
   type SpDiagnostics,
@@ -171,26 +172,103 @@ export function applicaEventoLocale(
   tipo: Timbratura["tipo"],
   ora: string,
 ): Dipendente {
-  const eventiOggi: Timbratura[] = [...(d.eventiOggi ?? []), { tipo, ora }];
-  const entrata = eventiOggi.find((e) => e.tipo === "entrata");
-  const stato: Dipendente["stato"] =
-    tipo === "entrata" || tipo === "fine-pausa"
+  return ricalcolaDaEventi(d, [...(d.eventiOggi ?? []), { tipo, ora }]);
+}
+
+/** Ricostruisce il record dal flusso di eventi di oggi (stesse regole del
+ *  merge dello snapshot): stato, entrata, ultima timbratura, ore. */
+export function ricalcolaDaEventi(d: Dipendente, eventiOggi: Timbratura[]): Dipendente {
+  const ordinati = [...eventiOggi].sort((a, b) => a.ora.localeCompare(b.ora));
+  const entrata = ordinati.find((e) => e.tipo === "entrata");
+  const last = ordinati[ordinati.length - 1];
+  const stato: Dipendente["stato"] = !last
+    ? "non-timbrato"
+    : last.tipo === "entrata" || last.tipo === "fine-pausa"
       ? "presente"
-      : tipo === "inizio-pausa"
+      : last.tipo === "inizio-pausa"
         ? "pausa"
         : "uscito";
-  const ore = computeOreOggi(eventiOggi);
+  const ore = computeOreOggi(ordinati);
   return {
     ...d,
     stato,
     entrataOra: entrata?.ora,
-    ultimaTimbratura: { tipo, ora },
-    eventiOggi,
+    ultimaTimbratura: last,
+    eventiOggi: ordinati,
     oreLavorateMinuti: ore.oreLavorateMinuti,
     pausaMinuti: ore.pausaMinuti,
     oltreOrarioMinuti: ore.oltreOrarioMinuti,
     straordinariMinuti: ore.oltreOrarioMinuti,
   };
+}
+
+/** Una rilettura dal server NON deve cancellare una timbratura appena
+ *  registrata: Graph, sulle query filtrate della lista, può non restituire
+ *  ancora la riga creata pochi secondi prima (ADM001 25/09: "sono entrato
+ *  ma Inizio pausa dice che non sono entrato"). Gli eventi locali più
+ *  recenti dell'ultimo del server, registrati da meno di 10 minuti e non
+ *  già presenti, restano nel record. */
+export function unisciEventiRecenti(
+  locale: Dipendente | null | undefined,
+  server: Dipendente,
+  adesso = Date.now(),
+): Dipendente {
+  const loc = locale?.eventiOggi ?? [];
+  if (!loc.length) return server;
+  const srv = server.eventiOggi ?? [];
+  const ultimoServer = srv[srv.length - 1]?.ora ?? "";
+  const vicino = (a: string, b: string) =>
+    Math.abs(new Date(a).getTime() - new Date(b).getTime()) < 120_000;
+  const extra = loc.filter(
+    (e) =>
+      e.ora > ultimoServer &&
+      adesso - new Date(e.ora).getTime() < 10 * 60_000 &&
+      !srv.some((s) => s.tipo === e.tipo && vicino(s.ora, e.ora)),
+  );
+  return extra.length ? ricalcolaDaEventi(server, [...srv, ...extra]) : server;
+}
+
+// --- Timbratrice: il proprio stato, leggero e con memoria locale --------------
+// Primo caricamento (Posta Doc, 25/09): la pagina aspettava lo snapshot di
+// TUTTI i dipendenti e TUTTE le timbrature. Ora: (1) l'ultimo stato salvato
+// sul dispositivo compare subito, (2) il server manda solo il record del
+// chiamante e le sue timbrature, (3) la pagina si allinea appena arrivano.
+const MIO_CACHE_KEY = "dr.presenze.mio";
+const MIO_CACHE_ORE = 14;
+
+export function leggiMioCache(id: string): Dipendente | null {
+  try {
+    const raw = localStorage.getItem(MIO_CACHE_KEY);
+    if (!raw) return null;
+    const j = JSON.parse(raw) as { id?: string; at?: number; d?: Dipendente };
+    if (!j || j.id !== id || !j.d || typeof j.at !== "number") return null;
+    if (Date.now() - j.at > MIO_CACHE_ORE * 3600_000) return null;
+    return j.d;
+  } catch {
+    return null;
+  }
+}
+
+export function salvaMioCache(d: Dipendente): void {
+  try {
+    localStorage.setItem(MIO_CACHE_KEY, JSON.stringify({ id: d.id, at: Date.now(), d }));
+  } catch {
+    /* storage pieno o bloccato: la pagina funziona lo stesso */
+  }
+}
+
+export async function getMioStato(id: string): Promise<Dipendente | undefined> {
+  const snap = (await spGetMioStato()) as {
+    dipendente: SpDipendente | null;
+    timbrature: SpTimbratura[];
+  };
+  if (!snap.dipendente || snap.dipendente.id !== id) return undefined;
+  const [d] = mergeDipendentiTimbrature([snap.dipendente], snap.timbrature);
+  if (d) {
+    salvaMioCache(d);
+    setSpStatus("online");
+  }
+  return d;
 }
 
 // Snapshot filtrato (solo visibili) — alimenta dashboard, elenchi e conteggi.

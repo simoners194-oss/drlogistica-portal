@@ -36,6 +36,40 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.82.1",
+    date: "2026-09-25",
+    entries: [
+      {
+        title: "Timbratrice: primo caricamento leggero e memoria sul telefono",
+        description:
+          "Aprendo Presenze compare subito l'ultimo stato salvato sul dispositivo (tasti pronti), mentre il server manda solo il proprio record e le proprie timbrature delle ultime 36 ore invece di tutti i dipendenti e tutte le timbrature. Chi ha il telefono lento o poco campo lo sente subito.",
+        tag: "improvement",
+        audience: "tutti",
+      },
+      {
+        title: "Timbratrice: la timbratura appena fatta non sparisce più",
+        description:
+          'Caso ADM001 del 25/09: entrata registrata, ma "Inizio pausa" diceva "non sei ancora entrato". La rilettura dal server, per qualche secondo, poteva non contenere ancora la riga appena creata e la pagina tornava indietro. Ora una rilettura non cancella mai una timbratura registrata da meno di dieci minuti; dopo "Annulla ultima" la pagina si aggiorna da sola senza rileggere subito.',
+        tag: "fix",
+        audience: "tutti",
+      },
+      {
+        title: "Dashboard presenze da telefono: titolo e comandi non si accavallano più",
+        description:
+          'Il titolo "Situazione presenze per sede" finiva in una colonna di quattro lettere e il bottone Aggiorna usciva dalla card. Sul telefono ora il titolo sta sopra e la tendina delle sedi con Aggiorna sotto, a tutta larghezza.',
+        tag: "fix",
+        audience: "gestione",
+      },
+      {
+        title: "Timbrature di prova degli account ADM cancellate da sole",
+        description:
+          "A ogni giro del promemoria turni il portale toglie le timbrature degli account amministrativi (codice ADM*), che sono prove e non presenze. Finiscono nel cestino di SharePoint come ogni altra cancellazione.",
+        tag: "improvement",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.82.0",
     date: "2026-09-25",
     entries: [

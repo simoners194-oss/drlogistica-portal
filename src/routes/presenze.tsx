@@ -17,7 +17,17 @@ import {
 import { FileText, BookOpen, KeyRound, Loader2 } from "lucide-react";
 import { QuickAccess } from "@/components/QuickAccess";
 import { formatOra, type Dipendente, type Timbratura } from "@/lib/mock-data";
-import { applicaEventoLocale, dataService, displayStato, DISPLAY_DOT } from "@/lib/data-service";
+import {
+  applicaEventoLocale,
+  dataService,
+  displayStato,
+  DISPLAY_DOT,
+  getMioStato,
+  leggiMioCache,
+  ricalcolaDaEventi,
+  salvaMioCache,
+  unisciEventiRecenti,
+} from "@/lib/data-service";
 import { readSession } from "@/lib/session";
 import { useLang } from "@/lib/i18n";
 import {
@@ -71,6 +81,11 @@ function PresenzePage() {
   // Tasto appena premuto: mostra "Registrazione…" finché il server risponde.
   const [pending, setPending] = useState<EventoTimbratura | null>(null);
   const [oreSett, setOreSett] = useState<number | null>(null);
+  // Ogni stato mostrato finisce nella memoria del dispositivo: alla prossima
+  // apertura i tasti sono pronti prima che il server risponda.
+  useEffect(() => {
+    if (me) salvaMioCache(me);
+  }, [me]);
   const avvisoOrarioRef = useRef(false);
   // Timbrature in coda offline (salvate sul dispositivo, in attesa di rete).
   const [codaCount, setCodaCount] = useState(0);
@@ -85,13 +100,29 @@ function PresenzePage() {
       return;
     }
     setOreSett(s?.oreSettimanali ?? null);
-    dataService
-      .getDipendente(currentId)
+    // 1) L'ultimo stato salvato sul dispositivo compare SUBITO (tasti pronti),
+    // 2) il server manda solo il proprio record e le proprie timbrature,
+    // 3) se quella lettura fallisce si torna al vecchio giro completo.
+    const cached = leggiMioCache(currentId);
+    if (cached) setMe(cached);
+    // Il server non cancella una timbratura appena fatta che ancora non
+    // restituisce (unisciEventiRecenti): vale anche per la memoria locale.
+    getMioStato(currentId)
       .then((d) => {
-        if (d) setMe(d);
-        else setErrore("Dipendente non trovato su SharePoint.");
+        if (d) setMe((prev) => unisciEventiRecenti(prev ?? cached, d));
+        else if (!cached) setErrore("Dipendente non trovato su SharePoint.");
       })
-      .catch((err) => setErrore(err instanceof Error ? err.message : String(err)));
+      .catch(() =>
+        dataService
+          .getDipendente(currentId)
+          .then((d) => {
+            if (d) setMe((prev) => unisciEventiRecenti(prev ?? cached, d));
+            else if (!cached) setErrore("Dipendente non trovato su SharePoint.");
+          })
+          .catch((err) => {
+            if (!cached) setErrore(err instanceof Error ? err.message : String(err));
+          }),
+      );
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, [navigate]);
@@ -204,9 +235,13 @@ function PresenzePage() {
       setCodaCount(esito.rimaste);
       if (esito.inviate > 0) {
         toast.success(t("presenze.offlineSent"), { description: `${esito.inviate}` });
-        await dataService.getDipendenti().catch(() => null);
-        const updated = await dataService.getDipendente(me.id).catch(() => undefined);
-        if (updated) setMe(updated);
+        const updated =
+          (await getMioStato(me.id).catch(() => undefined)) ??
+          (await dataService
+            .getDipendenti()
+            .then(() => dataService.getDipendente(me.id))
+            .catch(() => undefined));
+        if (updated) setMe((prev) => unisciEventiRecenti(prev, updated));
       }
     } finally {
       flushingRef.current = false;
@@ -257,10 +292,10 @@ function PresenzePage() {
     setBusy(true);
     try {
       await spAnnullaUltimaTimbratura();
-      // Refresh dello snapshot e del proprio record (come dopo una timbratura).
-      await dataService.getDipendenti();
-      const updated = await dataService.getDipendente(me.id);
-      if (updated) setMe(updated);
+      // Si toglie l'evento in locale e basta: una rilettura immediata
+      // potrebbe restituire ancora la riga appena cancellata (Graph, query
+      // filtrate) e farla ricomparire. Il prossimo tocco riallinea tutto.
+      setMe(ricalcolaDaEventi(me, (me.eventiOggi ?? []).slice(0, -1)));
       toast.success(t("presenze.undoDone"), {
         description: `${t(`evento.${ultima.tipo}`)} · ${formatOra(ultima.ora)}`,
       });
@@ -313,16 +348,15 @@ function PresenzePage() {
       const oraServer = creata?.dataOra || oraTap;
       const confermato = applicaEventoLocale(prima, tipo, oraServer);
       setMe(confermato);
+      salvaMioCache(confermato);
       toast.success(`${t("presenze.entryRecorded")} ${t(`evento.${tipo}`)}`, {
         description: `${formatOra(oraServer)} · ${t("presenze.statusLabel")} ${t(`dstato.${displayStato(confermato)}`)}`,
       });
-      // Riallineamento completo in sottofondo (turno notturno, eventi inseriti
-      // dal preposto…): non fa aspettare nessuno.
-      void dataService
-        .getDipendenti()
-        .then(() => dataService.getDipendente(prima.id))
+      // Riallineamento in sottofondo con la lettura leggera (turno notturno,
+      // eventi inseriti dal preposto…): non fa aspettare nessuno.
+      void getMioStato(prima.id)
         .then((u) => {
-          if (u) setMe(u);
+          if (u) setMe((prev) => unisciEventiRecenti(prev ?? confermato, u));
         })
         .catch(() => null);
     } catch (err) {

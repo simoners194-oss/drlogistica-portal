@@ -94,6 +94,8 @@ Un tocco basta. Dalla 1.82.0 la pagina risponde subito: il tasto mostra "Registr
 
 I tasti in basso ("Accesso rapido") portano a Le mie ore, Richieste, Manuale e Cambia PIN.
 
+Alla prima apertura (dalla 1.82.1) la pagina mostra subito l'ultimo stato salvato sul telefono, così i tasti sono pronti mentre il server manda solo le tue timbrature: se nel frattempo un preposto ha corretto la tua giornata, la pagina si allinea da sola appena arriva la risposta. Una timbratura appena fatta non viene mai cancellata da una rilettura: se ti sembra sparita, ricarica la pagina dopo un minuto prima di ripeterla.
+
 Il turno di notte funziona: se entri alle 22 ed esci alle 2 la giornata resta unita e le ore sono contate giuste.`,
     chiavi: "entrata uscita pausa timbratura turno notturno spezzato",
   },
