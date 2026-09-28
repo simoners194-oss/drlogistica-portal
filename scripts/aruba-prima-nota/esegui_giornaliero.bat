@@ -22,6 +22,8 @@ REM Diagnostica: quale interprete gira davvero sotto lo scheduler.
 "%PYEXE%" scarica_aruba.py nclinks >> log_esecuzioni.txt 2>&1
 REM Stipendi (1.79.0): il portale legge da solo Stipendi Dr.xlsx e i COSTI
 REM mensili da SharePoint. Stesso token del cron fatture, cambia solo il path.
-"%PYEXE%" -c "import json,urllib.request;u=json.load(open('config.json'))['cron_fatture_url'].replace('/cron-fatture','/cron-stipendi');print('[stipendi]',urllib.request.urlopen(u,timeout=600).read().decode('utf-8','ignore')[:400])" >> log_esecuzioni.txt 2>&1
+REM NB: Cloudflare risponde 403 allo User-Agent di python-urllib (visto il
+REM 28/09: 6 corse fallite dal 21/09): serve un UA esplicito come negli altri script.
+"%PYEXE%" -c "import json,re,urllib.request;u=json.load(open('config.json'))['cron_fatture_url'].replace('/cron-fatture','/cron-stipendi');r=urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DRPortalCron/1.0'}),timeout=600).read().decode('utf-8','ignore');r=re.sub(r'<!--.*?-->','',r);m=re.search(r'(OK|ERRORE)[^<]{0,300}',r);print('[stipendi]',m.group(0) if m else r[:200])" >> log_esecuzioni.txt 2>&1
 echo (fine corsa) >> log_esecuzioni.txt
 del giro_in_corso.lock 2>nul
