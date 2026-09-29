@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.83.2",
+    date: "2026-09-29",
+    entries: [
+      {
+        title: "Login: niente più errori in inglese quando Microsoft 365 rallenta",
+        description:
+          "Ogni tanto il collegamento a Microsoft 365 rinnova le credenziali e per pochi secondi rifiuta le richieste: l'accesso si bloccava mostrando un messaggio in inglese (\"Temporarily unable to authenticate. Please retry.\"). Ora il portale riprova da solo e, se proprio non ci riesce, spiega in italiano cosa sta succedendo e cosa fare.",
+        tag: "fix",
+        audience: "tutti",
+      },
+    ],
+  },
+  {
     version: "1.83.1",
     date: "2026-09-25",
     entries: [

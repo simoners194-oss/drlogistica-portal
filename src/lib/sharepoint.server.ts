@@ -768,21 +768,55 @@ export async function gatewayJson<T = unknown>(path: string, init: RequestInit =
     if (res.ok) return (await res.json()) as T;
     lastStatus = res.status;
     lastBody = await res.text().catch(() => "");
+    // 401/403 dal gateway sono quasi sempre transitori: il connettore sta
+    // rinnovando il token Microsoft e per qualche istante risponde "Temporarily
+    // unable to authenticate". Si ritentano come i 5xx, ma solo in GET (sopra
+    // maxAttempts vale 1 per le scritture). Se fallisce anche l'ultimo
+    // tentativo, allora il problema di permessi è vero e l'errore risale.
+    const authTransitorio = res.status === 401 || res.status === 403;
     const retriable =
-      res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504;
+      authTransitorio ||
+      res.status === 429 ||
+      res.status === 502 ||
+      res.status === 503 ||
+      res.status === 504;
     if (!retriable || attempt === maxAttempts) break;
     logSp(
       "warn",
       "gateway",
       `Retry ${attempt}/${maxAttempts - 1} dopo ${res.status} su ${path.split("?")[0]}`,
     );
-    await new Promise((r) => setTimeout(r, 400 * attempt));
+    // L'autenticazione del connettore ha bisogno di un attimo in più.
+    await new Promise((r) => setTimeout(r, (authTransitorio ? 800 : 400) * attempt));
   }
   throw new SpHttpError(
     lastStatus,
     `SharePoint ${init.method ?? "GET"} ${path.split("?")[0]} → ${lastStatus} ${sanitize(lastBody)}`,
     path,
   );
+}
+
+// Errore tecnico → messaggio per l'utente finale.
+// Il corpo di risposta del gateway è in inglese e parla di cose che a chi sta
+// facendo il login non dicono nulla ("Temporarily unable to authenticate.
+// Please retry."): non deve mai finire nel riquadro rosso della pagina di
+// accesso. Gli errori scritti da noi (tutti in italiano, con l'istruzione per
+// l'amministratore) passano invece inalterati.
+export function messaggioErroreUtente(err: unknown): string {
+  if (err instanceof SpHttpError) {
+    if (err.status === 401 || err.status === 403) {
+      return "Collegamento a Microsoft 365 momentaneamente non disponibile: riprova tra un minuto. Se il problema continua, avvisa l'amministratore.";
+    }
+    if (err.status === 429) {
+      return "Troppe richieste verso SharePoint in questo momento: aspetta qualche secondo e riprova.";
+    }
+    if (err.status >= 500) {
+      return "SharePoint non risponde in questo momento: riprova tra qualche secondo.";
+    }
+    return "Accesso momentaneamente non disponibile: riprova tra qualche secondo.";
+  }
+  if (err instanceof Error && err.message.trim()) return err.message;
+  return "Accesso momentaneamente non disponibile: riprova tra qualche secondo.";
 }
 
 // ---------------------------------------------------------------------------
@@ -1777,7 +1811,18 @@ export async function loginByCodicePin(
   if (!codice || !pin) {
     return { ok: false, error: "Codice o PIN non validi." };
   }
-  const cfg = await discoverSharePoint();
+  let cfg: SpDiscovered;
+  try {
+    cfg = await discoverSharePoint();
+  } catch (err) {
+    logSp(
+      "error",
+      "login",
+      `Discovery non riuscita durante il login: ${err instanceof Error ? err.message : String(err)}`,
+      { durataMs: Date.now() - started },
+    );
+    return { ok: false, error: messaggioErroreUtente(err) };
+  }
   const F = cfg.dipendentiFields;
   const codiceField = F.Codice;
   const pinField = F.PIN;
@@ -1802,11 +1847,22 @@ export async function loginByCodicePin(
     return { ok: false, error: `Troppi tentativi falliti. Riprova tra ${min} minuti.` };
   }
 
-  const res = await withDiscoveryRetry(() =>
-    gatewayJson<GraphListResponse<Record<string, unknown>>>(
-      `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items?expand=fields&$top=999`,
-    ),
-  );
+  let res: GraphListResponse<Record<string, unknown>>;
+  try {
+    res = await withDiscoveryRetry(() =>
+      gatewayJson<GraphListResponse<Record<string, unknown>>>(
+        `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items?expand=fields&$top=999`,
+      ),
+    );
+  } catch (err) {
+    logSp(
+      "error",
+      "login",
+      `Lettura anagrafica non riuscita durante il login: ${err instanceof Error ? err.message : String(err)}`,
+      { durataMs: Date.now() - started },
+    );
+    return { ok: false, error: messaggioErroreUtente(err) };
+  }
   const attivoField = F.Attivo;
   const candidato = res.value.find((it) => {
     const f = it.fields ?? {};
