@@ -27,6 +27,7 @@ export const SEZIONI_MANUALE = [
   "Fatture",
   "Pivot",
   "Flussi di cassa",
+  "Fornitori",
   "Stipendi",
   "Fiscale",
   "Storico estratti",
@@ -92,7 +93,8 @@ Prima di segnalare, prova la ricarica forzata (Ctrl+F5): tanti "errori" sono sol
 "Esporta CSV" scarica un file che si apre in Excel con i dati che vedi filtrati in quel momento (giorno, dipendente, ore, timbrature, anomalie…). "Stampa" apre la stampa del browser con la sola pagina dei dati: menù, filtri e bottoni restano fuori, in testa ci sono titolo, sottotitolo e data/ora. Dal telefono la stampa si può salvare come PDF scegliendo "Salva come PDF" come stampante.
 
 Consiglio: prima imposta i filtri (sede, periodo, dipendente), poi esporta o stampa — quello che esce è esattamente quello che vedi.`,
-    chiavi: "stampa stampare esporta export csv excel pdf riepilogo ore le mie ore sede turni rendiconto",
+    chiavi:
+      "stampa stampare esporta export csv excel pdf riepilogo ore le mie ore sede turni rendiconto",
   },
 
   // --- Presenze ---------------------------------------------------------------
@@ -398,17 +400,31 @@ Il bottone Cumulato trasforma le colonne in progressivo: ogni mese somma tutto q
     id: "flu-voci",
     sezione: "Flussi di cassa",
     titolo: "Le quattro voci e il click sul nome",
-    testo: `Stipendi, Costo fiscale rate, Costo fiscale corrente e Altre spese si riempiono da sole: gli stipendi dai netti caricati e dalle spunte Pagato, le voci fiscali dallo scadenzario, le Altre spese dalla media degli ultimi due mesi di costi generali non fatturati. Il simbolo ≈ segnala il valore automatico.
+    testo: `Stipendi, Costo fiscale rate, Costo fiscale corrente e Altre spese si riempiono da sole: gli stipendi dai netti caricati e dalle spunte Pagato, le voci fiscali dallo scadenzario, le Altre spese dalla media degli ultimi due mesi di costi generali non fatturati più i costi fissi (affitti) al loro importo. Il simbolo ≈ segnala il valore automatico.
+
+Il mese corrente è il REALE, non una stima (dalla 1.85.0): le voci fiscali contano le scadenze pagate nel mese più quelle da pagare entro il mese; le Altre spese contano quanto è già uscito dalla banca più la media per i giorni che mancano, quindi all'ultimo giorno del mese la cella coincide con la spesa vera. I mesi futuri restano stime (media, scadenze in agenda).
 
 Cliccando sul nome della voce si apre il dettaglio di cosa c'è dentro; nelle Altre spese puoi includere o escludere le singole tipologie con le spunte, e la media si aggiorna. Se scrivi un importo a mano nella cella, il tuo numero vince sull'automatico per quel mese — per tornare all'automatico svuota la cella.`,
-    chiavi: "voci stipendi fiscale altre spese drill click dettaglio automatico manuale cella",
+    chiavi:
+      "voci stipendi fiscale altre spese drill click dettaglio automatico manuale cella mese corrente reale",
+  },
+  {
+    id: "flu-costi-fissi",
+    sezione: "Flussi di cassa",
+    titolo: "Costi fissi (affitti) nelle Altre spese",
+    testo: `Gli affitti e le altre uscite fisse non vanno stimati con la media: dalla 1.85.0 si impostano nel pannello delle Altre spese (clic sul nome della riga, blocco "Costi fissi") con nome, importo mensile, parola con cui riconoscerli nei movimenti bancari (es. "poggi" per l'affitto di Fiano) ed eventuale finestra di mesi. Da lì in poi i loro pagamenti escono dalla media dei costi variabili e la riga li conta al loro importo: nel mese corrente quello davvero uscito dalla banca (con la spunta ✓ e la data), altrimenti quello impostato. Nel pannello vedi per ogni costo fisso se nel mese è già stato pagato.
+
+Impostati il 29/09/2026 dai file di Sabrina: Affitto Fiano 1.200, Zekaj Rovena 2.000, Liza Perlala 2.100 (fino ad aprile 2027), Biagi Mara 950.`,
+    chiavi: "costi fissi affitto affitti fiano zekaj perlala biagi importo reale media altre spese",
   },
   {
     id: "flu-stipendi-scaduto",
     sezione: "Flussi di cassa",
-    titolo: "Stipendi arretrati nello Scaduto",
-    testo: `Quando in un mese di pagamento arrivato (compreso quello corrente) restano stipendi non segnati pagati, il residuo compare nella colonna Scaduto della riga Stipendi: la cella del mese mostra i pagati, lo Scaduto il resto, e la somma torna al totale. Funziona dove la spunta Pagato è in uso nella tab Stipendi; i mesi vecchi senza spunte non contano, perché sono storia già regolata in banca.`,
-    chiavi: "stipendi scaduto arretrati non pagati residuo",
+    titolo: "Arretrati nello Scaduto: stipendi e scadenze fiscali",
+    testo: `Quando in un mese di pagamento arrivato (compreso quello corrente) restano stipendi non segnati pagati, il residuo compare nella colonna Scaduto della riga Stipendi: la cella del mese mostra i pagati, lo Scaduto il resto, e la somma torna al totale. Funziona dove la spunta Pagato è in uso nella tab Stipendi; i mesi vecchi senza spunte non contano, perché sono storia già regolata in banca.
+
+Le due voci fiscali fanno lo stesso (dalla 1.85.0): le scadenze non pagate con data già passata stanno nella colonna Scaduto della loro riga, non nel mese corrente. Clic sul nome della voce per l'elenco.`,
+    chiavi: "stipendi scaduto arretrati non pagati residuo scadenze fiscali scadute",
   },
   {
     id: "flu-esclusioni",
@@ -431,7 +447,8 @@ Cliccando sul nome della voce si apre il dettaglio di cosa c'è dentro; nelle Al
     testo: `Dalla 1.84.0 le uscite dei Flussi sono divise in tre blocchi: "di cui con RiBa", "di cui con RID / addebito automatico" e "di cui senza RID né RiBa" (le fatture che partono solo se fai il bonifico). Ogni fattura passiva pesa nel blocco della modalità dichiarata nel suo XML (RiBa = MP12; RID = RID, SDD e domiciliazioni: Kuwait, Consat, Arval, Kion, BNP…), quindi un fornitore con fatture miste — TIM, Jungheinrich — compare in più blocchi. Col dettaglio acceso sotto ogni blocco ci sono i suoi fornitori; il CSV esce con la stessa struttura.
 
 Per forzare un fornitore intero (es. DKV: bonifico in fattura ma addebito automatico in banca) vai nella tab Fornitori e scegli RID, RiBa o Nessuna nella colonna Modalità: "Auto" torna alle fatture.`,
-    chiavi: "riba rid sdd addebito automatico modalità pagamento uscite divise bonifico forzare fornitore",
+    chiavi:
+      "riba rid sdd addebito automatico modalità pagamento uscite divise bonifico forzare fornitore",
   },
   {
     id: "flu-simulazione",

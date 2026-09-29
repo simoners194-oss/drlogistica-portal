@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.85.0",
+    date: "2026-09-29",
+    entries: [
+      {
+        title: "Flussi di cassa: costi fissi (affitti) al loro importo, non a media",
+        description:
+          'Nel pannello delle Altre spese (clic sul nome della riga) c\'è il blocco "Costi fissi": nome, importo mensile, parola con cui riconoscerli nei movimenti, finestra di mesi. Escono dalla media e contano al loro importo: nel mese corrente quello davvero uscito dalla banca (✓ con la data), altrimenti quello impostato. Impostati i quattro affitti dai file di Sabrina (Fiano, Zekaj, Liza Perlala, Biagi).',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Mese corrente = reale, non stima",
+        description:
+          "Le voci fiscali del mese corrente contano le scadenze pagate nel mese più quelle da pagare entro il mese (prima sparivano appena pagate); le scadute non pagate vanno nella colonna Scaduto della loro riga, come gli stipendi arretrati. Le Altre spese del mese corrente = quanto è già uscito + la media per i giorni che mancano: all'ultimo giorno del mese la cella è la spesa vera. Il dettaglio (clic sul nome) mostra pagate ✓, da pagare e scadute.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.84.0",
     date: "2026-09-29",
     entries: [
@@ -89,7 +109,7 @@ export const RELEASES: readonly Release[] = [
       {
         title: "Esporta CSV e Stampa su tutti i riepiloghi delle ore",
         description:
-          'Gli stessi due tasti in Le mie ore, La mia sede (Turni del giorno e Ore), Gestione timbrature → Turni del giorno e Rendiconto. Il CSV esce con i dati filtrati che hai davanti e si apre in Excel; la stampa mostra solo la pagina dei dati con titolo e data, senza menù e bottoni (dal telefono si salva come PDF).',
+          "Gli stessi due tasti in Le mie ore, La mia sede (Turni del giorno e Ore), Gestione timbrature → Turni del giorno e Rendiconto. Il CSV esce con i dati filtrati che hai davanti e si apre in Excel; la stampa mostra solo la pagina dei dati con titolo e data, senza menù e bottoni (dal telefono si salva come PDF).",
         tag: "feature",
         audience: "tutti",
       },
@@ -136,7 +156,7 @@ export const RELEASES: readonly Release[] = [
       {
         title: "Timbratrice: un tocco basta",
         description:
-          'Segnalazione da Posta Doc Fiano Romano: bisognava premere due o tre volte. Il tasto in realtà prendeva al primo tocco, ma restava identico per 2–4 secondi (chiamata al server + ricarica di tutto lo snapshot) e la gente ripremeva. Ora la pagina si aggiorna al tocco (ultima timbratura, stato, ore, timeline), il tasto mostra "Registrazione…" e il telefono vibra; il server conferma subito dopo con l\'orario ufficiale e l\'allineamento completo avviene in sottofondo. Un secondo tocco durante la registrazione viene ignorato.',
+          "Segnalazione da Posta Doc Fiano Romano: bisognava premere due o tre volte. Il tasto in realtà prendeva al primo tocco, ma restava identico per 2–4 secondi (chiamata al server + ricarica di tutto lo snapshot) e la gente ripremeva. Ora la pagina si aggiorna al tocco (ultima timbratura, stato, ore, timeline), il tasto mostra \"Registrazione…\" e il telefono vibra; il server conferma subito dopo con l'orario ufficiale e l'allineamento completo avviene in sottofondo. Un secondo tocco durante la registrazione viene ignorato.",
         tag: "fix",
         audience: "tutti",
       },
@@ -193,7 +213,7 @@ export const RELEASES: readonly Release[] = [
     date: "2026-09-21",
     entries: [
       {
-        title: "Stipendi: le finanziarie delle cessioni non sono più \"da chiarire\"",
+        title: 'Stipendi: le finanziarie delle cessioni non sono più "da chiarire"',
         description:
           'Le righe di Stipendi Dr intestate a una società (Pitagora SpA, Cofidis, Prestitalia, Sigla, UniCredit) sono le rate delle cessioni del quinto, non dipendenti: ora vengono riconosciute dal nome e stanno in un riquadro a parte "Finanziarie (cessioni del quinto)" col totale, senza menù del motivo. Il conteggio "da chiarire" resta solo per le persone.',
         tag: "improvement",

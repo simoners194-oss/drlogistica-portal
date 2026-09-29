@@ -658,8 +658,12 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
               ? "asvoce"
               : input?.genere === "fornitore"
                 ? "fornitore"
-                : "voce";
+                : input?.genere === "fisso"
+                  ? "fisso"
+                  : "voce";
     const importo = Number(input?.importo ?? 0);
+    if (genere === "fisso" && (!Number.isFinite(importo) || importo <= 0))
+      throw new Error("Importo mensile del costo fisso non valido (positivo)");
     if (genere === "voce" && (!Number.isFinite(importo) || importo === 0))
       throw new Error("Importo non valido (per le uscite usare il segno meno)");
     if (genere === "asvoce" && importo !== 0 && importo !== 1)

@@ -295,3 +295,88 @@ export function riepilogoFornitori(
   }
   return out.sort((x, y) => y.aperto - x.aperto || x.nome.localeCompare(y.nome, "it"));
 }
+
+// --- Costi fissi nelle "Altre spese" (Simone 29/09, v1.85.0) --------------------
+// "Le 4 righe di affitti vanno su costi generali però con costo effettivo,
+// non calcolato su media": una riga FlussiCassa genere "fisso" per ogni
+// uscita fissa (Title = nome, Importo = importo mensile, Note = parola con
+// cui riconoscerla nei movimenti bancari, Mese/MeseFine = validità). I
+// movimenti che la riguardano escono dalla media dei costi variabili e la
+// voce li conta al loro importo: quello reale se nel mese è già uscito,
+// altrimenti quello impostato.
+
+export interface CostoFisso {
+  id: string;
+  nome: string;
+  /** Importo mensile atteso (positivo). */
+  importo: number;
+  /** Parola cercata (senza maiuscole) in controparte + descrizione del movimento. */
+  token: string;
+  mese?: string;
+  meseFine?: string;
+}
+
+export function costiFissiDa(
+  righe: readonly {
+    id: string;
+    genere: string;
+    nome: string;
+    importo: number;
+    note?: string;
+    mese?: string;
+    meseFine?: string;
+  }[],
+): CostoFisso[] {
+  return righe
+    .filter((r) => r.genere === "fisso" && r.nome.trim() && r.importo > 0)
+    .map((r) => ({
+      id: r.id,
+      nome: r.nome.trim(),
+      importo: Math.round(r.importo * 100) / 100,
+      token: (r.note ?? "").trim().toLowerCase(),
+      mese: r.mese,
+      meseFine: r.meseFine,
+    }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "it"));
+}
+
+/** Il costo fisso vale nel mese (finestra da/a facoltativa). */
+export function fissoAttivo(f: Pick<CostoFisso, "mese" | "meseFine">, mese: string): boolean {
+  if (f.mese && mese < f.mese) return false;
+  if (f.meseFine && mese > f.meseFine) return false;
+  return true;
+}
+
+/** Il movimento è il pagamento di questo costo fisso: uscita, parola chiave
+ *  presente e importo vicino a quello atteso (±50%: distingue l'affitto
+ *  Zekaj da 2.000 dalle altre disposizioni verso lo stesso nome). */
+export function matchFisso(
+  f: Pick<CostoFisso, "token" | "importo">,
+  m: { cliente?: string; descrizione?: string; importo: number },
+): boolean {
+  if (m.importo >= 0 || !f.token) return false;
+  const testo = `${m.cliente ?? ""} ${m.descrizione ?? ""}`.toLowerCase();
+  if (!testo.includes(f.token)) return false;
+  const a = Math.abs(m.importo);
+  return a >= f.importo * 0.5 && a <= f.importo * 1.5;
+}
+
+export function giorniNelMese(mese: string): number {
+  const [y, m] = mese.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+/** Mese corrente delle "Altre spese" variabili: quanto è già uscito più la
+ *  media per i giorni che mancano — all'ultimo giorno del mese coincide col
+ *  reale, il primo giorno con la media. */
+export function proiezioneMeseCorrente(
+  realeFinora: number,
+  media: number,
+  oggiISO: string,
+): { proiezione: number; giornoOggi: number; giorniMese: number } {
+  const giorniMese = giorniNelMese(oggiISO.slice(0, 7));
+  const giornoOggi = Math.min(giorniMese, Math.max(1, Number(oggiISO.slice(8, 10)) || 1));
+  const restanti = giorniMese - giornoOggi;
+  const proiezione = Math.round((realeFinora + (media * restanti) / giorniMese) * 100) / 100;
+  return { proiezione, giornoOggi, giorniMese };
+}

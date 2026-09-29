@@ -233,6 +233,50 @@ export interface TotaliFiscaliMese {
   corrente: number;
 }
 
+/** Ripartizione per i Flussi (v1.85.0, come gli stipendi): le NON pagate
+ *  già scadute (data < oggi) vanno nella colonna Scaduto; il MESE CORRENTE
+ *  vale il reale — le pagate del mese più le non pagate che scadono da oggi
+ *  in poi entro il mese; i mesi futuri le non pagate in scadenza. Le pagate
+ *  dei mesi passati non contano (storia già in banca); finanziamenti fuori. */
+export interface RipartizioneFiscale {
+  scaduto: TotaliFiscaliMese;
+  perMese: Map<string, TotaliFiscaliMese>;
+}
+
+export function ripartizioneFiscale(
+  scadenze: readonly ScadenzaFiscale[],
+  oggiISO: string,
+): RipartizioneFiscale {
+  const meseCorrente = oggiISO.slice(0, 7);
+  const scaduto: TotaliFiscaliMese = { rate: 0, corrente: 0 };
+  const perMese = new Map<string, TotaliFiscaliMese>();
+  const aggiungi = (t: TotaliFiscaliMese, s: ScadenzaFiscale) => {
+    t[s.categoria === "rate" ? "rate" : "corrente"] += s.importo;
+  };
+  for (const s of scadenze) {
+    if (s.categoria === "finanziamento") continue;
+    const data = s.dataPagamento.slice(0, 10);
+    const mese = data.slice(0, 7);
+    if (s.pagato) {
+      if (mese !== meseCorrente) continue;
+    } else if (data < oggiISO) {
+      aggiungi(scaduto, s);
+      continue;
+    }
+    const t = perMese.get(mese) ?? { rate: 0, corrente: 0 };
+    aggiungi(t, s);
+    perMese.set(mese, t);
+  }
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  scaduto.rate = r2(scaduto.rate);
+  scaduto.corrente = r2(scaduto.corrente);
+  for (const t of perMese.values()) {
+    t.rate = r2(t.rate);
+    t.corrente = r2(t.corrente);
+  }
+  return { scaduto, perMese };
+}
+
 /** Totali per mese delle scadenze NON pagate (voci fiscali soltanto: i
  *  finanziamenti/noleggi restano fuori). Le scadenze non pagate già
  *  SCADUTE si spostano sul mese corrente: sono ancora da pagare. */

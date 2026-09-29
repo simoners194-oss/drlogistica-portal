@@ -879,7 +879,7 @@ const en = {
   "fc.fiscaleBtn": "Tax schedule",
   "fc.fiscaleTip": "Import the tax payment schedule (SCADENZARIO FISCALE) to fill the two tax rows",
   "fc.fiscaleDesc":
-    "Upload Fiscale\\SCADENZARIO FISCALE__aggiornato.xlsx: unpaid deadlines fill 'Costo fiscale rate' (previous-year debts, instalment plans and QR-code cartelle) and 'Costo fiscale corrente' (current-year taxes) in the months without a manual value; unpaid overdue amounts move onto the current month. Financing/rental instalments in the file stay OUT of the tax rows. A hand-written value always wins.",
+    "Upload Fiscale\\SCADENZARIO FISCALE__aggiornato.xlsx: deadlines fill 'Costo fiscale rate' (previous-year debts, instalment plans and QR-code cartelle) and 'Costo fiscale corrente' (current-year taxes) in the months without a manual value. The current month shows the actual figure (paid this month + due within the month); unpaid overdue amounts sit in the Overdue column. Financing/rental instalments in the file stay OUT of the tax rows. A hand-written value always wins.",
   "fc.fiscaleScegli": "Choose file (SCADENZARIO FISCALE.xlsx)",
   "fc.errFiscale":
     "File not recognized: no sheet with VOCE / Quantità / Data pagamento / Pagato columns.",
@@ -916,7 +916,7 @@ const en = {
   "fc.drillStipNota":
     "Ticks are edited in the Payroll tab; with at least one tick, the real table counts only the paid ones.",
   "fc.drillFiscDesc":
-    "Unpaid tax deadlines composing this month's cell (overdue ones roll into the current month).",
+    "Tax deadlines composing this month's cell: in the current month the actual figure (paid ✓ and due within the month), in future months the unpaid ones falling due. Unpaid overdue ones sit in the Overdue column.",
   "fc.drillFiscVuoto": "No deadlines in this month for this row.",
   "fc.fiscaleUltima": "last deadline:",
   "fc.cumulatoTip":
@@ -966,6 +966,26 @@ const en = {
   "fc.simNessuna": "No open invoice in the flow.",
   "fc.simCercaPh": "search supplier or number…",
   "fc.simDaToggle": 'Already excluded by "Don\'t pay those without RID/RiBa"',
+  "fc.fissiTitolo": "Fixed costs (actual amount, not average)",
+  "fc.fissiDesc":
+    "Rents and fixed outflows: they leave the average and count at their own amount — in the current month the amount already paid from the bank (✓), otherwise the configured one. The keyword recognises the payment among bank movements (counterparty or description, with an amount close to the expected one).",
+  "fc.fissiNome": "name (e.g. Fiano rent)",
+  "fc.fissiImporto": "monthly amount",
+  "fc.fissiToken": "keyword in movements (e.g. poggi)",
+  "fc.fissiTokenTip":
+    "Text searched in the movement's counterparty and description; the payment is recognised when the amount is also close to the expected one (±50%)",
+  "fc.fissiAggiungi": "Add fixed cost",
+  "fc.fissiDaPagare": "to pay (configured amount)",
+  "fc.fissiNessuno": "No fixed cost configured.",
+  "fc.fissiTot": "fixed costs of the month",
+  "fc.fissiColCorrente": "Current month",
+  "fc.drillAsCorrente": "Current month = actual so far + average for the remaining days",
+  "fc.drillAsFinora": "so far",
+  "fc.drillFiscPagata": "paid",
+  "fc.drillFiscDaPagare": "to pay",
+  "fc.drillFiscScadute": "In the Overdue column: unpaid and past due",
+  "fc.fiscScadTip":
+    "Unpaid tax deadlines already past due (date before today): they sit here, not in the month. Click the row name for the list.",
   "for.titolo": "Suppliers in the cash flow",
   "for.desc":
     "One row per supplier with at least one open invoice in the cash flow (same rules: exclusions applied, DR Logistics out). Amounts, counts and dates come from the invoices; Method, Owner, Category and Contract are typed here and saved automatically. Grey hints in empty boxes come from the invoice classification.",
@@ -1105,7 +1125,7 @@ const en = {
     "Movements classified by this rule feed the monthly average of the 'Other expenses' row in Cash flow",
   "fin.spiegaVaiRegola": "Open this rule for editing",
   "fc.autoTip":
-    "Automatic value (for Other expenses: 2-month average of non-invoiced general costs — click the row NAME to see and adjust what it includes). Click the cell to type a manual value, which always wins.",
+    "Automatic value (for Other expenses: 2-month average of non-invoiced general costs + fixed costs at their own amount; in the current month the actual so far + average for the remaining days — click the row NAME to see and adjust what it includes). Click the cell to type a manual value, which always wins.",
   "fc.notaAuto":
     "≈ Other expenses: average of non-invoiced general costs (click the row name to see and adjust what it includes) over",
   "rt.prStornato": "Credited",
@@ -2669,7 +2689,7 @@ const it: Record<DictKey, string> = {
   "fc.fiscaleBtn": "Scadenziario fiscale",
   "fc.fiscaleTip": "Importa lo scadenziario fiscale per riempire le due voci fiscali",
   "fc.fiscaleDesc":
-    "Carica Fiscale\\SCADENZARIO FISCALE__aggiornato.xlsx: le scadenze non pagate riempiono 'Costo fiscale rate' (debiti di anni precedenti, rateizzazioni e cartelle QR code) e 'Costo fiscale corrente' (imposte dell'anno) nei mesi senza valore manuale; le scadute non pagate passano sul mese corrente. Le rate di finanziamenti/noleggi presenti nel file restano FUORI dalle voci fiscali. Il valore scritto a mano vince sempre.",
+    "Carica Fiscale\\SCADENZARIO FISCALE__aggiornato.xlsx: le scadenze riempiono 'Costo fiscale rate' (debiti di anni precedenti, rateizzazioni e cartelle QR code) e 'Costo fiscale corrente' (imposte dell'anno) nei mesi senza valore manuale. Il mese corrente vale il reale (pagate del mese + da pagare entro il mese); le scadute non pagate stanno nella colonna Scaduto. Le rate di finanziamenti/noleggi presenti nel file restano FUORI dalle voci fiscali. Il valore scritto a mano vince sempre.",
   "fc.fiscaleScegli": "Scegli file (SCADENZARIO FISCALE.xlsx)",
   "fc.errFiscale":
     "File non riconosciuto: nessun foglio con colonne VOCE / Quantità / Data pagamento / Pagato.",
@@ -2706,7 +2726,7 @@ const it: Record<DictKey, string> = {
   "fc.drillStipNota":
     "Le spunte si modificano nella tab Stipendi; con almeno una spunta la tabella reale conta solo i pagati.",
   "fc.drillFiscDesc":
-    "Scadenze fiscali non pagate che compongono la cella del mese (le scadute passano sul mese corrente).",
+    "Scadenze fiscali che compongono la cella del mese: nel mese corrente il reale (pagate ✓ e da pagare entro il mese), nei mesi futuri le non pagate in scadenza. Le scadute non pagate stanno nella colonna Scaduto.",
   "fc.drillFiscVuoto": "Nessuna scadenza nel mese per questa riga.",
   "fc.fiscaleUltima": "ultima scadenza:",
   "fc.cumulatoTip":
@@ -2756,6 +2776,26 @@ const it: Record<DictKey, string> = {
   "fc.simNessuna": "Nessuna fattura aperta nel flusso.",
   "fc.simCercaPh": "cerca fornitore o numero…",
   "fc.simDaToggle": 'Già esclusa dalla leva "Non pago quelle senza RID/RiBa"',
+  "fc.fissiTitolo": "Costi fissi (importo reale, non media)",
+  "fc.fissiDesc":
+    "Affitti e uscite fisse: escono dalla media e contano al loro importo — nel mese corrente quello già uscito dalla banca (✓), altrimenti quello impostato. La parola chiave serve a riconoscere il pagamento nei movimenti (controparte o descrizione, con importo vicino a quello atteso).",
+  "fc.fissiNome": "nome (es. Affitto Fiano)",
+  "fc.fissiImporto": "importo mese",
+  "fc.fissiToken": "parola nei movimenti (es. poggi)",
+  "fc.fissiTokenTip":
+    "Testo cercato in controparte e descrizione del movimento; il pagamento è riconosciuto se anche l'importo è vicino a quello atteso (±50%)",
+  "fc.fissiAggiungi": "Aggiungi costo fisso",
+  "fc.fissiDaPagare": "da pagare (importo impostato)",
+  "fc.fissiNessuno": "Nessun costo fisso impostato.",
+  "fc.fissiTot": "costi fissi del mese",
+  "fc.fissiColCorrente": "Mese corrente",
+  "fc.drillAsCorrente": "Mese corrente = reale già uscito + media per i giorni che mancano",
+  "fc.drillAsFinora": "finora",
+  "fc.drillFiscPagata": "pagata",
+  "fc.drillFiscDaPagare": "da pagare",
+  "fc.drillFiscScadute": "Nella colonna Scaduto: non pagate e già scadute",
+  "fc.fiscScadTip":
+    "Scadenze fiscali non pagate e già scadute (data prima di oggi): stanno qui, non nel mese. Clicca il nome della riga per l'elenco.",
   "for.titolo": "Fornitori nel flusso di cassa",
   "for.desc":
     "Una riga per ogni fornitore con almeno una fattura passiva aperta nei Flussi (stesse regole: esclusioni comprese, DR Logistics fuori). Importi, conteggi e date vengono dalle fatture; Modalità, Chi se ne occupa, Macrovoce e Appalto si scrivono qui e si salvano da soli. Le proposte in grigio nelle caselle vuote vengono dalla classificazione delle fatture.",
@@ -2895,7 +2935,7 @@ const it: Record<DictKey, string> = {
     "I movimenti classificati da questa regola alimentano la media mensile della riga 'Altre spese' nei Flussi di cassa",
   "fin.spiegaVaiRegola": "Apri la regola in modifica",
   "fc.autoTip":
-    "Valore automatico (per Altre spese: media 2 mesi dei costi generali non fatturati — clicca il NOME della riga per vedere e regolare cosa comprende). Clicca la cella per scrivere un valore manuale, che vince sempre.",
+    "Valore automatico (per Altre spese: media 2 mesi dei costi generali non fatturati + costi fissi al loro importo; nel mese corrente il reale già uscito + media per i giorni che mancano — clicca il NOME della riga per vedere e regolare cosa comprende). Clicca la cella per scrivere un valore manuale, che vince sempre.",
   "fc.notaAuto":
     "≈ Altre spese: media dei costi generali non fatturati (clicca il nome della riga per vedere e regolare cosa comprende) di",
   "rt.prStornato": "Stornato",

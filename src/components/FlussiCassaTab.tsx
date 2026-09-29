@@ -23,9 +23,13 @@ import {
 import { clienteGroupKey } from "@/lib/finanza-logic";
 import {
   MODALITA_ORDINE,
+  costiFissiDa,
   esclusaDaFlussi,
+  fissoAttivo,
   mappaFornitori,
+  matchFisso,
   modalitaFattura,
+  proiezioneMeseCorrente,
   type ModalitaPagamento,
 } from "@/lib/flussi-logic";
 import { esportaCsvFile } from "@/lib/csv";
@@ -43,7 +47,7 @@ import { chiaveNome, type StipendiDb } from "@/lib/stipendi-logic";
 import {
   chiaveScadenzaFile,
   parseScadenzario,
-  totaliFiscaliPerMese,
+  ripartizioneFiscale,
   type FiscaleDb,
   type ParseScadenzarioResult,
   type ScadenzaFiscale,
@@ -158,6 +162,13 @@ export function FlussiCassaTab() {
   const [simSenzaMod, setSimSenzaMod] = useState(false);
   const [simFiscali, setSimFiscali] = useState<Set<string>>(new Set());
   const [simCerca, setSimCerca] = useState("");
+  // Form costo fisso (pannello Altre spese, v1.85.0).
+  const [fxNome, setFxNome] = useState("");
+  const [fxImporto, setFxImporto] = useState("");
+  const [fxToken, setFxToken] = useState("");
+  const [fxDa, setFxDa] = useState("");
+  const [fxA, setFxA] = useState("");
+  const [fxBusy, setFxBusy] = useState(false);
 
   const ricaricaFlussi = () =>
     spGetFlussiCassa()
@@ -628,22 +639,53 @@ export function FlussiCassaTab() {
   // Vista per settimana: le voci mensili non sono renderizzate (né in UI né
   // nel CSV), quindi lo scaduto stipendi resta fuori anche dal saldo — la
   // colonna Scaduto deve sempre quadrare per somma verticale delle righe.
-  const scadutoVoce = (nome: string, fatturato = false) =>
-    modo === "mese" && nome.trim().toLowerCase() === "stipendi"
-      ? fatturato
-        ? stipendiScaduto.fatturato
-        : stipendiScaduto.reale
-      : 0;
+  // SCADENZE FISCALI (v1.85.0, stessa logica degli stipendi): le non pagate
+  // già scadute stanno nella colonna Scaduto delle due voci fiscali; il mese
+  // corrente vale il reale (pagate del mese + da pagare entro il mese). La
+  // simulazione toglie le scadenze scelte; i totali reali restano per il
+  // confronto.
+  const chiaveFisc = (s: ScadenzaFiscale) => s.id ?? chiaveScadenzaFile(s);
+  const scadenzeFiscali = useMemo(
+    () => (fiscale?.scadenze ?? []).filter((s) => !simFiscali.has(chiaveFisc(s))),
+    [fiscale, simFiscali],
+  );
+  const totFiscali = useMemo(
+    () => (scadenzeFiscali.length > 0 ? ripartizioneFiscale(scadenzeFiscali, oggiISO) : null),
+    [scadenzeFiscali, oggiISO],
+  );
+  const totFiscaliReali = useMemo(
+    () =>
+      fiscale && fiscale.scadenze.length > 0
+        ? ripartizioneFiscale(fiscale.scadenze, oggiISO)
+        : null,
+    [fiscale, oggiISO],
+  );
+  const fiscScadutoDi = (nome: string, reale = false): number => {
+    const r = reale ? totFiscaliReali : totFiscali;
+    if (!r || modo !== "mese") return 0;
+    const n = nome.trim().toLowerCase();
+    if (n === "costo fiscale rate") return r.scaduto.rate;
+    if (n === "costo fiscale corrente") return r.scaduto.corrente;
+    return 0;
+  };
+  const fiscScadutoTot = (reale = false) =>
+    fiscScadutoDi("costo fiscale rate", reale) + fiscScadutoDi("costo fiscale corrente", reale);
+  const scadutoVoce = (nome: string, fatturato = false) => {
+    if (modo !== "mese") return 0;
+    if (nome.trim().toLowerCase() === "stipendi")
+      return fatturato ? stipendiScaduto.fatturato : stipendiScaduto.reale;
+    return fiscScadutoDi(nome);
+  };
   const saldoScaduto =
     entrate.tot.scaduto -
     uscite.tot.scaduto -
     girateScadutoTot -
-    (modo === "mese" ? stipendiScaduto.reale : 0);
+    (modo === "mese" ? stipendiScaduto.reale + fiscScadutoTot() : 0);
   const saldoScadutoReale =
     entrate.tot.scaduto -
     usciteReali.tot.scaduto -
     girateScadutoTot -
-    (modo === "mese" ? stipendiScaduto.reale : 0);
+    (modo === "mese" ? stipendiScaduto.reale + fiscScadutoTot(true) : 0);
 
   // --- Prefatture (stessa copertura della Previsione) ------------------------
   const prefPer = useMemo(() => {
@@ -702,9 +744,16 @@ export function FlussiCassaTab() {
       if (r.genere === "asvoce") m.set(r.nome.trim(), (r.importo ?? 0) > 0);
     return m;
   }, [flussi]);
+  // COSTI FISSI (Simone 29/09, v1.85.0): affitti e uscite fisse impostate
+  // nel pannello (righe genere "fisso") escono dalla media e contano al
+  // loro importo — reale se nel mese corrente sono già usciti, altrimenti
+  // quello impostato. MESE CORRENTE dei variabili = reale già uscito + media
+  // per i giorni che mancano (a fine mese coincide col reale).
+  const costiFissi = useMemo(() => costiFissiDa(flussi ?? []), [flussi]);
   const autoAltreSpese = useMemo(() => {
     if (!movimenti?.length) return null;
-    const base = new Date(`${oggiISO.slice(0, 7)}-01T00:00:00`);
+    const meseCorrente = oggiISO.slice(0, 7);
+    const base = new Date(`${meseCorrente}-01T00:00:00`);
     const mesi = [2, 1].map((i) => {
       const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -722,31 +771,102 @@ export function FlussiCassaTab() {
       for (const f of fornitori) if (c.includes(f) || (c.length > 6 && f.includes(c))) return true;
       return false;
     };
-    const perTip = new Map<string, [number, number]>();
+    // [mese −2, mese −1, mese corrente finora] per tipologia.
+    const perTip = new Map<string, [number, number, number]>();
+    // Pagamenti dei costi fissi già usciti nel mese corrente (id fisso → movimento).
+    const pagatiFissi = new Map<string, { importo: number; data: string }>();
     for (const m of movimenti) {
       if (m.importo >= 0) continue;
-      const idx = mesi.indexOf(m.dataContabile.slice(0, 7));
+      const mm = m.dataContabile.slice(0, 7);
+      let fisso = false;
+      for (const f of costiFissi) {
+        if (!matchFisso(f, m)) continue;
+        fisso = true;
+        if (mm === meseCorrente && !pagatiFissi.has(f.id))
+          pagatiFissi.set(f.id, {
+            importo: Math.abs(m.importo),
+            data: m.dataContabile.slice(0, 10),
+          });
+      }
+      const idx = mm === meseCorrente ? 2 : mesi.indexOf(mm);
       if (idx < 0) continue;
+      if (fisso) continue;
       if (!(m.allocPrimaria ?? "").toLowerCase().includes("generali")) continue;
       if (fatturata(m)) continue;
       const tip = m.tipologia?.trim() || "(senza tipologia)";
-      if (!perTip.has(tip)) perTip.set(tip, [0, 0]);
+      if (!perTip.has(tip)) perTip.set(tip, [0, 0, 0]);
       perTip.get(tip)![idx] += Math.abs(m.importo);
     }
+    const r2 = (n: number) => Math.round(n * 100) / 100;
     const righe = [...perTip.entries()]
       .map(([tip, v]) => ({
         tip,
-        m1: Math.round(v[0] * 100) / 100,
-        m2: Math.round(v[1] * 100) / 100,
+        m1: r2(v[0]),
+        m2: r2(v[1]),
+        corrente: r2(v[2]),
         inclusa: asOverride.get(tip) ?? !TIP_ESCLUSE_DEFAULT.has(tip),
       }))
       .sort((a, b) => b.m1 + b.m2 - (a.m1 + a.m2));
-    const media =
-      Math.round(
-        (righe.filter((r) => r.inclusa).reduce((s2, r) => s2 + r.m1 + r.m2, 0) / 2) * 100,
-      ) / 100;
-    return { media, mesi, righe };
-  }, [movimenti, fattureRic, asOverride, TIP_ESCLUSE_DEFAULT, oggiISO]);
+    const incluse = righe.filter((r) => r.inclusa);
+    const media = r2(incluse.reduce((s2, r) => s2 + r.m1 + r.m2, 0) / 2);
+    const realeCorrente = r2(incluse.reduce((s2, r) => s2 + r.corrente, 0));
+    const pr = proiezioneMeseCorrente(realeCorrente, media, oggiISO);
+    const fissiMese = (mese: string) =>
+      r2(
+        costiFissi
+          .filter((f) => fissoAttivo(f, mese))
+          .reduce(
+            (s2, f) =>
+              s2 +
+              (mese === meseCorrente ? (pagatiFissi.get(f.id)?.importo ?? f.importo) : f.importo),
+            0,
+          ),
+      );
+    const totale = (mese: string) =>
+      r2((mese === meseCorrente ? pr.proiezione : media) + fissiMese(mese));
+    return {
+      media,
+      mesi,
+      righe,
+      realeCorrente,
+      proiezione: pr.proiezione,
+      giornoOggi: pr.giornoOggi,
+      giorniMese: pr.giorniMese,
+      pagatiFissi,
+      fissiMese,
+      totale,
+    };
+  }, [movimenti, fattureRic, asOverride, TIP_ESCLUSE_DEFAULT, oggiISO, costiFissi]);
+
+  const aggiungiFisso = async () => {
+    const importo = Number(fxImporto.trim().replace(/\./g, "").replace(",", "."));
+    if (!fxNome.trim() || !Number.isFinite(importo) || importo <= 0) return;
+    setFxBusy(true);
+    try {
+      await spUpsertFlussoCassa({
+        data: {
+          nome: fxNome.trim(),
+          genere: "fisso",
+          importo: Math.round(importo * 100) / 100,
+          note: (fxToken.trim() || fxNome.trim()).toLowerCase(),
+          mese: fxDa || undefined,
+          meseFine: fxA || undefined,
+        },
+      });
+      setFxNome("");
+      setFxImporto("");
+      setFxToken("");
+      setFxDa("");
+      setFxA("");
+      await ricaricaFlussi();
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setFxBusy(false);
+    }
+  };
 
   // --- Voci manuali (mensili) ------------------------------------------------
   const nomiVoci = useMemo(() => {
@@ -757,29 +877,6 @@ export function FlussiCassaTab() {
   const vocePer = (nome: string, mese: string): FlussoCassaRiga | undefined =>
     voci.find((v) => v.nome.trim().toLowerCase() === nome.trim().toLowerCase() && v.mese === mese);
 
-  // Totali dello scadenziario fiscale per mese (scadenze NON pagate; le già
-  // scadute si spostano sul mese corrente perché sono ancora da pagare).
-  // La simulazione toglie le scadenze scelte come "non pagate"; i totali
-  // reali restano per il confronto.
-  const chiaveFisc = (s: ScadenzaFiscale) => s.id ?? chiaveScadenzaFile(s);
-  const scadenzeFiscali = useMemo(
-    () => (fiscale?.scadenze ?? []).filter((s) => !simFiscali.has(chiaveFisc(s))),
-    [fiscale, simFiscali],
-  );
-  const totFiscali = useMemo(
-    () =>
-      scadenzeFiscali.length > 0
-        ? totaliFiscaliPerMese(scadenzeFiscali, oggiISO.slice(0, 7))
-        : null,
-    [scadenzeFiscali, oggiISO],
-  );
-  const totFiscaliReali = useMemo(
-    () =>
-      fiscale && fiscale.scadenze.length > 0
-        ? totaliFiscaliPerMese(fiscale.scadenze, oggiISO.slice(0, 7))
-        : null,
-    [fiscale, oggiISO],
-  );
   // Scadenze fiscali simulabili: le non pagate, finanziamenti esclusi (quelli
   // non stanno nelle voci fiscali), in ordine di data.
   const fiscaliSimulabili = useMemo(
@@ -848,21 +945,20 @@ export function FlussiCassaTab() {
     // il "≈" segnala solo che arrivano in automatico dal file). `reale` =
     // senza simulazione (per la riga di confronto).
     const nomeVoce = nome.trim().toLowerCase();
-    const fiscaliMese = reale ? totFiscaliReali : totFiscali;
-    if (fiscaliMese && mese >= oggiISO.slice(0, 7)) {
-      const tot = fiscaliMese.get(mese);
+    const fisc = reale ? totFiscaliReali : totFiscali;
+    if (fisc && mese >= oggiISO.slice(0, 7)) {
+      const tot = fisc.perMese.get(mese);
       if (nomeVoce === "costo fiscale rate" && tot && tot.rate > 0)
         return { importo: -tot.rate, auto: true };
       if (nomeVoce === "costo fiscale corrente" && tot && tot.corrente > 0)
         return { importo: -tot.corrente, auto: true };
     }
-    if (
-      nome.trim().toLowerCase() === "altre spese" &&
-      autoAltreSpese &&
-      autoAltreSpese.media > 0 &&
-      mese >= oggiISO.slice(0, 7)
-    )
-      return { importo: -autoAltreSpese.media, auto: true };
+    // Altre spese: media dei variabili (mese corrente: reale + media per i
+    // giorni che mancano) più i costi fissi al loro importo.
+    if (nomeVoce === "altre spese" && autoAltreSpese && mese >= oggiISO.slice(0, 7)) {
+      const v = autoAltreSpese.totale(mese);
+      if (v > 0) return { importo: -v, auto: true };
+    }
     // Stipendi futuri senza dato reale: stima = media del netto dovuto degli
     // ultimi 2 mesi di "Stipendi Dr.xlsx" (il dato vero, quando arriva
     // dall'import, vince perché è una voce manuale).
@@ -1168,12 +1264,12 @@ export function FlussiCassaTab() {
     entrateFat.tot.scaduto -
     usciteFat.tot.scaduto -
     girateScadutoTot -
-    (modo === "mese" ? stipendiScaduto.fatturato : 0);
+    (modo === "mese" ? stipendiScaduto.fatturato + fiscScadutoTot() : 0);
   const saldoFatScadutoReale =
     entrateFat.tot.scaduto -
     usciteFatReali.tot.scaduto -
     girateScadutoTot -
-    (modo === "mese" ? stipendiScaduto.fatturato : 0);
+    (modo === "mese" ? stipendiScaduto.fatturato + fiscScadutoTot(true) : 0);
   const labelMod: Record<ModalitaPagamento, string> = {
     riba: t("fc.modRiba"),
     rid: t("fc.modRid"),
@@ -2307,7 +2403,15 @@ export function FlussiCassaTab() {
                       </td>
                       <td
                         className={`${tdN} ${scadutoVoce(nome) > 0 ? "text-status-absent" : ""}`}
-                        title={scadutoVoce(nome) > 0 ? t("fc.stipScadTip") : undefined}
+                        title={
+                          scadutoVoce(nome) > 0
+                            ? t(
+                                nome.trim().toLowerCase() === "stipendi"
+                                  ? "fc.stipScadTip"
+                                  : "fc.fiscScadTip",
+                              )
+                            : undefined
+                        }
                       >
                         {scadutoVoce(nome) > 0 ? fmt(-scadutoVoce(nome)) : "—"}
                       </td>
@@ -2483,7 +2587,15 @@ export function FlussiCassaTab() {
                         <td className="py-1 pr-3">{nome}</td>
                         <td
                           className={`${tdN} ${scadutoVoce(nome, true) > 0 ? "text-status-absent" : ""}`}
-                          title={scadutoVoce(nome, true) > 0 ? t("fc.stipScadTip") : undefined}
+                          title={
+                            scadutoVoce(nome, true) > 0
+                              ? t(
+                                  nome.trim().toLowerCase() === "stipendi"
+                                    ? "fc.stipScadTip"
+                                    : "fc.fiscScadTip",
+                                )
+                              : undefined
+                          }
                         >
                           {scadutoVoce(nome, true) > 0 ? fmt(-scadutoVoce(nome, true)) : "—"}
                         </td>
@@ -2564,6 +2676,9 @@ export function FlussiCassaTab() {
                         <th className="py-1 pr-3 text-right">{autoAltreSpese.mesi[0]}</th>
                         <th className="py-1 pr-3 text-right">{autoAltreSpese.mesi[1]}</th>
                         <th className="py-1 pr-3 text-right">{t("fc.drillMedia")}</th>
+                        <th className="py-1 pr-3 text-right" title={t("fc.drillAsCorrente")}>
+                          {oggiISO.slice(0, 7)} {t("fc.drillAsFinora")}
+                        </th>
                         <th className="py-1 text-center">{t("fc.drillInclusa")}</th>
                       </tr>
                     </thead>
@@ -2582,6 +2697,9 @@ export function FlussiCassaTab() {
                           </td>
                           <td className="py-0.5 pr-3 text-right tabular-nums">
                             {fmtImporto((r.m1 + r.m2) / 2)}
+                          </td>
+                          <td className="py-0.5 pr-3 text-right tabular-nums text-muted-foreground">
+                            {fmtImporto(r.corrente)}
                           </td>
                           <td className="py-0.5 text-center">
                             <input
@@ -2603,11 +2721,136 @@ export function FlussiCassaTab() {
                         <td className="py-1 pr-3 text-right tabular-nums">
                           {fmtImporto(autoAltreSpese.media)}
                         </td>
+                        <td className="py-1 pr-3 text-right tabular-nums">
+                          {fmtImporto(autoAltreSpese.realeCorrente)}
+                        </td>
                         <td />
                       </tr>
                     </tfoot>
                   </table>
                   <p className="mt-2 text-[11px] text-muted-foreground">{t("fc.drillAsNota")}</p>
+                  {/* COSTI FISSI (v1.85.0): importo reale, non media */}
+                  <div className="mt-3 border-t border-border/60 pt-2">
+                    <p className="mb-1 text-xs font-medium">{t("fc.fissiTitolo")}</p>
+                    <p className="mb-2 text-[11px] text-muted-foreground">{t("fc.fissiDesc")}</p>
+                    <table className="w-full text-[13px]">
+                      <thead>
+                        <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                          <th className="py-1 pr-3">{t("fc.colVoce")}</th>
+                          <th className="py-1 pr-3 text-right">{t("fc.fissiImporto")}</th>
+                          <th className="py-1 pr-3">{t("fc.fissiToken")}</th>
+                          <th className="py-1 pr-3">{t("fc.fissiColCorrente")}</th>
+                          <th className="py-1" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {costiFissi.map((f) => {
+                          const pag = autoAltreSpese.pagatiFissi.get(f.id);
+                          const attivo = fissoAttivo(f, oggiISO.slice(0, 7));
+                          return (
+                            <tr key={f.id} className="border-b border-border/40">
+                              <td className="py-0.5 pr-3">
+                                {f.nome}
+                                {(f.mese || f.meseFine) && (
+                                  <span className="ml-1 text-[11px] text-muted-foreground">
+                                    {f.mese ?? "…"} → {f.meseFine ?? "…"}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-0.5 pr-3 text-right tabular-nums">
+                                {fmtImporto(f.importo)}
+                              </td>
+                              <td className="py-0.5 pr-3 text-muted-foreground">{f.token}</td>
+                              <td className="py-0.5 pr-3">
+                                {!attivo ? (
+                                  "—"
+                                ) : pag ? (
+                                  <span className="text-status-present">
+                                    ✓ {fmtImporto(pag.importo)} ({dataIt(pag.data)})
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">
+                                    {t("fc.fissiDaPagare")}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-0.5 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => void rimuoviRiga(f.id)}
+                                  title={t("common.delete")}
+                                >
+                                  <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {costiFissi.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="py-2 text-center text-muted-foreground">
+                              {t("fc.fissiNessuno")}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                    <div className="mt-2 flex flex-wrap items-end gap-2 text-[13px]">
+                      <input
+                        value={fxNome}
+                        onChange={(e) => setFxNome(e.target.value)}
+                        placeholder={t("fc.fissiNome")}
+                        className={`${inputCls} w-44`}
+                      />
+                      <input
+                        value={fxImporto}
+                        onChange={(e) => setFxImporto(e.target.value)}
+                        placeholder={t("fc.fissiImporto")}
+                        className={`${inputCls} w-24 text-right`}
+                      />
+                      <input
+                        value={fxToken}
+                        onChange={(e) => setFxToken(e.target.value)}
+                        placeholder={t("fc.fissiToken")}
+                        title={t("fc.fissiTokenTip")}
+                        className={`${inputCls} w-44`}
+                      />
+                      <input
+                        type="month"
+                        value={fxDa}
+                        onChange={(e) => setFxDa(e.target.value)}
+                        title={t("fc.esclDa")}
+                        className={inputCls}
+                      />
+                      <input
+                        type="month"
+                        value={fxA}
+                        onChange={(e) => setFxA(e.target.value)}
+                        title={t("fc.esclA")}
+                        className={inputCls}
+                      />
+                      <button
+                        type="button"
+                        disabled={
+                          fxBusy ||
+                          !fxNome.trim() ||
+                          !(Number(fxImporto.trim().replace(/\./g, "").replace(",", ".")) > 0)
+                        }
+                        onClick={() => void aggiungiFisso()}
+                        className="rounded-lg bg-primary px-3 py-1 text-primary-foreground disabled:opacity-40"
+                      >
+                        {t("fc.fissiAggiungi")}
+                      </button>
+                    </div>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      {t("fc.drillAsCorrente")}: {fmtImporto(autoAltreSpese.realeCorrente)} +{" "}
+                      {fmtImporto(autoAltreSpese.media)} ×{" "}
+                      {autoAltreSpese.giorniMese - autoAltreSpese.giornoOggi}/
+                      {autoAltreSpese.giorniMese} = {fmtImporto(autoAltreSpese.proiezione)} ·{" "}
+                      {t("fc.fissiTot")} {fmtImporto(autoAltreSpese.fissiMese(oggiISO.slice(0, 7)))}{" "}
+                      · {t("fc.colTotale")} {fmtImporto(autoAltreSpese.totale(oggiISO.slice(0, 7)))}
+                    </p>
+                  </div>
                 </>
               ) : (
                 <p className="text-xs text-muted-foreground">{t("common.loading")}</p>
@@ -2669,62 +2912,100 @@ export function FlussiCassaTab() {
               );
             } else {
               const cat = chiave === "costo fiscale rate" ? "rate" : "corrente";
-              const righeF = scadenzeFiscali.filter(
-                (x) =>
-                  !x.pagato &&
-                  x.categoria === cat &&
-                  (x.dataPagamento.slice(0, 7) === drill.mese ||
-                    (x.dataPagamento.slice(0, 7) < oggiISO.slice(0, 7) &&
-                      drill.mese === oggiISO.slice(0, 7))),
+              const corrente = drill.mese === oggiISO.slice(0, 7);
+              // Mese corrente = reale: pagate del mese + da pagare da oggi in
+              // poi; mesi futuri = non pagate in scadenza; le scadute non
+              // pagate stanno nella colonna Scaduto (elenco a parte).
+              const righeF = scadenzeFiscali
+                .filter(
+                  (x) =>
+                    x.categoria === cat &&
+                    x.dataPagamento.slice(0, 7) === drill.mese &&
+                    (corrente ? x.pagato || x.dataPagamento.slice(0, 10) >= oggiISO : !x.pagato),
+                )
+                .sort((a, b) => a.dataPagamento.localeCompare(b.dataPagamento));
+              const scaduteF = corrente
+                ? scadenzeFiscali
+                    .filter(
+                      (x) =>
+                        x.categoria === cat && !x.pagato && x.dataPagamento.slice(0, 10) < oggiISO,
+                    )
+                    .sort((a, b) => a.dataPagamento.localeCompare(b.dataPagamento))
+                : [];
+              const tabellaF = (righe: ScadenzaFiscale[], conStato: boolean) => (
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                      <th className="py-1 pr-3">{t("fis.colData")}</th>
+                      <th className="py-1 pr-3">{t("fis.colVoce")}</th>
+                      <th className="py-1 pr-3">{t("fis.colDettaglio")}</th>
+                      {conStato && <th className="py-1 pr-3" />}
+                      <th className="py-1 text-right">{t("fis.colImporto")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {righe.map((x, i) => (
+                      <tr key={x.id ?? i} className="border-b border-border/40">
+                        <td className="py-0.5 pr-3 whitespace-nowrap">
+                          {x.dataPagamento.slice(8)}/{x.dataPagamento.slice(5, 7)}
+                        </td>
+                        <td className="py-0.5 pr-3">{x.voce}</td>
+                        <td className="max-w-52 truncate py-0.5 pr-3 text-muted-foreground">
+                          {x.voceOld ?? x.periodo ?? ""}
+                        </td>
+                        {conStato && (
+                          <td className="py-0.5 pr-3 whitespace-nowrap text-[11px]">
+                            {x.pagato ? (
+                              <span className="text-status-present">
+                                ✓ {t("fc.drillFiscPagata")}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                {t("fc.drillFiscDaPagare")}
+                              </span>
+                            )}
+                          </td>
+                        )}
+                        <td className="py-0.5 text-right tabular-nums">{fmtImporto(x.importo)}</td>
+                      </tr>
+                    ))}
+                    {righe.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={conStato ? 5 : 4}
+                          className="py-3 text-center text-muted-foreground"
+                        >
+                          {t("fc.drillFiscVuoto")}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  {righe.length > 0 && (
+                    <tfoot>
+                      <tr className="border-t border-border font-semibold">
+                        <td colSpan={conStato ? 4 : 3} className="py-1 pr-3">
+                          {t("fc.colTotale")}
+                        </td>
+                        <td className="py-1 text-right tabular-nums">
+                          {fmtImporto(righe.reduce((s2, x) => s2 + x.importo, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
               );
               corpo = (
                 <>
                   <p className="mb-2 text-xs text-muted-foreground">{t("fc.drillFiscDesc")}</p>
-                  <table className="w-full text-[13px]">
-                    <thead>
-                      <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-                        <th className="py-1 pr-3">{t("fis.colData")}</th>
-                        <th className="py-1 pr-3">{t("fis.colVoce")}</th>
-                        <th className="py-1 pr-3">{t("fis.colDettaglio")}</th>
-                        <th className="py-1 text-right">{t("fis.colImporto")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {righeF.map((x, i) => (
-                        <tr key={x.id ?? i} className="border-b border-border/40">
-                          <td className="py-0.5 pr-3 whitespace-nowrap">
-                            {x.dataPagamento.slice(8)}/{x.dataPagamento.slice(5, 7)}
-                          </td>
-                          <td className="py-0.5 pr-3">{x.voce}</td>
-                          <td className="max-w-52 truncate py-0.5 pr-3 text-muted-foreground">
-                            {x.voceOld ?? x.periodo ?? ""}
-                          </td>
-                          <td className="py-0.5 text-right tabular-nums">
-                            {fmtImporto(x.importo)}
-                          </td>
-                        </tr>
-                      ))}
-                      {righeF.length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="py-3 text-center text-muted-foreground">
-                            {t("fc.drillFiscVuoto")}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                    {righeF.length > 0 && (
-                      <tfoot>
-                        <tr className="border-t border-border font-semibold">
-                          <td colSpan={3} className="py-1 pr-3">
-                            {t("fc.colTotale")}
-                          </td>
-                          <td className="py-1 text-right tabular-nums">
-                            {fmtImporto(righeF.reduce((s2, x) => s2 + x.importo, 0))}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    )}
-                  </table>
+                  {tabellaF(righeF, corrente)}
+                  {corrente && scaduteF.length > 0 && (
+                    <div className="mt-3 border-t border-border/60 pt-2">
+                      <p className="mb-1 text-xs font-medium text-status-absent">
+                        {t("fc.drillFiscScadute")}
+                      </p>
+                      {tabellaF(scaduteF, false)}
+                    </div>
+                  )}
                 </>
               );
             }
@@ -2765,6 +3046,10 @@ export function FlussiCassaTab() {
             <p>
               {t("fc.notaAuto")} {autoAltreSpese.mesi.join(" + ")} ={" "}
               {fmtImporto(autoAltreSpese.media)} €
+              {costiFissi.length > 0
+                ? ` + ${t("fc.fissiTot")} (${costiFissi.length}) ${fmtImporto(autoAltreSpese.fissiMese(periodi[1]?.mese ?? oggiISO.slice(0, 7)))} €`
+                : ""}{" "}
+              · {t("fc.drillAsCorrente")}.
             </p>
           )}
           {modo === "mese" && autoStipendi && autoStipendi.media > 0 && (
