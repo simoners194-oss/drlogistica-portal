@@ -973,7 +973,7 @@ const en = {
   "fc.fissiImporto": "monthly amount",
   "fc.fissiToken": "keyword in movements (e.g. poggi)",
   "fc.fissiTokenTip":
-    "Text searched in the movement's counterparty and description; the payment is recognised when the amount is also close to the expected one (±50%)",
+    "Text searched in the movement's counterparty and description; the payment is recognised when the amount is also close to the expected one (±35%; among several candidates in the month the closest wins)",
   "fc.fissiAggiungi": "Add fixed cost",
   "fc.fissiDaPagare": "to pay (configured amount)",
   "fc.fissiNessuno": "No fixed cost configured.",
@@ -2783,7 +2783,7 @@ const it: Record<DictKey, string> = {
   "fc.fissiImporto": "importo mese",
   "fc.fissiToken": "parola nei movimenti (es. poggi)",
   "fc.fissiTokenTip":
-    "Testo cercato in controparte e descrizione del movimento; il pagamento è riconosciuto se anche l'importo è vicino a quello atteso (±50%)",
+    "Testo cercato in controparte e descrizione del movimento; il pagamento è riconosciuto se anche l'importo è vicino a quello atteso (±35%; tra più candidati nel mese vince il più vicino)",
   "fc.fissiAggiungi": "Aggiungi costo fisso",
   "fc.fissiDaPagare": "da pagare (importo impostato)",
   "fc.fissiNessuno": "Nessun costo fisso impostato.",

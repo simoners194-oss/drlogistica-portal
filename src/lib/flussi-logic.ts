@@ -348,8 +348,12 @@ export function fissoAttivo(f: Pick<CostoFisso, "mese" | "meseFine">, mese: stri
 }
 
 /** Il movimento è il pagamento di questo costo fisso: uscita, parola chiave
- *  presente e importo vicino a quello atteso (±50%: distingue l'affitto
- *  Zekaj da 2.000 dalle altre disposizioni verso lo stesso nome). */
+ *  presente e importo vicino a quello atteso (±35%: distingue l'affitto
+ *  Zekaj da 2.000 dalle altre disposizioni verso lo stesso nome, 1.000 o
+ *  25.000). Tra più candidati nello stesso mese vince il più vicino
+ *  all'importo atteso (vedi `piuVicinoAlFisso`). */
+export const TOLLERANZA_FISSO = 0.35;
+
 export function matchFisso(
   f: Pick<CostoFisso, "token" | "importo">,
   m: { cliente?: string; descrizione?: string; importo: number },
@@ -358,7 +362,21 @@ export function matchFisso(
   const testo = `${m.cliente ?? ""} ${m.descrizione ?? ""}`.toLowerCase();
   if (!testo.includes(f.token)) return false;
   const a = Math.abs(m.importo);
-  return a >= f.importo * 0.5 && a <= f.importo * 1.5;
+  return a >= f.importo * (1 - TOLLERANZA_FISSO) && a <= f.importo * (1 + TOLLERANZA_FISSO);
+}
+
+/** true se `candidato` è un pagamento più vicino all'importo atteso di
+ *  `attuale` (o non c'è ancora un attuale). */
+export function piuVicinoAlFisso(
+  f: Pick<CostoFisso, "importo">,
+  attuale: { importo: number } | undefined,
+  candidato: { importo: number },
+): boolean {
+  if (!attuale) return true;
+  return (
+    Math.abs(Math.abs(candidato.importo) - f.importo) <
+    Math.abs(Math.abs(attuale.importo) - f.importo)
+  );
 }
 
 export function giorniNelMese(mese: string): number {

@@ -29,6 +29,7 @@ import {
   mappaFornitori,
   matchFisso,
   modalitaFattura,
+  piuVicinoAlFisso,
   proiezioneMeseCorrente,
   type ModalitaPagamento,
 } from "@/lib/flussi-logic";
@@ -734,8 +735,11 @@ export function FlussiCassaTab() {
   // fornitore che ha fatture passive in archivio. Le spunte del pannello
   // (righe FlussiCassa genere "asvoce": 1 includi / 0 escludi) vincono sul
   // default, tipologia per tipologia.
+  // "Imposte / F24" fuori di default (1.85.1): quei movimenti sono già
+  // contati dalle voci fiscali (col mese corrente al reale contavano due
+  // volte). La spunta nel pannello può sempre riaccenderli.
   const TIP_ESCLUSE_DEFAULT = useMemo(
-    () => new Set(["Pagamento Salario", "Consulenze", "POST EBITDA"]),
+    () => new Set(["Pagamento Salario", "Consulenze", "POST EBITDA", "Imposte / F24"]),
     [],
   );
   const asOverride = useMemo(() => {
@@ -782,7 +786,9 @@ export function FlussiCassaTab() {
       for (const f of costiFissi) {
         if (!matchFisso(f, m)) continue;
         fisso = true;
-        if (mm === meseCorrente && !pagatiFissi.has(f.id))
+        // Nel mese corrente tiene il pagamento più vicino all'importo atteso
+        // (Zekaj: l'affitto da 2.000, non la disposizione da 1.000).
+        if (mm === meseCorrente && piuVicinoAlFisso(f, pagatiFissi.get(f.id), m))
           pagatiFissi.set(f.id, {
             importo: Math.abs(m.importo),
             data: m.dataContabile.slice(0, 10),

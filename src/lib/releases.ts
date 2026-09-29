@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.85.1",
+    date: "2026-09-29",
+    entries: [
+      {
+        title: "Costi fissi: aggancio più preciso e F24 fuori dalle Altre spese",
+        description:
+          "Il pagamento di un costo fisso si riconosce con importo entro ±35% e, tra più movimenti nel mese, vince il più vicino all'importo atteso (l'affitto Zekaj da 2.000 non viene più scambiato con una disposizione da 1.000). La tipologia \"Imposte / F24\" esce di default dalle Altre spese: quei soldi sono già nelle voci fiscali e col mese corrente al reale contavano due volte (la spunta nel pannello può riaccenderla).",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.85.0",
     date: "2026-09-29",
     entries: [
