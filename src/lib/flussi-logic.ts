@@ -381,11 +381,11 @@ export function piuVicinoAlFisso(
 
 // --- Medie senza anomalie (Simone 29/09, v1.86.0) ------------------------------
 // "Le anomalie come quelle di questo mese non possono entrare nella media":
-// un movimento è ANOMALO quando da solo supera una volta e mezza quanto
-// quella tipologia spende in un mese tipico (mediana dei totali mensili dei
-// 6 mesi pieni precedenti alla finestra, con un minimo di 1.000 €): un
-// pagamento pari al mese tipico è la normale rata mensile, non un'anomalia
-// (Consulenze: mese tipico 9.000 → soglia 13.500 → le disposizioni da
+// un movimento è ANOMALO quando da solo supera del 25% quanto quella
+// tipologia spende in un mese tipico (mediana dei totali mensili dei 6 mesi
+// pieni precedenti alla finestra, con un minimo di 1.000 €): un pagamento
+// pari al mese tipico è la normale rata mensile, non un'anomalia
+// (Consulenze: mese tipico 12.260 → soglia 15.325 → le disposizioni da
 // 16.705 e 25.000 sono anomale, la parcella da 9.600 no). Le anomalie contano
 // nel REALE del mese corrente (sono soldi usciti) ma non nella media che
 // alimenta i mesi futuri. Ogni movimento si può forzare a mano (righe
@@ -393,7 +393,11 @@ export function piuVicinoAlFisso(
 // anomalia, 0 = normale).
 
 export const ANOMALIA_MINIMO = 1000;
-export const ANOMALIA_MOLTIPLICATORE = 1.5;
+// 1,25 (1.86.2): con 1,5 la disposizione Zekaj da 16.705 (mese tipico
+// Consulenze 12.260 → soglia 18.390) restava "normale" ed entrava nella
+// media di ottobre; col 25% la soglia è 15.325 e resta fuori. Una parcella
+// pari al mese tipico resta normale.
+export const ANOMALIA_MOLTIPLICATORE = 1.25;
 
 export interface MovimentoMedia {
   chiave: string;

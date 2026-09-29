@@ -994,7 +994,7 @@ const en = {
     "Non-invoiced payments typed Consulting (from bank movements). Not recurring costs: the current month is the actual figure, anomalies included, plus the average for the remaining days; future months use the average of the two full months WITHOUT anomalies.",
   "fc.anomTitolo": "Anomalies: out of the average, in the actual",
   "fc.anomDesc":
-    "A movement is anomalous when on its own it exceeds one and a half times a typical month of its type (median of the previous 6 months, at least 1,000 €): it counts in the current month but not in the average for future months. The tick can be forced by hand (✎ = set by you). Here the 15 largest movements of the three months.",
+    "A movement is anomalous when on its own it exceeds a typical month of its type by 25% (median of the previous 6 months, at least 1,000 €): it counts in the current month but not in the average for future months. The tick can be forced by hand (✎ = set by you). Here the 15 largest movements of the three months.",
   "fc.anomControparte": "Counterparty",
   "fc.anomTipologia": "Type",
   "fc.anomSoglia": "Typical month threshold",
@@ -2823,7 +2823,7 @@ const it: Record<DictKey, string> = {
     "Pagamenti con tipologia Consulenze non fatturati (dai movimenti bancari). Non sono costi ricorrenti: il mese corrente vale il reale, anomalie comprese, più la media per i giorni che mancano; i mesi futuri la media dei due mesi pieni SENZA anomalie.",
   "fc.anomTitolo": "Anomalie: fuori dalla media, dentro il reale",
   "fc.anomDesc":
-    "Un movimento è anomalo quando da solo supera una volta e mezza la spesa di un mese tipico della sua tipologia (mediana dei 6 mesi precedenti, minimo 1.000 €): conta nel mese corrente ma non nella media dei mesi futuri. La spunta si può forzare a mano (✎ = decisa da te). Qui i 15 movimenti più grandi dei tre mesi.",
+    "Un movimento è anomalo quando da solo supera del 25% la spesa di un mese tipico della sua tipologia (mediana dei 6 mesi precedenti, minimo 1.000 €): conta nel mese corrente ma non nella media dei mesi futuri. La spunta si può forzare a mano (✎ = decisa da te). Qui i 15 movimenti più grandi dei tre mesi.",
   "fc.anomControparte": "Controparte",
   "fc.anomTipologia": "Tipologia",
   "fc.anomSoglia": "Soglia mese tipico",

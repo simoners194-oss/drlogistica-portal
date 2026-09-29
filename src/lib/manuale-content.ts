@@ -424,7 +424,7 @@ Impostati il 29/09/2026 dai file di Sabrina: Affitto Fiano 1.200, Zekaj Rovena 2
     id: "flu-anomalie",
     sezione: "Flussi di cassa",
     titolo: "Anomalie: i pagamenti fuori misura non entrano nella media",
-    testo: `Le medie di Altre spese e Consulenze servono a stimare i mesi futuri, e un pagamento fuori misura le falserebbe (le disposizioni da 25.000 di settembre non sono la spesa di un mese normale). Dalla 1.86.0 un movimento è "anomalo" quando da solo supera una volta e mezza la spesa di un mese tipico della sua tipologia (la mediana dei totali mensili dei sei mesi precedenti), con un minimo di 1.000 €: una parcella pari al mese tipico è la normale rata mensile, una disposizione da tre mesi no. Le anomalie contano nel reale del mese corrente (sono soldi usciti davvero) ma non nella media dei mesi dopo.
+    testo: `Le medie di Altre spese e Consulenze servono a stimare i mesi futuri, e un pagamento fuori misura le falserebbe (le disposizioni da 25.000 di settembre non sono la spesa di un mese normale). Dalla 1.86.0 un movimento è "anomalo" quando da solo supera del 25% la spesa di un mese tipico della sua tipologia (la mediana dei totali mensili dei sei mesi precedenti), con un minimo di 1.000 €: una parcella pari al mese tipico è la normale rata mensile, una disposizione da due mesi no. Le anomalie contano nel reale del mese corrente (sono soldi usciti davvero) ma non nella media dei mesi dopo.
 
 Nel pannello delle Altre spese (blocco "Anomalie") e in quello delle Consulenze vedi i movimenti più grandi dei tre mesi con la spunta Anomalia: la regola la mette da sola, tu puoi forzarla in un senso o nell'altro e la scelta resta salvata (il simbolo ✎ segnala le tue).`,
     chiavi:

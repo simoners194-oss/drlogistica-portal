@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.86.2",
+    date: "2026-09-29",
+    entries: [
+      {
+        title: "Anomalie: soglia al 25% sopra il mese tipico",
+        description:
+          "La soglia passa da una volta e mezza a una volta e un quarto il mese tipico della tipologia: la disposizione da 16.705 di settembre (Consulenze, mese tipico 12.260) è anomala e non entrerà nella media di ottobre. Le parcelle normali restano dentro.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.86.1",
     date: "2026-09-29",
     entries: [
@@ -62,7 +75,7 @@ export const RELEASES: readonly Release[] = [
       {
         title: "Le anomalie non entrano più nella media",
         description:
-          "Un pagamento che da solo supera una volta e mezza la spesa di un mese tipico della sua tipologia (mediana dei sei mesi precedenti, minimo 1.000 €) conta nel reale del mese ma non nella media dei mesi futuri, in Altre spese e Consulenze. Nei pannelli vedi i movimenti più grandi con la spunta Anomalia, forzabile a mano.",
+          "Un pagamento che da solo supera la spesa di un mese tipico della sua tipologia (mediana dei sei mesi precedenti, minimo 1.000 €) conta nel reale del mese ma non nella media dei mesi futuri, in Altre spese e Consulenze. Nei pannelli vedi i movimenti più grandi con la spunta Anomalia, forzabile a mano.",
         tag: "improvement",
         audience: "direzione",
       },
