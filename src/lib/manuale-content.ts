@@ -384,10 +384,13 @@ Per comprimere o espandere un gruppo clicca sul suo nome in una riga qualsiasi, 
     id: "flu-lettura",
     sezione: "Flussi di cassa",
     titolo: "Come si legge la tabella dei Flussi",
-    testo: `Ogni colonna è un mese (o una settimana), la prima colonna è lo Scaduto: quello che era già in ritardo oggi. Le entrate vengono dalle scadenze delle fatture attive aperte, le uscite dalle passive, più le righe che le fatture non conoscono: Stipendi, Costo fiscale rate, Costo fiscale corrente, Altre spese. In fondo il saldo per colonna.
+    testo: `Ogni colonna è un mese (o una settimana), la prima colonna è lo Scaduto: quello che era già in ritardo oggi. Le entrate vengono dalle scadenze delle fatture attive aperte, le uscite dalle passive, più le righe che le fatture non conoscono: Stipendi, Consulenze, Costo fiscale rate, Costo fiscale corrente, Altre spese. In fondo il saldo per colonna.
+
+Le voci dei singoli clienti e fornitori sono chiuse: il "+" accanto a Entrate e a ogni blocco delle uscite (RiBa, RID, senza) apre quel gruppo, il "−" lo richiude; "Mostra dettaglio" in alto apre tutto in un colpo. Il CSV esce sempre completo.
 
 Il bottone Cumulato trasforma le colonne in progressivo: ogni mese somma tutto quello che c'è fino a quel punto, Scaduto compreso.`,
-    chiavi: "flussi cassa colonne mese settimana scaduto saldo cumulato lettura",
+    chiavi:
+      "flussi cassa colonne mese settimana scaduto saldo cumulato lettura più aprire chiudere voci fornitori gruppo",
   },
   {
     id: "flu-due-tabelle",
@@ -400,7 +403,7 @@ Il bottone Cumulato trasforma le colonne in progressivo: ogni mese somma tutto q
     id: "flu-voci",
     sezione: "Flussi di cassa",
     titolo: "Le quattro voci e il click sul nome",
-    testo: `Stipendi, Costo fiscale rate, Costo fiscale corrente e Altre spese si riempiono da sole: gli stipendi dai netti caricati e dalle spunte Pagato, le voci fiscali dallo scadenzario, le Altre spese dalla media degli ultimi due mesi di costi generali non fatturati più i costi fissi (affitti) al loro importo. Il simbolo ≈ segnala il valore automatico.
+    testo: `Stipendi, Consulenze, Costo fiscale rate, Costo fiscale corrente e Altre spese si riempiono da sole: gli stipendi dai netti caricati e dalle spunte Pagato, le Consulenze dai pagamenti con quella tipologia nei movimenti (riga propria dalla 1.86.0, perché non sono costi ricorrenti), le voci fiscali dallo scadenzario, le Altre spese dalla media degli ultimi due mesi di costi generali non fatturati più i costi fissi (affitti) al loro importo. Il simbolo ≈ segnala il valore automatico.
 
 Il mese corrente è il REALE, non una stima (dalla 1.85.0): le voci fiscali contano le scadenze pagate nel mese più quelle da pagare entro il mese; le Altre spese contano quanto è già uscito dalla banca più la media per i giorni che mancano, quindi all'ultimo giorno del mese la cella coincide con la spesa vera. I mesi futuri restano stime (media, scadenze in agenda).
 
@@ -416,6 +419,16 @@ Cliccando sul nome della voce si apre il dettaglio di cosa c'è dentro; nelle Al
 
 Impostati il 29/09/2026 dai file di Sabrina: Affitto Fiano 1.200, Zekaj Rovena 2.000, Liza Perlala 2.100 (fino ad aprile 2027), Biagi Mara 950.`,
     chiavi: "costi fissi affitto affitti fiano zekaj perlala biagi importo reale media altre spese",
+  },
+  {
+    id: "flu-anomalie",
+    sezione: "Flussi di cassa",
+    titolo: "Anomalie: i pagamenti fuori misura non entrano nella media",
+    testo: `Le medie di Altre spese e Consulenze servono a stimare i mesi futuri, e un pagamento fuori misura le falserebbe (le disposizioni da 25.000 di settembre non sono la spesa di un mese normale). Dalla 1.86.0 un movimento è "anomalo" quando da solo supera una volta e mezza la spesa di un mese tipico della sua tipologia (la mediana dei totali mensili dei sei mesi precedenti), con un minimo di 1.000 €: una parcella pari al mese tipico è la normale rata mensile, una disposizione da tre mesi no. Le anomalie contano nel reale del mese corrente (sono soldi usciti davvero) ma non nella media dei mesi dopo.
+
+Nel pannello delle Altre spese (blocco "Anomalie") e in quello delle Consulenze vedi i movimenti più grandi dei tre mesi con la spunta Anomalia: la regola la mette da sola, tu puoi forzarla in un senso o nell'altro e la scelta resta salvata (il simbolo ✎ segnala le tue).`,
+    chiavi:
+      "anomalie anomalia media fuori misura una tantum consulenze zekaj soglia mediana forzare spunta",
   },
   {
     id: "flu-stipendi-scaduto",

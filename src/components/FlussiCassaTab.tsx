@@ -23,6 +23,7 @@ import {
 import { clienteGroupKey } from "@/lib/finanza-logic";
 import {
   MODALITA_ORDINE,
+  analizzaMedia,
   costiFissiDa,
   esclusaDaFlussi,
   fissoAttivo,
@@ -32,6 +33,8 @@ import {
   piuVicinoAlFisso,
   proiezioneMeseCorrente,
   type ModalitaPagamento,
+  type MovimentoAnalizzato,
+  type MovimentoMedia,
 } from "@/lib/flussi-logic";
 import { esportaCsvFile } from "@/lib/csv";
 import {
@@ -62,7 +65,28 @@ function fmtImporto(n: number): string {
 
 // Le 4 voci manuali nominate dal direttore: righe sempre visibili, anche
 // vuote, così Sabrina/Lucrezia sanno dove scrivere.
-const VOCI_BASE = ["Stipendi", "Costo fiscale rate", "Costo fiscale corrente", "Altre spese"];
+// "Consulenze" (Simone 29/09, v1.86.0): riga propria sotto Stipendi — non
+// sono costi ricorrenti, quindi fuori dalle Altre spese e con la media
+// calcolata senza anomalie.
+const VOCI_BASE = [
+  "Stipendi",
+  "Consulenze",
+  "Costo fiscale rate",
+  "Costo fiscale corrente",
+  "Altre spese",
+];
+// Gruppi apribili col "+" nelle due tabelle (entrate + uscite per modalità).
+const GRUPPI = [
+  "t1:entrate",
+  "t1:riba",
+  "t1:rid",
+  "t1:altro",
+  "t2:entrate",
+  "t2:riba",
+  "t2:rid",
+  "t2:altro",
+];
+const TIP_CONSULENZE = "consulenze";
 
 // --- Periodi -----------------------------------------------------------------
 
@@ -99,7 +123,17 @@ export function FlussiCassaTab() {
   const [modo, setModo] = useState<"mese" | "settimana">("mese");
   const [finoA, setFinoA] = useState("");
   const [daData, setDaData] = useState("");
-  const [dettaglio, setDettaglio] = useState(true);
+  // Voci dei fornitori chiuse di default: si aprono col "+" gruppo per
+  // gruppo (Simone 29/09) o tutte insieme col bottone in alto.
+  const [aperti, setAperti] = useState<Set<string>>(new Set());
+  const toggleGruppo = (k: string) =>
+    setAperti((s) => {
+      const ns = new Set(s);
+      if (ns.has(k)) ns.delete(k);
+      else ns.add(k);
+      return ns;
+    });
+  const tuttiAperti = aperti.size >= GRUPPI.length;
   // CUMULATO (richiesta Simone 14/09): ogni colonna mostra il progressivo
   // "fino a quel momento" — a settembre scaduto+settembre, a ottobre
   // scaduto+settembre+ottobre, e così via. Vale per entrambe le tabelle.
@@ -754,31 +788,45 @@ export function FlussiCassaTab() {
   // quello impostato. MESE CORRENTE dei variabili = reale già uscito + media
   // per i giorni che mancano (a fine mese coincide col reale).
   const costiFissi = useMemo(() => costiFissiDa(flussi ?? []), [flussi]);
+  // Anomalie forzate a mano (righe genere "anomalia": 1 = anomalia, 0 = normale).
+  const overrideAnomalie = useMemo(() => {
+    const m = new Map<string, boolean>();
+    for (const r of flussi ?? []) if (r.genere === "anomalia") m.set(r.nome, (r.importo ?? 0) > 0);
+    return m;
+  }, [flussi]);
+  // Fornitori con fatture in archivio: i loro movimenti non sono "altre
+  // spese" (viaggiano già tra le fatture da pagare).
+  const fornitoriArchivio = useMemo(
+    () =>
+      new Set(
+        (fattureRic ?? []).map((f) => f.cliente.toLowerCase().trim()).filter((c) => c.length > 6),
+      ),
+    [fattureRic],
+  );
+  const fatturata = (m: SpMovimento) => {
+    if ((m.nrFattura ?? "").trim()) return true;
+    const c = (m.cliente ?? "").toLowerCase().trim();
+    if (!c) return false;
+    if (fornitoriArchivio.has(c)) return true;
+    // La direzione f.includes(c) solo con controparti non-corte: 'TIM'
+    // e' sottostringa di mezzo archivio e sparirebbe dalla media in silenzio.
+    for (const f of fornitoriArchivio)
+      if (c.includes(f) || (c.length > 6 && f.includes(c))) return true;
+    return false;
+  };
+  const aMovimentoMedia = (m: SpMovimento): MovimentoMedia => ({
+    chiave: m.chiave,
+    data: m.dataContabile.slice(0, 10),
+    importo: m.importo,
+    tipologia: m.tipologia?.trim() || "(senza tipologia)",
+    controparte: m.cliente?.trim() || m.descrizione,
+  });
   const autoAltreSpese = useMemo(() => {
     if (!movimenti?.length) return null;
     const meseCorrente = oggiISO.slice(0, 7);
-    const base = new Date(`${meseCorrente}-01T00:00:00`);
-    const mesi = [2, 1].map((i) => {
-      const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    });
-    const fornitori = new Set(
-      (fattureRic ?? []).map((f) => f.cliente.toLowerCase().trim()).filter((c) => c.length > 6),
-    );
-    const fatturata = (m: SpMovimento) => {
-      if ((m.nrFattura ?? "").trim()) return true;
-      const c = (m.cliente ?? "").toLowerCase().trim();
-      if (!c) return false;
-      if (fornitori.has(c)) return true;
-      // La direzione f.includes(c) solo con controparti non-corte: 'TIM'
-      // e' sottostringa di mezzo archivio e sparirebbe dalla media in silenzio.
-      for (const f of fornitori) if (c.includes(f) || (c.length > 6 && f.includes(c))) return true;
-      return false;
-    };
-    // [mese −2, mese −1, mese corrente finora] per tipologia.
-    const perTip = new Map<string, [number, number, number]>();
     // Pagamenti dei costi fissi già usciti nel mese corrente (id fisso → movimento).
     const pagatiFissi = new Map<string, { importo: number; data: string }>();
+    const base: MovimentoMedia[] = [];
     for (const m of movimenti) {
       if (m.importo >= 0) continue;
       const mm = m.dataContabile.slice(0, 7);
@@ -794,28 +842,30 @@ export function FlussiCassaTab() {
             data: m.dataContabile.slice(0, 10),
           });
       }
-      const idx = mm === meseCorrente ? 2 : mesi.indexOf(mm);
-      if (idx < 0) continue;
       if (fisso) continue;
       if (!(m.allocPrimaria ?? "").toLowerCase().includes("generali")) continue;
+      // Le Consulenze hanno la loro riga (v1.86.0).
+      if ((m.tipologia ?? "").trim().toLowerCase() === TIP_CONSULENZE) continue;
       if (fatturata(m)) continue;
-      const tip = m.tipologia?.trim() || "(senza tipologia)";
-      if (!perTip.has(tip)) perTip.set(tip, [0, 0, 0]);
-      perTip.get(tip)![idx] += Math.abs(m.importo);
+      base.push(aMovimentoMedia(m));
     }
+    // Media dei due mesi pieni SENZA anomalie; mese corrente al reale.
+    const analisi = analizzaMedia(base, oggiISO, overrideAnomalie);
     const r2 = (n: number) => Math.round(n * 100) / 100;
-    const righe = [...perTip.entries()]
-      .map(([tip, v]) => ({
-        tip,
-        m1: r2(v[0]),
-        m2: r2(v[1]),
-        corrente: r2(v[2]),
-        inclusa: asOverride.get(tip) ?? !TIP_ESCLUSE_DEFAULT.has(tip),
-      }))
-      .sort((a, b) => b.m1 + b.m2 - (a.m1 + a.m2));
+    const righe = analisi.righe.map((r) => ({
+      ...r,
+      inclusa: asOverride.get(r.tip) ?? !TIP_ESCLUSE_DEFAULT.has(r.tip),
+    }));
     const incluse = righe.filter((r) => r.inclusa);
     const media = r2(incluse.reduce((s2, r) => s2 + r.m1 + r.m2, 0) / 2);
     const realeCorrente = r2(incluse.reduce((s2, r) => s2 + r.corrente, 0));
+    const tipIncluse = new Set(incluse.map((r) => r.tip));
+    // I 15 movimenti più grandi dei tre mesi (tipologie incluse): qui si
+    // vedono e si forzano le anomalie.
+    const movimentiTop = analisi.movimenti
+      .filter((x) => tipIncluse.has(x.m.tipologia))
+      .slice(0, 15);
+    const mesi = analisi.mesi;
     const pr = proiezioneMeseCorrente(realeCorrente, media, oggiISO);
     const fissiMese = (mese: string) =>
       r2(
@@ -841,8 +891,69 @@ export function FlussiCassaTab() {
       pagatiFissi,
       fissiMese,
       totale,
+      movimentiTop,
     };
-  }, [movimenti, fattureRic, asOverride, TIP_ESCLUSE_DEFAULT, oggiISO, costiFissi]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    movimenti,
+    fornitoriArchivio,
+    asOverride,
+    TIP_ESCLUSE_DEFAULT,
+    oggiISO,
+    costiFissi,
+    overrideAnomalie,
+  ]);
+
+  // CONSULENZE (v1.86.0): pagamenti con tipologia Consulenze non fatturati.
+  // Mese corrente = reale (anomalie comprese) + media per i giorni che
+  // mancano; mesi futuri = media dei due mesi pieni SENZA anomalie.
+  const autoConsulenze = useMemo(() => {
+    if (!movimenti?.length) return null;
+    const base = movimenti
+      .filter(
+        (m) =>
+          m.importo < 0 &&
+          (m.tipologia ?? "").trim().toLowerCase() === TIP_CONSULENZE &&
+          !fatturata(m),
+      )
+      .map(aMovimentoMedia);
+    const analisi = analizzaMedia(base, oggiISO, overrideAnomalie);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const m1 = r2(analisi.righe.reduce((s2, r) => s2 + r.m1, 0));
+    const m2 = r2(analisi.righe.reduce((s2, r) => s2 + r.m2, 0));
+    const media = r2((m1 + m2) / 2);
+    const realeCorrente = r2(analisi.righe.reduce((s2, r) => s2 + r.corrente, 0));
+    const anomalieCorrente = r2(analisi.righe.reduce((s2, r) => s2 + r.correnteAnomalie, 0));
+    const pr = proiezioneMeseCorrente(realeCorrente, media, oggiISO);
+    return {
+      mesi: analisi.mesi,
+      m1,
+      m2,
+      media,
+      realeCorrente,
+      anomalieCorrente,
+      proiezione: pr.proiezione,
+      giornoOggi: pr.giornoOggi,
+      giorniMese: pr.giorniMese,
+      movimenti: analisi.movimenti,
+      soglia: [...analisi.soglie.values()][0] ?? 0,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movimenti, fornitoriArchivio, oggiISO, overrideAnomalie]);
+
+  const toggleAnomalia = async (x: MovimentoAnalizzato) => {
+    setDrillBusy(true);
+    try {
+      await spUpsertFlussoCassa({
+        data: { nome: x.m.chiave, genere: "anomalia", importo: x.anomalia ? 0 : 1 },
+      });
+      await ricaricaFlussi();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDrillBusy(false);
+    }
+  };
 
   const aggiungiFisso = async () => {
     const importo = Number(fxImporto.trim().replace(/\./g, "").replace(",", "."));
@@ -963,6 +1074,12 @@ export function FlussiCassaTab() {
     // giorni che mancano) più i costi fissi al loro importo.
     if (nomeVoce === "altre spese" && autoAltreSpese && mese >= oggiISO.slice(0, 7)) {
       const v = autoAltreSpese.totale(mese);
+      if (v > 0) return { importo: -v, auto: true };
+    }
+    // Consulenze: mese corrente al reale (+ media per i giorni che mancano),
+    // mesi futuri la media senza anomalie.
+    if (nomeVoce === TIP_CONSULENZE && autoConsulenze && mese >= oggiISO.slice(0, 7)) {
+      const v = mese === oggiISO.slice(0, 7) ? autoConsulenze.proiezione : autoConsulenze.media;
       if (v > 0) return { importo: -v, auto: true };
     }
     // Stipendi futuri senza dato reale: stima = media del netto dovuto degli
@@ -1572,9 +1689,74 @@ export function FlussiCassaTab() {
   const thCls = "py-1 pr-3 text-right whitespace-nowrap";
   const tdN = "py-1 pr-3 text-right tabular-nums whitespace-nowrap";
 
-  // Uscite divise per modalità: riga di gruppo (RiBa / RID / senza) e, col
-  // dettaglio acceso, i fornitori del gruppo sotto. Vale per entrambe le
-  // tabelle (`prefix` tiene distinte le chiavi React).
+  // "+" che apre/chiude le voci dei fornitori di un gruppo (Simone 29/09).
+  const btnPiu = (k: string, n: number) =>
+    n > 0 ? (
+      <button
+        type="button"
+        onClick={() => toggleGruppo(k)}
+        title={aperti.has(k) ? t("fc.chiudiGruppo") : t("fc.apriGruppo")}
+        className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded border border-border align-middle text-[11px] leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        {aperti.has(k) ? "−" : "+"}
+      </button>
+    ) : null;
+  // Tabella dei movimenti con la spunta "anomalia" (Altre spese e Consulenze).
+  const tabellaAnomalie = (lista: MovimentoAnalizzato[]) => (
+    <table className="w-full text-[13px]">
+      <thead>
+        <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+          <th className="py-1 pr-3">{t("fis.colData")}</th>
+          <th className="py-1 pr-3">{t("fc.anomControparte")}</th>
+          <th className="py-1 pr-3">{t("fc.anomTipologia")}</th>
+          <th className="py-1 pr-3 text-right">{t("fis.colImporto")}</th>
+          <th className="py-1 pr-3 text-right">{t("fc.anomSoglia")}</th>
+          <th className="py-1 text-center">{t("fc.anomColAnomalia")}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {lista.map((x) => (
+          <tr
+            key={x.m.chiave}
+            className={`border-b border-border/40 ${x.anomalia ? "text-status-absent" : ""}`}
+          >
+            <td className="py-0.5 pr-3 whitespace-nowrap">{dataIt(x.m.data)}</td>
+            <td className="max-w-56 truncate py-0.5 pr-3" title={x.m.controparte}>
+              {x.m.controparte}
+            </td>
+            <td className="py-0.5 pr-3 text-muted-foreground">{x.m.tipologia}</td>
+            <td className="py-0.5 pr-3 text-right tabular-nums">
+              {fmtImporto(Math.abs(x.m.importo))}
+            </td>
+            <td className="py-0.5 pr-3 text-right tabular-nums text-muted-foreground">
+              {fmtImporto(x.soglia)}
+            </td>
+            <td className="py-0.5 text-center whitespace-nowrap">
+              <input
+                type="checkbox"
+                className="accent-primary"
+                checked={x.anomalia}
+                disabled={drillBusy}
+                title={x.auto ? t("fc.anomAuto") : t("fc.anomForzata")}
+                onChange={() => void toggleAnomalia(x)}
+              />
+              {!x.auto && <span className="ml-1 text-[10px]">✎</span>}
+            </td>
+          </tr>
+        ))}
+        {lista.length === 0 && (
+          <tr>
+            <td colSpan={6} className="py-2 text-center text-muted-foreground">
+              {t("fc.anomNessuna")}
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+  // Uscite divise per modalità: riga di gruppo (RiBa / RID / senza) e, se
+  // il gruppo è aperto col "+", i fornitori del gruppo sotto. Vale per
+  // entrambe le tabelle (`prefix` tiene distinte le chiavi React).
   const righeUscite = (u: Somma, prefix: string) =>
     MODALITA_ORDINE.map((mod) => {
       const g = u.gruppi[mod];
@@ -1583,6 +1765,7 @@ export function FlussiCassaTab() {
         <Fragment key={`${prefix}g:${mod}`}>
           <tr className="border-t border-border/40 text-[12px] font-medium">
             <td className="py-0.5 pl-3 pr-3 text-foreground/80" title={t("fc.modTip")}>
+              {btnPiu(`${prefix}:${mod}`, u.righe.filter((r) => r.mod === mod).length)}
               {labelMod[mod]}
             </td>
             <td className={`${tdN} text-status-absent`}>{fmt(-g.scaduto)}</td>
@@ -1593,7 +1776,7 @@ export function FlussiCassaTab() {
             ))}
             <td className={tdN}>{fmt(-(g.scaduto + g.totale))}</td>
           </tr>
-          {dettaglio &&
+          {aperti.has(`${prefix}:${mod}`) &&
             u.righe
               .filter((r) => r.mod === mod)
               .map((r) => (
@@ -1676,10 +1859,11 @@ export function FlussiCassaTab() {
           </label>
           <button
             type="button"
-            onClick={() => setDettaglio((v) => !v)}
+            onClick={() => setAperti(tuttiAperti ? new Set() : new Set(GRUPPI))}
+            title={t("fc.dettaglioTip")}
             className="rounded-lg border border-border px-3 py-1 hover:bg-muted"
           >
-            {dettaglio ? t("fc.nascondiDettaglio") : t("fc.mostraDettaglio")}
+            {tuttiAperti ? t("fc.nascondiDettaglio") : t("fc.mostraDettaglio")}
           </button>
           <button
             type="button"
@@ -2296,7 +2480,10 @@ export function FlussiCassaTab() {
               <tbody>
                 {/* ENTRATE */}
                 <tr className="border-t border-border/60 font-medium">
-                  <td className="py-1 pr-3">{t("fc.entrate")}</td>
+                  <td className="py-1 pr-3">
+                    {btnPiu("t1:entrate", entrate.righe.length)}
+                    {t("fc.entrate")}
+                  </td>
                   <td className={`${tdN} text-status-absent`}>{fmt(entrate.tot.scaduto)}</td>
                   {serie(entrate.tot.scaduto, (c) => entrate.tot.perPeriodo.get(c) ?? 0).map(
                     (v, i) => (
@@ -2307,7 +2494,7 @@ export function FlussiCassaTab() {
                   )}
                   <td className={tdN}>{fmt(entrate.tot.scaduto + entrate.tot.totale)}</td>
                 </tr>
-                {dettaglio &&
+                {aperti.has("t1:entrate") &&
                   entrate.righe.map((r) => (
                     <tr key={`e:${r.nome}`} className="border-t border-border/30">
                       <td className="max-w-56 truncate py-0.5 pl-4 pr-3 text-muted-foreground">
@@ -2497,7 +2684,10 @@ export function FlussiCassaTab() {
                 </thead>
                 <tbody>
                   <tr className="border-t border-border/60 font-medium">
-                    <td className="py-1 pr-3">{t("fc.entrate")}</td>
+                    <td className="py-1 pr-3">
+                      {btnPiu("t2:entrate", entrateFat.righe.length)}
+                      {t("fc.entrate")}
+                    </td>
                     <td className={`${tdN} text-status-absent`}>{fmt(entrateFat.tot.scaduto)}</td>
                     {serie(
                       entrateFat.tot.scaduto,
@@ -2509,7 +2699,7 @@ export function FlussiCassaTab() {
                     ))}
                     <td className={tdN}>{fmt(entrateFat.tot.scaduto + entrateFat.tot.totale)}</td>
                   </tr>
-                  {dettaglio &&
+                  {aperti.has("t2:entrate") &&
                     entrateFat.righe.map((r) => (
                       <tr key={`fe:${r.nome}`} className="border-t border-border/30">
                         <td className="max-w-56 truncate py-0.5 pl-4 pr-3 text-muted-foreground">
@@ -2848,6 +3038,12 @@ export function FlussiCassaTab() {
                         {t("fc.fissiAggiungi")}
                       </button>
                     </div>
+                    {/* ANOMALIE (v1.86.0): fuori dalla media, dentro il reale */}
+                    <div className="mt-3 border-t border-border/60 pt-2">
+                      <p className="mb-1 text-xs font-medium">{t("fc.anomTitolo")}</p>
+                      <p className="mb-2 text-[11px] text-muted-foreground">{t("fc.anomDesc")}</p>
+                      {tabellaAnomalie(autoAltreSpese.movimentiTop)}
+                    </div>
                     <p className="mt-2 text-[11px] text-muted-foreground">
                       {t("fc.drillAsCorrente")}: {fmtImporto(autoAltreSpese.realeCorrente)} +{" "}
                       {fmtImporto(autoAltreSpese.media)} ×{" "}
@@ -2860,6 +3056,28 @@ export function FlussiCassaTab() {
                 </>
               ) : (
                 <p className="text-xs text-muted-foreground">{t("common.loading")}</p>
+              );
+            } else if (chiave === TIP_CONSULENZE) {
+              corpo = !autoConsulenze ? (
+                <p className="text-xs text-muted-foreground">{t("common.loading")}</p>
+              ) : (
+                <>
+                  <p className="mb-2 text-xs text-muted-foreground">{t("fc.drillConsDesc")}</p>
+                  <p className="mb-2 text-xs">
+                    {autoConsulenze.mesi[0]}: {fmtImporto(autoConsulenze.m1)} ·{" "}
+                    {autoConsulenze.mesi[1]}: {fmtImporto(autoConsulenze.m2)} · {t("fc.drillMedia")}
+                    : <span className="font-semibold">{fmtImporto(autoConsulenze.media)}</span> ·{" "}
+                    {oggiISO.slice(0, 7)} {t("fc.drillAsFinora")}:{" "}
+                    {fmtImporto(autoConsulenze.realeCorrente)} ({t("fc.anomDiCui")}{" "}
+                    {fmtImporto(autoConsulenze.anomalieCorrente)}) → {t("fc.colTotale")}{" "}
+                    <span className="font-semibold">{fmtImporto(autoConsulenze.proiezione)}</span> ·{" "}
+                    {t("fc.anomSoglia")}: {fmtImporto(autoConsulenze.soglia)}
+                  </p>
+                  <div className="max-h-80 overflow-y-auto">
+                    {tabellaAnomalie(autoConsulenze.movimenti)}
+                  </div>
+                  <p className="mt-2 text-[11px] text-muted-foreground">{t("fc.anomNota")}</p>
+                </>
               );
             } else if (chiave === "stipendi") {
               const [anno, mm] = drill.mese.split("-").map(Number);
@@ -3026,7 +3244,7 @@ export function FlussiCassaTab() {
                 >
                   <div className="mb-3 flex items-center gap-3">
                     <span className="text-sm font-semibold">{drill.voce}</span>
-                    {chiave !== "altre spese" && selMese}
+                    {chiave !== "altre spese" && chiave !== TIP_CONSULENZE && selMese}
                     {manuale && (
                       <span className="rounded-full bg-status-absent/15 px-2 py-0.5 text-[11px] text-status-absent">
                         {t("fc.drillManuale")} {fmtImporto(manuale.importo)}

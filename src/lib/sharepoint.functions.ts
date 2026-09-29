@@ -643,9 +643,11 @@ export const spGetFlussiCassa = createServerFn({ method: "GET" }).handler(
 
 export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
   .inputValidator((input: Omit<FlussoCassaRiga, "id">) => {
+    // 250: le righe "anomalia" hanno per nome la chiave del movimento
+    // (data|data|importo|causale|descrizione|occorrenza), lunga fino a ~200.
     const nome = String(input?.nome ?? "")
       .trim()
-      .slice(0, 120);
+      .slice(0, 250);
     if (!nome) throw new Error("Nome mancante");
     const genere =
       input?.genere === "esclusione"
@@ -660,10 +662,14 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
                 ? "fornitore"
                 : input?.genere === "fisso"
                   ? "fisso"
-                  : "voce";
+                  : input?.genere === "anomalia"
+                    ? "anomalia"
+                    : "voce";
     const importo = Number(input?.importo ?? 0);
     if (genere === "fisso" && (!Number.isFinite(importo) || importo <= 0))
       throw new Error("Importo mensile del costo fisso non valido (positivo)");
+    if (genere === "anomalia" && importo !== 0 && importo !== 1)
+      throw new Error("Valore anomalia non valido (0 o 1)");
     if (genere === "voce" && (!Number.isFinite(importo) || importo === 0))
       throw new Error("Importo non valido (per le uscite usare il segno meno)");
     if (genere === "asvoce" && importo !== 0 && importo !== 1)

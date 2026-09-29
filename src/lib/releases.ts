@@ -36,6 +36,33 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.86.0",
+    date: "2026-09-29",
+    entries: [
+      {
+        title: "Flussi: riga Consulenze sotto Stipendi",
+        description:
+          "Le consulenze escono dalle Altre spese e hanno la loro riga: mese corrente al reale (più la media per i giorni che mancano), mesi futuri la media dei due mesi pieni senza anomalie. Clic sul nome per i movimenti.",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Le anomalie non entrano più nella media",
+        description:
+          "Un pagamento che da solo supera una volta e mezza la spesa di un mese tipico della sua tipologia (mediana dei sei mesi precedenti, minimo 1.000 €) conta nel reale del mese ma non nella media dei mesi futuri, in Altre spese e Consulenze. Nei pannelli vedi i movimenti più grandi con la spunta Anomalia, forzabile a mano.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+      {
+        title: "Voci dei fornitori raggruppate col +",
+        description:
+          'Nelle due tabelle dei Flussi le voci dei singoli clienti e fornitori sono chiuse: il + accanto a Entrate e a ogni blocco delle uscite (RiBa, RID, senza) apre quel gruppo, "Mostra dettaglio" apre tutto. Il CSV resta completo.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.85.1",
     date: "2026-09-29",
     entries: [

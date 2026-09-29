@@ -379,6 +379,156 @@ export function piuVicinoAlFisso(
   );
 }
 
+// --- Medie senza anomalie (Simone 29/09, v1.86.0) ------------------------------
+// "Le anomalie come quelle di questo mese non possono entrare nella media":
+// un movimento è ANOMALO quando da solo supera una volta e mezza quanto
+// quella tipologia spende in un mese tipico (mediana dei totali mensili dei
+// 6 mesi pieni precedenti alla finestra, con un minimo di 1.000 €): un
+// pagamento pari al mese tipico è la normale rata mensile, non un'anomalia
+// (Consulenze: mese tipico 9.000 → soglia 13.500 → le disposizioni da
+// 16.705 e 25.000 sono anomale, la parcella da 9.600 no). Le anomalie contano
+// nel REALE del mese corrente (sono soldi usciti) ma non nella media che
+// alimenta i mesi futuri. Ogni movimento si può forzare a mano (righe
+// FlussiCassa genere "anomalia": Title = chiave movimento, Importo 1 =
+// anomalia, 0 = normale).
+
+export const ANOMALIA_MINIMO = 1000;
+export const ANOMALIA_MOLTIPLICATORE = 1.5;
+
+export interface MovimentoMedia {
+  chiave: string;
+  /** Data contabile YYYY-MM-DD. */
+  data: string;
+  /** Uscite negative (si usa il valore assoluto). */
+  importo: number;
+  tipologia: string;
+  controparte: string;
+}
+
+export interface RigaTipologiaMedia {
+  tip: string;
+  /** Totali dei due mesi pieni SENZA anomalie. */
+  m1: number;
+  m2: number;
+  /** Mese corrente finora, anomalie COMPRESE (è il reale). */
+  corrente: number;
+  /** Parte anomala del mese corrente. */
+  correnteAnomalie: number;
+}
+
+export interface MovimentoAnalizzato {
+  m: MovimentoMedia;
+  mese: string;
+  soglia: number;
+  anomalia: boolean;
+  /** true se decisa dalla regola, false se forzata a mano. */
+  auto: boolean;
+}
+
+export interface AnalisiMedia {
+  /** I due mesi pieni della media. */
+  mesi: [string, string];
+  meseCorrente: string;
+  righe: RigaTipologiaMedia[];
+  /** Movimenti dei tre mesi (due pieni + corrente), dal più grande. */
+  movimenti: MovimentoAnalizzato[];
+  soglie: Map<string, number>;
+}
+
+/** Chiave YYYY-MM del mese `delta` mesi prima (delta > 0) di oggi. */
+export function meseRelativo(oggiISO: string, delta: number): string {
+  const y = Number(oggiISO.slice(0, 4));
+  const m = Number(oggiISO.slice(5, 7));
+  const d = new Date(Date.UTC(y, m - 1 - delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function mediana(v: number[]): number {
+  if (!v.length) return 0;
+  const s = [...v].sort((a, b) => a - b);
+  const k = Math.floor(s.length / 2);
+  return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2;
+}
+
+export function analizzaMedia(
+  movs: readonly MovimentoMedia[],
+  oggiISO: string,
+  override: ReadonlyMap<string, boolean> = new Map(),
+  mesiStorico = 6,
+): AnalisiMedia {
+  const meseCorrente = oggiISO.slice(0, 7);
+  const mesi: [string, string] = [meseRelativo(oggiISO, 2), meseRelativo(oggiISO, 1)];
+  const storico = new Set<string>();
+  for (let i = 3; i < 3 + mesiStorico; i++) storico.add(meseRelativo(oggiISO, i));
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  // Totali mensili storici per tipologia → soglia.
+  const totStorico = new Map<string, Map<string, number>>();
+  for (const m of movs) {
+    if (m.importo >= 0) continue;
+    const mese = m.data.slice(0, 7);
+    if (!storico.has(mese)) continue;
+    const per = totStorico.get(m.tipologia) ?? new Map<string, number>();
+    per.set(mese, (per.get(mese) ?? 0) + Math.abs(m.importo));
+    totStorico.set(m.tipologia, per);
+  }
+  const soglie = new Map<string, number>();
+  const sogliaDi = (tip: string) => {
+    let s = soglie.get(tip);
+    if (s == null) {
+      const mensili = [...(totStorico.get(tip)?.values() ?? [])].filter((x) => x > 0);
+      s = Math.max(
+        ANOMALIA_MINIMO,
+        Math.round(mediana(mensili) * ANOMALIA_MOLTIPLICATORE * 100) / 100,
+      );
+      soglie.set(tip, s);
+    }
+    return s;
+  };
+  const righe = new Map<string, RigaTipologiaMedia>();
+  const movimenti: MovimentoAnalizzato[] = [];
+  for (const m of movs) {
+    if (m.importo >= 0) continue;
+    const mese = m.data.slice(0, 7);
+    const idx = mese === meseCorrente ? 2 : mesi.indexOf(mese);
+    if (idx < 0) continue;
+    const soglia = sogliaDi(m.tipologia);
+    const forzata = override.get(m.chiave);
+    const anomalia = forzata ?? Math.abs(m.importo) > soglia;
+    movimenti.push({ m, mese, soglia, anomalia, auto: forzata == null });
+    const r = righe.get(m.tipologia) ?? {
+      tip: m.tipologia,
+      m1: 0,
+      m2: 0,
+      corrente: 0,
+      correnteAnomalie: 0,
+    };
+    const a = Math.abs(m.importo);
+    if (idx === 2) {
+      r.corrente += a;
+      if (anomalia) r.correnteAnomalie += a;
+    } else if (!anomalia) {
+      if (idx === 0) r.m1 += a;
+      else r.m2 += a;
+    }
+    righe.set(m.tipologia, r);
+  }
+  return {
+    mesi,
+    meseCorrente,
+    righe: [...righe.values()]
+      .map((r) => ({
+        ...r,
+        m1: r2(r.m1),
+        m2: r2(r.m2),
+        corrente: r2(r.corrente),
+        correnteAnomalie: r2(r.correnteAnomalie),
+      }))
+      .sort((a, b) => b.m1 + b.m2 - (a.m1 + a.m2)),
+    movimenti: movimenti.sort((a, b) => Math.abs(b.m.importo) - Math.abs(a.m.importo)),
+    soglie,
+  };
+}
+
 export function giorniNelMese(mese: string): number {
   const [y, m] = mese.split("-").map(Number);
   return new Date(Date.UTC(y, m, 0)).getUTCDate();

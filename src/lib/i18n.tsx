@@ -986,6 +986,25 @@ const en = {
   "fc.drillFiscScadute": "In the Overdue column: unpaid and past due",
   "fc.fiscScadTip":
     "Unpaid tax deadlines already past due (date before today): they sit here, not in the month. Click the row name for the list.",
+  "fc.apriGruppo": "Open the rows",
+  "fc.chiudiGruppo": "Close the rows",
+  "fc.dettaglioTip":
+    "Opens or closes every customer and supplier row (the + opens one group at a time)",
+  "fc.drillConsDesc":
+    "Non-invoiced payments typed Consulting (from bank movements). Not recurring costs: the current month is the actual figure, anomalies included, plus the average for the remaining days; future months use the average of the two full months WITHOUT anomalies.",
+  "fc.anomTitolo": "Anomalies: out of the average, in the actual",
+  "fc.anomDesc":
+    "A movement is anomalous when on its own it exceeds one and a half times a typical month of its type (median of the previous 6 months, at least 1,000 €): it counts in the current month but not in the average for future months. The tick can be forced by hand (✎ = set by you). Here the 15 largest movements of the three months.",
+  "fc.anomControparte": "Counterparty",
+  "fc.anomTipologia": "Type",
+  "fc.anomSoglia": "Typical month threshold",
+  "fc.anomColAnomalia": "Anomaly",
+  "fc.anomNessuna": "No movement in the three months.",
+  "fc.anomAuto": "Set by the rule: click to force",
+  "fc.anomForzata": "Forced by hand: click to change",
+  "fc.anomDiCui": "of which anomalies",
+  "fc.anomNota":
+    "Anomalies count in the current month's actual but not in the average for future months. A forced tick is saved until you change it.",
   "for.titolo": "Suppliers in the cash flow",
   "for.desc":
     "One row per supplier with at least one open invoice in the cash flow (same rules: exclusions applied, DR Logistics out). Amounts, counts and dates come from the invoices; Method, Owner, Category and Contract are typed here and saved automatically. Grey hints in empty boxes come from the invoice classification.",
@@ -2796,6 +2815,25 @@ const it: Record<DictKey, string> = {
   "fc.drillFiscScadute": "Nella colonna Scaduto: non pagate e già scadute",
   "fc.fiscScadTip":
     "Scadenze fiscali non pagate e già scadute (data prima di oggi): stanno qui, non nel mese. Clicca il nome della riga per l'elenco.",
+  "fc.apriGruppo": "Apri le voci",
+  "fc.chiudiGruppo": "Chiudi le voci",
+  "fc.dettaglioTip":
+    "Apre o chiude tutte le voci dei clienti e dei fornitori (col + apri un gruppo alla volta)",
+  "fc.drillConsDesc":
+    "Pagamenti con tipologia Consulenze non fatturati (dai movimenti bancari). Non sono costi ricorrenti: il mese corrente vale il reale, anomalie comprese, più la media per i giorni che mancano; i mesi futuri la media dei due mesi pieni SENZA anomalie.",
+  "fc.anomTitolo": "Anomalie: fuori dalla media, dentro il reale",
+  "fc.anomDesc":
+    "Un movimento è anomalo quando da solo supera una volta e mezza la spesa di un mese tipico della sua tipologia (mediana dei 6 mesi precedenti, minimo 1.000 €): conta nel mese corrente ma non nella media dei mesi futuri. La spunta si può forzare a mano (✎ = decisa da te). Qui i 15 movimenti più grandi dei tre mesi.",
+  "fc.anomControparte": "Controparte",
+  "fc.anomTipologia": "Tipologia",
+  "fc.anomSoglia": "Soglia mese tipico",
+  "fc.anomColAnomalia": "Anomalia",
+  "fc.anomNessuna": "Nessun movimento nei tre mesi.",
+  "fc.anomAuto": "Decisa dalla regola: clicca per forzare",
+  "fc.anomForzata": "Forzata a mano: clicca per cambiare",
+  "fc.anomDiCui": "di cui anomalie",
+  "fc.anomNota":
+    "Le anomalie contano nel reale del mese corrente ma non nella media dei mesi futuri. La spunta forzata si salva e vale finché non la cambi.",
   "for.titolo": "Fornitori nel flusso di cassa",
   "for.desc":
     "Una riga per ogni fornitore con almeno una fattura passiva aperta nei Flussi (stesse regole: esclusioni comprese, DR Logistics fuori). Importi, conteggi e date vengono dalle fatture; Modalità, Chi se ne occupa, Macrovoce e Appalto si scrivono qui e si salvano da soli. Le proposte in grigio nelle caselle vuote vengono dalla classificazione delle fatture.",

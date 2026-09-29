@@ -6419,8 +6419,12 @@ export interface FlussoCassaRiga {
    *  r: referente DR, c: macrovoce, a: appalto}; una riga per fornitore.
    *  "fisso" (1.85.0) = costo fisso delle "Altre spese" (affitti…): Title =
    *  nome, Importo = importo mensile, Note = parola chiave nei movimenti,
-   *  Mese/MeseFine = validità; una riga per nome. */
-  genere: "voce" | "esclusione" | "preset" | "girata" | "asvoce" | "fornitore" | "fisso";
+   *  Mese/MeseFine = validità; una riga per nome.
+   *  "anomalia" (1.86.0) = movimento forzato fuori (Importo 1) o dentro
+   *  (Importo 0) la media delle Altre spese/Consulenze: Title = chiave del
+   *  movimento; una riga per chiave. */
+  genere:
+    "voce" | "esclusione" | "preset" | "girata" | "asvoce" | "fornitore" | "fisso" | "anomalia";
   /** Voce: mese di competenza YYYY-MM. Esclusione/preset: da mese (opzionale). */
   mese?: string;
   /** Esclusione/preset: fino a mese YYYY-MM (opzionale). */
@@ -6466,7 +6470,9 @@ export async function fetchFlussiCassa(): Promise<FlussoCassaRiga[]> {
                   ? "fornitore"
                   : gen === "fisso"
                     ? "fisso"
-                    : "voce") as FlussoCassaRiga["genere"],
+                    : gen === "anomalia"
+                      ? "anomalia"
+                      : "voce") as FlussoCassaRiga["genere"],
         mese: /^\d{4}-\d{2}$/.test(mese) ? mese : undefined,
         meseFine: /^\d{4}-\d{2}$/.test(meseFine) ? meseFine : undefined,
         importo: F.Importo ? Number(f[F.Importo] ?? 0) || 0 : 0,
@@ -6500,7 +6506,8 @@ export async function upsertFlussoCassa(input: Omit<FlussoCassaRiga, "id">): Pro
     (input.genere === "voce" && input.mese) ||
     input.genere === "asvoce" ||
     input.genere === "fornitore" ||
-    input.genere === "fisso"
+    input.genere === "fisso" ||
+    input.genere === "anomalia"
   ) {
     const esistenti = await fetchFlussiCassa();
     const gia = esistenti.find(
