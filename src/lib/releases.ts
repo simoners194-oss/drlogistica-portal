@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.87.0",
+    date: "2026-09-29",
+    entries: [
+      {
+        title: "Fornitori: tendine con le voci giuste",
+        description:
+          'Chi se ne occupa sceglie tra le persone di DR (Gabelli, Russo, Pratesi, Guidarelli, Marelli, Spera, Notaro, Carlone), Macrovoce tra le tipologie dei movimenti bancari, Appalto tra le allocazioni degli appalti usate in movimenti e fatture. Si salva appena scegli; "Altro…" per una voce nuova.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+      {
+        title: "Flussi: clic sul fornitore apre la sua scheda",
+        description:
+          "Aperto un gruppo col +, il nome del fornitore è cliccabile: si apre un popup con tutte le informazioni della tab Fornitori (tendine modificabili con Salva, scaduto, aperto, conteggi, date, pagato) e le fatture aperte nel flusso con scadenza, residuo e modalità.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.86.2",
     date: "2026-09-29",
     entries: [

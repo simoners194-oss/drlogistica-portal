@@ -480,7 +480,9 @@ Per forzare un fornitore intero (es. DKV: bonifico in fattura ma addebito automa
     titolo: "La scheda Fornitori del flusso di cassa",
     testo: `La tab Fornitori (Finanza) ha una riga per ogni fornitore con almeno una fattura passiva aperta nei Flussi (stesse regole: esclusioni comprese, DR Logistics fuori). Dalle fatture arrivano scaduto, aperto totale (scaduto + a scadere), numero di fatture scadute, aperte e totali in archivio, prima e ultima fattura, prossima scadenza (in rosso se già passata), fatture pagate e importo pagato ad oggi.
 
-Le colonne Modalità, Chi se ne occupa, Macrovoce e Appalto le scrivi tu: si salvano da sole uscendo dalla casella (Invio o clic altrove). Nelle caselle vuote vedi in grigio la proposta presa dalla classificazione delle fatture (tipologia di costo e cliente di riferimento), che vale finché non scrivi altro. Cerca, ordina (aperto, scaduto, prossima scadenza, nome), Esporta CSV e Stampa come nelle altre pagine.`,
+Le colonne Modalità, Chi se ne occupa, Macrovoce e Appalto sono tendine (dalla 1.87.0) e si salvano da sole appena scegli: Chi se ne occupa ha le persone di DR (Gabelli, Russo, Pratesi, Guidarelli, Marelli, Spera, Notaro, Carlone), Macrovoce le tipologie dei movimenti bancari (Carburante, Consulenze, Noleggio, Utenze…), Appalto le allocazioni degli appalti usate nelle regole di movimenti e fatture (iMile, Postadoc Hub, Ufficio Fiano Romano…). "Altro…" apre la casella libera per una voce nuova. Nelle tendine vuote la proposta tra parentesi viene dalla classificazione delle fatture. Cerca, ordina (aperto, scaduto, prossima scadenza, nome), Esporta CSV e Stampa come nelle altre pagine.
+
+Nei Flussi di cassa, aperto un gruppo col "+", il clic sul nome del fornitore apre la stessa scheda in un popup: le quattro tendine con Salva, i numeri dalle fatture e l'elenco delle fatture aperte nel flusso con scadenza, residuo e modalità.`,
     chiavi:
       "fornitori scheda chi se ne occupa referente macrovoce appalto scaduto aperto pagate pagato prima ultima fattura prossima scadenza",
   },

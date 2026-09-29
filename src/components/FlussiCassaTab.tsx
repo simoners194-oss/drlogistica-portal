@@ -18,12 +18,15 @@ import {
   residuoAperto,
   incassatoRegistrato,
   isNotaCredito,
+  type FatturaConStato,
+  type RegolaFattura,
   type TerminePagamento,
 } from "@/lib/fatture-logic";
-import { clienteGroupKey } from "@/lib/finanza-logic";
+import { clienteGroupKey, type RegolaFinanza } from "@/lib/finanza-logic";
 import {
   MODALITA_ORDINE,
   analizzaMedia,
+  chiaveFornitore,
   costiFissiDa,
   esclusaDaFlussi,
   fissoAttivo,
@@ -32,10 +35,15 @@ import {
   modalitaFattura,
   piuVicinoAlFisso,
   proiezioneMeseCorrente,
+  riepilogoFornitori,
+  serializeFornitoreInfo,
+  vocabolarioFornitori,
+  type FornitoreInfo,
   type ModalitaPagamento,
   type MovimentoAnalizzato,
   type MovimentoMedia,
 } from "@/lib/flussi-logic";
+import { SchedaFornitore, type FatturaScheda } from "@/components/SchedaFornitore";
 import { esportaCsvFile } from "@/lib/csv";
 import {
   spGetFatture,
@@ -45,6 +53,8 @@ import {
   spUpsertFlussoCassa,
   spDeleteFlussoCassa,
   spGetMovimenti,
+  spGetRegoleFatture,
+  spGetRegoleFinanza,
 } from "@/lib/sharepoint.functions";
 import { spStipendiFlussi, spStipendiGet } from "@/lib/stipendi.functions";
 import { chiaveNome, type StipendiDb } from "@/lib/stipendi-logic";
@@ -204,6 +214,12 @@ export function FlussiCassaTab() {
   const [fxDa, setFxDa] = useState("");
   const [fxA, setFxA] = useState("");
   const [fxBusy, setFxBusy] = useState(false);
+  // Scheda fornitore dai Flussi (v1.87.0): clic sul nome apre il popup con
+  // le informazioni della tab Fornitori; le regole danno le voci delle tendine.
+  const [regoleMov, setRegoleMov] = useState<RegolaFinanza[]>([]);
+  const [regoleFat, setRegoleFat] = useState<RegolaFattura[]>([]);
+  const [fornitoreAperto, setFornitoreAperto] = useState<string | null>(null);
+  const [schedaBusy, setSchedaBusy] = useState(false);
 
   const ricaricaFlussi = () =>
     spGetFlussiCassa()
@@ -246,6 +262,12 @@ export function FlussiCassaTab() {
     spGetMovimenti()
       .then((l) => setMovimenti(l as SpMovimento[]))
       .catch(() => setMovimenti([]));
+    spGetRegoleFinanza()
+      .then((l) => setRegoleMov(l as RegolaFinanza[]))
+      .catch(() => setRegoleMov([]));
+    spGetRegoleFatture()
+      .then((l) => setRegoleFat(l as RegolaFattura[]))
+      .catch(() => setRegoleFat([]));
     void ricaricaFlussi();
   }, []);
 
@@ -361,10 +383,68 @@ export function FlussiCassaTab() {
   // Fattura "nel flusso": aperta, con scadenza, controparte non esclusa —
   // a prescindere dai filtri dal/fino al (serve alla checklist della
   // simulazione e ai totali del banner).
-  const inFlusso = (x: (typeof attive)[number]): boolean => {
+  const inFlusso = (x: FatturaConStato): boolean => {
     if (residuoAperto(x) <= 1) return false;
     if (!x.s.scadenza) return false;
     return !esclusa(x.f.cliente, x.s.scadenza.slice(0, 7));
+  };
+
+  // Schede fornitore per il popup: stessa tabella della tab Fornitori.
+  const righeFornitori = useMemo(
+    () => riepilogoFornitori(passive, infoFornitori, inFlusso),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [passive, infoFornitori, esclusioni],
+  );
+  const vocabFornitori = useMemo(
+    () =>
+      vocabolarioFornitori({
+        regoleMov,
+        regoleFat,
+        fatture: fattureRic ?? [],
+        extraMacro: righeFornitori.map((r) => r.macrovoce),
+        extraAppalti: righeFornitori.map((r) => r.appalto),
+      }),
+    [regoleMov, regoleFat, fattureRic, righeFornitori],
+  );
+  const rigaFornitoreAperta = fornitoreAperto
+    ? (righeFornitori.find((r) => r.chiave === fornitoreAperto) ?? null)
+    : null;
+  const fattureFornitoreAperto = useMemo((): FatturaScheda[] => {
+    if (!fornitoreAperto) return [];
+    return passive
+      .filter((x) => inFlusso(x) && chiaveFornitore(x.f.cliente) === fornitoreAperto)
+      .map((x) => ({
+        numero: x.f.numero,
+        data: x.f.dataDocumento,
+        scadenza: x.s.scadenza.slice(0, 10),
+        residuo: residuoAperto(x),
+        inRitardo: x.s.inRitardo,
+        modalita: modDi(x.f),
+      }))
+      .sort((a, b) => a.scadenza.localeCompare(b.scadenza));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fornitoreAperto, passive, esclusioni, infoFornitori]);
+  const salvaScheda = async (info: FornitoreInfo) => {
+    if (!rigaFornitoreAperta) return;
+    setSchedaBusy(true);
+    try {
+      await spUpsertFlussoCassa({
+        data: {
+          nome: rigaFornitoreAperta.nome,
+          genere: "fornitore",
+          importo: 0,
+          note: serializeFornitoreInfo(info),
+        },
+      });
+      await ricaricaFlussi();
+      toast.success(t("for.salvato"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setSchedaBusy(false);
+    }
   };
 
   // --- Somme per controparte -------------------------------------------------
@@ -1786,7 +1866,14 @@ export function FlussiCassaTab() {
               .map((r) => (
                 <tr key={`${prefix}u:${mod}:${r.nome}`} className="border-t border-border/30">
                   <td className="max-w-56 truncate py-0.5 pl-6 pr-3 text-muted-foreground">
-                    {r.nome}
+                    <button
+                      type="button"
+                      onClick={() => setFornitoreAperto(chiaveFornitore(r.nome))}
+                      title={t("for.apriScheda")}
+                      className="max-w-full truncate text-left hover:text-primary hover:underline"
+                    >
+                      {r.nome}
+                    </button>
                   </td>
                   <td className={`${tdN} text-muted-foreground`}>{fmt(-r.scaduto)}</td>
                   {serie(r.scaduto, (c) => r.perPeriodo.get(c) ?? 0).map((v, i) => (
@@ -2844,6 +2931,16 @@ export function FlussiCassaTab() {
           </div>
         )}
 
+        {rigaFornitoreAperta && (
+          <SchedaFornitore
+            riga={rigaFornitoreAperta}
+            fatture={fattureFornitoreAperto}
+            vocab={vocabFornitori}
+            busy={schedaBusy}
+            onSalva={salvaScheda}
+            onChiudi={() => setFornitoreAperto(null)}
+          />
+        )}
         {drill &&
           (() => {
             const chiave = drill.voce.trim().toLowerCase();

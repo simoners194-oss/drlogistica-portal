@@ -14,7 +14,7 @@
 // differenza (DKV: bonifico in XML, RID per Sabrina) si sana con l'override
 // manuale per fornitore, salvato sulla lista FlussiCassa (genere "fornitore",
 // Note = JSON compatto) insieme a referente, macrovoce e appalto.
-import { clienteGroupKey } from "./finanza-logic";
+import { TIPOLOGIE_MOVIMENTO, clienteGroupKey } from "./finanza-logic";
 import {
   incassatoRegistrato,
   isNotaCredito,
@@ -294,6 +294,59 @@ export function riepilogoFornitori(
     });
   }
   return out.sort((x, y) => y.aperto - x.aperto || x.nome.localeCompare(y.nome, "it"));
+}
+
+// --- Vocabolario della scheda fornitore (Simone 29/09, v1.87.0) ----------------
+// "La macrovoce deve contenere le categorie delle macrovoci dei movimenti;
+// appalti deve contenere le categorie dei movimenti/fatture degli appalti":
+// Macrovoce = le TIPOLOGIE dei movimenti (elenco base + quelle usate nelle
+// regole e nelle fatture); Appalto = le ALLOCAZIONI SECONDARIE / clienti di
+// riferimento usati nelle regole (movimenti e fatture) e nelle fatture.
+
+export interface VocabolarioFornitori {
+  macrovoci: string[];
+  appalti: string[];
+}
+
+/** "Chi se ne occupa in DR": le persone indicate da Simone il 29/09/2026. */
+export const REFERENTI_DR: readonly string[] = [
+  "Gabelli",
+  "Russo",
+  "Pratesi",
+  "Guidarelli",
+  "Marelli",
+  "Spera",
+  "Notaro",
+  "Carlone",
+];
+
+export function vocabolarioFornitori(src: {
+  regoleMov?: readonly { tipologia?: string; allocSecondaria?: string }[];
+  regoleFat?: readonly { tipologia?: string; allocSecondaria?: string; clienteRif?: string }[];
+  fatture?: readonly { tipologiaCosto?: string; allocSecondaria?: string; clienteRif?: string }[];
+  /** Valori già salvati sulle schede (restano scegliibili anche se fuori elenco). */
+  extraMacro?: readonly string[];
+  extraAppalti?: readonly string[];
+}): VocabolarioFornitori {
+  const uniq = (xs: (string | undefined | null)[]) =>
+    [...new Set(xs.map((x) => (x ?? "").trim()).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b, "it"),
+    );
+  return {
+    macrovoci: uniq([
+      ...TIPOLOGIE_MOVIMENTO,
+      ...(src.regoleMov ?? []).map((r) => r.tipologia),
+      ...(src.regoleFat ?? []).map((r) => r.tipologia),
+      ...(src.fatture ?? []).map((f) => f.tipologiaCosto),
+      ...(src.extraMacro ?? []),
+    ]),
+    appalti: uniq([
+      ...(src.regoleMov ?? []).map((r) => r.allocSecondaria),
+      ...(src.regoleFat ?? []).flatMap((r) => [r.allocSecondaria, r.clienteRif]),
+      ...(src.fatture ?? []).flatMap((f) => [f.allocSecondaria, f.clienteRif]),
+      ...(src.extraAppalti ?? []),
+    ]),
+  };
 }
 
 // --- Costi fissi nelle "Altre spese" (Simone 29/09, v1.85.0) --------------------

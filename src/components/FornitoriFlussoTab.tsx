@@ -20,21 +20,28 @@ import {
   type TerminePagamento,
 } from "@/lib/fatture-logic";
 import {
+  REFERENTI_DR,
   esclusaDaFlussi,
   mappaFornitori,
   riepilogoFornitori,
   serializeFornitoreInfo,
+  vocabolarioFornitori,
   type FornitoreInfo,
   type ModalitaPagamento,
   type RigaFornitore,
 } from "@/lib/flussi-logic";
+import { SelectVocab } from "@/components/SchedaFornitore";
 import {
   spGetFatture,
   spGetFlussiCassa,
+  spGetRegoleFatture,
+  spGetRegoleFinanza,
   spGetTerminiPagamento,
   spUpsertFlussoCassa,
 } from "@/lib/sharepoint.functions";
 import { csvData } from "@/lib/csv";
+import type { RegolaFinanza } from "@/lib/finanza-logic";
+import type { RegolaFattura } from "@/lib/fatture-logic";
 import type { FlussoCassaRiga, SpFattura } from "@/lib/sharepoint.server";
 
 function fmtImporto(n: number): string {
@@ -53,6 +60,10 @@ export function FornitoriFlussoTab() {
   const [fattureRic, setFattureRic] = useState<SpFattura[] | null>(null);
   const [termini, setTermini] = useState<TerminePagamento[]>([]);
   const [flussi, setFlussi] = useState<FlussoCassaRiga[] | null>(null);
+  // Regole di classificazione: da qui le voci delle tendine Macrovoce
+  // (tipologie dei movimenti) e Appalto (allocazioni secondarie).
+  const [regoleMov, setRegoleMov] = useState<RegolaFinanza[]>([]);
+  const [regoleFat, setRegoleFat] = useState<RegolaFattura[]>([]);
   const [errore, setErrore] = useState<string | null>(null);
   const [cerca, setCerca] = useState("");
   const [ordine, setOrdine] = useState<Ordine>("aperto");
@@ -77,6 +88,12 @@ export function FornitoriFlussoTab() {
     spGetTerminiPagamento()
       .then((l) => setTermini(l as TerminePagamento[]))
       .catch(() => setTermini([]));
+    spGetRegoleFinanza()
+      .then((l) => setRegoleMov(l as RegolaFinanza[]))
+      .catch(() => setRegoleMov([]));
+    spGetRegoleFatture()
+      .then((l) => setRegoleFat(l as RegolaFattura[]))
+      .catch(() => setRegoleFat([]));
     void ricaricaFlussi();
   }, []);
 
@@ -149,21 +166,20 @@ export function FornitoriFlussoTab() {
     [visibili],
   );
 
-  // Valori già usati (per i suggerimenti delle caselle Macrovoce/Appalto).
-  const vocabolario = useMemo(() => {
-    const macro = new Set<string>();
-    const appalti = new Set<string>();
-    const ref = new Set<string>();
-    for (const r of righe) {
-      if (r.macrovoce) macro.add(r.macrovoce);
-      if (r.macrovoceAuto) macro.add(r.macrovoceAuto);
-      if (r.appalto) appalti.add(r.appalto);
-      if (r.appaltoAuto) appalti.add(r.appaltoAuto);
-      if (r.referente) ref.add(r.referente);
-    }
-    const ord = (s: Set<string>) => [...s].sort((a, b) => a.localeCompare(b, "it"));
-    return { macro: ord(macro), appalti: ord(appalti), ref: ord(ref) };
-  }, [righe]);
+  // Tendine (Simone 29/09): Macrovoce = tipologie dei movimenti, Appalto =
+  // allocazioni secondarie / clienti di riferimento di regole e fatture;
+  // i valori già salvati sulle schede restano scegliibili.
+  const vocabolario = useMemo(
+    () =>
+      vocabolarioFornitori({
+        regoleMov,
+        regoleFat,
+        fatture: fattureRic ?? [],
+        extraMacro: righe.map((r) => r.macrovoce),
+        extraAppalti: righe.map((r) => r.appalto),
+      }),
+    [regoleMov, regoleFat, fattureRic, righe],
+  );
 
   const valore = (r: RigaFornitore, campo: CampoTesto) => drafts[r.chiave]?.[campo] ?? r[campo];
 
@@ -370,46 +386,38 @@ export function FornitoriFlussoTab() {
                       </select>
                     </td>
                     <td className="py-1 pr-3">
-                      <input
-                        list="for-ref"
+                      <SelectVocab
                         value={valore(r, "referente")}
+                        opzioni={REFERENTI_DR}
                         placeholder={t("for.refPh")}
                         disabled={salvando.has(r.chiave)}
-                        onChange={(e) => scrivi(r, "referente", e.target.value)}
+                        onSelect={(v) => void salva(r, { referente: v })}
+                        onTesto={(v) => scrivi(r, "referente", v)}
                         onBlur={() => alBlur(r)}
-                        onKeyDown={(e) =>
-                          e.key === "Enter" && (e.target as HTMLInputElement).blur()
-                        }
                         className={inputCls}
                       />
                     </td>
                     <td className="py-1 pr-3">
-                      <input
-                        list="for-macro"
+                      <SelectVocab
                         value={valore(r, "macrovoce")}
+                        opzioni={vocabolario.macrovoci}
                         placeholder={r.macrovoceAuto || t("for.macroPh")}
-                        title={r.macrovoceAuto}
                         disabled={salvando.has(r.chiave)}
-                        onChange={(e) => scrivi(r, "macrovoce", e.target.value)}
+                        onSelect={(v) => void salva(r, { macrovoce: v })}
+                        onTesto={(v) => scrivi(r, "macrovoce", v)}
                         onBlur={() => alBlur(r)}
-                        onKeyDown={(e) =>
-                          e.key === "Enter" && (e.target as HTMLInputElement).blur()
-                        }
                         className={inputCls}
                       />
                     </td>
                     <td className="py-1 pr-3">
-                      <input
-                        list="for-appalti"
+                      <SelectVocab
                         value={valore(r, "appalto")}
+                        opzioni={vocabolario.appalti}
                         placeholder={r.appaltoAuto || t("for.appaltoPh")}
-                        title={r.appaltoAuto}
                         disabled={salvando.has(r.chiave)}
-                        onChange={(e) => scrivi(r, "appalto", e.target.value)}
+                        onSelect={(v) => void salva(r, { appalto: v })}
+                        onTesto={(v) => scrivi(r, "appalto", v)}
                         onBlur={() => alBlur(r)}
-                        onKeyDown={(e) =>
-                          e.key === "Enter" && (e.target as HTMLInputElement).blur()
-                        }
                         className={inputCls}
                       />
                     </td>
@@ -463,21 +471,6 @@ export function FornitoriFlussoTab() {
                 </tfoot>
               )}
             </table>
-            <datalist id="for-ref">
-              {vocabolario.ref.map((v) => (
-                <option key={v} value={v} />
-              ))}
-            </datalist>
-            <datalist id="for-macro">
-              {vocabolario.macro.map((v) => (
-                <option key={v} value={v} />
-              ))}
-            </datalist>
-            <datalist id="for-appalti">
-              {vocabolario.appalti.map((v) => (
-                <option key={v} value={v} />
-              ))}
-            </datalist>
           </div>
         )}
         <p className="mt-3 text-[11px] text-muted-foreground">{t("for.nota")}</p>
