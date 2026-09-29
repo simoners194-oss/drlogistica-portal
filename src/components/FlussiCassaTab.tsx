@@ -909,12 +909,16 @@ export function FlussiCassaTab() {
   // mancano; mesi futuri = media dei due mesi pieni SENZA anomalie.
   const autoConsulenze = useMemo(() => {
     if (!movimenti?.length) return null;
+    // Fuori i pagamenti dei costi fissi (l'affitto Zekaj da 2.000 al mese
+    // è classificato Consulenze in banca: conta già tra i fissi delle
+    // Altre spese, qui contava due volte — 1.86.1).
     const base = movimenti
       .filter(
         (m) =>
           m.importo < 0 &&
           (m.tipologia ?? "").trim().toLowerCase() === TIP_CONSULENZE &&
-          !fatturata(m),
+          !fatturata(m) &&
+          !costiFissi.some((f) => matchFisso(f, m)),
       )
       .map(aMovimentoMedia);
     const analisi = analizzaMedia(base, oggiISO, overrideAnomalie);
@@ -939,7 +943,7 @@ export function FlussiCassaTab() {
       soglia: [...analisi.soglie.values()][0] ?? 0,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [movimenti, fornitoriArchivio, oggiISO, overrideAnomalie]);
+  }, [movimenti, fornitoriArchivio, oggiISO, overrideAnomalie, costiFissi]);
 
   const toggleAnomalia = async (x: MovimentoAnalizzato) => {
     setDrillBusy(true);

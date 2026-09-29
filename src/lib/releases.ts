@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.86.1",
+    date: "2026-09-29",
+    entries: [
+      {
+        title: "Consulenze: l'affitto Zekaj non conta due volte",
+        description:
+          "I pagamenti dei costi fissi (l'affitto Zekaj da 2.000 al mese è classificato Consulenze in banca) restano fuori dalla riga Consulenze: contano già tra i costi fissi delle Altre spese.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.86.0",
     date: "2026-09-29",
     entries: [
