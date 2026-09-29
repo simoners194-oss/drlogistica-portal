@@ -1315,42 +1315,36 @@ function mapDipendente(
   it: GraphListItem<Record<string, unknown>>,
   F: Record<string, string>,
 ): SpDipendente {
-      const f = it.fields ?? {};
-      const nome = String(f[F.Nome ?? ""] ?? "").trim();
-      const cognome = String(f[F.Cognome ?? ""] ?? "").trim();
-      const nomeCompleto = String(f[F.NomeCompleto ?? ""] ?? `${nome} ${cognome}`).trim();
-      const rawAttivo = F.Attivo ? f[F.Attivo] : undefined;
-      const attivo = rawAttivo === undefined ? true : Boolean(rawAttivo);
-      return {
-        id: String(it.id),
-        nome,
-        cognome,
-        nomeCompleto,
-        email: String(f[F.Email ?? ""] ?? "").trim(),
-        sede: normalizeSede((F.Sede ? f[F.Sede] : undefined) as SedeRaw),
-        attivo,
-        ruolo: String(f[F.Ruolo ?? ""] ?? "").trim(),
-        // Fail-open sulla visibilità; autorizza/operatore default false.
-        visibile: parseSpBool(F.Visibile ? f[F.Visibile] : undefined, true),
-        autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
-        operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
-        preposto: parseSpBool(F.Preposto ? f[F.Preposto] : undefined, false),
-        appalto: F.Appalto ? String(f[F.Appalto] ?? "").trim() : "",
-        oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
-        inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
-        giorniFerieAnnui: parseSpNumber(
-          F.GiorniFerieAnnui ? f[F.GiorniFerieAnnui] : undefined,
-          null,
-        ),
-        orePermessiAnnui: parseSpNumber(
-          F.OrePermessiAnnui ? f[F.OrePermessiAnnui] : undefined,
-          null,
-        ),
-        cf: String(f[F.CF ?? ""] ?? "")
-          .trim()
-          .toUpperCase(),
-        codice: normalizeCodice(F.Codice ? f[F.Codice] : ""),
-      };
+  const f = it.fields ?? {};
+  const nome = String(f[F.Nome ?? ""] ?? "").trim();
+  const cognome = String(f[F.Cognome ?? ""] ?? "").trim();
+  const nomeCompleto = String(f[F.NomeCompleto ?? ""] ?? `${nome} ${cognome}`).trim();
+  const rawAttivo = F.Attivo ? f[F.Attivo] : undefined;
+  const attivo = rawAttivo === undefined ? true : Boolean(rawAttivo);
+  return {
+    id: String(it.id),
+    nome,
+    cognome,
+    nomeCompleto,
+    email: String(f[F.Email ?? ""] ?? "").trim(),
+    sede: normalizeSede((F.Sede ? f[F.Sede] : undefined) as SedeRaw),
+    attivo,
+    ruolo: String(f[F.Ruolo ?? ""] ?? "").trim(),
+    // Fail-open sulla visibilità; autorizza/operatore default false.
+    visibile: parseSpBool(F.Visibile ? f[F.Visibile] : undefined, true),
+    autorizza: parseSpBool(F.Autorizza ? f[F.Autorizza] : undefined, false),
+    operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
+    preposto: parseSpBool(F.Preposto ? f[F.Preposto] : undefined, false),
+    appalto: F.Appalto ? String(f[F.Appalto] ?? "").trim() : "",
+    oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
+    inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
+    giorniFerieAnnui: parseSpNumber(F.GiorniFerieAnnui ? f[F.GiorniFerieAnnui] : undefined, null),
+    orePermessiAnnui: parseSpNumber(F.OrePermessiAnnui ? f[F.OrePermessiAnnui] : undefined, null),
+    cf: String(f[F.CF ?? ""] ?? "")
+      .trim()
+      .toUpperCase(),
+    codice: normalizeCodice(F.Codice ? f[F.Codice] : ""),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2299,7 +2293,8 @@ export async function fetchTimbratureDaISO(
 
   const soloId = soloDipendenteId && /^\d+$/.test(soloDipendenteId) ? soloDipendenteId : undefined;
   const filter = encodeURIComponent(
-    `fields/${dataOraField} ge '${fromISO}'` + (soloId ? ` and fields/${lookupId} eq ${soloId}` : ""),
+    `fields/${dataOraField} ge '${fromISO}'` +
+      (soloId ? ` and fields/${lookupId} eq ${soloId}` : ""),
   );
   // Solo le colonne davvero lette dalla mappatura: expand=fields nudo
   // trascina tutti i campi di sistema e il payload raddoppia/triplica (stesso
@@ -6418,8 +6413,11 @@ export interface FlussoCassaRiga {
    *  il nome del preset, Note la controparte, mese/meseFine la finestra.
    *  "girata" = regola "se entra fattura dal cliente X gira il P% al
    *  fornitore Y": Title = fornitore, Importo = percentuale, Note =
-   *  "cliente | termini oggetto (facoltativi, virgola)". */
-  genere: "voce" | "esclusione" | "preset" | "girata" | "asvoce";
+   *  "cliente | termini oggetto (facoltativi, virgola)".
+   *  "fornitore" (1.84.0) = scheda del fornitore nei Flussi: Title = nome
+   *  fornitore, Note = JSON compatto {m: modalità RID/RiBa/altro forzata,
+   *  r: referente DR, c: macrovoce, a: appalto}; una riga per fornitore. */
+  genere: "voce" | "esclusione" | "preset" | "girata" | "asvoce" | "fornitore";
   /** Voce: mese di competenza YYYY-MM. Esclusione/preset: da mese (opzionale). */
   mese?: string;
   /** Esclusione/preset: fino a mese YYYY-MM (opzionale). */
@@ -6461,7 +6459,9 @@ export async function fetchFlussiCassa(): Promise<FlussoCassaRiga[]> {
               ? "girata"
               : gen === "asvoce"
                 ? "asvoce"
-                : "voce") as "voce" | "esclusione" | "preset" | "girata" | "asvoce",
+                : gen === "fornitore"
+                  ? "fornitore"
+                  : "voce") as FlussoCassaRiga["genere"],
         mese: /^\d{4}-\d{2}$/.test(mese) ? mese : undefined,
         meseFine: /^\d{4}-\d{2}$/.test(meseFine) ? meseFine : undefined,
         importo: F.Importo ? Number(f[F.Importo] ?? 0) || 0 : 0,
@@ -6489,12 +6489,18 @@ export async function upsertFlussoCassa(input: Omit<FlussoCassaRiga, "id">): Pro
   if (F.MeseFine) fields[F.MeseFine] = input.meseFine ?? "";
   fields[F.Importo] = input.importo;
   if (F.Note) fields[F.Note] = input.note ?? "";
-  if ((input.genere === "voce" && input.mese) || input.genere === "asvoce") {
+  // Upsert per nome: voci (per mese), spunte Altre spese e schede fornitore
+  // (una riga per fornitore: la scheda si riscrive, non si duplica).
+  if (
+    (input.genere === "voce" && input.mese) ||
+    input.genere === "asvoce" ||
+    input.genere === "fornitore"
+  ) {
     const esistenti = await fetchFlussiCassa();
     const gia = esistenti.find(
       (x) =>
         x.genere === input.genere &&
-        (input.genere === "asvoce" || x.mese === input.mese) &&
+        (input.genere !== "voce" || x.mese === input.mese) &&
         x.nome.trim().toLowerCase() === input.nome.trim().toLowerCase(),
     );
     if (gia) {
@@ -7099,7 +7105,9 @@ export async function fetchTerminiPagamento(): Promise<TerminePagamento[]> {
               : ("Emessa" as const),
           email: F.Email ? String(f[F.Email] ?? "").trim() || undefined : undefined,
           oggetto: F.Oggetto ? String(f[F.Oggetto] ?? "").trim() || undefined : undefined,
-          decorrenzaMese: F.DecorrenzaMese ? boolField(f[F.DecorrenzaMese]) || undefined : undefined,
+          decorrenzaMese: F.DecorrenzaMese
+            ? boolField(f[F.DecorrenzaMese]) || undefined
+            : undefined,
           competenzaPrecedente: F.CompetenzaPrecedente
             ? boolField(f[F.CompetenzaPrecedente]) || undefined
             : undefined,

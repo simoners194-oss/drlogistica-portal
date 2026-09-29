@@ -7,9 +7,9 @@
 // il DELTA SALDO. Le uscite viaggiano col segno meno: la griglia si incolla
 // in Excel e si somma da sola. Esclusioni per controparte (anche a finestra
 // di mesi) per tenere fuori chi non paga e le casse esterne.
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Trash2 } from "lucide-react";
+import { FlaskConical, Loader2, Trash2 } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import {
   computeStatoFattura,
@@ -21,6 +21,13 @@ import {
   type TerminePagamento,
 } from "@/lib/fatture-logic";
 import { clienteGroupKey } from "@/lib/finanza-logic";
+import {
+  MODALITA_ORDINE,
+  esclusaDaFlussi,
+  mappaFornitori,
+  modalitaFattura,
+  type ModalitaPagamento,
+} from "@/lib/flussi-logic";
 import { esportaCsvFile } from "@/lib/csv";
 import {
   spGetFatture,
@@ -34,10 +41,12 @@ import {
 import { spStipendiFlussi, spStipendiGet } from "@/lib/stipendi.functions";
 import { chiaveNome, type StipendiDb } from "@/lib/stipendi-logic";
 import {
+  chiaveScadenzaFile,
   parseScadenzario,
   totaliFiscaliPerMese,
   type FiscaleDb,
   type ParseScadenzarioResult,
+  type ScadenzaFiscale,
 } from "@/lib/fiscale-logic";
 import { spFiscaleGet, spFiscaleSalva } from "@/lib/fiscale.functions";
 import type { SpFattura, SpMovimento, Prefattura, FlussoCassaRiga } from "@/lib/sharepoint.server";
@@ -140,6 +149,15 @@ export function FlussiCassaTab() {
   const [giBusy, setGiBusy] = useState(false);
   // Form nuova voce manuale.
   const [nuovaVoce, setNuovaVoce] = useState("");
+  // SIMULAZIONE "se non pago" (Simone 29/09, v1.84.0): tre leve combinabili
+  // — fatture scelte una a una, tutte quelle senza RID/RiBa, scadenze
+  // fiscali scelte. Solo in memoria: chiudendo la pagina sparisce.
+  const [showSim, setShowSim] = useState(false);
+  const [simPanel, setSimPanel] = useState<"fatture" | "fiscali" | null>(null);
+  const [simFatture, setSimFatture] = useState<Set<string>>(new Set());
+  const [simSenzaMod, setSimSenzaMod] = useState(false);
+  const [simFiscali, setSimFiscali] = useState<Set<string>>(new Set());
+  const [simCerca, setSimCerca] = useState("");
 
   const ricaricaFlussi = () =>
     spGetFlussiCassa()
@@ -230,6 +248,14 @@ export function FlussiCassaTab() {
     () => (flussi ?? []).filter((x) => x.genere === "esclusione"),
     [flussi],
   );
+  // Schede fornitore (righe genere "fornitore"): override della modalità
+  // di pagamento (RID/RiBa/nessuna) e dati descrittivi — si modificano
+  // nella tab Fornitori. Senza override vale l'XML della singola fattura.
+  const infoFornitori = useMemo(() => mappaFornitori(flussi ?? []), [flussi]);
+  const modDi = (f: SpFattura): ModalitaPagamento => modalitaFattura(f, infoFornitori);
+  const simAttiva = simFatture.size > 0 || simSenzaMod || simFiscali.size > 0;
+  const nonPagata = (x: { f: SpFattura }) =>
+    simFatture.has(x.f.nomeFile) || (simSenzaMod && modDi(x.f) === "altro");
 
   // --- Colonne periodo -------------------------------------------------------
   const periodi = useMemo(() => {
@@ -283,15 +309,16 @@ export function FlussiCassaTab() {
     modo === "mese" ? scadenzaISO.slice(0, 7) : chiaveSettimana(scadenzaISO);
 
   // --- Esclusioni ------------------------------------------------------------
-  const esclusa = (nomeControparte: string, meseScadenza: string): boolean => {
-    const chiave = clienteGroupKey(nomeControparte) || nomeControparte.toLowerCase();
-    return esclusioni.some((e) => {
-      const token = clienteGroupKey(e.nome) || e.nome.trim().toLowerCase();
-      if (!token || !chiave.includes(token)) return false;
-      if (e.mese && meseScadenza < e.mese) return false;
-      if (e.meseFine && meseScadenza > e.meseFine) return false;
-      return true;
-    });
+  const esclusa = (nomeControparte: string, meseScadenza: string): boolean =>
+    esclusaDaFlussi(esclusioni, nomeControparte, meseScadenza);
+
+  // Fattura "nel flusso": aperta, con scadenza, controparte non esclusa —
+  // a prescindere dai filtri dal/fino al (serve alla checklist della
+  // simulazione e ai totali del banner).
+  const inFlusso = (x: (typeof attive)[number]): boolean => {
+    if (residuoAperto(x) <= 1) return false;
+    if (!x.s.scadenza) return false;
+    return !esclusa(x.f.cliente, x.s.scadenza.slice(0, 7));
   };
 
   // --- Somme per controparte -------------------------------------------------
@@ -300,11 +327,35 @@ export function FlussiCassaTab() {
     scaduto: number;
     perPeriodo: Map<string, number>;
     totale: number;
+    /** Solo uscite: modalità di pagamento del gruppo (RiBa / RID / altro). */
+    mod?: ModalitaPagamento;
   };
+  type Somma = { righe: RigaCp[]; tot: RigaCp; gruppi: Record<ModalitaPagamento, RigaCp> };
+  const nuovaRiga = (nome: string, mod?: ModalitaPagamento): RigaCp => ({
+    nome,
+    scaduto: 0,
+    perPeriodo: new Map(),
+    totale: 0,
+    mod,
+  });
+  const gruppiVuoti = (): Record<ModalitaPagamento, RigaCp> => ({
+    riba: nuovaRiga(""),
+    rid: nuovaRiga(""),
+    altro: nuovaRiga(""),
+  });
+  const ordMod = (m?: ModalitaPagamento) => (m ? MODALITA_ORDINE.indexOf(m) : 0);
   const chiaviPeriodo = useMemo(() => new Set(periodi.map((p) => p.chiave)), [periodi]);
-  const somma = (righe: typeof attive): { righe: RigaCp[]; tot: RigaCp } => {
+  // USCITE DIVISE PER MODALITÀ (Simone 29/09): con `conModalita` ogni riga
+  // fornitore sta nel gruppo della modalità della SUA fattura (RiBa, RID o
+  // nessuna delle due) — un fornitore con fatture miste compare in più
+  // gruppi. Con `simula` le fatture "non pagate" della simulazione spariscono.
+  const somma = (
+    righe: typeof attive,
+    opts: { conModalita?: boolean; simula?: boolean } = {},
+  ): Somma => {
     const per = new Map<string, RigaCp>();
-    const tot: RigaCp = { nome: "", scaduto: 0, perPeriodo: new Map(), totale: 0 };
+    const tot = nuovaRiga("");
+    const gruppi = gruppiVuoti();
     for (const x of righe) {
       const residuo = residuoAperto(x);
       if (residuo <= 1) continue;
@@ -317,11 +368,15 @@ export function FlussiCassaTab() {
       if (esclusa(x.f.cliente, scad.slice(0, 7))) continue;
       if (/^\d{4}-\d{2}-\d{2}$/.test(daData) && !x.s.inRitardo && scad < daData) continue;
       if (/^\d{4}-\d{2}-\d{2}$/.test(finoA) && scad > finoA) continue;
-      const k = clienteGroupKey(x.f.cliente) || x.f.cliente;
-      const r = per.get(k) ?? { nome: x.f.cliente, scaduto: 0, perPeriodo: new Map(), totale: 0 };
+      if (opts.simula && nonPagata(x)) continue;
+      const mod = opts.conModalita ? modDi(x.f) : undefined;
+      const k = (mod ? `${mod}|` : "") + (clienteGroupKey(x.f.cliente) || x.f.cliente);
+      const r = per.get(k) ?? nuovaRiga(x.f.cliente, mod);
+      const g = mod ? gruppi[mod] : null;
       if (x.s.inRitardo) {
         r.scaduto += residuo;
         tot.scaduto += residuo;
+        if (g) g.scaduto += residuo;
       } else {
         const kp = chiaveDi(scad);
         if (!chiaviPeriodo.has(kp)) continue;
@@ -329,20 +384,37 @@ export function FlussiCassaTab() {
         r.totale += residuo;
         tot.perPeriodo.set(kp, (tot.perPeriodo.get(kp) ?? 0) + residuo);
         tot.totale += residuo;
+        if (g) {
+          g.perPeriodo.set(kp, (g.perPeriodo.get(kp) ?? 0) + residuo);
+          g.totale += residuo;
+        }
       }
       per.set(k, r);
     }
     return {
       righe: [...per.values()]
         .filter((r) => r.totale > 0 || r.scaduto > 0)
-        .sort((a, b) => b.totale + b.scaduto - (a.totale + a.scaduto)),
+        .sort(
+          (a, b) => ordMod(a.mod) - ordMod(b.mod) || b.totale + b.scaduto - (a.totale + a.scaduto),
+        ),
       tot,
+      gruppi,
     };
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const entrate = useMemo(() => somma(attive), [attive, periodi, esclusioni, daData, finoA]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const uscite = useMemo(() => somma(passive), [passive, periodi, esclusioni, daData, finoA]);
+  const uscite = useMemo(
+    () => somma(passive, { conModalita: true, simula: true }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [passive, periodi, esclusioni, daData, finoA, infoFornitori, simFatture, simSenzaMod],
+  );
+  // Le uscite SENZA simulazione: per il confronto nel banner e nella riga
+  // "Delta saldo senza simulazione" (stesso oggetto quando non serve).
+  const usciteReali = useMemo(
+    () => (simAttiva ? somma(passive, { conModalita: true }) : uscite),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [passive, periodi, esclusioni, daData, finoA, infoFornitori, simAttiva, uscite],
+  );
 
   // --- Tabella "solo fatturazioni" (richiesta Simone 14/09) ------------------
   // Come sopra ma a FATTURATO: ogni fattura pesa per il suo TOTALE (al netto
@@ -356,29 +428,32 @@ export function FlussiCassaTab() {
   const sommaFatturato = (
     righe: typeof attive,
     tutte: SpFattura[],
-  ): { righe: RigaCp[]; tot: RigaCp } => {
+    opts: { conModalita?: boolean; simula?: boolean } = {},
+  ): Somma => {
     const nc = collegaNoteCredito(tutte, fattureEscluse(tutte));
     const per = new Map<string, RigaCp>();
-    const tot: RigaCp = { nome: "", scaduto: 0, perPeriodo: new Map(), totale: 0 };
+    const tot = nuovaRiga("");
+    const gruppi = gruppiVuoti();
     for (const x of righe) {
       if (isNotaCredito(x.f.tipoDocumento)) continue;
       if (!x.s.scadenza) continue;
       const scad = x.s.scadenza.slice(0, 10);
       if (esclusa(x.f.cliente, scad.slice(0, 7))) continue;
       if (/^\d{4}-\d{2}-\d{2}$/.test(finoA) && scad > finoA) continue;
-      const k = clienteGroupKey(x.f.cliente) || x.f.cliente;
-      const r = per.get(k) ?? {
-        nome: x.f.cliente,
-        scaduto: 0,
-        perPeriodo: new Map(),
-        totale: 0,
-      };
+      // Simulazione: una fattura "non pagata" sparisce anche qui (aperta o
+      // no, il criterio è la scelta fatta nel pannello).
+      if (opts.simula && nonPagata(x)) continue;
+      const mod = opts.conModalita ? modDi(x.f) : undefined;
+      const k = (mod ? `${mod}|` : "") + (clienteGroupKey(x.f.cliente) || x.f.cliente);
+      const r = per.get(k) ?? nuovaRiga(x.f.cliente, mod);
+      const g = mod ? gruppi[mod] : null;
       if (x.s.inRitardo) {
         // IDENTICO alla tabella sopra: il punto di partenza è lo stato reale.
         const residuo = residuoAperto(x);
         if (residuo <= 1) continue;
         r.scaduto += residuo;
         tot.scaduto += residuo;
+        if (g) g.scaduto += residuo;
       } else {
         if (/^\d{4}-\d{2}-\d{2}$/.test(daData) && scad < daData) continue;
         const kp = chiaveDi(scad);
@@ -389,14 +464,21 @@ export function FlussiCassaTab() {
         r.totale += importo;
         tot.perPeriodo.set(kp, (tot.perPeriodo.get(kp) ?? 0) + importo);
         tot.totale += importo;
+        if (g) {
+          g.perPeriodo.set(kp, (g.perPeriodo.get(kp) ?? 0) + importo);
+          g.totale += importo;
+        }
       }
       per.set(k, r);
     }
     return {
       righe: [...per.values()]
         .filter((r) => r.totale > 0.005 || r.scaduto > 0.005)
-        .sort((a, b) => b.totale + b.scaduto - (a.totale + a.scaduto)),
+        .sort(
+          (a, b) => ordMod(a.mod) - ordMod(b.mod) || b.totale + b.scaduto - (a.totale + a.scaduto),
+        ),
       tot,
+      gruppi,
     };
   };
   const entrateFat = useMemo(
@@ -405,9 +487,25 @@ export function FlussiCassaTab() {
     [attive, fattureEm, periodi, esclusioni, daData, finoA],
   );
   const usciteFat = useMemo(
-    () => sommaFatturato(passive, fattureRic ?? []),
+    () => sommaFatturato(passive, fattureRic ?? [], { conModalita: true, simula: true }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [passive, fattureRic, periodi, esclusioni, daData, finoA],
+    [
+      passive,
+      fattureRic,
+      periodi,
+      esclusioni,
+      daData,
+      finoA,
+      infoFornitori,
+      simFatture,
+      simSenzaMod,
+    ],
+  );
+  const usciteFatReali = useMemo(
+    () =>
+      simAttiva ? sommaFatturato(passive, fattureRic ?? [], { conModalita: true }) : usciteFat,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [passive, fattureRic, periodi, esclusioni, daData, finoA, infoFornitori, simAttiva, usciteFat],
   );
 
   // GIRATE (spec Simone 12/09, v1.62.0): regole "se entra una fattura dal
@@ -541,6 +639,11 @@ export function FlussiCassaTab() {
     uscite.tot.scaduto -
     girateScadutoTot -
     (modo === "mese" ? stipendiScaduto.reale : 0);
+  const saldoScadutoReale =
+    entrate.tot.scaduto -
+    usciteReali.tot.scaduto -
+    girateScadutoTot -
+    (modo === "mese" ? stipendiScaduto.reale : 0);
 
   // --- Prefatture (stessa copertura della Previsione) ------------------------
   const prefPer = useMemo(() => {
@@ -656,13 +759,79 @@ export function FlussiCassaTab() {
 
   // Totali dello scadenziario fiscale per mese (scadenze NON pagate; le già
   // scadute si spostano sul mese corrente perché sono ancora da pagare).
+  // La simulazione toglie le scadenze scelte come "non pagate"; i totali
+  // reali restano per il confronto.
+  const chiaveFisc = (s: ScadenzaFiscale) => s.id ?? chiaveScadenzaFile(s);
+  const scadenzeFiscali = useMemo(
+    () => (fiscale?.scadenze ?? []).filter((s) => !simFiscali.has(chiaveFisc(s))),
+    [fiscale, simFiscali],
+  );
   const totFiscali = useMemo(
+    () =>
+      scadenzeFiscali.length > 0
+        ? totaliFiscaliPerMese(scadenzeFiscali, oggiISO.slice(0, 7))
+        : null,
+    [scadenzeFiscali, oggiISO],
+  );
+  const totFiscaliReali = useMemo(
     () =>
       fiscale && fiscale.scadenze.length > 0
         ? totaliFiscaliPerMese(fiscale.scadenze, oggiISO.slice(0, 7))
         : null,
     [fiscale, oggiISO],
   );
+  // Scadenze fiscali simulabili: le non pagate, finanziamenti esclusi (quelli
+  // non stanno nelle voci fiscali), in ordine di data.
+  const fiscaliSimulabili = useMemo(
+    () =>
+      (fiscale?.scadenze ?? [])
+        .filter((s) => !s.pagato && s.categoria !== "finanziamento")
+        .sort((a, b) => a.dataPagamento.localeCompare(b.dataPagamento)),
+    [fiscale],
+  );
+  // Fatture passive nel flusso, per la checklist della simulazione.
+  const fattureSimulabili = useMemo(
+    () =>
+      passive
+        .filter(inFlusso)
+        .map((x) => ({
+          x,
+          mod: modDi(x.f),
+          residuo: residuoAperto(x),
+          scad: x.s.scadenza.slice(0, 10),
+        }))
+        .sort(
+          (a, b) =>
+            a.x.f.cliente.localeCompare(b.x.f.cliente, "it") || a.scad.localeCompare(b.scad),
+        ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [passive, esclusioni, infoFornitori],
+  );
+  // Cosa toglie la simulazione, per il banner.
+  const simEscluse = useMemo(() => {
+    let nFatture = 0;
+    let importoFatture = 0;
+    if (simAttiva)
+      for (const r of fattureSimulabili)
+        if (nonPagata(r.x)) {
+          nFatture++;
+          importoFatture += r.residuo;
+        }
+    let nFiscali = 0;
+    let importoFiscali = 0;
+    for (const s of fiscaliSimulabili)
+      if (simFiscali.has(chiaveFisc(s))) {
+        nFiscali++;
+        importoFiscali += s.importo;
+      }
+    return { nFatture, importoFatture, nFiscali, importoFiscali };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fattureSimulabili, fiscaliSimulabili, simAttiva, simFatture, simSenzaMod, simFiscali]);
+  const azzeraSim = () => {
+    setSimFatture(new Set());
+    setSimSenzaMod(false);
+    setSimFiscali(new Set());
+  };
 
   /** Valore effettivo di una voce nel mese: manuale se c'e', altrimenti gli
    *  automatici — Altre spese dalla media dei costi generali non fatturati,
@@ -671,17 +840,20 @@ export function FlussiCassaTab() {
     nome: string,
     mese: string,
     fatturato = false,
+    reale = false,
   ): { importo: number; auto: boolean } | null => {
     const man = vocePer(nome, mese);
     if (man) return { importo: man.importo, auto: false };
     // Voci fiscali dallo scadenziario di Sabrina (importi ESATTI, non stime:
-    // il "≈" segnala solo che arrivano in automatico dal file).
-    const chiaveFisc = nome.trim().toLowerCase();
-    if (totFiscali && mese >= oggiISO.slice(0, 7)) {
-      const tot = totFiscali.get(mese);
-      if (chiaveFisc === "costo fiscale rate" && tot && tot.rate > 0)
+    // il "≈" segnala solo che arrivano in automatico dal file). `reale` =
+    // senza simulazione (per la riga di confronto).
+    const nomeVoce = nome.trim().toLowerCase();
+    const fiscaliMese = reale ? totFiscaliReali : totFiscali;
+    if (fiscaliMese && mese >= oggiISO.slice(0, 7)) {
+      const tot = fiscaliMese.get(mese);
+      if (nomeVoce === "costo fiscale rate" && tot && tot.rate > 0)
         return { importo: -tot.rate, auto: true };
-      if (chiaveFisc === "costo fiscale corrente" && tot && tot.corrente > 0)
+      if (nomeVoce === "costo fiscale corrente" && tot && tot.corrente > 0)
         return { importo: -tot.corrente, auto: true };
     }
     if (
@@ -961,14 +1133,17 @@ export function FlussiCassaTab() {
   };
 
   // --- Saldo -----------------------------------------------------------------
-  const saldoDi = (chiave: string, mese: string): number => {
+  // `reale` = senza simulazione (riga di confronto quando la simulazione è
+  // accesa): uscite piene e voci fiscali piene.
+  const saldoDi = (chiave: string, mese: string, reale = false): number => {
+    const u = reale ? usciteReali : uscite;
     let v =
       (entrate.tot.perPeriodo.get(chiave) ?? 0) -
-      (uscite.tot.perPeriodo.get(chiave) ?? 0) -
+      (u.tot.perPeriodo.get(chiave) ?? 0) -
       girataQuote.reduce((s, q) => s + (q.perPeriodo.get(chiave) ?? 0), 0);
     if (modo === "mese") {
       v += (prefPer.att.get(mese) ?? 0) - (prefPer.pas.get(mese) ?? 0);
-      for (const nome of nomiVoci) v += valoreVoce(nome, mese)?.importo ?? 0;
+      for (const nome of nomiVoci) v += valoreVoce(nome, mese, false, reale)?.importo ?? 0;
     }
     return Math.round(v * 100) / 100;
   };
@@ -977,14 +1152,15 @@ export function FlussiCassaTab() {
   // STESSA formula del saldo sopra (girate, prefatture e voci comprese),
   // cambiano solo entrate/uscite (a fatturato pieno). Lo Scaduto coincide
   // con quello sopra per costruzione.
-  const saldoFatDi = (chiave: string, mese: string): number => {
+  const saldoFatDi = (chiave: string, mese: string, reale = false): number => {
+    const u = reale ? usciteFatReali : usciteFat;
     let v =
       (entrateFat.tot.perPeriodo.get(chiave) ?? 0) -
-      (usciteFat.tot.perPeriodo.get(chiave) ?? 0) -
+      (u.tot.perPeriodo.get(chiave) ?? 0) -
       girataQuote.reduce((s, q) => s + (q.perPeriodo.get(chiave) ?? 0), 0);
     if (modo === "mese") {
       v += (prefPer.att.get(mese) ?? 0) - (prefPer.pas.get(mese) ?? 0);
-      for (const nome of nomiVoci) v += valoreVoce(nome, mese, true)?.importo ?? 0;
+      for (const nome of nomiVoci) v += valoreVoce(nome, mese, true, reale)?.importo ?? 0;
     }
     return Math.round(v * 100) / 100;
   };
@@ -993,6 +1169,21 @@ export function FlussiCassaTab() {
     usciteFat.tot.scaduto -
     girateScadutoTot -
     (modo === "mese" ? stipendiScaduto.fatturato : 0);
+  const saldoFatScadutoReale =
+    entrateFat.tot.scaduto -
+    usciteFatReali.tot.scaduto -
+    girateScadutoTot -
+    (modo === "mese" ? stipendiScaduto.fatturato : 0);
+  const labelMod: Record<ModalitaPagamento, string> = {
+    riba: t("fc.modRiba"),
+    rid: t("fc.modRid"),
+    altro: t("fc.modAltro"),
+  };
+  const badgeMod: Record<ModalitaPagamento, string> = {
+    riba: "RiBa",
+    rid: "RID",
+    altro: "—",
+  };
 
   const fmt = (v: number) => (Math.abs(v) >= 0.005 ? `${fmtImporto(v)}` : "—");
 
@@ -1018,6 +1209,38 @@ export function FlussiCassaTab() {
     ];
     const num = (v: number) => (Math.abs(v) >= 0.005 ? v.toFixed(2).replace(".", ",") : "");
     const righe: string[][] = [];
+    if (simAttiva)
+      righe.push([
+        `${t("fc.simAttiva")} ${simEscluse.nFatture} ${t("fc.simFattureN")} (${num(simEscluse.importoFatture)}) · ${simEscluse.nFiscali} ${t("fc.simFiscaliN")} (${num(simEscluse.importoFiscali)})`,
+      ]);
+    // Uscite: totale, poi un blocco per modalità (RiBa / RID / senza) con i
+    // fornitori del blocco sotto.
+    const pushUscite = (u: Somma) => {
+      righe.push([
+        t("fc.uscite"),
+        num(-u.tot.scaduto),
+        ...periodi.map((p) => num(-(u.tot.perPeriodo.get(p.chiave) ?? 0))),
+        num(-(u.tot.scaduto + u.tot.totale)),
+      ]);
+      for (const mod of MODALITA_ORDINE) {
+        const g = u.gruppi[mod];
+        if (g.scaduto + g.totale <= 0.005) continue;
+        righe.push([
+          `  ${labelMod[mod]}`,
+          num(-g.scaduto),
+          ...periodi.map((p) => num(-(g.perPeriodo.get(p.chiave) ?? 0))),
+          num(-(g.scaduto + g.totale)),
+        ]);
+        for (const r of u.righe)
+          if (r.mod === mod)
+            righe.push([
+              `    ${r.nome}`,
+              num(-r.scaduto),
+              ...periodi.map((p) => num(-(r.perPeriodo.get(p.chiave) ?? 0))),
+              num(-(r.scaduto + r.totale)),
+            ]);
+      }
+    };
     righe.push([
       t("fc.entrate"),
       num(entrate.tot.scaduto),
@@ -1031,19 +1254,7 @@ export function FlussiCassaTab() {
         ...periodi.map((p) => num(r.perPeriodo.get(p.chiave) ?? 0)),
         num(r.scaduto + r.totale),
       ]);
-    righe.push([
-      t("fc.uscite"),
-      num(-uscite.tot.scaduto),
-      ...periodi.map((p) => num(-(uscite.tot.perPeriodo.get(p.chiave) ?? 0))),
-      num(-(uscite.tot.scaduto + uscite.tot.totale)),
-    ]);
-    for (const r of uscite.righe)
-      righe.push([
-        `  ${r.nome}`,
-        num(-r.scaduto),
-        ...periodi.map((p) => num(-(r.perPeriodo.get(p.chiave) ?? 0))),
-        num(-(r.scaduto + r.totale)),
-      ]);
+    pushUscite(uscite);
     for (const q of girataQuote)
       if (girataTotaleDi(q) > 0.005)
         righe.push([
@@ -1085,6 +1296,13 @@ export function FlussiCassaTab() {
       ...periodi.map((p) => num(saldoDi(p.chiave, p.mese))),
       num(periodi.reduce((s, p) => s + saldoDi(p.chiave, p.mese), 0)),
     ]);
+    if (simAttiva)
+      righe.push([
+        t("fc.simSaldoReale"),
+        num(saldoScadutoReale),
+        ...periodi.map((p) => num(saldoDi(p.chiave, p.mese, true))),
+        num(periodi.reduce((s, p) => s + saldoDi(p.chiave, p.mese, true), 0)),
+      ]);
     // Sezione "solo fatturazioni" (fatturato pieno, incassate/pagate comprese).
     righe.push([]);
     righe.push([t("fc.fatTitolo")]);
@@ -1101,19 +1319,7 @@ export function FlussiCassaTab() {
         ...periodi.map((p) => num(r.perPeriodo.get(p.chiave) ?? 0)),
         num(r.scaduto + r.totale),
       ]);
-    righe.push([
-      t("fc.uscite"),
-      num(-usciteFat.tot.scaduto),
-      ...periodi.map((p) => num(-(usciteFat.tot.perPeriodo.get(p.chiave) ?? 0))),
-      num(-(usciteFat.tot.scaduto + usciteFat.tot.totale)),
-    ]);
-    for (const r of usciteFat.righe)
-      righe.push([
-        `  ${r.nome}`,
-        num(-r.scaduto),
-        ...periodi.map((p) => num(-(r.perPeriodo.get(p.chiave) ?? 0))),
-        num(-(r.scaduto + r.totale)),
-      ]);
+    pushUscite(usciteFat);
     // Girate, prefatture e voci: identiche alla sezione sopra (fanno parte
     // anche del saldo "solo fatturazioni").
     for (const q of girataQuote)
@@ -1157,8 +1363,33 @@ export function FlussiCassaTab() {
       ...periodi.map((p) => num(saldoFatDi(p.chiave, p.mese))),
       num(periodi.reduce((s, p) => s + saldoFatDi(p.chiave, p.mese), 0)),
     ]);
-    esportaCsvFile(`flussi-di-cassa-${modo}`, testata, righe);
+    if (simAttiva)
+      righe.push([
+        t("fc.simSaldoReale"),
+        num(saldoFatScadutoReale),
+        ...periodi.map((p) => num(saldoFatDi(p.chiave, p.mese, true))),
+        num(periodi.reduce((s, p) => s + saldoFatDi(p.chiave, p.mese, true), 0)),
+      ]);
+    esportaCsvFile(`flussi-di-cassa-${modo}${simAttiva ? "-simulazione" : ""}`, testata, righe);
   };
+
+  // Checklist fatture della simulazione: filtro di ricerca, tetto a 400.
+  const visibiliSim = useMemo(() => {
+    const cerca = simCerca.trim().toLowerCase();
+    const l = cerca
+      ? fattureSimulabili.filter((r) =>
+          `${r.x.f.cliente} ${r.x.f.numero}`.toLowerCase().includes(cerca),
+        )
+      : fattureSimulabili;
+    return { righe: l.slice(0, 400), oltre: Math.max(0, l.length - 400) };
+  }, [fattureSimulabili, simCerca]);
+  const toggleIn = (set: (f: (s: Set<string>) => Set<string>) => void, k: string) =>
+    set((s) => {
+      const ns = new Set(s);
+      if (ns.has(k)) ns.delete(k);
+      else ns.add(k);
+      return ns;
+    });
 
   const loading = fattureEm == null || fattureRic == null || flussi == null;
 
@@ -1239,6 +1470,67 @@ export function FlussiCassaTab() {
   const thCls = "py-1 pr-3 text-right whitespace-nowrap";
   const tdN = "py-1 pr-3 text-right tabular-nums whitespace-nowrap";
 
+  // Uscite divise per modalità: riga di gruppo (RiBa / RID / senza) e, col
+  // dettaglio acceso, i fornitori del gruppo sotto. Vale per entrambe le
+  // tabelle (`prefix` tiene distinte le chiavi React).
+  const righeUscite = (u: Somma, prefix: string) =>
+    MODALITA_ORDINE.map((mod) => {
+      const g = u.gruppi[mod];
+      if (g.scaduto + g.totale <= 0.005) return null;
+      return (
+        <Fragment key={`${prefix}g:${mod}`}>
+          <tr className="border-t border-border/40 text-[12px] font-medium">
+            <td className="py-0.5 pl-3 pr-3 text-foreground/80" title={t("fc.modTip")}>
+              {labelMod[mod]}
+            </td>
+            <td className={`${tdN} text-status-absent`}>{fmt(-g.scaduto)}</td>
+            {serie(g.scaduto, (c) => g.perPeriodo.get(c) ?? 0).map((v, i) => (
+              <td key={periodi[i].chiave} className={tdN}>
+                {fmt(-v)}
+              </td>
+            ))}
+            <td className={tdN}>{fmt(-(g.scaduto + g.totale))}</td>
+          </tr>
+          {dettaglio &&
+            u.righe
+              .filter((r) => r.mod === mod)
+              .map((r) => (
+                <tr key={`${prefix}u:${mod}:${r.nome}`} className="border-t border-border/30">
+                  <td className="max-w-56 truncate py-0.5 pl-6 pr-3 text-muted-foreground">
+                    {r.nome}
+                  </td>
+                  <td className={`${tdN} text-muted-foreground`}>{fmt(-r.scaduto)}</td>
+                  {serie(r.scaduto, (c) => r.perPeriodo.get(c) ?? 0).map((v, i) => (
+                    <td key={periodi[i].chiave} className={`${tdN} text-muted-foreground`}>
+                      {fmt(-v)}
+                    </td>
+                  ))}
+                  <td className={`${tdN} text-muted-foreground`}>{fmt(-(r.scaduto + r.totale))}</td>
+                </tr>
+              ))}
+        </Fragment>
+      );
+    });
+  // Riga "Delta saldo senza simulazione": compare sotto il saldo quando la
+  // simulazione è accesa, per vedere di quanto cambia mese per mese.
+  const rigaConfronto = (scad: number, get: (c: string, m: string) => number) =>
+    simAttiva ? (
+      <tr className="border-t border-border/40 text-[12px] italic text-muted-foreground">
+        <td className="py-1 pr-3">{t("fc.simSaldoReale")}</td>
+        <td className={tdN}>{fmt(scad)}</td>
+        {serie(scad, get).map((v, i) => (
+          <td key={periodi[i].chiave} className={tdN}>
+            {fmt(v)}
+          </td>
+        ))}
+        <td className={tdN}>{fmt(periodi.reduce((s, p) => s + get(p.chiave, p.mese), 0))}</td>
+      </tr>
+    ) : null;
+  const dataIt = (iso: string) =>
+    /^\d{4}-\d{2}-\d{2}/.test(iso)
+      ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
+      : "";
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
@@ -1309,6 +1601,16 @@ export function FlussiCassaTab() {
             className={`rounded-lg border px-3 py-1 ${showFisc ? "border-primary" : "border-border"} hover:bg-muted`}
           >
             {t("fc.fiscaleBtn")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSim((v) => !v)}
+            title={t("fc.simTip")}
+            className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1 ${simAttiva ? "border-amber-400 bg-amber-50 text-amber-900" : showSim ? "border-primary" : "border-border"} hover:bg-muted`}
+          >
+            <FlaskConical className="h-3.5 w-3.5" />
+            {t("fc.simBtn")}
+            {simAttiva ? " ●" : ""}
           </button>
           <button
             type="button"
@@ -1638,6 +1940,232 @@ export function FlussiCassaTab() {
           </div>
         )}
 
+        {/* SIMULAZIONE "se non pago" (Simone 29/09): tre leve combinabili */}
+        {showSim && (
+          <div className="mb-4 rounded-xl border border-amber-300/70 p-3">
+            <p className="mb-2 text-xs text-muted-foreground">{t("fc.simDesc")}</p>
+            <div className="flex flex-wrap items-center gap-2 text-[13px]">
+              <button
+                type="button"
+                onClick={() => setSimPanel((p) => (p === "fatture" ? null : "fatture"))}
+                className={`rounded-lg border px-3 py-1 hover:bg-muted ${simPanel === "fatture" ? "border-primary" : "border-border"} ${simFatture.size > 0 ? "bg-primary/10 font-medium" : ""}`}
+              >
+                {t("fc.simFatture")}
+                {simFatture.size > 0 ? ` (${simFatture.size})` : ""}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSimSenzaMod((v) => !v)}
+                title={t("fc.simSenzaModTip")}
+                className={`rounded-lg border px-3 py-1 ${simSenzaMod ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted"}`}
+              >
+                {t("fc.simSenzaMod")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSimPanel((p) => (p === "fiscali" ? null : "fiscali"))}
+                className={`rounded-lg border px-3 py-1 hover:bg-muted ${simPanel === "fiscali" ? "border-primary" : "border-border"} ${simFiscali.size > 0 ? "bg-primary/10 font-medium" : ""}`}
+              >
+                {t("fc.simFiscali")}
+                {simFiscali.size > 0 ? ` (${simFiscali.size})` : ""}
+              </button>
+              {simAttiva && (
+                <button
+                  type="button"
+                  onClick={azzeraSim}
+                  className="ml-auto rounded-lg border border-border px-3 py-1 text-xs hover:bg-muted"
+                >
+                  {t("fc.simAzzera")}
+                </button>
+              )}
+            </div>
+            {simPanel === "fatture" && (
+              <div className="mt-2">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-[13px]">
+                  <input
+                    value={simCerca}
+                    onChange={(e) => setSimCerca(e.target.value)}
+                    placeholder={t("fc.simCercaPh")}
+                    className={`${inputCls} w-64`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSimFatture((s) => {
+                        const ns = new Set(s);
+                        for (const r of visibiliSim.righe) ns.add(r.x.f.nomeFile);
+                        return ns;
+                      })
+                    }
+                    className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted"
+                  >
+                    {t("fc.simSelVisibili")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSimFatture(new Set())}
+                    disabled={simFatture.size === 0}
+                    className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-40"
+                  >
+                    {t("fc.simDeselTutte")}
+                  </button>
+                  <span className="text-xs text-muted-foreground">
+                    {fattureSimulabili.length} {t("fc.simFattureNelFlusso")}
+                  </span>
+                </div>
+                <div className="max-h-72 overflow-y-auto rounded-lg border border-border/60">
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {visibiliSim.righe.map((r) => {
+                        const daToggle = simSenzaMod && r.mod === "altro";
+                        const checked = daToggle || simFatture.has(r.x.f.nomeFile);
+                        return (
+                          <tr
+                            key={r.x.f.nomeFile}
+                            className={`border-b border-border/30 ${checked ? "bg-amber-50/70" : ""}`}
+                          >
+                            <td className="w-6 px-1.5 py-0.5">
+                              <input
+                                type="checkbox"
+                                className="accent-primary"
+                                checked={checked}
+                                disabled={daToggle}
+                                title={daToggle ? t("fc.simDaToggle") : undefined}
+                                onChange={() => toggleIn(setSimFatture, r.x.f.nomeFile)}
+                              />
+                            </td>
+                            <td className="whitespace-nowrap px-1 py-0.5">{r.x.f.numero}</td>
+                            <td className="max-w-64 truncate px-1 py-0.5" title={r.x.f.cliente}>
+                              {r.x.f.cliente}
+                            </td>
+                            <td
+                              className={`whitespace-nowrap px-1 py-0.5 ${r.x.s.inRitardo ? "text-status-absent" : "text-muted-foreground"}`}
+                            >
+                              {dataIt(r.scad)}
+                            </td>
+                            <td className="whitespace-nowrap px-1 py-0.5 text-right tabular-nums">
+                              {fmtImporto(r.residuo)}
+                            </td>
+                            <td className="px-1.5 py-0.5 text-center">
+                              <span className="rounded-full bg-muted px-1.5 text-[10px]">
+                                {badgeMod[r.mod]}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {visibiliSim.oltre > 0 && (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="px-1 py-1 text-xs italic text-muted-foreground"
+                          >
+                            +{visibiliSim.oltre} {t("fc.esclAltre")}
+                          </td>
+                        </tr>
+                      )}
+                      {visibiliSim.righe.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-3 text-center text-muted-foreground">
+                            {t("fc.simNessuna")}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {simPanel === "fiscali" && (
+              <div className="mt-2">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-[13px]">
+                  <button
+                    type="button"
+                    onClick={() => setSimFiscali(new Set(fiscaliSimulabili.map(chiaveFisc)))}
+                    className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted"
+                  >
+                    {t("fc.simSelTutte")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSimFiscali(new Set())}
+                    disabled={simFiscali.size === 0}
+                    className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-40"
+                  >
+                    {t("fc.simDeselTutte")}
+                  </button>
+                  <span className="text-xs text-muted-foreground">
+                    {fiscaliSimulabili.length} {t("fc.fiscaleDaPagare")}
+                  </span>
+                </div>
+                <div className="max-h-72 overflow-y-auto rounded-lg border border-border/60">
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {fiscaliSimulabili.map((s) => {
+                        const k = chiaveFisc(s);
+                        const checked = simFiscali.has(k);
+                        return (
+                          <tr
+                            key={k}
+                            className={`border-b border-border/30 ${checked ? "bg-amber-50/70" : ""}`}
+                          >
+                            <td className="w-6 px-1.5 py-0.5">
+                              <input
+                                type="checkbox"
+                                className="accent-primary"
+                                checked={checked}
+                                onChange={() => toggleIn(setSimFiscali, k)}
+                              />
+                            </td>
+                            <td
+                              className={`whitespace-nowrap px-1 py-0.5 ${s.dataPagamento < oggiISO ? "text-status-absent" : "text-muted-foreground"}`}
+                            >
+                              {dataIt(s.dataPagamento)}
+                            </td>
+                            <td className="px-1 py-0.5">{s.voce}</td>
+                            <td className="max-w-52 truncate px-1 py-0.5 text-muted-foreground">
+                              {s.voceOld ?? s.periodo ?? ""}
+                            </td>
+                            <td className="px-1.5 py-0.5 text-center">
+                              <span className="rounded-full bg-muted px-1.5 text-[10px]">
+                                {s.categoria === "rate"
+                                  ? t("fc.fiscaleRateLbl")
+                                  : t("fc.fiscaleCorrLbl")}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-1 py-0.5 text-right tabular-nums">
+                              {fmtImporto(s.importo)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {fiscaliSimulabili.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-3 text-center text-muted-foreground">
+                            {t("fc.drillFiscVuoto")}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {simAttiva && (
+          <p className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span className="font-semibold">{t("fc.simAttiva")}</span> {simEscluse.nFatture}{" "}
+            {t("fc.simFattureN")} ({fmtImporto(simEscluse.importoFatture)} €)
+            {simSenzaMod ? ` — ${t("fc.simSenzaModNota")}` : ""}
+            {simEscluse.nFiscali > 0
+              ? ` · ${simEscluse.nFiscali} ${t("fc.simFiscaliN")} (${fmtImporto(simEscluse.importoFiscali)} €)`
+              : ""}
+            . {t("fc.simUsciteScad")}: {fmt(-usciteReali.tot.scaduto)} → {fmt(-uscite.tot.scaduto)}{" "}
+            · {t("fc.simSaldoScad")}: {fmt(saldoScadutoReale)} → {fmt(saldoScaduto)}.
+          </p>
+        )}
+
         {flussiErr && (
           <p className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             {flussiErr}
@@ -1708,23 +2236,7 @@ export function FlussiCassaTab() {
                   )}
                   <td className={tdN}>{fmt(-(uscite.tot.scaduto + uscite.tot.totale))}</td>
                 </tr>
-                {dettaglio &&
-                  uscite.righe.map((r) => (
-                    <tr key={`u:${r.nome}`} className="border-t border-border/30">
-                      <td className="max-w-56 truncate py-0.5 pl-4 pr-3 text-muted-foreground">
-                        {r.nome}
-                      </td>
-                      <td className={`${tdN} text-muted-foreground`}>{fmt(-r.scaduto)}</td>
-                      {serie(r.scaduto, (c) => r.perPeriodo.get(c) ?? 0).map((v, i) => (
-                        <td key={periodi[i].chiave} className={`${tdN} text-muted-foreground`}>
-                          {fmt(-v)}
-                        </td>
-                      ))}
-                      <td className={`${tdN} text-muted-foreground`}>
-                        {fmt(-(r.scaduto + r.totale))}
-                      </td>
-                    </tr>
-                  ))}
+                {righeUscite(uscite, "t1")}
 
                 {/* GIRATE: una riga per fornitore, come le altre (spec 12/09) */}
                 {girataQuote.map(
@@ -1844,6 +2356,7 @@ export function FlussiCassaTab() {
                     {fmt(periodi.reduce((s, p) => s + saldoDi(p.chiave, p.mese), 0))}
                   </td>
                 </tr>
+                {rigaConfronto(saldoScadutoReale, (c, m) => saldoDi(c, m, true))}
               </tbody>
             </table>
           </div>
@@ -1915,23 +2428,7 @@ export function FlussiCassaTab() {
                     )}
                     <td className={tdN}>{fmt(-(usciteFat.tot.scaduto + usciteFat.tot.totale))}</td>
                   </tr>
-                  {dettaglio &&
-                    usciteFat.righe.map((r) => (
-                      <tr key={`fu:${r.nome}`} className="border-t border-border/30">
-                        <td className="max-w-56 truncate py-0.5 pl-4 pr-3 text-muted-foreground">
-                          {r.nome}
-                        </td>
-                        <td className={`${tdN} text-muted-foreground`}>{fmt(-r.scaduto)}</td>
-                        {serie(r.scaduto, (c) => r.perPeriodo.get(c) ?? 0).map((v, i) => (
-                          <td key={periodi[i].chiave} className={`${tdN} text-muted-foreground`}>
-                            {fmt(-v)}
-                          </td>
-                        ))}
-                        <td className={`${tdN} text-muted-foreground`}>
-                          {fmt(-(r.scaduto + r.totale))}
-                        </td>
-                      </tr>
-                    ))}
+                  {righeUscite(usciteFat, "t2")}
 
                   {/* GIRATE, PREFATTURE e VOCI: identiche alla tabella sopra
                       (qui in sola lettura — si modificano di sopra). */}
@@ -2028,6 +2525,7 @@ export function FlussiCassaTab() {
                       {fmt(periodi.reduce((s, p) => s + saldoFatDi(p.chiave, p.mese), 0))}
                     </td>
                   </tr>
+                  {rigaConfronto(saldoFatScadutoReale, (c, m) => saldoFatDi(c, m, true))}
                 </tbody>
               </table>
             </div>
@@ -2171,7 +2669,7 @@ export function FlussiCassaTab() {
               );
             } else {
               const cat = chiave === "costo fiscale rate" ? "rate" : "corrente";
-              const righeF = (fiscale?.scadenze ?? []).filter(
+              const righeF = scadenzeFiscali.filter(
                 (x) =>
                   !x.pagato &&
                   x.categoria === cat &&

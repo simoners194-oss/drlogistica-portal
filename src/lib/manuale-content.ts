@@ -424,6 +424,36 @@ Cliccando sul nome della voce si apre il dettaglio di cosa c'è dentro; nelle Al
     testo: `Una girata dice: "quando incasso da questo cliente, giro una percentuale a questo fornitore". Nei Flussi diventa una riga di uscita con il nome del fornitore. La quota matura a incasso avvenuto — si calcola sugli incassi registrati, note di credito comprese — e resta nello Scaduto finché non è coperta dai bonifici reali verso quel fornitore.`,
     chiavi: "girata quota percentuale fornitore incasso avvenuto dr logistics",
   },
+  {
+    id: "flu-modalita",
+    sezione: "Flussi di cassa",
+    titolo: "Uscite divise per RiBa, RID e senza",
+    testo: `Dalla 1.84.0 le uscite dei Flussi sono divise in tre blocchi: "di cui con RiBa", "di cui con RID / addebito automatico" e "di cui senza RID né RiBa" (le fatture che partono solo se fai il bonifico). Ogni fattura passiva pesa nel blocco della modalità dichiarata nel suo XML (RiBa = MP12; RID = RID, SDD e domiciliazioni: Kuwait, Consat, Arval, Kion, BNP…), quindi un fornitore con fatture miste — TIM, Jungheinrich — compare in più blocchi. Col dettaglio acceso sotto ogni blocco ci sono i suoi fornitori; il CSV esce con la stessa struttura.
+
+Per forzare un fornitore intero (es. DKV: bonifico in fattura ma addebito automatico in banca) vai nella tab Fornitori e scegli RID, RiBa o Nessuna nella colonna Modalità: "Auto" torna alle fatture.`,
+    chiavi: "riba rid sdd addebito automatico modalità pagamento uscite divise bonifico forzare fornitore",
+  },
+  {
+    id: "flu-simulazione",
+    sezione: "Flussi di cassa",
+    titolo: "Se non pago: simulare i mancati pagamenti",
+    testo: `Il bottone "Se non pago…" apre tre leve che si sommano: scegli le singole fatture da non pagare (con ricerca, spunte, "Seleziona le visibili"), togli in un colpo tutte quelle senza RID né RiBa, scegli le scadenze fiscali da non pagare. Le due tabelle si ricalcolano subito, il banner giallo dice quante fatture e quanti euro hai tolto e come cambiano uscite scadute e delta saldo, e sotto ogni saldo compare la riga "Delta saldo senza simulazione" per il confronto mese per mese.
+
+È solo una prova: non si salva nulla, non tocca fatture, spunte né scadenze, e sparisce chiudendo la pagina o con "Azzera simulazione". Il CSV esportato durante una simulazione lo dichiara nella prima riga e nel nome del file.`,
+    chiavi: "simulazione se non pago non pagare fatture scadenze fiscali confronto saldo prova",
+  },
+
+  // --- Fornitori -------------------------------------------------------------------
+  {
+    id: "for-scheda",
+    sezione: "Fornitori",
+    titolo: "La scheda Fornitori del flusso di cassa",
+    testo: `La tab Fornitori (Finanza) ha una riga per ogni fornitore con almeno una fattura passiva aperta nei Flussi (stesse regole: esclusioni comprese, DR Logistics fuori). Dalle fatture arrivano scaduto, aperto totale (scaduto + a scadere), numero di fatture scadute, aperte e totali in archivio, prima e ultima fattura, prossima scadenza (in rosso se già passata), fatture pagate e importo pagato ad oggi.
+
+Le colonne Modalità, Chi se ne occupa, Macrovoce e Appalto le scrivi tu: si salvano da sole uscendo dalla casella (Invio o clic altrove). Nelle caselle vuote vedi in grigio la proposta presa dalla classificazione delle fatture (tipologia di costo e cliente di riferimento), che vale finché non scrivi altro. Cerca, ordina (aperto, scaduto, prossima scadenza, nome), Esporta CSV e Stampa come nelle altre pagine.`,
+    chiavi:
+      "fornitori scheda chi se ne occupa referente macrovoce appalto scaduto aperto pagate pagato prima ultima fattura prossima scadenza",
+  },
 
   // --- Stipendi --------------------------------------------------------------------
   {

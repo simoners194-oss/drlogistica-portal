@@ -36,6 +36,40 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.84.0",
+    date: "2026-09-29",
+    entries: [
+      {
+        title: "Flussi di cassa: uscite divise per RiBa, RID e senza",
+        description:
+          'Le uscite si leggono in tre blocchi: "di cui con RiBa", "di cui con RID / addebito automatico" e "di cui senza RID né RiBa" (quelle che partono solo se fai il bonifico). La modalità arriva dall\'XML di ogni fattura, come nei fogli di Sabrina; per forzare un fornitore intero c\'è la colonna Modalità nella nuova tab Fornitori. Stessa struttura nel CSV.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Se non pago…: simulazione dei mancati pagamenti",
+        description:
+          'Nei Flussi il bottone "Se non pago…" apre tre leve che si sommano: fatture scelte una a una, tutte quelle senza RID/RiBa, scadenze fiscali scelte. Le tabelle si ricalcolano, un banner dice cosa hai tolto e come cambiano uscite scadute e delta saldo, e sotto il saldo compare la riga di confronto senza simulazione. È solo una prova: non si salva nulla.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Nuova tab Fornitori nel flusso di cassa",
+        description:
+          "Una riga per ogni fornitore con fatture passive aperte nei Flussi: chi se ne occupa in DR, macrovoce e appalto (scritti a mano, con le proposte dalle fatture), scaduto, aperto totale, fatture scadute/aperte/totali, prima e ultima fattura, prossima scadenza, fatture pagate e pagato ad oggi. Con ricerca, ordinamento, Esporta CSV e Stampa.",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Modalità di pagamento complete nelle fatture",
+        description:
+          "Le fatture importate dall'XML mostrano tutte le modalità FatturaPA per esteso (RID MP09/10/11, MAV, bollettino postale, assegno circolare…): prima alcune restavano col solo codice.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.83.1",
     date: "2026-09-25",
     entries: [

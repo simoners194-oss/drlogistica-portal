@@ -442,7 +442,9 @@ export function giorniPerCliente(
   /** Oggetto della fattura: attiva i termini con parole chiave. */
   oggettoFattura?: string,
 ): number {
-  return terminePerCliente(cliente, termini, direzione, oggettoFattura)?.giorni ?? TERMINI_DEFAULT_GIORNI;
+  return (
+    terminePerCliente(cliente, termini, direzione, oggettoFattura)?.giorni ?? TERMINI_DEFAULT_GIORNI
+  );
 }
 
 /** Il TERMINE che vale per la fattura (giorni + opzioni per controparte):
@@ -931,7 +933,8 @@ export function computeStatoFattura(
   // fattura: "a vista" non e' una scadenza), altrimenti giorni dal 1° del
   // mese di emissione. Senza quell'opzione resta la regola del direttore:
   // per le attive contano SEMPRE i termini contrattuali dalla data fattura.
-  const termineEm = f.direzione === "Emessa" ? terminePerCliente(f.cliente, termini, "Emessa", f.oggetto) : null;
+  const termineEm =
+    f.direzione === "Emessa" ? terminePerCliente(f.cliente, termini, "Emessa", f.oggetto) : null;
   const dichiarata =
     f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza) && f.scadenza !== f.dataDocumento
       ? f.scadenza
@@ -1466,18 +1469,31 @@ const TIPO_DOC_LABEL: Record<string, string> = {
   TD27: "Autoconsumo/cessioni gratuite",
 };
 
+// Tabella completa delle modalità FatturaPA (dalla 1.84.0: MP09/10/11 RID,
+// MP13 MAV, MP18 bollettino postale… prima restavano col solo codice).
 const MODALITA_PAG_LABEL: Record<string, string> = {
   MP01: "Contanti",
   MP02: "Assegno",
+  MP03: "Assegno circolare",
+  MP04: "Contanti presso tesoreria",
   MP05: "Bonifico",
+  MP06: "Vaglia cambiario",
+  MP07: "Bollettino bancario",
   MP08: "Carta",
+  MP09: "RID",
+  MP10: "RID utenze",
+  MP11: "RID veloce",
   MP12: "RiBa",
+  MP13: "MAV",
+  MP14: "Quietanza erario",
   MP15: "Giroconto",
   MP16: "Domiciliazione bancaria",
   MP17: "Domiciliazione postale",
+  MP18: "Bollettino postale",
   MP19: "SDD",
   MP20: "SDD CORE",
   MP21: "SDD B2B",
+  MP22: "Trattenuta su somme riscosse",
   MP23: "PagoPA",
 };
 

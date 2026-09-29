@@ -656,7 +656,9 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
             ? "girata"
             : input?.genere === "asvoce"
               ? "asvoce"
-              : "voce";
+              : input?.genere === "fornitore"
+                ? "fornitore"
+                : "voce";
     const importo = Number(input?.importo ?? 0);
     if (genere === "voce" && (!Number.isFinite(importo) || importo === 0))
       throw new Error("Importo non valido (per le uscite usare il segno meno)");
@@ -672,13 +674,20 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
     const meseFine = String(input?.meseFine ?? "").trim();
     if (meseFine && !/^\d{4}-(0[1-9]|1[0-2])$/.test(meseFine))
       throw new Error("Mese di fine non valido (formato 2026-12)");
+    // Le Note sono una colonna di testo a riga singola (255 caratteri):
+    // la scheda fornitore (JSON compatto) ci sta con margine, tagliata qui.
+    const note = String(input?.note ?? "")
+      .trim()
+      .slice(0, 255);
+    if (genere === "fornitore" && note && !note.startsWith("{"))
+      throw new Error("Scheda fornitore non valida");
     return {
       nome,
-      genere: genere as "voce" | "esclusione" | "preset" | "girata" | "asvoce",
+      genere: genere as FlussoCassaRiga["genere"],
       mese: mese || undefined,
       meseFine: meseFine || undefined,
       importo: Number.isFinite(importo) ? Math.round(importo * 100) / 100 : 0,
-      note: String(input?.note ?? "").trim() || undefined,
+      note: note || undefined,
     };
   })
   .handler(async ({ data }): Promise<{ ok: true }> => {

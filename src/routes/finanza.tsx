@@ -32,8 +32,10 @@ import {
   RefreshCw,
   Banknote,
   Landmark,
+  Building2,
 } from "lucide-react";
 import { FattureTab } from "@/components/FattureTab";
+import { FornitoriFlussoTab } from "@/components/FornitoriFlussoTab";
 import { csvData, csvPeriodo, esportaCsvFile } from "@/lib/csv";
 import { MultiSelect } from "@/components/MultiSelect";
 import { CampoVocabolario } from "@/components/CampoVocabolario";
@@ -258,6 +260,7 @@ type Tab =
   | "overview"
   | "resoconto"
   | "flussi"
+  | "fornitori"
   | "stipendi"
   | "fiscale"
   | "pivot"
@@ -3003,6 +3006,7 @@ function FinanzaPage() {
           {tabBtn("overview", <TrendingUp className="h-4 w-4" />, t("fin.tabOverview"))}
           {tabBtn("resoconto", <Users className="h-4 w-4" />, t("fin.tabResoconto"))}
           {tabBtn("flussi", <Banknote className="h-4 w-4" />, t("fin.tabFlussi"))}
+          {tabBtn("fornitori", <Building2 className="h-4 w-4" />, t("fin.tabFornitori"))}
           {tabBtn("stipendi", <Users className="h-4 w-4" />, t("fin.tabStipendi"))}
           {tabBtn("fiscale", <Landmark className="h-4 w-4" />, t("fin.tabFiscale"))}
           {tabBtn("pivot", <TrendingUp className="h-4 w-4" />, t("fin.tabPivot"))}
@@ -3038,6 +3042,7 @@ function FinanzaPage() {
 
       {/* ------------------------------- Flussi di cassa ------------------- */}
       {tab === "flussi" && <FlussiCassaTab />}
+      {tab === "fornitori" && <FornitoriFlussoTab />}
 
       {/* --- Stipendi (file paghe COSTI mese, richiesta Simone 14/09) --------- */}
       {tab === "stipendi" && <StipendiTab />}
