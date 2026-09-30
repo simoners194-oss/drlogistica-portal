@@ -320,6 +320,13 @@ export const REFERENTI_DR: readonly string[] = [
   "Carlone",
 ];
 
+/** Valori che NON sono appalti anche se stanno nelle colonne degli appalti:
+ *  il "cliente di riferimento" della contabile usa COSTI GENERALI per "nessun
+ *  appalto" e CHECK DOPO come promemoria; le allocazioni hanno i segnaposto
+ *  "Da allocare…" e "(non classificata)". Restano nei dati, non in tendina. */
+const NON_APPALTO =
+  /^(costi generali|check dopo|da allocare\b.*|\(?non classificat.*|n\.?\s?d\.?|-+)$/i;
+
 export function vocabolarioFornitori(src: {
   regoleMov?: readonly { tipologia?: string; allocSecondaria?: string }[];
   regoleFat?: readonly { tipologia?: string; allocSecondaria?: string; clienteRif?: string }[];
@@ -328,24 +335,32 @@ export function vocabolarioFornitori(src: {
   extraMacro?: readonly string[];
   extraAppalti?: readonly string[];
 }): VocabolarioFornitori {
-  const uniq = (xs: (string | undefined | null)[]) =>
-    [...new Set(xs.map((x) => (x ?? "").trim()).filter(Boolean))].sort((a, b) =>
-      a.localeCompare(b, "it"),
-    );
+  // Doppioni per sole maiuscole ("iMile"/"IMILE"): resta la prima grafia
+  // nell'ordine delle fonti (schede salvate, regole, fatture).
+  const uniq = (xs: (string | undefined | null)[]) => {
+    const visti = new Map<string, string>();
+    for (const x of xs) {
+      const s = (x ?? "").trim();
+      if (!s) continue;
+      const k = s.toLowerCase();
+      if (!visti.has(k)) visti.set(k, s);
+    }
+    return [...visti.values()].sort((a, b) => a.localeCompare(b, "it"));
+  };
   return {
     macrovoci: uniq([
+      ...(src.extraMacro ?? []),
       ...TIPOLOGIE_MOVIMENTO,
       ...(src.regoleMov ?? []).map((r) => r.tipologia),
       ...(src.regoleFat ?? []).map((r) => r.tipologia),
       ...(src.fatture ?? []).map((f) => f.tipologiaCosto),
-      ...(src.extraMacro ?? []),
     ]),
     appalti: uniq([
+      ...(src.extraAppalti ?? []),
       ...(src.regoleMov ?? []).map((r) => r.allocSecondaria),
       ...(src.regoleFat ?? []).flatMap((r) => [r.allocSecondaria, r.clienteRif]),
       ...(src.fatture ?? []).flatMap((f) => [f.allocSecondaria, f.clienteRif]),
-      ...(src.extraAppalti ?? []),
-    ]),
+    ]).filter((v) => !NON_APPALTO.test(v)),
   };
 }
 

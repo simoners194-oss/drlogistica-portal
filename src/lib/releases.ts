@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.87.1",
+    date: "2026-09-30",
+    entries: [
+      {
+        title: "Tendina Appalto senza doppioni",
+        description:
+          'CEVA unificato in "CEVA Logistics" (regole e fatture), i doppioni per sole maiuscole assorbiti, e fuori dalla tendina i valori che non sono appalti: "COSTI GENERALI" (il cliente di riferimento della contabile per "nessun appalto"), "CHECK DOPO" (promemoria) e i segnaposto "Da allocare…". Nei dati restano com\'erano.',
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.87.0",
     date: "2026-09-29",
     entries: [
