@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.89.0",
+    date: "2026-10-01",
+    entries: [
+      {
+        title: "Riepilogo presenze: gruppi per reparto e filtro Appalto",
+        description:
+          'Nuova colonna "Reparto" nell\'anagrafica: dentro una sede si distinguono sotto-sedi e reparti, e il riepilogo presenze li raggruppa come nei fogli dell\'ufficio (Zingali Pavia, Zingali Torino, Zingali Cerro - Ufficio, Zingali Cerro - Magazzino). Nel Rendiconto arriva il filtro Appalto: scegliendo "Zingali" compaiono tutte le sue sedi con le suddivisioni. La Sede resta una sola e continua a governare preposti e supervisione.',
+        tag: "feature",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.88.1",
     date: "2026-10-01",
     entries: [

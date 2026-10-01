@@ -101,6 +101,7 @@ import {
   straordinarioSettimana,
   ymd,
   round2,
+  etichettaGruppo,
 } from "./rendiconto-logic";
 
 const GATEWAY_BASE = "https://connector-gateway.lovable.dev/microsoft_sharepoint";
@@ -129,6 +130,10 @@ export const SP_DISPLAY = {
     // Appalto/commessa di assegnazione: alimenta le allocazioni dei salari
     // (regola dipendenti in Finanza). OPZIONALE.
     Appalto: "Appalto",
+    // Reparto/sotto-sede dentro la sede (1.89.0: Zingali → Pavia, Torino,
+    // Cerro - Ufficio, Cerro - Magazzino): raggruppa il riepilogo presenze
+    // senza toccare la Sede, che governa preposti e supervisione. OPZIONALE.
+    Reparto: "Reparto",
     Inquadramento: "Inquadramento",
     GiorniFerieAnnui: "GiorniFerieAnnui",
     OrePermessiAnnui: "OrePermessiAnnui",
@@ -1235,6 +1240,8 @@ export interface SpDipendente {
   preposto: boolean;
   /** Appalto/commessa di assegnazione ("" = non impostato). */
   appalto: string;
+  /** Reparto/sotto-sede ("" = nessuno): solo per raggruppare i riepiloghi. */
+  reparto: string;
   // Ore contrattuali settimanali (full-time e part-time). null se non impostate.
   // Usate da rilevazione anomalie e rendiconto.
   oreSettimanali: number | null;
@@ -1336,6 +1343,7 @@ function mapDipendente(
     operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
     preposto: parseSpBool(F.Preposto ? f[F.Preposto] : undefined, false),
     appalto: F.Appalto ? String(f[F.Appalto] ?? "").trim() : "",
+    reparto: F.Reparto ? String(f[F.Reparto] ?? "").trim() : "",
     oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
     inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
     giorniFerieAnnui: parseSpNumber(F.GiorniFerieAnnui ? f[F.GiorniFerieAnnui] : undefined, null),
@@ -1853,6 +1861,7 @@ export async function loginByCodicePin(
     operatore: parseSpBool(F.Operatore ? f[F.Operatore] : undefined, false),
     preposto: parseSpBool(F.Preposto ? f[F.Preposto] : undefined, false),
     appalto: F.Appalto ? String(f[F.Appalto] ?? "").trim() : "",
+    reparto: F.Reparto ? String(f[F.Reparto] ?? "").trim() : "",
     oreSettimanali: parseSpNumber(F.OreSettimanali ? f[F.OreSettimanali] : undefined, null),
     inquadramento: String(f[F.Inquadramento ?? ""] ?? "").trim(),
     giorniFerieAnnui: parseSpNumber(F.GiorniFerieAnnui ? f[F.GiorniFerieAnnui] : undefined, null),
@@ -2542,6 +2551,10 @@ export interface RendicontoRiga {
   dipendenteId: string;
   nomeCompleto: string;
   sede: string;
+  /** Appalto e reparto dall'anagrafica; gruppo = etichetta del riepilogo. */
+  appalto: string;
+  reparto: string;
+  gruppo: string;
   oreSettimanali: number | null;
   oreLavorate: number; // effettive dal timbrature (giorni chiusi del mese)
   straordinarioCalcolato: number; // dalle timbrature (settimane con lunedì nel mese)
@@ -2560,6 +2573,7 @@ export interface SaldoFerieRiga {
   dipendenteId: string;
   nomeCompleto: string;
   sede: string;
+  appalto: string;
   spettanti: number;
   godute: number;
   residui: number;
@@ -2610,6 +2624,7 @@ export async function computeSaldoFerie(anno: number): Promise<SaldoFerieRiga[]>
         dipendenteId: d.id,
         nomeCompleto: d.nomeCompleto || `${d.cognome} ${d.nome}`,
         sede: d.sede,
+        appalto: d.appalto,
         spettanti,
         godute,
         residui: spettanti - godute,
@@ -2776,6 +2791,9 @@ export async function computeRendicontoPeriodo(
       dipendenteId: dipId,
       nomeCompleto: d.nomeCompleto || `${d.cognome} ${d.nome}`,
       sede: d.sede,
+      appalto: d.appalto,
+      reparto: d.reparto,
+      gruppo: etichettaGruppo(d.sede, d.appalto, d.reparto),
       oreSettimanali: d.oreSettimanali,
       oreLavorate: round2(oreLavorate),
       straordinarioCalcolato: round2(straordinarioCalcolato),
@@ -2809,6 +2827,10 @@ export interface PresenzeMatriceRiga {
   dipendenteId: string;
   nomeCompleto: string;
   sede: string;
+  appalto: string;
+  reparto: string;
+  /** Etichetta del gruppo nella griglia (appalto + reparto, o la sede). */
+  gruppo: string;
   /** Solo i giorni con qualcosa (ore, notte o codice). */
   giorni: Record<string, PresenzeGiorno>;
 }
@@ -2880,6 +2902,9 @@ export async function computePresenzeMatrice(
       dipendenteId: d.id,
       nomeCompleto: d.nomeCompleto || `${d.cognome} ${d.nome}`,
       sede: d.sede,
+      appalto: d.appalto,
+      reparto: d.reparto,
+      gruppo: etichettaGruppo(d.sede, d.appalto, d.reparto),
       giorni,
     });
   }

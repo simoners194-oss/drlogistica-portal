@@ -375,6 +375,7 @@ const en = {
   "rep.tabRendiconto": "Report",
   "rep.tabFerie": "Leave balance",
   "rep.tabPresenze": "Attendance sheet",
+  "rep.appalto": "Contract",
   "rep.presTitle": "Attendance sheet (matrix)",
   "rep.presDesc":
     "The site attendance sheet built by the portal: one day per column, employees grouped by site, for each the day's hours (Tot) and the night-band hours 22–06 (Not), codes when no work was done, and the TOT column. Same period and filters as the Report; Export CSV and Print give the same grid.",
@@ -2231,6 +2232,7 @@ const it: Record<DictKey, string> = {
   "rep.tabRendiconto": "Rendiconto",
   "rep.tabFerie": "Saldo ferie",
   "rep.tabPresenze": "Riepilogo presenze",
+  "rep.appalto": "Appalto",
   "rep.presTitle": "Riepilogo presenze a matrice",
   "rep.presDesc":
     "Il foglio presenze dell'appalto fatto dal portale: un giorno per colonna, i dipendenti per sede, per ognuno le ore del giorno (Tot) e le ore in fascia notturna 22–06 (Not), i codici quando non si è lavorato e la colonna TOT. Stesso periodo e stessi filtri del Rendiconto; Esporta CSV e Stampa danno la stessa griglia.",

@@ -126,6 +126,9 @@ function RendicontoPage() {
   const [righe, setRighe] = useState<RendicontoRiga[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [sedeF, setSedeF] = useState<SedeId | "tutte">("tutte");
+  // Appalto (Zingali, Univex, Posta Doc…): "premo Zingali e vedo tutte le
+  // sue sedi con le suddivisioni" (Simone 01/10).
+  const [appaltoF, setAppaltoF] = useState("");
   const [dipF, setDipF] = useState("");
   const [vista, setVista] = useState<"rendiconto" | "ferie" | "presenze">("rendiconto");
   // Riepilogo presenze a matrice (foglio di Monica), stesso periodo e filtri.
@@ -250,10 +253,20 @@ function RendicontoPage() {
   const saldoFiltrato = useMemo(() => {
     return (saldo ?? []).filter((r) => {
       if (sedeF !== "tutte" && r.sede !== sedeF) return false;
+      if (appaltoF && r.appalto !== appaltoF) return false;
       if (dipF && r.dipendenteId !== dipF) return false;
       return true;
     });
-  }, [saldo, sedeF, dipF]);
+  }, [saldo, sedeF, appaltoF, dipF]);
+
+  const appaltiOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of [...(righe ?? []), ...(saldo ?? []), ...(matrice ?? [])]) {
+      const a = (r.appalto ?? "").trim();
+      if (a) set.add(a);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "it"));
+  }, [righe, saldo, matrice]);
 
   const sediOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -271,15 +284,16 @@ function RendicontoPage() {
   const filtrate = useMemo(() => {
     return (righe ?? []).filter((r) => {
       if (sedeF !== "tutte" && r.sede !== sedeF) return false;
+      if (appaltoF && r.appalto !== appaltoF) return false;
       if (dipF && r.dipendenteId !== dipF) return false;
       return true;
     });
-  }, [righe, sedeF, dipF]);
+  }, [righe, sedeF, appaltoF, dipF]);
 
   // Filtri condivisi tra Rendiconto e Riepilogo presenze (periodo, sede,
   // dipendente): la tendina dei dipendenti prende i nomi dalla vista attiva.
   const filtriUI = (dipOptions: { id: string; nome: string }[]) => (
-    <div className="grid gap-3 sm:grid-cols-4 mb-4">
+    <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5 mb-4">
       <div>
         <label className="text-xs uppercase tracking-wider text-muted-foreground">
           {t("rep.period")}
@@ -362,6 +376,23 @@ function RendicontoPage() {
       </div>
       <div>
         <label className="text-xs uppercase tracking-wider text-muted-foreground">
+          {t("rep.appalto")}
+        </label>
+        <select
+          className={`${inputCls} mt-1`}
+          value={appaltoF}
+          onChange={(e) => setAppaltoF(e.target.value)}
+        >
+          <option value="">{t("common.all")}</option>
+          {appaltiOptions.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="text-xs uppercase tracking-wider text-muted-foreground">
           {t("common.employee")}
         </label>
         <select
@@ -434,6 +465,7 @@ function RendicontoPage() {
           from={rangePresenze.from}
           to={rangePresenze.to}
           sedeF={sedeF}
+          appaltoF={appaltoF}
           dipF={dipF}
           nomeFile={`riepilogo-presenze-${rangePresenze.from}_${rangePresenze.to}`}
         />

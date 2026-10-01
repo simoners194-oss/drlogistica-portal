@@ -155,6 +155,17 @@ export function orePerGiornoDaTurni(
   return { oreGiorno, notteGiorno, giorniNonChiusi };
 }
 
+/** Gruppo del riepilogo presenze (Simone 01/10): la colonna Reparto
+ *  dell'anagrafica divide una sede in sotto-sedi/reparti ("Pavia", "Torino",
+ *  "Cerro - Ufficio", "Cerro - Magazzino"); l'etichetta è "<appalto> <reparto>"
+ *  come nei fogli dell'ufficio (ZINGALI PAVIA, ZINGALI CERRO - UFFICIO).
+ *  Senza reparto resta la sede. */
+export function etichettaGruppo(sede: string, appalto: string, reparto: string): string {
+  const r = (reparto ?? "").trim();
+  if (!r) return (sede ?? "").trim();
+  return `${(appalto ?? "").trim() || (sede ?? "").trim()} ${r}`.trim();
+}
+
 /** Arrotondamento ai 15 minuti (al più vicino): 8,37 → 8,25; 8,38 → 8,5.
  *  È la convenzione dei fogli presenze di Monica (quarti d'ora). */
 export function arrotondaQuarto(ore: number): number {
