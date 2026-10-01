@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.88.0",
+    date: "2026-10-01",
+    entries: [
+      {
+        title: "Rendiconto: scheda Riepilogo presenze (il foglio dell'appalto)",
+        description:
+          'Nuova scheda accanto al Rendiconto, fatta come il foglio "PRESENZE SUDDIVISO" dell\'ufficio: un giorno per colonna, dipendenti per sede con numero progressivo, riga Tot e riga Not (ore in fascia notturna 22–06), codici FE/ML/PC/NC e SAB/DOM, colonna TOT e "TOTALE ORE GIORNALIERE" per sede. Stessi filtri del Rendiconto (mese, settimana, giorno, sede, dipendente), Esporta CSV e Stampa con la stessa griglia. Arrotondamento ai 15 minuti acceso di default, disattivabile.',
+        tag: "feature",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.87.1",
     date: "2026-09-30",
     entries: [

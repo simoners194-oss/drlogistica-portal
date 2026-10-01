@@ -2784,6 +2784,98 @@ export async function computeRendicontoPeriodo(
   return out;
 }
 
+// --- Riepilogo presenze a matrice (Simone 01/10/2026, v1.88.0) -------------
+// Il foglio "PRESENZE <appalto> SUDDIVISO" di Monica, calcolato dal portale:
+// un giorno per colonna, per ogni dipendente le ore del giorno (riga Tot) e
+// le ore notturne 22–06 (riga Not), con i codici FE/ML/PC/NC al posto delle
+// ore quando non si è lavorato. Stesse fonti e stesse regole del Rendiconto
+// (turni attribuiti al giorno dell'entrata, richieste approvate).
+export interface PresenzeGiorno {
+  ore: number;
+  notte: number;
+  /** FE ferie · ML malattia · PC permesso (ore in `permessoOre`) · NC turno non chiuso. */
+  codice?: "FE" | "ML" | "PC" | "NC";
+  permessoOre?: number;
+}
+
+export interface PresenzeMatriceRiga {
+  dipendenteId: string;
+  nomeCompleto: string;
+  sede: string;
+  /** Solo i giorni con qualcosa (ore, notte o codice). */
+  giorni: Record<string, PresenzeGiorno>;
+}
+
+export async function computePresenzeMatrice(
+  fromStr: string,
+  toStr: string,
+): Promise<PresenzeMatriceRiga[]> {
+  const from = new Date(`${fromStr}T00:00:00`);
+  // Un giorno in coda per chiudere il notturno dell'ultimo giorno.
+  const toPlus = new Date(`${toStr}T00:00:00`);
+  toPlus.setDate(toPlus.getDate() + 1);
+  const toPlusStr = ymd(toPlus);
+  const [tims, richieste, dips] = await Promise.all([
+    fetchTimbratureDaISO(
+      new Date(from.getFullYear(), from.getMonth(), from.getDate()).toISOString(),
+    ),
+    fetchRichieste({}),
+    fetchDipendenti(),
+  ]);
+  const eventiByDip = new Map<string, { evento: EventoTimbratura; ora: string }[]>();
+  for (const t of tims) {
+    const giorno = ymd(new Date(t.dataOra));
+    if (giorno < fromStr || giorno > toPlusStr) continue;
+    const arr = eventiByDip.get(t.dipendenteId) ?? [];
+    arr.push({ evento: t.evento, ora: t.dataOra });
+    eventiByDip.set(t.dipendenteId, arr);
+  }
+  const ferie = new Set<string>();
+  const malattia = new Set<string>();
+  const permessoOre = new Map<string, number>();
+  for (const r of richieste) {
+    const di = r.dataInizio.slice(0, 10);
+    const df = (r.dataFine || r.dataInizio).slice(0, 10);
+    if (r.tipo === "Ferie" && r.stato === "Approvata") {
+      for (const g of eachDay(di, df)) ferie.add(`${r.richiedenteId}|${g}`);
+    } else if (r.tipo === "Malattia" && (r.stato === "Comunicata" || r.stato === "Approvata")) {
+      for (const g of eachDay(di, df)) malattia.add(`${r.richiedenteId}|${g}`);
+    } else if (r.tipo === "Permesso" && r.stato === "Approvata") {
+      const k = `${r.richiedenteId}|${di}`;
+      permessoOre.set(k, (permessoOre.get(k) ?? 0) + (r.durataOre ?? 0));
+    }
+  }
+  const out: PresenzeMatriceRiga[] = [];
+  for (const d of dips) {
+    if (!d.visibile) continue;
+    const turni = orePerGiornoDaTurni(eventiByDip.get(d.id) ?? []);
+    const giorni: Record<string, PresenzeGiorno> = {};
+    for (const g of eachDay(fromStr, toStr)) {
+      const k = `${d.id}|${g}`;
+      const cella: PresenzeGiorno = {
+        ore: turni.giorniNonChiusi.has(g) ? 0 : (turni.oreGiorno.get(g) ?? 0),
+        notte: turni.giorniNonChiusi.has(g) ? 0 : (turni.notteGiorno.get(g) ?? 0),
+      };
+      const perm = permessoOre.get(k) ?? 0;
+      if (turni.giorniNonChiusi.has(g)) cella.codice = "NC";
+      else if (ferie.has(k)) cella.codice = "FE";
+      else if (malattia.has(k)) cella.codice = "ML";
+      else if (perm > 0) cella.codice = "PC";
+      if (perm > 0) cella.permessoOre = round2(perm);
+      if (cella.ore > 0 || cella.notte > 0 || cella.codice) giorni[g] = cella;
+    }
+    out.push({
+      dipendenteId: d.id,
+      nomeCompleto: d.nomeCompleto || `${d.cognome} ${d.nome}`,
+      sede: d.sede,
+      giorni,
+    });
+  }
+  out.sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto));
+  logSp("info", "rendiconto", `Presenze a matrice ${fromStr}→${toStr}: ${out.length} righe`);
+  return out;
+}
+
 export interface CreateTimbraturaInput {
   dipendenteId: string;
   evento: EventoTimbratura;

@@ -2,14 +2,24 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
-import { BarChart3, Lock, AlertTriangle, Download, CalendarDays, Printer } from "lucide-react";
+import {
+  BarChart3,
+  Lock,
+  AlertTriangle,
+  Download,
+  CalendarDays,
+  Printer,
+  Table2,
+} from "lucide-react";
 import { readSession, type SessionUser } from "@/lib/session";
 import {
+  spGetPresenzeMatrice,
   spGetRendiconto,
   spGetRendicontoPeriodo,
   spGetSaldoFerie,
 } from "@/lib/sharepoint.functions";
-import type { RendicontoRiga, SaldoFerieRiga } from "@/lib/sharepoint.server";
+import type { PresenzeMatriceRiga, RendicontoRiga, SaldoFerieRiga } from "@/lib/sharepoint.server";
+import { RiepilogoPresenze } from "@/components/RiepilogoPresenze";
 import { type SedeId } from "@/lib/mock-data";
 import { useLang } from "@/lib/i18n";
 
@@ -117,7 +127,10 @@ function RendicontoPage() {
   const [loading, setLoading] = useState(false);
   const [sedeF, setSedeF] = useState<SedeId | "tutte">("tutte");
   const [dipF, setDipF] = useState("");
-  const [vista, setVista] = useState<"rendiconto" | "ferie">("rendiconto");
+  const [vista, setVista] = useState<"rendiconto" | "ferie" | "presenze">("rendiconto");
+  // Riepilogo presenze a matrice (foglio di Monica), stesso periodo e filtri.
+  const [matrice, setMatrice] = useState<PresenzeMatriceRiga[] | null>(null);
+  const [matLoading, setMatLoading] = useState(false);
   // Granularità del periodo: mese solare, settimana fiscale (dell'anno) o
   // settimana del mese (lun-dom, riparte da week1 ogni mese).
   const [periodoModo, setPeriodoModo] = useState<"mese" | "fiscal" | "mensile" | "giorno">("mese");
@@ -183,6 +196,31 @@ function RendicontoPage() {
       .finally(() => setLoading(false));
   }, [periodo, periodoModo, rangeSettimana, canView]);
 
+  // Intervallo del riepilogo presenze: il mese intero, oppure la settimana /
+  // il giorno scelti (stessa logica del Rendiconto).
+  const rangePresenze = useMemo(() => {
+    if (rangeSettimana) return rangeSettimana;
+    const anno = Number(periodo.slice(0, 4));
+    const mese = Number(periodo.slice(5, 7));
+    if (!anno || !mese) return null;
+    return { from: ymdLocal(new Date(anno, mese - 1, 1)), to: ymdLocal(new Date(anno, mese, 0)) };
+  }, [periodo, rangeSettimana]);
+
+  useEffect(() => {
+    if (!canView || vista !== "presenze" || !rangePresenze) return;
+    setMatLoading(true);
+    setMatrice(null);
+    spGetPresenzeMatrice({ data: rangePresenze })
+      .then((l) => setMatrice(l as PresenzeMatriceRiga[]))
+      .catch((err) => {
+        setMatrice([]);
+        toast.error(t("rep.errReport"), {
+          description: err instanceof Error ? err.message : String(err),
+        });
+      })
+      .finally(() => setMatLoading(false));
+  }, [vista, rangePresenze, canView]);
+
   useEffect(() => {
     if (!canView || vista !== "ferie") return;
     const anno = Number(periodo.slice(0, 4));
@@ -210,7 +248,7 @@ function RendicontoPage() {
   const sediOptions = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const r of [...(righe ?? []), ...(saldo ?? [])]) {
+    for (const r of [...(righe ?? []), ...(saldo ?? []), ...(matrice ?? [])]) {
       const s = (r.sede ?? "").trim();
       if (s && s.toLowerCase() !== "tutte" && !seen.has(s.toLowerCase())) {
         seen.add(s.toLowerCase());
@@ -218,7 +256,7 @@ function RendicontoPage() {
       }
     }
     return out.sort((a, b) => a.localeCompare(b));
-  }, [righe, saldo]);
+  }, [righe, saldo, matrice]);
 
   const filtrate = useMemo(() => {
     return (righe ?? []).filter((r) => {
@@ -227,6 +265,110 @@ function RendicontoPage() {
       return true;
     });
   }, [righe, sedeF, dipF]);
+
+  // Filtri condivisi tra Rendiconto e Riepilogo presenze (periodo, sede,
+  // dipendente): la tendina dei dipendenti prende i nomi dalla vista attiva.
+  const filtriUI = (dipOptions: { id: string; nome: string }[]) => (
+    <div className="grid gap-3 sm:grid-cols-4 mb-4">
+      <div>
+        <label className="text-xs uppercase tracking-wider text-muted-foreground">
+          {t("rep.period")}
+        </label>
+        <select
+          className={`${inputCls} mt-1`}
+          value={periodoModo}
+          onChange={(e) => {
+            setPeriodoModo(e.target.value as "mese" | "fiscal" | "mensile" | "giorno");
+            setWeekNum(1);
+          }}
+        >
+          <option value="mese">{t("rep.periodMonth")}</option>
+          <option value="fiscal">{t("rep.periodFiscal")}</option>
+          <option value="mensile">{t("rep.periodMonthWeek")}</option>
+          <option value="giorno">{t("rep.periodDay")}</option>
+        </select>
+      </div>
+      <div>
+        <label className="text-xs uppercase tracking-wider text-muted-foreground">
+          {periodoModo === "giorno"
+            ? t("rep.periodDay")
+            : periodoModo === "fiscal"
+              ? t("rep.yearFromMonth")
+              : t("rep.month")}
+        </label>
+        {periodoModo === "giorno" ? (
+          <input
+            type="date"
+            className={`${inputCls} mt-1`}
+            value={giornoSel}
+            onChange={(e) => setGiornoSel(e.target.value)}
+          />
+        ) : (
+          <input
+            type="month"
+            className={`${inputCls} mt-1`}
+            value={periodo}
+            onChange={(e) => setPeriodo(e.target.value)}
+          />
+        )}
+      </div>
+      {(periodoModo === "fiscal" || periodoModo === "mensile") && (
+        <div>
+          <label className="text-xs uppercase tracking-wider text-muted-foreground">
+            {periodoModo === "fiscal" ? t("rep.fiscalWeekN") : t("rep.monthWeekN")}
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={periodoModo === "fiscal" ? 53 : 6}
+            className={`${inputCls} mt-1`}
+            value={weekNum}
+            onChange={(e) => setWeekNum(Math.max(1, Number(e.target.value) || 1))}
+          />
+          {rangeSettimana && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {t("common.from").toLowerCase()} {rangeSettimana.from.split("-").reverse().join("/")}{" "}
+              {t("common.to").toLowerCase()} {rangeSettimana.to.split("-").reverse().join("/")}
+            </p>
+          )}
+        </div>
+      )}
+      <div>
+        <label className="text-xs uppercase tracking-wider text-muted-foreground">
+          {t("common.site")}
+        </label>
+        <select
+          className={`${inputCls} mt-1`}
+          value={sedeF}
+          onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
+        >
+          <option value="tutte">{t("common.allF")}</option>
+          {sediOptions.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="text-xs uppercase tracking-wider text-muted-foreground">
+          {t("common.employee")}
+        </label>
+        <select
+          className={`${inputCls} mt-1`}
+          value={dipF}
+          onChange={(e) => setDipF(e.target.value)}
+        >
+          <option value="">{t("common.all")}</option>
+          {dipOptions.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.nome}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
 
   if (session && !canView) {
     return (
@@ -261,7 +403,31 @@ function RendicontoPage() {
         >
           <CalendarDays className="h-4 w-4" /> {t("rep.tabFerie")}
         </button>
+        <button
+          type="button"
+          onClick={() => setVista("presenze")}
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium transition-colors ${vista === "presenze" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <Table2 className="h-4 w-4" /> {t("rep.tabPresenze")}
+        </button>
       </div>
+
+      {vista === "presenze" && (
+        <div className="no-print mb-4 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
+          {filtriUI((matrice ?? []).map((r) => ({ id: r.dipendenteId, nome: r.nomeCompleto })))}
+        </div>
+      )}
+      {vista === "presenze" && rangePresenze && (
+        <RiepilogoPresenze
+          righe={matrice}
+          loading={matLoading}
+          from={rangePresenze.from}
+          to={rangePresenze.to}
+          sedeF={sedeF}
+          dipF={dipF}
+          nomeFile={`riepilogo-presenze-${rangePresenze.from}_${rangePresenze.to}`}
+        />
+      )}
 
       {vista === "rendiconto" && (
         <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-[var(--shadow-card)]">
@@ -269,108 +435,7 @@ function RendicontoPage() {
             <BarChart3 className="h-4 w-4 text-primary" /> {t("rep.monthlyTitle")}
           </div>
 
-          {/* Filtri */}
-          <div className="grid gap-3 sm:grid-cols-4 mb-4">
-            <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                {t("rep.period")}
-              </label>
-              <select
-                className={`${inputCls} mt-1`}
-                value={periodoModo}
-                onChange={(e) => {
-                  setPeriodoModo(e.target.value as "mese" | "fiscal" | "mensile" | "giorno");
-                  setWeekNum(1);
-                }}
-              >
-                <option value="mese">{t("rep.periodMonth")}</option>
-                <option value="fiscal">{t("rep.periodFiscal")}</option>
-                <option value="mensile">{t("rep.periodMonthWeek")}</option>
-                <option value="giorno">{t("rep.periodDay")}</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                {periodoModo === "giorno"
-                  ? t("rep.periodDay")
-                  : periodoModo === "fiscal"
-                    ? t("rep.yearFromMonth")
-                    : t("rep.month")}
-              </label>
-              {periodoModo === "giorno" ? (
-                <input
-                  type="date"
-                  className={`${inputCls} mt-1`}
-                  value={giornoSel}
-                  onChange={(e) => setGiornoSel(e.target.value)}
-                />
-              ) : (
-                <input
-                  type="month"
-                  className={`${inputCls} mt-1`}
-                  value={periodo}
-                  onChange={(e) => setPeriodo(e.target.value)}
-                />
-              )}
-            </div>
-            {(periodoModo === "fiscal" || periodoModo === "mensile") && (
-              <div>
-                <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                  {periodoModo === "fiscal" ? t("rep.fiscalWeekN") : t("rep.monthWeekN")}
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={periodoModo === "fiscal" ? 53 : 6}
-                  className={`${inputCls} mt-1`}
-                  value={weekNum}
-                  onChange={(e) => setWeekNum(Math.max(1, Number(e.target.value) || 1))}
-                />
-                {rangeSettimana && (
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    {t("common.from").toLowerCase()}{" "}
-                    {rangeSettimana.from.split("-").reverse().join("/")}{" "}
-                    {t("common.to").toLowerCase()}{" "}
-                    {rangeSettimana.to.split("-").reverse().join("/")}
-                  </p>
-                )}
-              </div>
-            )}
-            <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                {t("common.site")}
-              </label>
-              <select
-                className={`${inputCls} mt-1`}
-                value={sedeF}
-                onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
-              >
-                <option value="tutte">{t("common.allF")}</option>
-                {sediOptions.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                {t("common.employee")}
-              </label>
-              <select
-                className={`${inputCls} mt-1`}
-                value={dipF}
-                onChange={(e) => setDipF(e.target.value)}
-              >
-                <option value="">{t("common.all")}</option>
-                {(righe ?? []).map((r) => (
-                  <option key={r.dipendenteId} value={r.dipendenteId}>
-                    {r.nomeCompleto}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          {filtriUI((righe ?? []).map((r) => ({ id: r.dipendenteId, nome: r.nomeCompleto })))}
 
           {filtrate.length > 0 && (
             <div className="no-print mb-3 flex flex-wrap justify-end gap-2">
