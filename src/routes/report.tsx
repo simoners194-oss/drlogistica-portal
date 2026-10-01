@@ -20,7 +20,6 @@ import {
 } from "@/lib/sharepoint.functions";
 import type { PresenzeMatriceRiga, RendicontoRiga, SaldoFerieRiga } from "@/lib/sharepoint.server";
 import { RiepilogoPresenze } from "@/components/RiepilogoPresenze";
-import { type SedeId } from "@/lib/mock-data";
 import { useLang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/report")({
@@ -125,9 +124,10 @@ function RendicontoPage() {
   const [periodo, setPeriodo] = useState<string>(currentPeriodo());
   const [righe, setRighe] = useState<RendicontoRiga[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sedeF, setSedeF] = useState<SedeId | "tutte">("tutte");
   // Appalto (Zingali, Univex, Posta Doc…): "premo Zingali e vedo tutte le
-  // sue sedi con le suddivisioni" (Simone 01/10).
+  // sue sedi con le suddivisioni" (Simone 01/10). Dalla 1.89.3 è l'UNICO
+  // filtro per gruppo: la tendina Sede è sparita ("tieni Appalto e togli
+  // Sede"), la Sede resta in anagrafica per preposti e timbratrice.
   const [appaltoF, setAppaltoF] = useState("");
   const [dipF, setDipF] = useState("");
   const [vista, setVista] = useState<"rendiconto" | "ferie" | "presenze">("rendiconto");
@@ -252,12 +252,11 @@ function RendicontoPage() {
 
   const saldoFiltrato = useMemo(() => {
     return (saldo ?? []).filter((r) => {
-      if (sedeF !== "tutte" && r.sede !== sedeF) return false;
       if (appaltoF && r.appalto !== appaltoF) return false;
       if (dipF && r.dipendenteId !== dipF) return false;
       return true;
     });
-  }, [saldo, sedeF, appaltoF, dipF]);
+  }, [saldo, appaltoF, dipF]);
 
   const appaltiOptions = useMemo(() => {
     const set = new Set<string>();
@@ -268,29 +267,15 @@ function RendicontoPage() {
     return [...set].sort((a, b) => a.localeCompare(b, "it"));
   }, [righe, saldo, matrice]);
 
-  const sediOptions = useMemo(() => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const r of [...(righe ?? []), ...(saldo ?? []), ...(matrice ?? [])]) {
-      const s = (r.sede ?? "").trim();
-      if (s && s.toLowerCase() !== "tutte" && !seen.has(s.toLowerCase())) {
-        seen.add(s.toLowerCase());
-        out.push(s);
-      }
-    }
-    return out.sort((a, b) => a.localeCompare(b));
-  }, [righe, saldo, matrice]);
-
   const filtrate = useMemo(() => {
     return (righe ?? []).filter((r) => {
-      if (sedeF !== "tutte" && r.sede !== sedeF) return false;
       if (appaltoF && r.appalto !== appaltoF) return false;
       if (dipF && r.dipendenteId !== dipF) return false;
       return true;
     });
-  }, [righe, sedeF, appaltoF, dipF]);
+  }, [righe, appaltoF, dipF]);
 
-  // Filtri condivisi tra Rendiconto e Riepilogo presenze (periodo, sede,
+  // Filtri condivisi tra Rendiconto e Riepilogo presenze (periodo, appalto,
   // dipendente): la tendina dei dipendenti prende i nomi dalla vista attiva.
   const filtriUI = (dipOptions: { id: string; nome: string }[]) => (
     <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5 mb-4">
@@ -357,23 +342,6 @@ function RendicontoPage() {
           )}
         </div>
       )}
-      <div>
-        <label className="text-xs uppercase tracking-wider text-muted-foreground">
-          {t("common.site")}
-        </label>
-        <select
-          className={`${inputCls} mt-1`}
-          value={sedeF}
-          onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
-        >
-          <option value="tutte">{t("common.allF")}</option>
-          {sediOptions.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
       <div>
         <label className="text-xs uppercase tracking-wider text-muted-foreground">
           {t("rep.appalto")}
@@ -464,7 +432,6 @@ function RendicontoPage() {
           loading={matLoading}
           from={rangePresenze.from}
           to={rangePresenze.to}
-          sedeF={sedeF}
           appaltoF={appaltoF}
           dipF={dipF}
           nomeFile={`riepilogo-presenze-${rangePresenze.from}_${rangePresenze.to}`}
@@ -581,17 +548,17 @@ function RendicontoPage() {
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                {t("common.site")}
+                {t("rep.appalto")}
               </label>
               <select
                 className={`${inputCls} mt-1`}
-                value={sedeF}
-                onChange={(e) => setSedeF(e.target.value as SedeId | "tutte")}
+                value={appaltoF}
+                onChange={(e) => setAppaltoF(e.target.value)}
               >
-                <option value="tutte">{t("common.allF")}</option>
-                {sediOptions.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                <option value="">{t("common.all")}</option>
+                {appaltiOptions.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
                   </option>
                 ))}
               </select>

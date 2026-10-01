@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.89.3",
+    date: "2026-10-01",
+    entries: [
+      {
+        title: "Nel Rendiconto un solo filtro per gruppo: Appalto",
+        description:
+          "La tendina Sede è sparita da Rendiconto, Saldo ferie e Riepilogo presenze: era quasi un doppione di Appalto, che in più distingue HUB e Distribuzione a Fiano e gli uffici. La Sede resta in anagrafica per preposti, supervisione e timbratrice.",
+        tag: "improvement",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.89.2",
     date: "2026-10-01",
     entries: [

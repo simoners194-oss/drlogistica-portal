@@ -35,7 +35,6 @@ export function RiepilogoPresenze({
   loading,
   from,
   to,
-  sedeF,
   appaltoF,
   dipF,
   nomeFile,
@@ -44,7 +43,6 @@ export function RiepilogoPresenze({
   loading: boolean;
   from: string;
   to: string;
-  sedeF: string;
   appaltoF: string;
   dipF: string;
   nomeFile: string;
@@ -56,12 +54,11 @@ export function RiepilogoPresenze({
 
   // Gruppi per "gruppo" (appalto + reparto dell'anagrafica, altrimenti la
   // sede: Zingali → Pavia, Torino, Cerro - Ufficio, Cerro - Magazzino),
-  // dipendenti in ordine alfabetico, filtri del Rendiconto (sede, appalto,
+  // dipendenti in ordine alfabetico, filtri del Rendiconto (appalto,
   // dipendente).
   const gruppi = useMemo(() => {
     const per = new Map<string, PresenzeMatriceRiga[]>();
     for (const x of righe ?? []) {
-      if (sedeF !== "tutte" && x.sede !== sedeF) continue;
       if (appaltoF && x.appalto !== appaltoF) continue;
       if (dipF && x.dipendenteId !== dipF) continue;
       const k = x.gruppo || x.sede || "—";
@@ -75,7 +72,7 @@ export function RiepilogoPresenze({
         sede,
         dips: dips.sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto, "it")),
       }));
-  }, [righe, sedeF, appaltoF, dipF]);
+  }, [righe, appaltoF, dipF]);
 
   // Cella: ore arrotondate, oppure il codice quando non si è lavorato.
   const cella = (g: string, c: PresenzeGiorno | undefined): { testo: string; tipo: string } => {
