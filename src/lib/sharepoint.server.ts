@@ -2655,9 +2655,16 @@ export async function computeRendicontoPeriodo(
   const fromStr = ymd(from);
   const toStr = ymd(to);
 
+  // Un giorno in testa alla lettura (1.88.1): le DataOra sono UTC, quindi
+  // l'entrata dell'1:41 di Roma del primo giorno sta alle 23:41Z del giorno
+  // prima; se il periodo inizia di lunedì (finestra non estesa) quel turno
+  // perdeva l'entrata. Il calcolo per giorno resta su [fromStr, toStr].
+  const fromMeno = new Date(from);
+  fromMeno.setDate(fromMeno.getDate() - 1);
+  const fromMenoStr = ymd(fromMeno);
   const [tims, richieste, dips] = await Promise.all([
     fetchTimbratureDaISO(
-      new Date(from.getFullYear(), from.getMonth(), from.getDate()).toISOString(),
+      new Date(fromMeno.getFullYear(), fromMeno.getMonth(), fromMeno.getDate()).toISOString(),
     ),
     fetchRichieste({}),
     fetchDipendenti(),
@@ -2674,7 +2681,7 @@ export async function computeRendicontoPeriodo(
   const eventiByDip = new Map<string, { evento: EventoTimbratura; ora: string }[]>();
   for (const t of tims) {
     const giorno = ymd(new Date(t.dataOra));
-    if (giorno < fromStr || giorno > toPlusStr) continue;
+    if (giorno < fromMenoStr || giorno > toPlusStr) continue;
     const arr = eventiByDip.get(t.dipendenteId) ?? [];
     arr.push({ evento: t.evento, ora: t.dataOra });
     eventiByDip.set(t.dipendenteId, arr);
@@ -2810,14 +2817,19 @@ export async function computePresenzeMatrice(
   fromStr: string,
   toStr: string,
 ): Promise<PresenzeMatriceRiga[]> {
-  const from = new Date(`${fromStr}T00:00:00`);
-  // Un giorno in coda per chiudere il notturno dell'ultimo giorno.
+  // Un giorno in testa: le DataOra sono UTC e l'entrata dell'1:41 di Roma
+  // del primo giorno è alle 23:41Z del giorno prima (caso Vitulano 01/09:
+  // senza, il turno perdeva l'entrata e il giorno segnava 7,29 h invece di
+  // 11,7). Un giorno in coda per chiudere il notturno dell'ultimo giorno.
+  const fromMeno = new Date(`${fromStr}T00:00:00`);
+  fromMeno.setDate(fromMeno.getDate() - 1);
+  const fromMenoStr = ymd(fromMeno);
   const toPlus = new Date(`${toStr}T00:00:00`);
   toPlus.setDate(toPlus.getDate() + 1);
   const toPlusStr = ymd(toPlus);
   const [tims, richieste, dips] = await Promise.all([
     fetchTimbratureDaISO(
-      new Date(from.getFullYear(), from.getMonth(), from.getDate()).toISOString(),
+      new Date(fromMeno.getFullYear(), fromMeno.getMonth(), fromMeno.getDate()).toISOString(),
     ),
     fetchRichieste({}),
     fetchDipendenti(),
@@ -2825,7 +2837,7 @@ export async function computePresenzeMatrice(
   const eventiByDip = new Map<string, { evento: EventoTimbratura; ora: string }[]>();
   for (const t of tims) {
     const giorno = ymd(new Date(t.dataOra));
-    if (giorno < fromStr || giorno > toPlusStr) continue;
+    if (giorno < fromMenoStr || giorno > toPlusStr) continue;
     const arr = eventiByDip.get(t.dipendenteId) ?? [];
     arr.push({ evento: t.evento, ora: t.dataOra });
     eventiByDip.set(t.dipendenteId, arr);

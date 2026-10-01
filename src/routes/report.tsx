@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import {
@@ -131,6 +131,7 @@ function RendicontoPage() {
   // Riepilogo presenze a matrice (foglio di Monica), stesso periodo e filtri.
   const [matrice, setMatrice] = useState<PresenzeMatriceRiga[] | null>(null);
   const [matLoading, setMatLoading] = useState(false);
+  const matReq = useRef(0);
   // Granularità del periodo: mese solare, settimana fiscale (dell'anno) o
   // settimana del mese (lun-dom, riparte da week1 ogni mese).
   const [periodoModo, setPeriodoModo] = useState<"mese" | "fiscal" | "mensile" | "giorno">("mese");
@@ -208,17 +209,26 @@ function RendicontoPage() {
 
   useEffect(() => {
     if (!canView || vista !== "presenze" || !rangePresenze) return;
+    // Numero di richiesta: una risposta vecchia (mese cambiato mentre la
+    // precedente era in volo) non deve sovrascrivere quella nuova — senza
+    // questo guard la griglia di settembre restava con le righe di ottobre.
+    const mia = ++matReq.current;
     setMatLoading(true);
     setMatrice(null);
     spGetPresenzeMatrice({ data: rangePresenze })
-      .then((l) => setMatrice(l as PresenzeMatriceRiga[]))
+      .then((l) => {
+        if (mia === matReq.current) setMatrice(l as PresenzeMatriceRiga[]);
+      })
       .catch((err) => {
+        if (mia !== matReq.current) return;
         setMatrice([]);
         toast.error(t("rep.errReport"), {
           description: err instanceof Error ? err.message : String(err),
         });
       })
-      .finally(() => setMatLoading(false));
+      .finally(() => {
+        if (mia === matReq.current) setMatLoading(false);
+      });
   }, [vista, rangePresenze, canView]);
 
   useEffect(() => {

@@ -36,6 +36,20 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.88.1",
+    date: "2026-10-01",
+    entries: [
+      {
+        title:
+          "Riepilogo presenze: griglia sempre del mese scelto e turni notturni del primo giorno",
+        description:
+          "Cambiando mese mentre il precedente stava ancora caricando, la griglia poteva restare con le righe vecchie (tutte vuote): ora le risposte in ritardo vengono ignorate. E un turno iniziato nella notte del primo giorno del periodo (es. entrata all'1:41) non perdeva più l'entrata: la lettura parte da un giorno prima, anche nel Rendiconto.",
+        tag: "fix",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.88.0",
     date: "2026-10-01",
     entries: [
