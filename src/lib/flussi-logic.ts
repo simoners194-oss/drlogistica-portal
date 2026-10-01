@@ -14,7 +14,7 @@
 // differenza (DKV: bonifico in XML, RID per Sabrina) si sana con l'override
 // manuale per fornitore, salvato sulla lista FlussiCassa (genere "fornitore",
 // Note = JSON compatto) insieme a referente, macrovoce e appalto.
-import { TIPOLOGIE_MOVIMENTO, clienteGroupKey } from "./finanza-logic";
+import { TIPOLOGIE_MOVIMENTO, clienteGroupKey, groupKeyAlgoritmica } from "./finanza-logic";
 import {
   incassatoRegistrato,
   isNotaCredito,
@@ -237,7 +237,7 @@ export function riepilogoFornitori(
     const modDich = modalitaDaMetodo(x.f.metodoPagamento);
     if (!nc) a.modTutte.push(modDich);
     a.macro.push(x.f.tipologiaCosto || x.f.sottocategoria || "");
-    a.appalti.push(x.f.clienteRif || "");
+    a.appalti.push(appaltoDiFattura(x.f));
     const data = x.f.dataDocumento.slice(0, 10);
     if (data) {
       if (!a.prima || data < a.prima) a.prima = data;
@@ -327,10 +327,28 @@ export const REFERENTI_DR: readonly string[] = [
 const NON_APPALTO =
   /^(costi generali|check dopo|da allocare\b.*|\(?non classificat.*|n\.?\s?d\.?|-+)$/i;
 
+/** Il "cliente di riferimento" di una fattura come appalto — tranne quando è
+ *  il nome del fornitore stesso ("NOLVEX" sulle 40 fatture di NOLVEX SRL,
+ *  pulizia del 01/10/2026): la contabile ha ripetuto la controparte, non ha
+ *  indicato un appalto. Confronto senza forma societaria e ordine delle
+ *  parole ma SENZA alias di gruppo, così "CEVA Logistics" sulle fatture di
+ *  CEVA LOGISTICS ITALIA SRL (addebiti del cliente) resta un appalto valido. */
+export function appaltoDiFattura(f: { cliente?: string; clienteRif?: string }): string {
+  const rif = (f.clienteRif ?? "").trim();
+  if (!rif) return "";
+  const k = groupKeyAlgoritmica(rif);
+  return k && k === groupKeyAlgoritmica(f.cliente ?? "") ? "" : rif;
+}
+
 export function vocabolarioFornitori(src: {
   regoleMov?: readonly { tipologia?: string; allocSecondaria?: string }[];
   regoleFat?: readonly { tipologia?: string; allocSecondaria?: string; clienteRif?: string }[];
-  fatture?: readonly { tipologiaCosto?: string; allocSecondaria?: string; clienteRif?: string }[];
+  fatture?: readonly {
+    tipologiaCosto?: string;
+    allocSecondaria?: string;
+    clienteRif?: string;
+    cliente?: string;
+  }[];
   /** Valori già salvati sulle schede (restano scegliibili anche se fuori elenco). */
   extraMacro?: readonly string[];
   extraAppalti?: readonly string[];
@@ -359,7 +377,7 @@ export function vocabolarioFornitori(src: {
       ...(src.extraAppalti ?? []),
       ...(src.regoleMov ?? []).map((r) => r.allocSecondaria),
       ...(src.regoleFat ?? []).flatMap((r) => [r.allocSecondaria, r.clienteRif]),
-      ...(src.fatture ?? []).flatMap((f) => [f.allocSecondaria, f.clienteRif]),
+      ...(src.fatture ?? []).flatMap((f) => [f.allocSecondaria, appaltoDiFattura(f)]),
     ]).filter((v) => !NON_APPALTO.test(v)),
   };
 }

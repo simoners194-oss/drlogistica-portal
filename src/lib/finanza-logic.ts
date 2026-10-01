@@ -171,7 +171,10 @@ export function setGruppiControparti(gruppi: readonly { nome: string; membri: st
   groupKeyCache.clear(); // le chiavi gia' calcolate vanno ricalcolate
 }
 
-function groupKeyAlgoritmica(nome: string): string {
+/** Chiave algoritmica SENZA alias di gruppo: serve a chi deve confrontare
+ *  due nomi "nudi" (senza forma societaria e ordine delle parole) senza che
+ *  i gruppi madre li accorpino (Univex Milano ≠ Univex Healthcare). */
+export function groupKeyAlgoritmica(nome: string): string {
   return canonicalCliente(nome)
     .replace(/\bitaly\b/g, "italia")
     .replace(/\b(?:srls?|spa|snc|sas|sa|scarl|scpa)\b/g, " ")

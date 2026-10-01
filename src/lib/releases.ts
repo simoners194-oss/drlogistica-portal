@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.89.2",
+    date: "2026-10-01",
+    entries: [
+      {
+        title: "Appalti con un nome solo anche nelle fatture",
+        description:
+          'Pulizia dei doppioni semantici nella tendina Appalto della scheda Fornitori: "TRASPORTI ZINGALI SRL (PRINCIPALE)" e "ZINGALI" sono diventati "Zingali" (regola addebiti, scheda fornitore, fattura); le regole di addebito di Univex Healthcare, Univex Freight e Postadoc non impongono più la ragione sociale come appalto, perché quei clienti hanno più sedi e l\'appalto va scelto fattura per fattura; su 42 fatture il cliente di riferimento era il fornitore stesso (NOLVEX, UNIVEX, UNIEX) ed è stato tolto. Da ora un cliente di riferimento uguale al nome del fornitore non entra né in tendina né nella proposta della scheda.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.89.1",
     date: "2026-10-01",
     entries: [
