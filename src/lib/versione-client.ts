@@ -52,7 +52,26 @@ const K_FORZATA = "dr:ricaricaForzataPer";
  *  ricarica normale per questa versione è già stata fatta e non è bastata
  *  (HTML servito da una cache), se ne fa una seconda con l'indirizzo
  *  "sporcato" per saltare la cache — una sola, poi ci si arrende. */
-export async function ricaricaSeAggiornato(prima?: () => void, forza = false): Promise<boolean> {
+// Un solo controllo alla volta: il middleware globale e il tasto che ha
+// fallito chiamano entrambi la sentinella nello stesso istante; il secondo
+// si accoda al primo invece di fare una seconda ricarica (quella "sporcata").
+let controlloInCorso: Promise<boolean> | null = null;
+
+export function ricaricaSeAggiornato(prima?: () => void, forza = false): Promise<boolean> {
+  if (controlloInCorso) {
+    prima?.();
+    return controlloInCorso;
+  }
+  controlloInCorso = ricaricaSeAggiornatoOra(prima, forza).finally(() => {
+    controlloInCorso = null;
+  });
+  return controlloInCorso;
+}
+
+async function ricaricaSeAggiornatoOra(
+  prima?: () => void,
+  forza: boolean = false,
+): Promise<boolean> {
   const viva = await versioneViva();
   if (!viva) return false;
   if (viva === APP_INFO.version && !forza) return false;

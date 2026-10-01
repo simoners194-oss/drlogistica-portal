@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.89.5",
+    date: "2026-10-01",
+    entries: [
+      {
+        title: "Una sola ricarica quando la pagina è vecchia",
+        description:
+          "Quando una pagina rimasta aperta da prima di un aggiornamento si accorge di esserlo, la ricarica parte una volta sola anche se se ne accorgono due controlli nello stesso istante: niente doppia ricarica e niente indirizzo con il parametro di servizio in fondo.",
+        tag: "improvement",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.89.4",
     date: "2026-10-01",
     entries: [
