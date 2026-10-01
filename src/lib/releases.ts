@@ -36,6 +36,18 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.89.4",
+    date: "2026-10-01",
+    entries: [
+      {
+        title: 'Timbratrice: niente più timbrature "registrate" a vuoto dopo un aggiornamento',
+        description:
+          "Una pagina rimasta aperta da prima di un aggiornamento del portale poteva mostrare la timbratura come registrata senza che arrivasse al server (Zingali, 1° ottobre). Ora quella risposta viene riconosciuta: la timbratura va in coda con l'ora vera della pressione, la pagina si ricarica da sola e la coda parte sul portale aggiornato. In più la pagina Presenze controlla da sola ogni minuto, e ogni volta che torna in primo piano, se c'è una versione nuova, e si ricarica prima del prossimo tocco. Lo stesso controllo copre tutti i salvataggi del portale.",
+        tag: "fix",
+      },
+    ],
+  },
+  {
     version: "1.89.3",
     date: "2026-10-01",
     entries: [

@@ -50,7 +50,13 @@ import {
   spGetMiaSettimana,
 } from "@/lib/sharepoint.functions";
 import { accoda, isErroreRete, leggiCoda, salvaCoda, svuotaCoda } from "@/lib/timbratura-offline";
-import { ricaricaSeAggiornato, versioneViva } from "@/lib/versione-client";
+import {
+  avviaSentinella,
+  MSG_VERSIONE_VECCHIA,
+  ricaricaSeAggiornato,
+  rispostaStantia,
+  versioneViva,
+} from "@/lib/versione-client";
 import { APP_INFO } from "@/lib/version";
 import { Undo2 } from "lucide-react";
 
@@ -210,7 +216,7 @@ function PresenzePage() {
     try {
       const esito = await svuotaCoda(async (item) => {
         try {
-          await spCreateTimbratura({
+          const creata = await spCreateTimbratura({
             data: {
               dipendenteId: me.id,
               evento: item.evento,
@@ -219,14 +225,19 @@ function PresenzePage() {
               dataOraClient: item.dataOra,
             },
           });
+          // Scheda vecchia: la chiamata "riesce" senza risultato vero. Non
+          // è un invio: l'elemento resta in coda e la pagina si ricarica.
+          if (rispostaStantia(creata) || typeof creata?.dataOra !== "string")
+            throw new Error(MSG_VERSIONE_VECCHIA);
         } catch (err) {
           // Scheda VECCHIA dopo una publish: l'endpoint risponde errore
           // "vero" (non di rete) e svuotaCoda scarterebbe la timbratura per
           // sempre. Se la versione pubblicata è diversa dalla nostra, il
           // giro si ferma come fosse rete assente (coda conservata) e la
           // sentinella ricarica la pagina: la coda riparte sul bundle nuovo.
-          if (!isErroreRete(err) && (await versioneViva()) !== APP_INFO.version) {
-            void ricaricaSeAggiornato();
+          const stantia = err instanceof Error && err.message === MSG_VERSIONE_VECCHIA;
+          if (!isErroreRete(err) && (stantia || (await versioneViva()) !== APP_INFO.version)) {
+            void ricaricaSeAggiornato(undefined, stantia);
             throw new Error("fetch failed: versione vecchia, coda conservata");
           }
           throw err;
@@ -261,6 +272,17 @@ function PresenzePage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.id]);
+
+  // Sentinella d'aggiornamento PROATTIVA (01/10, Zingali): la pagina lasciata
+  // aperta sul telefono controlla la versione ogni minuto e quando torna in
+  // primo piano, e si ricarica da sola PRIMA del prossimo tocco — mai mentre
+  // una timbratura o la coda stanno partendo.
+  const occupatoRef = useRef(false);
+  occupatoRef.current = busy || pending != null || flushingRef.current;
+  useEffect(
+    () => avviaSentinella({ intervalloMs: 60_000, puoRicaricare: () => !occupatoRef.current }),
+    [],
+  );
 
   // Annulla l'ultima timbratura ("tasto sbagliato"): possibile solo entro i
   // minuti di finestra; la verifica vera è comunque lato server.
@@ -345,7 +367,13 @@ function PresenzePage() {
       const creata = await spCreateTimbratura({
         data: { dipendenteId: me.id, evento: tipo, origine: "Web" },
       });
-      const oraServer = creata?.dataOra || oraTap;
+      // Scheda vecchia dopo una publish (Zingali 01/10): la chiamata
+      // "riusciva" senza risultato e la timbratura sembrava registrata senza
+      // esserlo. Un risultato senza orario non è una conferma: errore, coda,
+      // ricarica.
+      if (rispostaStantia(creata) || typeof creata?.dataOra !== "string")
+        throw new Error(MSG_VERSIONE_VECCHIA);
+      const oraServer = creata.dataOra;
       const confermato = applicaEventoLocale(prima, tipo, oraServer);
       setMe(confermato);
       salvaMioCache(confermato);
@@ -378,12 +406,15 @@ function PresenzePage() {
           duration: 8000,
         });
       } else if (
-        await ricaricaSeAggiornato(() => {
-          // Scheda vecchia dopo una publish: la timbratura NON va persa —
-          // in coda con l'ora VERA della pressione, poi la pagina si
-          // ricarica da sola e la coda parte sul portale aggiornato.
-          accoda(tipo, new Date().toISOString());
-        })
+        await ricaricaSeAggiornato(
+          () => {
+            // Scheda vecchia dopo una publish: la timbratura NON va persa —
+            // in coda con l'ora VERA della pressione, poi la pagina si
+            // ricarica da sola e la coda parte sul portale aggiornato.
+            accoda(tipo, oraTap);
+          },
+          err instanceof Error && err.message === MSG_VERSIONE_VECCHIA,
+        )
       ) {
         return;
       } else {

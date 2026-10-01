@@ -122,8 +122,11 @@ I tasti in basso ("Accesso rapido") portano a Le mie ore, Richieste, Manuale e C
 
 Alla prima apertura (dalla 1.82.1) la pagina mostra subito l'ultimo stato salvato sul telefono, così i tasti sono pronti mentre il server manda solo le tue timbrature: se nel frattempo un preposto ha corretto la tua giornata, la pagina si allinea da sola appena arriva la risposta. Una timbratura appena fatta non viene mai cancellata da una rilettura: se ti sembra sparita, ricarica la pagina dopo un minuto prima di ripeterla.
 
-Il turno di notte funziona: se entri alle 22 ed esci alle 2 la giornata resta unita e le ore sono contate giuste.`,
-    chiavi: "entrata uscita pausa timbratura turno notturno spezzato",
+Il turno di notte funziona: se entri alle 22 ed esci alle 2 la giornata resta unita e le ore sono contate giuste.
+
+Quando il portale viene aggiornato, una pagina rimasta aperta da prima non può più parlare col server. Dalla 1.89.4 la pagina Presenze se ne accorge da sola: controlla la versione ogni minuto e ogni volta che torna in primo piano, e si ricarica prima del prossimo tocco. Se premi un tasto proprio in quel momento, la timbratura non va persa: resta in coda con l'ora vera della pressione, la pagina si ricarica e la coda parte subito (nel registro compare la nota "Recuperata offline"). Prima della 1.89.4 poteva succedere il contrario: la timbratura sembrava registrata e non arrivava mai (1° ottobre a Zingali). Se una pagina ti sembra "muta", chiudila e riaprila.`,
+    chiavi:
+      "entrata uscita pausa timbratura turno notturno spezzato aggiornamento pagina vecchia si ricarica da sola coda recuperata offline",
   },
   {
     id: "pre-annulla",

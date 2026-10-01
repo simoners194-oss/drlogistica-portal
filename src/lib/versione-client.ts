@@ -7,8 +7,31 @@
 // ha un indirizzo FISSO e dichiara la versione pubblicata: se è diversa
 // dalla propria, la pagina si ricarica da sola — una volta sola per
 // versione, mai in loop.
+//
+// 01/10/2026 (Zingali "non riescono a timbrare", sei publish in un giorno):
+// l'hosting risponde a un indirizzo server vecchio con 200 e un file
+// JavaScript, NON con un errore. Il client di TanStack restituisce allora la
+// Response grezza come "risultato": la timbratura sembrava registrata
+// (toast verde), il server non la riceveva mai e la pagina non si ricaricava
+// mai, perché nessuno lanciava un errore. Da qui: `rispostaStantia` smaschera
+// quel risultato (middleware globale in start.ts + controlli nei punti
+// critici) e `avviaSentinella` controlla la versione da sola ogni minuto e
+// quando la pagina torna in primo piano, PRIMA che qualcuno prema un tasto.
 
 import { APP_INFO } from "./version";
+
+/** Messaggio dell'errore "pagina vecchia": NON deve somigliare a un errore di
+ *  rete (isErroreRete), così la timbratura va in coda e la pagina si ricarica. */
+export const MSG_VERSIONE_VECCHIA =
+  "Portale aggiornato: la pagina si ricarica da sola, la timbratura resta in coda.";
+
+/** true quando una chiamata server ha restituito la Response grezza (o
+ *  nulla) invece del risultato: succede SOLO su una scheda vecchia dopo una
+ *  publish, perché l'hosting serve un file JavaScript (200) all'indirizzo
+ *  non più esistente. Un risultato vero è sempre un valore serializzato. */
+export function rispostaStantia(x: unknown): boolean {
+  return typeof Response !== "undefined" && x instanceof Response;
+}
 
 export async function versioneViva(): Promise<string | null> {
   try {
@@ -20,22 +43,75 @@ export async function versioneViva(): Promise<string | null> {
   }
 }
 
+const K_RICARICA = "dr:ricaricaPer";
+const K_FORZATA = "dr:ricaricaForzataPer";
+
 /** true = versione nuova rilevata e ricarica avviata. `prima` viene eseguito
- *  subito PRIMA del reload (es. mettere in coda la timbratura appena persa). */
-export async function ricaricaSeAggiornato(prima?: () => void): Promise<boolean> {
+ *  subito PRIMA del reload (es. mettere in coda la timbratura appena persa).
+ *  `forza`: la pagina è SICURAMENTE vecchia (risposta stantia): se la
+ *  ricarica normale per questa versione è già stata fatta e non è bastata
+ *  (HTML servito da una cache), se ne fa una seconda con l'indirizzo
+ *  "sporcato" per saltare la cache — una sola, poi ci si arrende. */
+export async function ricaricaSeAggiornato(prima?: () => void, forza = false): Promise<boolean> {
   const viva = await versioneViva();
-  if (!viva || viva === APP_INFO.version) return false;
-  const K = "dr:ricaricaPer";
+  if (!viva) return false;
+  if (viva === APP_INFO.version && !forza) return false;
+  const chiave = viva === APP_INFO.version ? `${viva}!` : viva;
+  let giaFatta = false;
+  let giaForzata = false;
   try {
-    // Anti-loop: una sola ricarica per versione vista. Se dopo il reload la
-    // versione risulta ancora diversa (deploy in propagazione), non si
-    // ricarica di nuovo per lo stesso valore.
-    if (window.sessionStorage.getItem(K) === viva) return false;
-    window.sessionStorage.setItem(K, viva);
+    giaFatta = window.sessionStorage.getItem(K_RICARICA) === chiave;
+    giaForzata = window.sessionStorage.getItem(K_FORZATA) === chiave;
   } catch {
-    /* senza sessionStorage si ricarica comunque */
+    /* senza sessionStorage si ricarica comunque, una volta */
+  }
+  if (giaFatta && (!forza || giaForzata)) return false;
+  try {
+    window.sessionStorage.setItem(giaFatta ? K_FORZATA : K_RICARICA, chiave);
+  } catch {
+    /* ignorato */
   }
   prima?.();
-  window.location.reload();
+  if (giaFatta) {
+    // Seconda ricarica: indirizzo sporcato, la cache dell'HTML non vale.
+    const url = new URL(window.location.href);
+    url.searchParams.set("r", String(Date.now()));
+    window.location.replace(url.toString());
+  } else {
+    window.location.reload();
+  }
   return true;
+}
+
+/** Controllo periodico della versione (ogni `intervalloMs`, e appena la
+ *  pagina torna visibile): se è uscita una versione nuova la pagina si
+ *  ricarica da sola quando `puoRicaricare()` lo consente (niente tocco in
+ *  corso, niente coda in invio). Restituisce la funzione per fermarla. */
+export function avviaSentinella(opts: {
+  intervalloMs?: number;
+  puoRicaricare?: () => boolean;
+}): () => void {
+  if (typeof window === "undefined") return () => {};
+  let inCorso = false;
+  const controlla = async () => {
+    if (inCorso || document.visibilityState === "hidden") return;
+    if (opts.puoRicaricare && !opts.puoRicaricare()) return;
+    inCorso = true;
+    try {
+      await ricaricaSeAggiornato();
+    } finally {
+      inCorso = false;
+    }
+  };
+  const iv = window.setInterval(controlla, opts.intervalloMs ?? 60_000);
+  const onVisibile = () => {
+    if (document.visibilityState === "visible") void controlla();
+  };
+  document.addEventListener("visibilitychange", onVisibile);
+  window.addEventListener("focus", onVisibile);
+  return () => {
+    window.clearInterval(iv);
+    document.removeEventListener("visibilitychange", onVisibile);
+    window.removeEventListener("focus", onVisibile);
+  };
 }

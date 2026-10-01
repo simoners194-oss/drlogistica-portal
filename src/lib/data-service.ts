@@ -23,6 +23,7 @@ import {
 } from "./sharepoint.functions";
 import type { SpDipendente, SpTimbratura } from "./sharepoint.server";
 import { setSpStatus } from "./use-sp-status";
+import { MSG_VERSIONE_VECCHIA } from "./versione-client";
 
 export interface DataService {
   getSedi(): Promise<typeof SEDI>;
@@ -262,6 +263,11 @@ export async function getMioStato(id: string): Promise<Dipendente | undefined> {
     dipendente: SpDipendente | null;
     timbrature: SpTimbratura[];
   };
+  // Scheda vecchia dopo una publish: la chiamata "riesce" ma non porta il
+  // risultato (vedi versione-client). Meglio un errore, che fa scattare i
+  // ripieghi, di uno stato falso.
+  if (!snap || typeof snap !== "object" || !("dipendente" in snap))
+    throw new Error(MSG_VERSIONE_VECCHIA);
   if (!snap.dipendente || snap.dipendente.id !== id) return undefined;
   const [d] = mergeDipendentiTimbrature([snap.dipendente], snap.timbrature);
   if (d) {
