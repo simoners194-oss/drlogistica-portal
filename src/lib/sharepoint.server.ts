@@ -971,7 +971,13 @@ export async function discoverSharePoint(force = false): Promise<SpDiscovered> {
   const timRes = resolveInternalNames(timCols, SP_DISPLAY.timbrature);
   // Colonne Dipendenti facoltative: la loro assenza NON segna la salute rossa
   // (il codice ha default: Inquadramento="" e GiorniFerieAnnui=26).
-  const OPTIONAL_DIP = new Set(["Inquadramento", "GiorniFerieAnnui", "OrePermessiAnnui", "CF"]);
+  const OPTIONAL_DIP = new Set([
+    "Inquadramento",
+    "GiorniFerieAnnui",
+    "OrePermessiAnnui",
+    "CF",
+    "Reparto",
+  ]);
   dipRes.missing = dipRes.missing.filter((m) => !OPTIONAL_DIP.has(m));
 
   // 5) Discovery SOFT della lista Richieste (Sprint 2): se assente o non
@@ -1461,12 +1467,13 @@ export interface ImportAppaltiResult {
   anteprima: string[];
 }
 
-/** Assegna l'APPALTO ai dipendenti da un elenco "nome completo → appalto".
+/** Assegna l'APPALTO (e, se indicato, il REPARTO — terza colonna, 1.89.1)
+ *  ai dipendenti da un elenco "nome completo → appalto [→ reparto]".
  *  Aggancio a token in ordine libero; chi non esiste riceve una scheda
- *  MINIMA (nome/cognome/appalto, senza Codice/PIN). Max ~60 righe per
- *  chiamata: il client spezza. */
+ *  MINIMA (nome/cognome/appalto, senza Codice/PIN). Reparto "-" = svuota.
+ *  Max ~60 righe per chiamata: il client spezza. */
 export async function importAppaltiDipendenti(
-  rows: readonly { nome: string; appalto: string }[],
+  rows: readonly { nome: string; appalto: string; reparto?: string }[],
   dryRun: boolean,
 ): Promise<ImportAppaltiResult> {
   const cfg = await discoverSharePoint();
@@ -1474,6 +1481,10 @@ export async function importAppaltiDipendenti(
   if (!F.Appalto)
     throw new Error(
       'Colonna "Appalto" assente sulla lista Dipendenti: crearla (testo) e Riscopri.',
+    );
+  if (rows.some((r) => r.reparto != null) && !F.Reparto)
+    throw new Error(
+      'Colonna "Reparto" assente sulla lista Dipendenti: crearla (testo) e Riscopri.',
     );
   const items = await fetchMovimentiPages(
     `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items?expand=fields&$top=999`,
@@ -1508,28 +1519,44 @@ export async function importAppaltiDipendenti(
     }
     if (hit) {
       const attuale = String((hit.fields ?? {})[F.Appalto] ?? "").trim();
-      if (attuale === r.appalto) {
+      const repAttuale = F.Reparto ? String((hit.fields ?? {})[F.Reparto] ?? "").trim() : "";
+      // Reparto: undefined = non toccare; "-" = svuotare; altrimenti il valore.
+      const repNuovo = r.reparto == null ? undefined : r.reparto === "-" ? "" : r.reparto;
+      const cambiaRep = repNuovo != null && repNuovo !== repAttuale;
+      if (attuale === r.appalto && !cambiaRep) {
         out.invariati++;
         continue;
       }
-      out.anteprima.push(`✏️ ${r.nome} → ${r.appalto}${attuale ? ` (era: ${attuale})` : ""}`);
-      if (!dryRun)
+      out.anteprima.push(
+        `✏️ ${r.nome} → ${r.appalto}${attuale && attuale !== r.appalto ? ` (era: ${attuale})` : ""}${
+          cambiaRep
+            ? ` · reparto: ${repNuovo || "(vuoto)"}${repAttuale ? ` (era: ${repAttuale})` : ""}`
+            : ""
+        }`,
+      );
+      if (!dryRun) {
+        const patch: Record<string, unknown> = { [F.Appalto]: r.appalto };
+        if (cambiaRep && F.Reparto) patch[F.Reparto] = repNuovo;
         await gatewayJson(
           `/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items/${hit.id}/fields`,
-          { method: "PATCH", body: JSON.stringify({ [F.Appalto]: r.appalto }) },
+          { method: "PATCH", body: JSON.stringify(patch) },
         );
+      }
       out.aggiornati++;
     } else {
       const parti = r.nome.trim().split(/\s+/);
       const nome = parti[0] ?? "";
       const cognome = parti.slice(1).join(" ") || nome;
-      out.anteprima.push(`➕ NUOVA scheda: ${nome} / ${cognome} → ${r.appalto}`);
+      out.anteprima.push(
+        `➕ NUOVA scheda: ${nome} / ${cognome} → ${r.appalto}${r.reparto && r.reparto !== "-" ? ` · reparto: ${r.reparto}` : ""}`,
+      );
       if (!dryRun) {
         const fields: Record<string, unknown> = {};
         if (F.Nome) fields[F.Nome] = nome;
         if (F.Cognome) fields[F.Cognome] = cognome;
         if (F.NomeCompleto) fields[F.NomeCompleto] = r.nome.trim();
         fields[F.Appalto] = r.appalto;
+        if (F.Reparto && r.reparto && r.reparto !== "-") fields[F.Reparto] = r.reparto;
         if (F.Attivo) fields[F.Attivo] = true;
         if (F.Visibile) fields[F.Visibile] = true;
         await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listDipendenti}/items`, {

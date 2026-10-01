@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.89.1",
+    date: "2026-10-01",
+    entries: [
+      {
+        title: "Reparto dal portale e Zingali con un solo nome",
+        description:
+          'In Amministrazione → Appalti dipendenti si incolla anche una terza colonna "Reparto" (Pavia, Torino, Cerro - Ufficio, Cerro - Magazzino; "-" per svuotarlo), con anteprima prima di scrivere. In anagrafica i sedici di Zingali hanno ora Sede e Appalto "Zingali": nelle tendine compare solo "Zingali" e il riepilogo presenze mostra i quattro gruppi senza doppioni.',
+        tag: "improvement",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.89.0",
     date: "2026-10-01",
     entries: [

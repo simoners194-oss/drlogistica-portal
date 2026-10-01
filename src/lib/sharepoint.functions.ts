@@ -559,24 +559,28 @@ export const spImportDipendenti = createServerFn({ method: "POST" })
 
 // Import appalti dipendenti (incolla da Excel in Amministrazione).
 export const spImportAppalti = createServerFn({ method: "POST" })
-  .inputValidator((input: { rows: { nome: string; appalto: string }[]; dryRun?: boolean }) => {
-    if (!Array.isArray(input?.rows) || input.rows.length === 0)
-      throw new Error("Nessuna riga da importare");
-    if (input.rows.length > 80) throw new Error("Blocco troppo grande (max 80 righe per volta)");
-    return {
-      rows: input.rows
-        .map((r) => ({
-          nome: String(r?.nome ?? "")
-            .trim()
-            .slice(0, 120),
-          appalto: String(r?.appalto ?? "")
-            .trim()
-            .slice(0, 80),
-        }))
-        .filter((r) => r.nome && r.appalto),
-      dryRun: Boolean(input.dryRun),
-    };
-  })
+  .inputValidator(
+    (input: { rows: { nome: string; appalto: string; reparto?: string }[]; dryRun?: boolean }) => {
+      if (!Array.isArray(input?.rows) || input.rows.length === 0)
+        throw new Error("Nessuna riga da importare");
+      if (input.rows.length > 80) throw new Error("Blocco troppo grande (max 80 righe per volta)");
+      return {
+        rows: input.rows
+          .map((r) => ({
+            nome: String(r?.nome ?? "")
+              .trim()
+              .slice(0, 120),
+            appalto: String(r?.appalto ?? "")
+              .trim()
+              .slice(0, 80),
+            // Terza colonna facoltativa (1.89.1): reparto/sotto-sede; "-" svuota.
+            reparto: r?.reparto == null ? undefined : String(r.reparto).trim().slice(0, 80),
+          }))
+          .filter((r) => r.nome && r.appalto),
+        dryRun: Boolean(input.dryRun),
+      };
+    },
+  )
   .handler(async ({ data }) => {
     assertCap(isAdmin(await currentUser()));
     return importAppaltiDipendenti(data.rows, data.dryRun);

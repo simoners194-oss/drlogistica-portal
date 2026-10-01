@@ -391,7 +391,10 @@ function ImportAppaltiCard() {
   const [esito, setEsito] = useState("");
   const [loading, setLoading] = useState<"preview" | "import" | null>(null);
 
-  // Righe "NOME COGNOME<TAB o ;>APPALTO" (incolla diretta da Excel).
+  // Righe "NOME COGNOME<TAB o ;>APPALTO[<TAB o ;>REPARTO]" (incolla diretta
+  // da Excel). La terza colonna (1.89.1) è il reparto/sotto-sede che
+  // raggruppa il riepilogo presenze (Pavia, Torino, Cerro - Ufficio…);
+  // assente = non toccare, "-" = svuotare.
   const parse = () =>
     testo
       .split(/\r?\n/)
@@ -399,10 +402,15 @@ function ImportAppaltiCard() {
       .filter(Boolean)
       .map((l) => {
         const sep = l.includes("\t") ? "\t" : ";";
-        const i = l.indexOf(sep);
-        return i > 0
-          ? { nome: l.slice(0, i).trim(), appalto: l.slice(i + 1).trim() }
-          : { nome: "", appalto: "" };
+        const parti = l.split(sep).map((p) => p.trim());
+        if (parti.length < 2)
+          return { nome: "", appalto: "" } as { nome: string; appalto: string; reparto?: string };
+        const r: { nome: string; appalto: string; reparto?: string } = {
+          nome: parti[0],
+          appalto: parti[1],
+        };
+        if (parti.length >= 3 && parti[2] !== "") r.reparto = parti[2];
+        return r;
       })
       .filter((r) => r.nome && r.appalto);
 
@@ -458,16 +466,18 @@ function ImportAppaltiCard() {
         </CardTitle>
         <p className="text-xs text-muted-foreground">
           Incolla da Excel due colonne: <strong>Nome Cognome</strong> e <strong>Appalto</strong>{" "}
-          (separati da TAB o punto e virgola). I nomi si agganciano anche se scritti in ordine
-          diverso; chi non è in anagrafica riceve una scheda minima senza credenziali. Fai sempre
-          prima l'<strong>Anteprima</strong>.
+          (separati da TAB o punto e virgola), più una terza facoltativa <strong>Reparto</strong>{" "}
+          (sotto-sede che raggruppa il riepilogo presenze: Pavia, Torino, Cerro - Ufficio, Cerro -
+          Magazzino; scrivi &quot;-&quot; per svuotarlo). I nomi si agganciano anche se scritti in
+          ordine diverso; chi non è in anagrafica riceve una scheda minima senza credenziali. Fai
+          sempre prima l'<strong>Anteprima</strong>.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
         <textarea
           value={testo}
           onChange={(e) => setTesto(e.target.value)}
-          placeholder={"MARIO ROSSI\tZINGALI\nLUCIA VERDI\tUNIVEX MILANO"}
+          placeholder={"MARIO ROSSI\tZingali\tCerro - Magazzino\nLUCIA VERDI\tUnivex Milano"}
           spellCheck={false}
           className="w-full min-h-[120px] resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
