@@ -4924,6 +4924,14 @@ export async function cronIncassiBatch(
      *  lo stesso numero puo' ripetersi su anni diversi. */
     dataFattura?: string;
   }[],
+  /** RIALLINEAMENTO FORZATO (09/10/2026, caso Univex Healthcare): dopo una
+   *  correzione fatta A MANO su Aruba (incassi tolti o ridotti) il giro
+   *  automatico non porta mai la riduzione nel portale, per scelta. Con
+   *  `forza` — solo da `scarica_aruba.py incassi forza`, lanciato a mano — le
+   *  riduzioni si applicano. Gli azzeramenti restano impossibili da qui: una
+   *  fattura senza più incassi non compare nel report, si riapre dalla
+   *  matita in Fatture (che ora azzera anche l'importo). */
+  opzioni: { forza?: boolean } = {},
 ): Promise<{
   aggiornate: number;
   invariate: number;
@@ -4977,8 +4985,8 @@ export async function cronIncassiBatch(
       }
       const attuale = f.incassatoAruba;
       const nuovo = Math.round(r.incassato * 100) / 100;
-      if (attuale != null && nuovo < attuale - 0.005) {
-        esito.riduzioniIgnorate++; // MAI applicate: restano all'import manuale
+      if (attuale != null && nuovo < attuale - 0.005 && !opzioni.forza) {
+        esito.riduzioniIgnorate++; // MAI applicate dal giro: solo col riallineamento forzato
         continue;
       }
       const stessaData = !r.ultimaData || r.ultimaData === (f.dataIncasso ?? "");
@@ -5001,7 +5009,7 @@ export async function cronIncassiBatch(
   logSp(
     "info",
     "cron.incassi",
-    `Cron incassi: ${esito.aggiornate} aggiornate, ${esito.invariate} invariate, ${esito.riduzioniIgnorate} riduzioni IGNORATE, ${esito.nonTrovate} non trovate`,
+    `Cron incassi${opzioni.forza ? " (FORZATO, riduzioni applicate)" : ""}: ${esito.aggiornate} aggiornate, ${esito.invariate} invariate, ${esito.riduzioniIgnorate} riduzioni IGNORATE, ${esito.nonTrovate} non trovate`,
   );
   await segnaUltimoAruba("UltimoIncassi");
   return esito;
@@ -5224,6 +5232,10 @@ export async function setIncassoManuale(
   const patch: Record<string, unknown> = { [F.IncassoAruba]: stato };
   if (F.DataIncasso)
     patch[F.DataIncasso] = stato === "Incassata" && dataIncasso ? `${dataIncasso}T00:00:00Z` : null;
+  // Riaperta a mano = nessun incasso registrato: si azzera anche l'importo
+  // delle rate, altrimenti il residuo restava a zero (09/10/2026, Univex
+  // Healthcare riaperta su Aruba: il giro non riduce mai, la matita sì).
+  if (F.IncassatoAruba && stato === "Non incassata") patch[F.IncassatoAruba] = null;
   await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${doc.id}/fields`, {
     method: "PATCH",
     body: JSON.stringify(patch),

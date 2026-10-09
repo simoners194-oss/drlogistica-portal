@@ -484,6 +484,12 @@ def spedisci_incassi(cfg: dict) -> None:
         print("cron_fatture_url non configurato: spedizione incassi SALTATA.")
         return
     url_cron = base.replace("/cron-fatture", "/cron-incassi")
+    # "incassi forza": dopo una correzione fatta A MANO su Aruba (incassi
+    # tolti o ridotti) il portale applica anche le RIDUZIONI. Mai dal giro
+    # schedulato: solo lanciato a mano, con cognizione.
+    if "forza" in sys.argv:
+        url_cron += "&forza=1"
+        print("MODALITA' FORZATA: le riduzioni di incasso verranno applicate nel portale.")
     per_anno = {}
     for f in sorted(SCARICATI.glob("*ExportMovimenti*.zip")):
         m = re.search(r"-(\d{4})-", f.name)

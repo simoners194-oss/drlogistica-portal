@@ -754,12 +754,13 @@ export const spArubaCron = createServerFn({ method: "POST" })
 // Cron NC: riceve la mappa NC->fattura (base64 di un JSON) estratta dal
 // sito Aruba dallo script locale. Stesso token del cron fatture.
 export const spCronIncassi = createServerFn({ method: "POST" })
-  .inputValidator((input: { token: string; dati: string }) => {
+  .inputValidator((input: { token: string; dati: string; forza?: boolean }) => {
     const token = String(input?.token ?? "").trim();
     if (!token || token.length > 100) throw new Error("Token mancante.");
     const dati = String(input?.dati ?? "");
     if (!dati || dati.length > 200_000) throw new Error("Dati mancanti o troppo grandi.");
-    return { token, dati };
+    // Riallineamento forzato (riduzioni applicate): solo a mano, mai dal giro.
+    return { token, dati, forza: input?.forza === true };
   })
   .handler(async ({ data }) => {
     await verificaTokenCronFatture(data.token);
@@ -796,7 +797,7 @@ export const spCronIncassi = createServerFn({ method: "POST" })
         };
       })
       .filter((r) => r.numero && Number.isFinite(r.incassato) && r.incassato >= 0);
-    return cronIncassiBatch(righe);
+    return cronIncassiBatch(righe, { forza: data.forza });
   });
 
 export const spCronNc = createServerFn({ method: "POST" })

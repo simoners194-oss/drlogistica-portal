@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.90.0",
+    date: "2026-10-09",
+    entries: [
+      {
+        title: "Correzioni fatte su Aruba che arrivano nel portale",
+        description:
+          'Il giro automatico non riduce mai un incasso e non riporta mai una fattura da "incassata" a "non incassata", per proteggersi dai report sbagliati. Quando però una correzione è stata fatta apposta su Aruba (caso Univex Healthcare, incassi del 17 settembre tolti e rifatti), ora c’è la strada: la matita "Stato incasso" in Fatture, scegliendo "Non incassata", azzera anche l’importo delle rate; e lo script di scarico lanciato a mano come "incassi forza" porta nel portale anche le riduzioni. Il giro delle 7:15 resta prudente come prima.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.89.5",
     date: "2026-10-01",
     entries: [

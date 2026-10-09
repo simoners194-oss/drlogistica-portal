@@ -4,7 +4,8 @@
 // chiama questo indirizzo a blocchi:
 //   /cron-incassi?token=<token del cron fatture>&dati=<base64 di [{numero,cliente,flusso,incassato,ultimaData}]>
 // Il server applica SOLO AUMENTI: riduzioni contate e mai applicate,
-// nessun azzeramento. Il resto resta all'import manuale con le conferme.
+// nessun azzeramento. Con `&forza=1` (solo a mano: `scarica_aruba.py incassi
+// forza`, dopo una correzione fatta su Aruba) le riduzioni si applicano.
 import { createFileRoute } from "@tanstack/react-router";
 import { spCronIncassi } from "@/lib/sharepoint.functions";
 
@@ -15,12 +16,15 @@ export const Route = createFileRoute("/cron-incassi")({
   validateSearch: (search: Record<string, unknown>) => ({
     token: typeof search.token === "string" ? search.token : "",
     dati: typeof search.dati === "string" ? search.dati : "",
+    forza: search.forza === "1" || search.forza === 1 || search.forza === true,
   }),
-  loaderDeps: ({ search }) => ({ token: search.token, dati: search.dati }),
+  loaderDeps: ({ search }) => ({ token: search.token, dati: search.dati, forza: search.forza }),
   loader: async ({ deps }): Promise<{ ok: boolean; messaggio: string }> => {
     if (!deps.token || !deps.dati) return { ok: false, messaggio: "token o dati mancanti" };
     try {
-      const r = (await spCronIncassi({ data: { token: deps.token, dati: deps.dati } })) as {
+      const r = (await spCronIncassi({
+        data: { token: deps.token, dati: deps.dati, forza: deps.forza },
+      })) as {
         aggiornate: number;
         invariate: number;
         riduzioniIgnorate: number;
@@ -28,7 +32,7 @@ export const Route = createFileRoute("/cron-incassi")({
       };
       return {
         ok: true,
-        messaggio: `${r.aggiornate} aggiornate, ${r.invariate} invariate, ${r.riduzioniIgnorate} riduzioni ignorate, ${r.nonTrovate} non in archivio`,
+        messaggio: `${deps.forza ? "FORZATO — " : ""}${r.aggiornate} aggiornate, ${r.invariate} invariate, ${r.riduzioniIgnorate} riduzioni ignorate, ${r.nonTrovate} non in archivio`,
       };
     } catch (err) {
       return { ok: false, messaggio: err instanceof Error ? err.message : String(err) };

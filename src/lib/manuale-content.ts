@@ -357,8 +357,11 @@ Caso particolare già gestito: quando su Aruba una fattura di un consulente risu
     titolo: '"Su Aruba risulta pagata ma sul portale no"',
     testo: `Gli stati di pagamento vivono solo sul sito di Aruba, non sulle API: li porta il "giro" che parte dal PC aziendale quattro volte al giorno (e il bottone "Sincronizza da Aruba" per il giro su richiesta). Se il PC è spento, gli stati non viaggiano.
 
-Quindi: primo, Ctrl+F5 (magari è la pagina vecchia); secondo, guarda quando è passato l'ultimo giro; terzo, se serve subito lancia il giro su richiesta. Se dopo un giro completo lo stato ancora non torna, allora sì che è una segnalazione.`,
-    chiavi: "aruba pagata portale aperta stato giro pc sincronizza incasso non aggiornato",
+Quindi: primo, Ctrl+F5 (magari è la pagina vecchia); secondo, guarda quando è passato l'ultimo giro; terzo, se serve subito lancia il giro su richiesta. Se dopo un giro completo lo stato ancora non torna, allora sì che è una segnalazione.
+
+Il caso contrario, "su Aruba l'ho riaperta ma sul portale resta incassata", è voluto: il giro non riduce mai un incasso e non riporta mai una fattura indietro, per non farsi ingannare da un report sbagliato. Dalla 1.90.0 la correzione fatta apposta su Aruba si porta nel portale così: in Fatture, matita "Stato incasso" sulla fattura → "Non incassata", che azzera anche l'importo delle rate; poi, se su Aruba restano incassi parziali (acconti, compensazioni), lo script di scarico lanciato a mano come "incassi forza" scrive anche le riduzioni. Il giro delle 7:15 resta prudente come prima.`,
+    chiavi:
+      "aruba pagata portale aperta stato giro pc sincronizza incasso non aggiornato riaperta riduzione forza matita non incassata",
   },
   {
     id: "fat-termini-opzioni",
