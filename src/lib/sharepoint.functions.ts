@@ -670,7 +670,9 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
                   ? "fisso"
                   : input?.genere === "anomalia"
                     ? "anomalia"
-                    : "voce";
+                    : input?.genere === "gruppo"
+                      ? "gruppo"
+                      : "voce";
     const importo = Number(input?.importo ?? 0);
     if (genere === "fisso" && (!Number.isFinite(importo) || importo <= 0))
       throw new Error("Importo mensile del costo fisso non valido (positivo)");
@@ -697,6 +699,8 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
       .slice(0, 255);
     if (genere === "fornitore" && note && !note.startsWith("{"))
       throw new Error("Scheda fornitore non valida");
+    if (genere === "gruppo" && (!note || !note.startsWith("{")))
+      throw new Error("Impostazioni del gruppo non valide");
     return {
       nome,
       genere: genere as FlussoCassaRiga["genere"],

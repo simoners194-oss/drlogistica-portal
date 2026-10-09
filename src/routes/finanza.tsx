@@ -42,6 +42,7 @@ import { CampoVocabolario } from "@/components/CampoVocabolario";
 import { RegoleFattureCard } from "@/components/RegoleFattureCard";
 import { PivotClassificazione, type RigaPivot } from "@/components/PivotClassificazione";
 import { ResocontoTab } from "@/components/ResocontoTab";
+import { EstrattoContoTab } from "@/components/EstrattoContoTab";
 import { FlussiCassaTab } from "@/components/FlussiCassaTab";
 import { StipendiTab } from "@/components/StipendiTab";
 import { FiscaleTab } from "@/components/FiscaleTab";
@@ -259,6 +260,7 @@ type Tab =
   | "movimenti"
   | "overview"
   | "resoconto"
+  | "estratto"
   | "flussi"
   | "fornitori"
   | "stipendi"
@@ -3005,6 +3007,7 @@ function FinanzaPage() {
           {tabBtn("movimenti", <Table2 className="h-4 w-4" />, t("fin.tabMovimenti"))}
           {tabBtn("overview", <TrendingUp className="h-4 w-4" />, t("fin.tabOverview"))}
           {tabBtn("resoconto", <Users className="h-4 w-4" />, t("fin.tabResoconto"))}
+          {tabBtn("estratto", <Building2 className="h-4 w-4" />, t("fin.tabEstratto"))}
           {tabBtn("flussi", <Banknote className="h-4 w-4" />, t("fin.tabFlussi"))}
           {tabBtn("fornitori", <Building2 className="h-4 w-4" />, t("fin.tabFornitori"))}
           {tabBtn("stipendi", <Users className="h-4 w-4" />, t("fin.tabStipendi"))}
@@ -3039,6 +3042,7 @@ function FinanzaPage() {
 
       {/* ------------------------------- Resoconto ------------------------- */}
       {tab === "resoconto" && <ResocontoTab />}
+      {tab === "estratto" && <EstrattoContoTab />}
 
       {/* ------------------------------- Flussi di cassa ------------------- */}
       {tab === "flussi" && <FlussiCassaTab />}

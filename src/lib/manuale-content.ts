@@ -341,6 +341,20 @@ Sotto ci sono anche gli elenchi completi — tutte le fatture da incassare e da 
     chiavi: "compensazione spunta netto cliente fornitore saldo",
   },
 
+  {
+    id: "res-estratto-gruppo",
+    sezione: "Resoconto e incassi",
+    titolo: "L'estratto conto di gruppo (Univex e simili)",
+    testo: `Finanze → Estratto conto (dalla 1.91.0). Serve per i clienti che sono un gruppo di società e regolano per compensazione, come Univex: Healthcare e Freight ci pagano, Nolvex e Univex Srl ci fatturano, e i loro bonifici coprono le nostre fatture al netto di quello che dobbiamo. Il portale ricostruisce l'estratto conto come lo vede il cliente: per società e mese di competenza, fatturato (al netto delle note di credito), bonifici ricevuti, compensazioni e aperto, con lo scaduto alla data scelta.
+
+La regola delle compensazioni si imposta una volta per gruppo: le fatture passive di una società che ci fattura si scaricano sulle sue stesse fatture; quelle di chi non ci fattura (Nolvex, Univex Srl) vanno sulla "società che assorbe", scelta in alto (per Univex: Freight). I bonifici si attribuiscono per competenza, dal più vecchio; un bonifico pari esatto a una fattura (non tondo) va su quella fattura.
+
+Accanto c'è la vista Aruba (quello che il portale registra oggi) e la colonna Differenza: quando le compensazioni sono registrate sulla stessa società del cliente è zero; se non lo è, è lì che il cliente e Sabrina non si capiranno. Il controllo mensile fa il conto che ha scoperto il caso del 17 settembre: incassi registrati su Aruba meno bonifici in banca deve fare le passive pagate per compensazione; rosso sopra i 10.000, giallo sopra i 1.000. La previsione mostra l'aperto per mese di scadenza al netto di quanto il cliente tratterrà. Esporta CSV come le altre pagine.
+
+I gruppi sono quelli del Resoconto (Resoconto → Gruppi, membri separati da virgola, match per parole del nome). Le scadenze seguono i termini di pagamento del cliente come nel Resoconto.`,
+    chiavi:
+      "estratto conto gruppo univex healthcare freight nolvex compensazioni assorbe società competenza bonifici scaduto aruba banca semaforo previsione incassi",
+  },
   // --- Fatture -------------------------------------------------------------------
   {
     id: "fat-stati",

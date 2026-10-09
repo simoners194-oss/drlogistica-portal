@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.91.0",
+    date: "2026-10-09",
+    entries: [
+      {
+        title: "Estratto conto di gruppo: la situazione del cliente prima che la mandi lui",
+        description:
+          "Nuova scheda Finanze → Estratto conto per i clienti fatti di più società che regolano per compensazione (Univex). Per società e mese di competenza: fatturato, bonifici, compensazioni e aperto come li vede il cliente, con la regola della società che assorbe le compensazioni salvata per gruppo; accanto la vista Aruba e la differenza. Controllo mensile Aruba contro banca (rosso quando un incasso è registrato senza soldi e senza compensazione) e previsione degli incassi per scadenza. Esporta CSV.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.90.0",
     date: "2026-10-09",
     entries: [
