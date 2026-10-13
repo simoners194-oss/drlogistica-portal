@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.91.1",
+    date: "2026-10-13",
+    entries: [
+      {
+        title: "Monica Notaro con la vista direzione",
+        description:
+          "Monica Notaro (DR008) ha le stesse abilitazioni di Diego Gabelli: tutti i moduli della direzione (Finanze con Stipendi e Fiscale, Mezzi, Manuale, Novità riservate) con la propria utenza di sempre, senza poteri di autorizzazione e senza la tab Amministrazione.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.91.0",
     date: "2026-10-09",
     entries: [

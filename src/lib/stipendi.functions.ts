@@ -1,7 +1,7 @@
 // DR Portal — Finanza → Stipendi: server functions.
 // Dati sensibili (costo del personale per dipendente): accesso riservato
 // all'amministratore di sistema e alla vista direzione (DR005, DR007,
-// ADM002) — un responsabile "semplice" non li vede.
+// DR008, ADM002, DR000, DR002) — un responsabile "semplice" non li vede.
 
 import { createServerFn } from "@tanstack/react-start";
 import { readSessionUser, type ServerSessionUser } from "./auth.server";

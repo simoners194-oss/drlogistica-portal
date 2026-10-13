@@ -338,6 +338,8 @@ export function isSupervisoreGlobale(codice: string): boolean {
 // Diego Gabelli con le stesse viste di Francesco Romano, zero autorizzazioni.
 const CODICI_VISTA_DIREZIONE = new Set<string>([
   "DR007", // Diego Gabelli
+  // Richiesta Simone 13/10: Monica Notaro con le stesse abilitazioni di Gabelli.
+  "DR008", // Monica Notaro
   // Proprietà: utenza con la stessa vista dell'amministratore di sistema
   // (Finanza, Mezzi e moduli direzione) ma SENZA la tab Amministrazione,
   // che resta riservata al ruolo amministratore_sistema (ADM001).

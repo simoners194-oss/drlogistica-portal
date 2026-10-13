@@ -37,6 +37,16 @@ export const SEZIONI_MANUALE = [
 export const MANUALE: readonly VoceManuale[] = [
   // --- In generale -----------------------------------------------------------
   {
+    id: "gen-vista-direzione",
+    sezione: "In generale",
+    titolo: "Chi vede i moduli della direzione",
+    testo: `I moduli riservati (Finanze con Stipendi e Fiscale, Mezzi, Manuale, Novità riservate) li vedono l'amministratore di sistema (ADM001) e la "vista direzione": Francesco Romano (DR005), ADM002, Diego Gabelli (DR007), Monica Notaro (DR008, dalla 1.91.1), Lucrezia Pratesi (DR000) e Sabrina Guidarelli (DR002). È solo una vista: ferie, permessi, acquisti e supervisione restano governati dalle abilitazioni Autorizza e preposto di sede in anagrafica, e la tab Amministrazione resta di ADM001.
+
+L'elenco sta nel codice (richieste-logic, CODICI_VISTA_DIREZIONE): per aggiungere o togliere qualcuno serve una modifica del portale, non basta l'anagrafica. Chi entra lo fa con la propria utenza di sempre, codice e PIN.`,
+    chiavi:
+      "vista direzione chi vede finanze mezzi manuale abilitazioni gabelli notaro pratesi guidarelli adm002 dr005 accessi",
+  },
+  {
     id: "gen-cambia-pin",
     sezione: "In generale",
     titolo: "Ho dimenticato il PIN (o voglio cambiarlo)",
