@@ -2,15 +2,29 @@
 //
 // Richiesta Simone 19/10/2026, sul modello del file del commercialista
 // ("nuovo schema flusso di cassa_071026.xlsx"): non una previsione ma una
-// FOTOGRAFIA della cassa a una data — saldo in banca, incassi attesi
-// (certi o in standby), uscite in tre secchi: da pagare ORA (scadenze del
-// mese, scadute comprese), PROSSIMI giorni (fino a una data a scelta, di
-// solito il 5 del mese dopo), STANDBY (parcheggiate apposta, col motivo).
+// FOTOGRAFIA della cassa a una data, nello STESSO foglio che la proprietà
+// legge — colonne Entrate | Note | Saldo | Uscite | 1-5 del mese dopo |
+// Standby | Note | Note2 e i totali in fondo con le sue etichette.
+//
+// Semantica del foglio (ricavata dai fogli "1210" e "1510"):
+// - ENTRATE = gli incassi arrivati in banca dal primo del mese (già dentro
+//   il saldo) più quelli attesi dai clienti; "standby incasso" (B55) = solo
+//   gli attesi, non ancora in banca. Le entrate NON si sommano al saldo.
+// - USCITE in tre colonne: da pagare ORA (scadenze del mese, scadute
+//   comprese), PROSSIMI giorni (fino alla data limite, di solito il 5 del
+//   mese dopo), STANDBY (parcheggiate apposta).
+// - saldo dopo incassi e pagamenti = saldo − da pagare; la cella accanto =
+//   quello − prossimi; "totale da pagare" = da pagare + standby;
+//   "cassa+standby incassi−standby da pagare" = (saldo − ora − prossimi)
+//   + standby incasso − standby da pagare.
+// Una riga per FORNITORE/CLIENTE (come fa lui), non per fattura: i gruppi
+// riproducono i suoi numeri al centesimo (MG Autoparts 6.527,01,
+// l'autorimessa 30.599, N.A.B 4.625,20, Califano 2.975,11…).
 // Niente medie e niente stime: entra solo quello che ha un documento o un
 // importo noto (fatture aperte, stipendi netti dal file paghe, scadenze
-// fiscali, costi fissi) più le righe manuali della proprietà (divisione
-// utili, compensazioni) e le spese passate da altri conti (carta Amex).
-// Ogni fotografia si può salvare e rileggere: come i fogli "1210"/"1510".
+// fiscali non "previsionali", costi fissi) più le righe manuali della
+// proprietà (divisione utili, compensazioni) e le spese passate da altri
+// conti (carta Amex = "CDC" nel suo foglio).
 import { residuoAperto, type FatturaConStato } from "./fatture-logic";
 import {
   esclusaDaFlussi,
@@ -25,21 +39,21 @@ import { chiaveNome, type StipendiDb } from "./stipendi-logic";
 
 export type SecchioCassa = "ora" | "prossimi" | "standby";
 export type TipoRigaCassa =
-  "attiva" | "passiva" | "stipendi" | "fiscale" | "fisso" | "manuale" | "amex";
+  "incasso" | "attiva" | "passiva" | "stipendi" | "fiscale" | "fisso" | "manuale" | "amex";
 
-/** Stato salvato per riga (chiave stabile): secchio scelto, nota, flag. */
+/** Stato salvato per riga (chiave stabile): colonna scelta, nota, flag. */
 export interface StatoRigaCassa {
-  /** Secchio forzato a mano. */
+  /** Colonna forzata a mano (ora / prossimi / standby). */
   b?: SecchioCassa;
   /** Nota libera ("contestare", "compensazione", "sentire Marelli"). */
   n?: string;
-  /** Contestata. */
+  /** Contestata (non più usato dalla vista, conservato). */
   c?: boolean;
-  /** Standby incasso (solo entrate). */
+  /** Riservato (non più usato: gli attesi sono sempre "standby incasso"). */
   s?: boolean;
-  /** Importo corretto a mano (stipendi, costi fissi). */
+  /** Importo corretto a mano (stipendi, fiscale, costi fissi, attesi). */
   i?: number;
-  /** Tolta dalla vista. */
+  /** Tolta dal foglio. */
   x?: boolean;
 }
 
@@ -51,7 +65,7 @@ export interface RigaManualeCassa {
   data: string; // YYYY-MM-DD (scadenza / addebito)
   secchio: SecchioCassa;
   nota?: string;
-  /** true = entrata (es. rimborso); default uscita. */
+  /** true = entrata attesa (es. "Univex 110.000"); default uscita. */
   entrata?: boolean;
 }
 
@@ -66,22 +80,31 @@ export interface RigaFotografia {
   e: boolean;
   n?: string;
   si?: boolean;
+  /** Documenti raggruppati nella riga. */
+  nd?: number;
 }
 
 export interface TotaliCassa {
   saldo: number;
-  entrateCerte: number;
+  /** B2: somma di tutte le entrate elencate (arrivate + attese). */
+  entrate: number;
+  /** Incassi già in banca dal primo del mese (informativo). */
+  entrateRicevute: number;
+  /** B55 "standby incasso": entrate attese, non ancora in banca. */
   entrateStandby: number;
+  /** E55 "da pagare". */
   usciteOra: number;
+  /** F55 "da pagare 1-5/11". */
   usciteProssimi: number;
+  /** G55 "standby da pagare". */
   usciteStandby: number;
-  /** saldo − uscite ora ("saldo dopo pagamenti" del commercialista). */
+  /** H55 "totale da pagare" = da pagare + standby. */
+  totaleDaPagare: number;
+  /** E58 "saldo dopo incassi e pagamenti" = saldo − da pagare. */
   saldoDopoOra: number;
-  /** saldo − ora − prossimi. */
+  /** F58 = saldo dopo − prossimi. */
   saldoDopoProssimi: number;
-  /** saldo − ora − prossimi + entrate certe. */
-  cassaFinale: number;
-  /** cassaFinale + entrate in standby − uscite in standby. */
+  /** I55 "cassa+standby incassi-standby da pagare". */
   cassaConStandby: number;
   /** Righe fuori orizzonte (scadenza oltre il limite), solo informative. */
   nOltre: number;
@@ -125,20 +148,27 @@ export interface RigaCassa {
   importo: number;
   /** Importo prima della correzione a mano (uguale se non corretto). */
   importoOrigine: number;
-  scadenza: string; // YYYY-MM-DD
+  scadenza: string; // YYYY-MM-DD (per gli incassi: data in banca)
   /** Addebito automatico (RID/RiBa), stipendi, fisco: esce senza decidere. */
   certa: boolean;
   entrata: boolean;
   secchio: SecchioCassa;
-  /** Secchio che avrebbe senza interventi a mano. */
+  /** Colonna che avrebbe senza interventi a mano. */
   secchioAuto: SecchioCassa | "oltre";
+  /** Entrata attesa (non in banca): conta in "standby incasso". */
   standbyIncasso: boolean;
   nota: string;
   contestata: boolean;
   appalto?: string;
+  /** Documenti raggruppati nella riga (fatture, scadenze). */
+  documenti: number;
+  /** L'importo si può correggere a mano. */
+  editabile: boolean;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+const chiaveCliente = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 export function fineMese(iso: string): string {
   const [y, m] = iso.slice(0, 7).split("-").map(Number);
@@ -169,13 +199,21 @@ export interface StipendiCassaRiga {
  *  (netti), tolte le spunte Pagato della tab Stipendi. Mese di pagamento =
  *  mese dopo la competenza; entrano i mesi con pagamento fino a `fino`
  *  (YYYY-MM) compreso, così si vedono anche gli arretrati (settembre non
- *  pagato a ottobre). */
-export function stipendiDaPagare(db: StipendiDb, fino: string): StipendiCassaRiga[] {
+ *  pagato a ottobre). Un mese PASSATO senza nessuna spunta Pagato è un mese
+ *  in cui le spunte non si usavano ancora: si considera pagato per intero
+ *  (altrimenti gennaio-agosto 2026 risorgerebbero come arretrati). */
+export function stipendiDaPagare(
+  db: StipendiDb,
+  fino: string,
+  meseCorrente: string = fino,
+): StipendiCassaRiga[] {
   const out: StipendiCassaRiga[] = [];
   for (const n of db.netti ?? []) {
     const mesePag = meseDopo(n.mese);
     if (mesePag > fino) continue;
-    const pagati = new Set(db.pagatiPerMese?.[n.mese] ?? []);
+    const flag = db.pagatiPerMese?.[n.mese] ?? [];
+    if (mesePag < meseCorrente && flag.length === 0) continue;
+    const pagati = new Set(flag);
     const perAppalto = new Map<string, { importo: number; dipendenti: number }>();
     for (const d of n.dipendenti) {
       if (pagati.has(chiaveNome(d.nome))) continue;
@@ -213,8 +251,10 @@ export interface InputCassa {
   infoFornitori: ReadonlyMap<string, FornitoreInfo>;
   fiscale: readonly ScadenzaFiscale[];
   fissi: readonly CostoFisso[];
-  /** Movimenti del mese corrente: un costo fisso già uscito non si ripropone. */
+  /** Movimenti bancari: gli accrediti dal primo del mese sono le ENTRATE;
+   *  un costo fisso già uscito nel mese non si ripropone. */
   movimenti: readonly {
+    id?: string;
     cliente?: string;
     descrizione?: string;
     importo: number;
@@ -250,52 +290,166 @@ export function etichettaMeseCassa(yyyymm: string): string {
   return `${MESI_IT[Number(m) - 1] ?? m} ${y}`;
 }
 
+const MESI_LUNGHI = [
+  "gennaio",
+  "febbraio",
+  "marzo",
+  "aprile",
+  "maggio",
+  "giugno",
+  "luglio",
+  "agosto",
+  "settembre",
+  "ottobre",
+  "novembre",
+  "dicembre",
+];
+/** Intestazione della colonna dei prossimi giorni come nel foglio: "1-5 novembre". */
+export function etichettaProssimi(limite: string): string {
+  const g = Number(limite.slice(8, 10));
+  const m = MESI_LUNGHI[Number(limite.slice(5, 7)) - 1] ?? limite.slice(5, 7);
+  return `1-${g} ${m}`;
+}
+/** Etichetta corta del totale: "da pagare 1-5/11". */
+export function etichettaProssimiBreve(limite: string): string {
+  return `1-${Number(limite.slice(8, 10))}/${limite.slice(5, 7)}`;
+}
+
+/** Scadenze fiscali "previsionali" (stime del consulente): non entrano. */
+export function scadenzaPrevisionale(sc: ScadenzaFiscale): boolean {
+  return /previsional/i.test([sc.voce, sc.periodo, sc.modalita, sc.note].join(" "));
+}
+
+type Grezza = Omit<
+  RigaCassa,
+  "secchio" | "secchioAuto" | "nota" | "contestata" | "standbyIncasso" | "importoOrigine"
+>;
+
+function elencoNumeri(numeri: readonly string[]): string {
+  const n = numeri.length;
+  const testa = numeri.slice(0, 3).join(", ");
+  return n > 3 ? `${testa} +${n - 3}` : testa;
+}
+
 export function costruisciCassa(input: InputCassa): EsitoCassa {
   const { oggi, limite, db } = input;
   const fm = fineMese(oggi);
   const meseCorr = oggi.slice(0, 7);
+  const inizioMese = `${meseCorr}-01`;
   const stato = (k: string): StatoRigaCassa => db.stati[k] ?? {};
   const secchioAuto = (scadenza: string): SecchioCassa | "oltre" =>
     scadenza <= fm ? "ora" : scadenza <= limite ? "prossimi" : "oltre";
 
-  const grezze: Omit<
-    RigaCassa,
-    "secchio" | "secchioAuto" | "nota" | "contestata" | "standbyIncasso" | "importoOrigine"
-  >[] = [];
+  const grezze: Grezza[] = [];
 
-  // Entrate: fatture attive aperte con scadenza (esclusioni dei Flussi).
+  // ENTRATE arrivate: accrediti in banca dal primo del mese alla data.
+  const incassi = input.movimenti
+    .filter((m) => m.importo > 0.005)
+    .map((m) => ({ ...m, d: m.dataContabile.slice(0, 10) }))
+    .filter((m) => m.d >= inizioMese && m.d <= oggi)
+    .sort((a, b) => a.d.localeCompare(b.d));
+  for (const m of incassi) {
+    const nome = (m.cliente || m.descrizione || "").trim();
+    grezze.push({
+      chiave: `inc|${m.id ?? `${m.d}|${m.importo}|${chiaveCliente(nome)}`}`,
+      tipo: "incasso",
+      controparte: nome,
+      descrizione: ddmm(m.d),
+      importo: r2(m.importo),
+      scadenza: m.d,
+      certa: true,
+      entrata: true,
+      documenti: 1,
+      editabile: false,
+    });
+  }
+  // ENTRATE attese: fatture attive aperte con scadenza entro il limite,
+  // una riga per cliente (l'importo si corregge a mano con quello che il
+  // cliente annuncia). Esclusioni dei Flussi rispettate.
+  const gruppiAtt = new Map<
+    string,
+    { nome: string; importo: number; n: number; scad: string; numeri: string[] }
+  >();
   for (const x of input.attive) {
     const res = residuoAperto(x);
     if (res <= 1 || !x.s.scadenza) continue;
     const scad = x.s.scadenza.slice(0, 10);
+    if (scad > limite) continue;
     if (esclusaDaFlussi(input.esclusioni, x.f.cliente, scad.slice(0, 7))) continue;
+    const k = chiaveCliente(x.f.cliente);
+    const g = gruppiAtt.get(k) ?? { nome: x.f.cliente, importo: 0, n: 0, scad, numeri: [] };
+    g.importo = r2(g.importo + res);
+    g.n++;
+    if (scad < g.scad) g.scad = scad;
+    g.numeri.push(x.f.numero);
+    gruppiAtt.set(k, g);
+  }
+  for (const [k, g] of gruppiAtt)
     grezze.push({
-      chiave: `att|${x.f.nomeFile}`,
+      chiave: `attc|${meseCorr}|${k}`,
       tipo: "attiva",
-      controparte: x.f.cliente,
-      descrizione: `${x.f.numero} del ${x.f.dataDocumento.slice(0, 10).split("-").reverse().join("/")}`,
-      importo: r2(res),
-      scadenza: scad,
+      controparte: g.nome,
+      descrizione: `${g.n} fatt. ${elencoNumeri(g.numeri)} · scad. ${ddmm(g.scad)}`,
+      importo: g.importo,
+      scadenza: g.scad,
       certa: false,
       entrata: true,
+      documenti: g.n,
+      editabile: true,
     });
-  }
-  // Uscite: fatture passive aperte (RID/RiBa = certe).
+  // USCITE: fatture passive aperte, una riga per fornitore e colonna
+  // automatica (RID/RiBa = certe). Le decisioni (standby, nota) restano
+  // sul fornitore anche quando arrivano fatture nuove.
+  const gruppiPas = new Map<
+    string,
+    {
+      nome: string;
+      auto: SecchioCassa | "oltre";
+      importo: number;
+      n: number;
+      scad: string;
+      mods: Set<string>;
+      numeri: string[];
+    }
+  >();
   for (const x of input.passive) {
     const res = residuoAperto(x);
     if (res <= 1 || !x.s.scadenza) continue;
     const scad = x.s.scadenza.slice(0, 10);
     if (esclusaDaFlussi(input.esclusioni, x.f.cliente, scad.slice(0, 7))) continue;
     const mod = modalitaFattura(x.f, input.infoFornitori);
+    const auto = secchioAuto(scad);
+    const k = `${chiaveCliente(x.f.cliente)}|${auto}`;
+    const g = gruppiPas.get(k) ?? {
+      nome: x.f.cliente,
+      auto,
+      importo: 0,
+      n: 0,
+      scad,
+      mods: new Set<string>(),
+      numeri: [],
+    };
+    g.importo = r2(g.importo + res);
+    g.n++;
+    if (scad < g.scad) g.scad = scad;
+    g.mods.add(mod);
+    g.numeri.push(x.f.numero);
+    gruppiPas.set(k, g);
+  }
+  for (const [k, g] of gruppiPas) {
+    const certa = g.mods.size > 0 && ![...g.mods].includes("altro");
+    const mod = certa ? [...g.mods][0].toUpperCase() : "";
     grezze.push({
-      chiave: `pas|${x.f.nomeFile}`,
+      chiave: `pasg|${k}`,
       tipo: "passiva",
-      controparte: x.f.cliente,
-      descrizione: `${x.f.numero} del ${x.f.dataDocumento.slice(0, 10).split("-").reverse().join("/")}${mod !== "altro" ? ` · ${mod.toUpperCase()}` : ""}`,
-      importo: r2(res),
-      scadenza: scad,
-      certa: mod !== "altro",
+      controparte: g.nome,
+      descrizione: `${g.n} fatt. ${elencoNumeri(g.numeri)} · scad. ${ddmm(g.scad)}${mod ? ` · ${mod}` : ""}`,
+      importo: g.importo,
+      scadenza: g.scad,
+      certa,
       entrata: false,
+      documenti: g.n,
+      editabile: false,
     });
   }
   // Stipendi: netti non pagati per appalto, il 10 del mese di pagamento.
@@ -310,22 +464,41 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       certa: true,
       entrata: false,
       appalto: s.appalto,
+      documenti: s.dipendenti,
+      editabile: true,
     });
   }
-  // Fiscale: scadenze non pagate (anche scadute).
+  // Fiscale: scadenze non pagate (anche scadute), senza le "previsionali",
+  // una riga per colonna come il suo "Fiscale + BPM".
+  const gruppiFis = new Map<
+    SecchioCassa | "oltre",
+    { importo: number; n: number; scad: string; voci: string[]; fin: boolean }
+  >();
   for (const sc of input.fiscale) {
-    if (sc.pagato || !sc.dataPagamento) continue;
+    if (sc.pagato || !sc.dataPagamento || scadenzaPrevisionale(sc)) continue;
+    const scad = sc.dataPagamento.slice(0, 10);
+    const auto = secchioAuto(scad);
+    const g = gruppiFis.get(auto) ?? { importo: 0, n: 0, scad, voci: [], fin: false };
+    g.importo = r2(g.importo + Math.abs(sc.importo));
+    g.n++;
+    if (scad < g.scad) g.scad = scad;
+    g.voci.push([sc.voce, sc.periodo].filter(Boolean).join(" "));
+    if (sc.categoria === "finanziamento") g.fin = true;
+    gruppiFis.set(auto, g);
+  }
+  for (const [auto, g] of gruppiFis)
     grezze.push({
-      chiave: `fisc|${sc.id ?? `${sc.voce}|${sc.dataPagamento}|${sc.importo}`}`,
+      chiave: `fiscg|${meseCorr}|${auto}`,
       tipo: "fiscale",
-      controparte: "Fiscale",
-      descrizione: [sc.voce, sc.periodo, sc.anno, sc.modalita].filter(Boolean).join(" "),
-      importo: r2(Math.abs(sc.importo)),
-      scadenza: sc.dataPagamento.slice(0, 10),
+      controparte: g.fin ? "Fiscale + BPM" : "Fiscale",
+      descrizione: elencoNumeri(g.voci),
+      importo: g.importo,
+      scadenza: g.scad,
       certa: true,
       entrata: false,
+      documenti: g.n,
+      editabile: true,
     });
-  }
   // Costi fissi del mese: se è già uscito un movimento che li somiglia, no.
   const moviMese = input.movimenti.filter((m) => m.dataContabile.slice(0, 7) === meseCorr);
   for (const f of input.fissi) {
@@ -340,19 +513,23 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       scadenza: fm,
       certa: false,
       entrata: false,
+      documenti: 1,
+      editabile: true,
     });
   }
-  // Righe manuali (proprietà) e Amex.
+  // Righe manuali (proprietà) e carta Amex ("CDC").
   for (const m of db.manuali) {
     grezze.push({
       chiave: `man|${m.id}`,
       tipo: m.tipo,
-      controparte: m.tipo === "amex" ? "Carta Amex" : "Manuale",
-      descrizione: m.descrizione,
+      controparte: m.descrizione,
+      descrizione: m.tipo === "amex" ? "CDC" : "",
       importo: r2(Math.abs(m.importo)),
       scadenza: m.data || oggi,
       certa: m.tipo === "amex",
       entrata: Boolean(m.entrata),
+      documenti: 1,
+      editabile: true,
     });
   }
 
@@ -362,55 +539,62 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     const st = stato(g.chiave);
     if (st.x) continue;
     const manuale = db.manuali.find((m) => `man|${m.id}` === g.chiave);
-    const auto = secchioAuto(g.scadenza);
+    const auto: SecchioCassa | "oltre" =
+      g.tipo === "incasso" || g.tipo === "attiva" ? "ora" : secchioAuto(g.scadenza);
     const secchio: SecchioCassa =
       st.b ?? manuale?.secchio ?? (auto === "oltre" ? "prossimi" : auto);
-    const importo = st.i != null && st.i >= 0 ? r2(st.i) : g.importo;
+    const importo = g.editabile && st.i != null && st.i >= 0 ? r2(st.i) : g.importo;
     const riga: RigaCassa = {
       ...g,
       importoOrigine: g.importo,
       importo,
       secchio,
       secchioAuto: auto,
-      standbyIncasso: Boolean(st.s),
+      standbyIncasso: g.entrata && g.tipo !== "incasso",
       nota: st.n ?? manuale?.nota ?? "",
       contestata: Boolean(st.c),
     };
     if (auto === "oltre" && !st.b && !manuale) oltre.push(riga);
     else righe.push(riga);
   }
-  const ordine: Record<SecchioCassa, number> = { ora: 0, prossimi: 1, standby: 2 };
+  // Ordine del foglio: a sinistra gli incassi per data poi gli attesi; a
+  // destra per scadenza e nome, a prescindere dalla colonna (così una riga
+  // spostata di colonna non cambia posto).
+  const tipoOrd = (r: RigaCassa) => (r.tipo === "incasso" ? 0 : 1);
   righe.sort(
     (a, b) =>
       Number(b.entrata) - Number(a.entrata) ||
-      ordine[a.secchio] - ordine[b.secchio] ||
+      tipoOrd(a) - tipoOrd(b) ||
       a.scadenza.localeCompare(b.scadenza) ||
       a.controparte.localeCompare(b.controparte, "it"),
   );
-  oltre.sort((a, b) => a.scadenza.localeCompare(b.scadenza));
+  oltre.sort(
+    (a, b) =>
+      a.scadenza.localeCompare(b.scadenza) || a.controparte.localeCompare(b.controparte, "it"),
+  );
 
   const somma = (xs: readonly RigaCassa[]) => r2(xs.reduce((s, r) => s + r.importo, 0));
   const entrate = righe.filter((r) => r.entrata);
   const uscite = righe.filter((r) => !r.entrata);
-  const entrateCerte = somma(entrate.filter((r) => !r.standbyIncasso && r.secchio !== "standby"));
-  const entrateStandby = somma(entrate.filter((r) => r.standbyIncasso || r.secchio === "standby"));
+  const entrateRicevute = somma(entrate.filter((r) => !r.standbyIncasso));
+  const entrateStandby = somma(entrate.filter((r) => r.standbyIncasso));
   const usciteOra = somma(uscite.filter((r) => r.secchio === "ora"));
   const usciteProssimi = somma(uscite.filter((r) => r.secchio === "prossimi"));
   const usciteStandby = somma(uscite.filter((r) => r.secchio === "standby"));
   const saldoDopoOra = r2(input.saldo - usciteOra);
   const saldoDopoProssimi = r2(saldoDopoOra - usciteProssimi);
-  const cassaFinale = r2(saldoDopoProssimi + entrateCerte);
   const totali: TotaliCassa = {
     saldo: r2(input.saldo),
-    entrateCerte,
+    entrate: r2(entrateRicevute + entrateStandby),
+    entrateRicevute,
     entrateStandby,
     usciteOra,
     usciteProssimi,
     usciteStandby,
+    totaleDaPagare: r2(usciteOra + usciteStandby),
     saldoDopoOra,
     saldoDopoProssimi,
-    cassaFinale,
-    cassaConStandby: r2(cassaFinale + entrateStandby - usciteStandby),
+    cassaConStandby: r2(saldoDopoProssimi + entrateStandby - usciteStandby),
     nOltre: oltre.length,
     usciteOltre: somma(oltre.filter((r) => !r.entrata)),
   };
@@ -441,11 +625,12 @@ export function creaFotografia(
       e: r.entrata,
       n: r.nota || undefined,
       si: r.standbyIncasso || undefined,
+      nd: r.documenti > 1 ? r.documenti : undefined,
     })),
   };
 }
 
-/** Confronto tra due fotografie: righe nuove, sparite, cambiate di importo o secchio. */
+/** Confronto tra due fotografie: righe nuove, sparite, cambiate di importo o colonna. */
 export function confrontaFotografie(
   prima: FotografiaCassa,
   dopo: FotografiaCassa,

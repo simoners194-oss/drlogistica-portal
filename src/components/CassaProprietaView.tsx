@@ -1,14 +1,16 @@
 // DR Portal — Finanza → Flussi → vista "Cassa proprietà".
-// La fotografia della cassa a una data, sul modello del commercialista:
-// saldo in banca, entrate attese (certe / standby), uscite in tre secchi
-// (ora / prossimi giorni / standby) con nota e stato per riga, righe manuali
-// della proprietà e spese passate dalla carta Amex, totali come nel suo
-// foglio, fotografie salvate. Logica in lib/cassa-logic; dati in cassa.json.
-import { useEffect, useMemo, useState } from "react";
+// IL FOGLIO del commercialista, tale e quale: colonne Entrate | Note |
+// Saldo | Uscite | 1-5 del mese dopo | Standby | Note | Note2, i totali in
+// fondo con le sue etichette, le fotografie come i fogli "1210"/"1510".
+// Niente cruscotti: la proprietà legge solo questo. Si lavora dentro le
+// celle: clic su una cella vuota delle tre colonne per spostare un'uscita,
+// clic sull'importo per correggerlo (stipendi, fiscale, fissi, attesi),
+// Note2 è una cella scrivibile, la × a bordo riga toglie la riga.
+// Logica in lib/cassa-logic; dati in FinanzaData/cassa.json.
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Camera, ChevronDown, ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
+import { Camera, Loader2, X } from "lucide-react";
 import { useLang } from "@/lib/i18n";
-type TFn = ReturnType<typeof useLang>["t"];
 import { EsportaStampa } from "@/components/EsportaStampa";
 import type { FatturaConStato } from "@/lib/fatture-logic";
 import type { CostoFisso, FornitoreInfo } from "@/lib/flussi-logic";
@@ -22,6 +24,8 @@ import {
   costruisciCassa,
   creaFotografia,
   emptyCassaDb,
+  etichettaProssimi,
+  etichettaProssimiBreve,
   limiteDefault,
   stipendiDaPagare,
   type CassaDb,
@@ -30,18 +34,58 @@ import {
   type RigaManualeCassa,
   type SecchioCassa,
   type StatoRigaCassa,
+  type TipoRigaCassa,
+  type TotaliCassa,
 } from "@/lib/cassa-logic";
+
+type TFn = ReturnType<typeof useLang>["t"];
 
 const fmt = (n: number) =>
   n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtData = (iso: string) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
+const ddmm = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "");
 const oggiISO = () => new Date().toISOString().slice(0, 10);
+const parseNum = (s: string): number | null => {
+  const n = Number(s.trim().replace(/\./g, "").replace(",", "."));
+  return s.trim() && Number.isFinite(n) ? n : null;
+};
 const inputCls =
   "rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
-const th = "px-2 py-1.5 text-left text-[11px] uppercase tracking-wider text-muted-foreground";
-const thR = `${th} text-right`;
-const td = "px-2 py-1 text-sm text-foreground align-top";
-const tdR = `${td} text-right tabular-nums whitespace-nowrap`;
+
+/** Riga del foglio, uguale per la vista viva e per una fotografia. */
+interface Cella {
+  chiave: string;
+  tipo: TipoRigaCassa;
+  nome: string;
+  dettaglio: string;
+  importo: number;
+  importoOrigine: number;
+  secchio: SecchioCassa;
+  entrata: boolean;
+  attesa: boolean;
+  nota: string;
+  data: string;
+  certa: boolean;
+  documenti: number;
+  editabile: boolean;
+}
+
+const daRiga = (r: RigaCassa): Cella => ({
+  chiave: r.chiave,
+  tipo: r.tipo,
+  nome: r.controparte,
+  dettaglio: r.descrizione,
+  importo: r.importo,
+  importoOrigine: r.importoOrigine,
+  secchio: r.secchio,
+  entrata: r.entrata,
+  attesa: r.standbyIncasso,
+  nota: r.nota,
+  data: r.scadenza,
+  certa: r.certa,
+  documenti: r.documenti,
+  editabile: r.editabile,
+});
 
 export function CassaProprietaView({
   attive,
@@ -67,16 +111,10 @@ export function CassaProprietaView({
   const [saldoErr, setSaldoErr] = useState(false);
   const [oggi, setOggi] = useState(oggiISO());
   const [limite, setLimite] = useState("");
-  const [saldoOverride, setSaldoOverride] = useState("");
+  const [saldoIn, setSaldoIn] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
-  const [filtro, setFiltro] = useState<"tutte" | SecchioCassa>("tutte");
   const [mostraOltre, setMostraOltre] = useState(false);
-  const [fotoAperta, setFotoAperta] = useState<FotografiaCassa | null>(null);
-  const [nuova, setNuova] = useState<Partial<RigaManualeCassa>>({
-    tipo: "manuale",
-    secchio: "ora",
-    data: oggiISO(),
-  });
+  const [fotoId, setFotoId] = useState<string | null>(null);
 
   useEffect(() => {
     spCassaGet()
@@ -100,17 +138,22 @@ export function CassaProprietaView({
       .catch(() => setSaldoErr(true));
   }, [t]);
 
+  // Saldo: scritto a mano (vince), altrimenti dalla banca, altrimenti
+  // l'ultimo scritto a mano e salvato.
   const saldo = useMemo(() => {
-    if (saldoOverride.trim()) {
-      const n = Number(saldoOverride.replace(/\./g, "").replace(",", "."));
-      if (Number.isFinite(n)) return n;
+    if (saldoIn != null) {
+      const n = parseNum(saldoIn);
+      if (n != null) return n;
     }
     if (saldoBanca) return saldoBanca.saldo;
     return db?.saldoManuale?.importo ?? 0;
-  }, [saldoOverride, saldoBanca, db]);
+  }, [saldoIn, saldoBanca, db]);
 
   const stipendi = useMemo(
-    () => (stipendiDb ? stipendiDaPagare(stipendiDb, (limite || oggi).slice(0, 7)) : []),
+    () =>
+      stipendiDb
+        ? stipendiDaPagare(stipendiDb, (limite || oggi).slice(0, 7), oggi.slice(0, 7))
+        : [],
     [stipendiDb, limite, oggi],
   );
 
@@ -127,6 +170,7 @@ export function CassaProprietaView({
       fiscale,
       fissi,
       movimenti: movimenti.map((m) => ({
+        id: m.id,
         cliente: m.cliente,
         descrizione: m.descrizione,
         importo: m.importo,
@@ -179,35 +223,34 @@ export function CassaProprietaView({
     else delete stati[chiave];
     void salva({ ...db, stati });
   };
-  const aggiungiManuale = () => {
+  const aggiungiManuale = (riga: Omit<RigaManualeCassa, "id">) => {
     if (!db) return;
-    const importo = Number(
-      String(nuova.importo ?? "")
-        .replace(/\./g, "")
-        .replace(",", "."),
-    );
-    if (!nuova.descrizione?.trim() || !Number.isFinite(importo) || importo === 0) {
-      toast.error(t("cpr.manualeIncompleta"));
-      return;
-    }
-    const riga: RigaManualeCassa = {
-      id: `M${Date.now().toString(36)}`,
-      tipo: nuova.tipo === "amex" ? "amex" : "manuale",
-      descrizione: nuova.descrizione.trim(),
-      importo: Math.abs(importo),
-      data: nuova.data || oggi,
-      secchio: nuova.secchio ?? "ora",
-      nota: nuova.nota?.trim() || undefined,
-      entrata: nuova.entrata ? true : undefined,
-    };
-    void salva({ ...db, manuali: [...db.manuali, riga] });
-    setNuova({ tipo: nuova.tipo, secchio: "ora", data: oggi });
+    void salva({
+      ...db,
+      manuali: [...db.manuali, { ...riga, id: `M${Date.now().toString(36)}` }],
+    });
+  };
+  const aggiornaManuale = (id: string, patch: Partial<RigaManualeCassa>) => {
+    if (!db) return;
+    void salva({
+      ...db,
+      manuali: db.manuali.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+    });
   };
   const eliminaManuale = (id: string) => {
     if (!db) return;
     const stati = { ...db.stati };
     delete stati[`man|${id}`];
     void salva({ ...db, manuali: db.manuali.filter((m) => m.id !== id), stati });
+  };
+  const salvaSaldoManuale = () => {
+    if (!db || saldoIn == null) return;
+    const n = parseNum(saldoIn);
+    if (n == null) {
+      setSaldoIn(null);
+      return;
+    }
+    void salva({ ...db, saldoManuale: { importo: Math.round(n * 100) / 100, data: oggi } });
   };
   const salvaFotografia = () => {
     if (!db || !esito) return;
@@ -224,31 +267,43 @@ export function CassaProprietaView({
     if (!db) return;
     if (!window.confirm(t("cpr.fotoEliminaConferma"))) return;
     void salva({ ...db, fotografie: db.fotografie.filter((f) => f.id !== id) });
-    if (fotoAperta?.id === id) setFotoAperta(null);
+    if (fotoId === id) setFotoId(null);
   };
-  const cambiaGiornoLimite = (giorno: number) => {
-    if (!db) return;
-    setLimite(limiteDefault(oggi, giorno));
-    void salva({ ...db, giornoLimite: giorno });
+  const cambiaLimite = (iso: string) => {
+    if (!iso) return;
+    setLimite(iso);
+    const g = Number(iso.slice(8, 10));
+    if (db && iso.slice(0, 7) === limiteDefault(oggi, 1).slice(0, 7) && g >= 1 && g <= 28)
+      void salva({ ...db, giornoLimite: g });
   };
 
-  const righeCsv = () => {
-    if (!esito) return [];
-    const out: (string | number)[][] = [];
-    for (const r of esito.righe)
-      out.push([
-        r.entrata ? t("cpr.entrata") : t("cpr.uscita"),
-        secchioLabel(r.secchio, t),
-        r.controparte,
-        r.descrizione,
-        fmtData(r.scadenza),
-        r.importo,
-        r.certa ? t("cpr.certa") : "",
-        r.standbyIncasso ? t("cpr.standbyIncasso") : "",
-        r.contestata ? t("cpr.contestata") : "",
-        r.nota,
-      ]);
-    return out;
+  // Spostare un'uscita in una colonna: se è la colonna automatica, si toglie
+  // la forzatura; per le righe manuali si aggiorna la riga.
+  const sposta = (c: Cella, col: SecchioCassa) => {
+    if (c.tipo === "manuale" || c.tipo === "amex") {
+      aggiornaManuale(c.chiave.slice(4), { secchio: col });
+      return;
+    }
+    const auto = esito?.righe.find((r) => r.chiave === c.chiave)?.secchioAuto;
+    setStato(c.chiave, { b: col === auto ? undefined : col });
+  };
+  const correggi = (c: Cella, importo: number) => {
+    if (c.tipo === "manuale" || c.tipo === "amex") {
+      aggiornaManuale(c.chiave.slice(4), { importo });
+      return;
+    }
+    setStato(c.chiave, { i: Math.abs(importo - c.importoOrigine) < 0.005 ? undefined : importo });
+  };
+  const annota = (c: Cella, nota: string) => {
+    if (c.tipo === "manuale" || c.tipo === "amex") {
+      aggiornaManuale(c.chiave.slice(4), { nota: nota || undefined });
+      return;
+    }
+    setStato(c.chiave, { n: nota });
+  };
+  const togli = (c: Cella) => {
+    if (c.tipo === "manuale" || c.tipo === "amex") eliminaManuale(c.chiave.slice(4));
+    else setStato(c.chiave, { x: true });
   };
 
   if (!db || !esito) {
@@ -258,574 +313,741 @@ export function CassaProprietaView({
       </div>
     );
   }
-  const tot = esito.totali;
-  const entrate = esito.righe.filter((r) => r.entrata);
-  const uscite = esito.righe.filter(
-    (r) => !r.entrata && (filtro === "tutte" || r.secchio === filtro),
-  );
+
+  const foto = fotoId ? (db.fotografie.find((f) => f.id === fotoId) ?? null) : null;
+  const entrateVive = esito.righe.filter((r) => r.entrata).map(daRiga);
+  const usciteVive = esito.righe.filter((r) => !r.entrata).map(daRiga);
+  const entrate = foto ? foto.righe.filter((r) => r.e).map(daFoto) : entrateVive;
+  const uscite = foto ? foto.righe.filter((r) => !r.e).map(daFoto) : usciteVive;
+  const totali = foto ? foto.totali : esito.totali;
+  const limiteVista = foto ? foto.limite : limite;
+  const saldoVista = foto ? foto.saldo : saldo;
+
+  const righeCsv = () => {
+    const out: (string | number)[][] = [];
+    const n = Math.max(entrate.length, uscite.length);
+    out.push([totali.entrate, "", saldoVista, "", "", "", "", ""]);
+    for (let i = 0; i < n; i++) {
+      const e = entrate[i];
+      const u = uscite[i];
+      out.push([
+        e ? e.importo : "",
+        e ? `${e.nome}${e.attesa ? ` (${t("cpr.attesa")})` : ""}` : "",
+        "",
+        u && u.secchio === "ora" ? u.importo : "",
+        u && u.secchio === "prossimi" ? u.importo : "",
+        u && u.secchio === "standby" ? u.importo : "",
+        u ? u.nome : "",
+        u ? [u.dettaglio === "CDC" ? "CDC" : "", u.nota].filter(Boolean).join(" ") : "",
+      ]);
+    }
+    out.push([
+      totali.entrateStandby,
+      "",
+      "",
+      totali.usciteOra,
+      totali.usciteProssimi,
+      totali.usciteStandby,
+      totali.totaleDaPagare,
+      totali.cassaConStandby,
+    ]);
+    out.push([
+      t("cpr.lblStandbyIncasso"),
+      "",
+      "",
+      t("cpr.lblDaPagare"),
+      `${t("cpr.lblDaPagare")} ${etichettaProssimiBreve(limiteVista)}`,
+      t("cpr.lblStandbyDaPagare"),
+      t("cpr.lblTotaleDaPagare"),
+      t("cpr.lblCassa"),
+    ]);
+    out.push(["", "", "", totali.saldoDopoOra, totali.saldoDopoProssimi, "", "", ""]);
+    out.push(["", "", "", t("cpr.lblSaldoDopo"), "", "", "", ""]);
+    return out;
+  };
 
   return (
-    <div className="space-y-4">
-      {/* Barra: data, limite, saldo, fotografia */}
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-        <div className="flex flex-wrap items-end gap-3 text-[13px]">
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t("cpr.situazioneAl")}
-            <input
-              type="date"
-              value={oggi}
-              onChange={(e) => setOggi(e.target.value || oggiISO())}
-              className={inputCls}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t("cpr.prossimiFinoAl")}
-            <input
-              type="date"
-              value={limite}
-              onChange={(e) => setLimite(e.target.value)}
-              className={inputCls}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t("cpr.giornoDefault")}
-            <input
-              type="number"
-              min={1}
-              max={28}
-              value={db.giornoLimite}
-              onChange={(e) =>
-                cambiaGiornoLimite(Math.min(28, Math.max(1, Number(e.target.value) || 5)))
-              }
-              className={`${inputCls} w-20`}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t("cpr.saldoBanca")}
-            <input
-              value={saldoOverride}
-              onChange={(e) => setSaldoOverride(e.target.value)}
-              placeholder={
-                saldoBanca
-                  ? fmt(saldoBanca.saldo)
-                  : db.saldoManuale
-                    ? fmt(db.saldoManuale.importo)
-                    : "—"
-              }
-              className={`${inputCls} w-40 text-right`}
-            />
-          </label>
-          <span className="pb-1 text-[11px] text-muted-foreground">
-            {saldoBanca
-              ? `${t("cpr.saldoDaBanca")} ${saldoBanca.al ? fmtData(saldoBanca.al) : ""}`
-              : saldoErr
-                ? t("cpr.saldoNonDisponibile")
-                : ""}
-          </span>
-          <div className="ml-auto flex items-center gap-2">
-            {salvando && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-            <button
-              type="button"
-              onClick={salvaFotografia}
-              className="inline-flex items-center gap-1 rounded-lg border border-primary bg-primary px-3 py-1 text-primary-foreground"
-            >
-              <Camera className="h-4 w-4" /> {t("cpr.salvaFoto")}
-            </button>
-            <EsportaStampa
-              nomeFile={`cassa-proprieta-${oggi}`}
-              testata={[
-                t("cpr.tipo"),
-                t("cpr.secchio"),
-                t("cpr.controparte"),
-                t("cpr.descrizione"),
-                t("cpr.scadenza"),
-                t("cpr.importo"),
-                t("cpr.certa"),
-                t("cpr.standbyIncasso"),
-                t("cpr.contestata"),
-                t("cpr.nota"),
-              ]}
-              righe={righeCsv}
-            />
-          </div>
-        </div>
-        <p className="mt-2 text-[12px] text-muted-foreground">{t("cpr.intro")}</p>
-      </div>
-
-      {/* Totali del commercialista */}
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Kpi label={t("cpr.saldoBanca")} value={tot.saldo} />
-        <Kpi label={t("cpr.usciteOra")} value={tot.usciteOra} neg />
-        <Kpi label={t("cpr.saldoDopoOra")} value={tot.saldoDopoOra} bold />
-        <Kpi label={t("cpr.usciteProssimi")} value={tot.usciteProssimi} neg />
-        <Kpi label={t("cpr.saldoDopoProssimi")} value={tot.saldoDopoProssimi} bold />
-        <Kpi label={t("cpr.entrateCerte")} value={tot.entrateCerte} />
-        <Kpi label={t("cpr.cassaFinale")} value={tot.cassaFinale} bold />
-        <Kpi label={t("cpr.entrateStandby")} value={tot.entrateStandby} />
-        <Kpi label={t("cpr.usciteStandby")} value={tot.usciteStandby} neg />
-        <Kpi label={t("cpr.cassaConStandby")} value={tot.cassaConStandby} bold />
-      </div>
-
-      {/* Entrate */}
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-        <div className="mb-2 text-[15px] font-semibold text-foreground">
-          {t("cpr.entrate")}{" "}
-          <span className="text-sm font-normal text-muted-foreground">({entrate.length})</span>
-        </div>
-        <TabellaRighe
-          righe={entrate}
-          oggi={oggi}
-          onSecchio={(r, b) => setStato(r.chiave, { b: b === r.secchioAuto ? undefined : b })}
-          onStandbyIncasso={(r, v) => setStato(r.chiave, { s: v })}
-          onNota={(r, n) => setStato(r.chiave, { n })}
-          onContestata={(r, v) => setStato(r.chiave, { c: v })}
-          onImporto={(r, i) => setStato(r.chiave, { i: i === r.importoOrigine ? undefined : i })}
-          onTogli={(r) => setStato(r.chiave, { x: true })}
-          onElimina={(r) => eliminaManuale(r.chiave.slice(4))}
-          entrate
-        />
-      </div>
-
-      {/* Uscite */}
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <span className="text-[15px] font-semibold text-foreground">{t("cpr.uscite")}</span>
-          <div className="ml-2 flex rounded-lg border border-border overflow-hidden text-[12px]">
-            {(["tutte", "ora", "prossimi", "standby"] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFiltro(f)}
-                className={`px-2.5 py-1 ${filtro === f ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-              >
-                {f === "tutte" ? t("common.all") : secchioLabel(f, t)}
-              </button>
-            ))}
-          </div>
-          <span className="text-[12px] text-muted-foreground">
-            {t("cpr.ora")} {fmt(tot.usciteOra)} · {t("cpr.prossimi")} {fmt(tot.usciteProssimi)} ·{" "}
-            {t("cpr.standby")} {fmt(tot.usciteStandby)}
-          </span>
-        </div>
-        <TabellaRighe
-          righe={uscite}
-          oggi={oggi}
-          onSecchio={(r, b) => setStato(r.chiave, { b: b === r.secchioAuto ? undefined : b })}
-          onNota={(r, n) => setStato(r.chiave, { n })}
-          onContestata={(r, v) => setStato(r.chiave, { c: v })}
-          onImporto={(r, i) => setStato(r.chiave, { i: i === r.importoOrigine ? undefined : i })}
-          onTogli={(r) => setStato(r.chiave, { x: true })}
-          onElimina={(r) => eliminaManuale(r.chiave.slice(4))}
-        />
-        {esito.oltre.length > 0 && (
-          <div className="mt-3 text-[12px] text-muted-foreground">
-            <button
-              type="button"
-              onClick={() => setMostraOltre((v) => !v)}
-              className="inline-flex items-center gap-1 underline-offset-2 hover:underline"
-            >
-              {mostraOltre ? (
-                <ChevronDown className="h-3.5 w-3.5" />
-              ) : (
-                <ChevronRight className="h-3.5 w-3.5" />
-              )}
-              {t("cpr.oltreOrizzonte")} {esito.oltre.length} · {fmt(tot.usciteOltre)}
-            </button>
-            {mostraOltre && (
-              <ul className="mt-2 space-y-0.5">
-                {esito.oltre.map((r) => (
-                  <li key={r.chiave} className="flex flex-wrap items-center gap-2">
-                    <span>{fmtData(r.scadenza)}</span>
-                    <span className="text-foreground">{r.controparte}</span>
-                    <span>{r.descrizione}</span>
-                    <span className="tabular-nums text-foreground">{fmt(r.importo)}</span>
-                    <button
-                      type="button"
-                      className="rounded border border-border px-1.5 hover:bg-muted"
-                      onClick={() => setStato(r.chiave, { b: "prossimi" })}
-                    >
-                      {t("cpr.portaNeiProssimi")}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border border-border px-1.5 hover:bg-muted"
-                      onClick={() => setStato(r.chiave, { b: "standby" })}
-                    >
-                      {t("cpr.parcheggia")}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Righe manuali / Amex */}
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-        <div className="mb-2 text-[15px] font-semibold text-foreground">{t("cpr.manuali")}</div>
-        <p className="mb-3 text-[12px] text-muted-foreground">{t("cpr.manualiHelp")}</p>
-        <div className="flex flex-wrap items-end gap-2 text-[13px]">
-          <select
-            value={nuova.tipo ?? "manuale"}
-            onChange={(e) =>
-              setNuova((n) => ({ ...n, tipo: e.target.value as "manuale" | "amex" }))
-            }
-            className={inputCls}
-          >
-            <option value="manuale">{t("cpr.tipoManuale")}</option>
-            <option value="amex">{t("cpr.tipoAmex")}</option>
-          </select>
-          <input
-            placeholder={t("cpr.descrizione")}
-            value={nuova.descrizione ?? ""}
-            onChange={(e) => setNuova((n) => ({ ...n, descrizione: e.target.value }))}
-            className={`${inputCls} w-64`}
-          />
-          <input
-            placeholder={t("cpr.importo")}
-            value={String(nuova.importo ?? "")}
-            onChange={(e) =>
-              setNuova((n) => ({ ...n, importo: e.target.value as unknown as number }))
-            }
-            className={`${inputCls} w-28 text-right`}
-          />
+    <div className="space-y-3">
+      {/* Barra: data, saldo, limite, fotografia, CSV */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+        <label className="flex items-center gap-2 text-muted-foreground">
+          {t("cpr.situazioneAl")}
           <input
             type="date"
-            value={nuova.data ?? oggi}
-            onChange={(e) => setNuova((n) => ({ ...n, data: e.target.value }))}
+            value={oggi}
+            onChange={(e) => {
+              const v = e.target.value || oggiISO();
+              setOggi(v);
+              setLimite(limiteDefault(v, db.giornoLimite));
+            }}
             className={inputCls}
           />
-          <select
-            value={nuova.secchio ?? "ora"}
-            onChange={(e) => setNuova((n) => ({ ...n, secchio: e.target.value as SecchioCassa }))}
-            className={inputCls}
-          >
-            {(["ora", "prossimi", "standby"] as const).map((s) => (
-              <option key={s} value={s}>
-                {secchioLabel(s, t)}
-              </option>
-            ))}
-          </select>
-          <label className="flex items-center gap-1 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={Boolean(nuova.entrata)}
-              onChange={(e) => setNuova((n) => ({ ...n, entrata: e.target.checked }))}
-            />{" "}
-            {t("cpr.entrata")}
-          </label>
+        </label>
+        <label className="flex items-center gap-2 text-muted-foreground">
+          {t("cpr.saldoBanca")}
           <input
-            placeholder={t("cpr.nota")}
-            value={nuova.nota ?? ""}
-            onChange={(e) => setNuova((n) => ({ ...n, nota: e.target.value }))}
-            className={`${inputCls} w-56`}
+            value={
+              saldoIn ??
+              (saldoBanca
+                ? fmt(saldoBanca.saldo)
+                : db.saldoManuale
+                  ? fmt(db.saldoManuale.importo)
+                  : "")
+            }
+            onChange={(e) => setSaldoIn(e.target.value)}
+            onBlur={salvaSaldoManuale}
+            placeholder="0,00"
+            className={`${inputCls} w-36 text-right tabular-nums`}
           />
+          <span className="text-[11px]">
+            {saldoBanca
+              ? `${t("cpr.saldoDaBanca")} ${saldoBanca.al ? fmtData(saldoBanca.al) : ""}`
+              : saldoErr && db.saldoManuale
+                ? `${t("cpr.saldoScritto")} ${fmtData(db.saldoManuale.data)}`
+                : saldoErr
+                  ? t("cpr.saldoNonDisponibile")
+                  : ""}
+          </span>
+        </label>
+        <label className="flex items-center gap-2 text-muted-foreground">
+          {t("cpr.prossimiFinoAl")}
+          <input
+            type="date"
+            value={limite}
+            onChange={(e) => cambiaLimite(e.target.value)}
+            className={inputCls}
+          />
+        </label>
+        <div className="ml-auto flex items-center gap-2">
+          {salvando && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
           <button
             type="button"
-            onClick={aggiungiManuale}
-            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1 hover:bg-muted"
+            onClick={salvaFotografia}
+            className="inline-flex items-center gap-1 rounded-lg border border-primary bg-primary px-3 py-1 text-primary-foreground"
           >
-            <Plus className="h-4 w-4" /> {t("cpr.aggiungi")}
+            <Camera className="h-4 w-4" /> {t("cpr.salvaFoto")}
           </button>
+          <EsportaStampa
+            nomeFile={`cassa-proprieta-${foto ? foto.data : oggi}`}
+            testata={[
+              t("cpr.colEntrate"),
+              t("cpr.colNote"),
+              t("cpr.colSaldo"),
+              t("cpr.colUscite"),
+              etichettaProssimi(limiteVista),
+              t("cpr.colStandby"),
+              t("cpr.colNote"),
+              t("cpr.colNote2"),
+            ]}
+            righe={righeCsv}
+          />
         </div>
       </div>
 
-      {/* Fotografie */}
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-        <div className="mb-2 text-[15px] font-semibold text-foreground">
-          {t("cpr.fotografie")}{" "}
-          <span className="text-sm font-normal text-muted-foreground">
-            ({db.fotografie.length})
+      {/* Linguette come i fogli di Excel: Oggi + fotografie salvate */}
+      <div className="flex flex-wrap items-center gap-1 text-[12px]">
+        <button
+          type="button"
+          onClick={() => setFotoId(null)}
+          className={`rounded-t-lg border border-b-0 border-border px-3 py-1 ${!foto ? "bg-card font-semibold text-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"}`}
+        >
+          {t("cpr.oggi")}
+        </button>
+        {db.fotografie.map((f) => (
+          <span
+            key={f.id}
+            className={`group inline-flex items-center gap-1 rounded-t-lg border border-b-0 border-border px-3 py-1 ${foto?.id === f.id ? "bg-card font-semibold text-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"}`}
+          >
+            <button type="button" onClick={() => setFotoId(f.id)} title={f.nota ?? ""}>
+              {ddmm(f.data)}
+              {f.nota ? ` · ${f.nota.slice(0, 18)}` : ""}
+            </button>
+            <button
+              type="button"
+              onClick={() => eliminaFotografia(f.id)}
+              className="opacity-0 group-hover:opacity-100 hover:text-status-absent"
+              title={t("common.delete")}
+            >
+              <X className="h-3 w-3" />
+            </button>
           </span>
-        </div>
-        {db.fotografie.length === 0 && (
-          <p className="text-[12px] text-muted-foreground">{t("cpr.nessunaFoto")}</p>
-        )}
-        {db.fotografie.length > 0 && (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-border">
-                <th className={th}>{t("cpr.situazioneAl")}</th>
-                <th className={th}>{t("cpr.prossimiFinoAl")}</th>
-                <th className={thR}>{t("cpr.saldoBanca")}</th>
-                <th className={thR}>{t("cpr.usciteOra")}</th>
-                <th className={thR}>{t("cpr.saldoDopoProssimi")}</th>
-                <th className={thR}>{t("cpr.cassaFinale")}</th>
-                <th className={th}>{t("cpr.nota")}</th>
-                <th className={th}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {db.fotografie.map((f) => (
-                <tr key={f.id} className="border-b border-border/60">
-                  <td className={td}>
-                    <button
-                      type="button"
-                      className="underline-offset-2 hover:underline"
-                      onClick={() => setFotoAperta(fotoAperta?.id === f.id ? null : f)}
-                    >
-                      {fmtData(f.data)}
-                    </button>
-                    <span className="ml-1 text-[11px] text-muted-foreground">
-                      {f.creataIl.slice(11, 16)}
-                    </span>
-                  </td>
-                  <td className={td}>{fmtData(f.limite)}</td>
-                  <td className={tdR}>{fmt(f.saldo)}</td>
-                  <td className={tdR}>{fmt(f.totali.usciteOra)}</td>
-                  <td className={tdR}>{fmt(f.totali.saldoDopoProssimi)}</td>
-                  <td className={`${tdR} font-semibold`}>{fmt(f.totali.cassaFinale)}</td>
-                  <td className={td}>{f.nota ?? ""}</td>
-                  <td className={td}>
-                    <button
-                      type="button"
-                      title={t("common.delete")}
-                      onClick={() => eliminaFotografia(f.id)}
-                      className="text-muted-foreground hover:text-status-absent"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {fotoAperta && (
-          <div className="mt-3 rounded-xl border border-border bg-background/60 p-3">
-            <div className="mb-1 text-[13px] font-semibold text-foreground">
-              {t("cpr.fotoDel")} {fmtData(fotoAperta.data)} · {fotoAperta.righe.length}{" "}
-              {t("cpr.righe")}
-            </div>
-            <table className="w-full border-collapse text-[12px]">
+        ))}
+      </div>
+
+      <Foglio
+        t={t}
+        entrate={entrate}
+        uscite={uscite}
+        totali={totali}
+        saldo={saldoVista}
+        limite={limiteVista}
+        readOnly={Boolean(foto)}
+        onSposta={sposta}
+        onImporto={correggi}
+        onNota={annota}
+        onTogli={togli}
+        onAggiungi={aggiungiManuale}
+        oggi={oggi}
+      />
+
+      {!foto && esito.oltre.length > 0 && (
+        <div className="text-[12px] text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => setMostraOltre((v) => !v)}
+            className="underline-offset-2 hover:underline"
+          >
+            {mostraOltre ? "▾" : "▸"} {t("cpr.oltreIl")} {ddmm(limite)}: {esito.oltre.length}{" "}
+            {t("cpr.voci")} · {fmt(esito.totali.usciteOltre)}
+          </button>
+          {mostraOltre && (
+            <table className="mt-1 border-collapse text-[12px]">
               <tbody>
-                {fotoAperta.righe.map((r) => (
-                  <tr key={r.k} className="border-b border-border/40">
-                    <td className="px-2 py-0.5">{r.e ? "↑" : "↓"}</td>
-                    <td className="px-2 py-0.5">{secchioLabel(r.b, t)}</td>
-                    <td className="px-2 py-0.5 text-foreground">{r.c}</td>
-                    <td className="px-2 py-0.5 text-muted-foreground">{r.d}</td>
-                    <td className="px-2 py-0.5">{fmtData(r.s)}</td>
-                    <td className="px-2 py-0.5 text-right tabular-nums text-foreground">
-                      {fmt(r.i)}
+                {esito.oltre.map((r) => (
+                  <tr key={r.chiave} className="border-b border-border/40">
+                    <td className="py-0.5 pr-3 whitespace-nowrap">{ddmm(r.scadenza)}</td>
+                    <td className="py-0.5 pr-3 text-foreground">
+                      {r.controparte}
+                      {r.documenti > 1 && (
+                        <span className="ml-1 text-muted-foreground">×{r.documenti}</span>
+                      )}
                     </td>
-                    <td className="px-2 py-0.5 text-muted-foreground">
-                      {r.si ? t("cpr.standbyIncasso") : ""} {r.n ?? ""}
+                    <td className="py-0.5 pr-3 text-right tabular-nums text-foreground">
+                      {fmt(r.importo)}
+                    </td>
+                    <td className="py-0.5 pr-2">
+                      <button
+                        type="button"
+                        className="rounded border border-border px-1.5 hover:bg-muted"
+                        onClick={() => setStato(r.chiave, { b: "prossimi" })}
+                      >
+                        {t("cpr.portaNeiProssimi")}
+                      </button>
+                    </td>
+                    <td className="py-0.5">
+                      <button
+                        type="button"
+                        className="rounded border border-border px-1.5 hover:bg-muted"
+                        onClick={() => setStato(r.chiave, { b: "standby" })}
+                      >
+                        {t("cpr.parcheggia")}
+                      </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function secchioLabel(s: SecchioCassa, t: TFn): string {
-  return s === "ora" ? t("cpr.ora") : s === "prossimi" ? t("cpr.prossimi") : t("cpr.standby");
+function daFoto(r: FotografiaCassa["righe"][number]): Cella {
+  return {
+    chiave: r.k,
+    tipo: r.t,
+    nome: r.c,
+    dettaglio: r.d,
+    importo: r.i,
+    importoOrigine: r.i,
+    secchio: r.b,
+    entrata: r.e,
+    attesa: Boolean(r.si),
+    nota: r.n ?? "",
+    data: r.s,
+    certa: false,
+    documenti: r.nd ?? 1,
+    editabile: false,
+  };
 }
 
-function Kpi({
-  label,
-  value,
-  neg,
-  bold,
-}: {
-  label: string;
-  value: number;
-  neg?: boolean;
-  bold?: boolean;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-[var(--shadow-card)]">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div
-        className={`mt-1 tabular-nums ${bold ? "text-lg font-semibold" : "text-base"} ${neg ? "text-status-absent" : value < 0 ? "text-status-absent" : "text-foreground"}`}
-      >
-        {neg && value > 0 ? "−" : ""}
-        {fmt(Math.abs(value) < 0.005 ? 0 : value)}
-      </div>
-    </div>
-  );
-}
+// --- il foglio ---------------------------------------------------------------
+const cel = "border border-border/70 px-2 py-1 align-middle";
+const celN = `${cel} text-right tabular-nums whitespace-nowrap`;
+const celH = `${cel} bg-muted/40 text-left font-semibold text-foreground`;
+const celT = `${celN} bg-muted/30 font-semibold`;
+const celL = `${cel} text-[11px] text-muted-foreground`;
 
-function TabellaRighe({
-  righe,
-  oggi,
+function Foglio({
+  t,
   entrate,
-  onSecchio,
-  onStandbyIncasso,
-  onNota,
-  onContestata,
+  uscite,
+  totali,
+  saldo,
+  limite,
+  readOnly,
+  oggi,
+  onSposta,
   onImporto,
+  onNota,
   onTogli,
-  onElimina,
+  onAggiungi,
 }: {
-  righe: readonly RigaCassa[];
+  t: TFn;
+  entrate: readonly Cella[];
+  uscite: readonly Cella[];
+  totali: TotaliCassa;
+  saldo: number;
+  limite: string;
+  readOnly: boolean;
   oggi: string;
-  entrate?: boolean;
-  onSecchio: (r: RigaCassa, b: SecchioCassa) => void;
-  onStandbyIncasso?: (r: RigaCassa, v: boolean) => void;
-  onNota: (r: RigaCassa, n: string) => void;
-  onContestata: (r: RigaCassa, v: boolean) => void;
-  onImporto: (r: RigaCassa, i: number) => void;
-  onTogli: (r: RigaCassa) => void;
-  onElimina: (r: RigaCassa) => void;
+  onSposta: (c: Cella, col: SecchioCassa) => void;
+  onImporto: (c: Cella, importo: number) => void;
+  onNota: (c: Cella, nota: string) => void;
+  onTogli: (c: Cella) => void;
+  onAggiungi: (r: Omit<RigaManualeCassa, "id">) => void;
 }) {
-  const { t } = useLang();
-  const [notaIn, setNotaIn] = useState<Record<string, string>>({});
-  const [impIn, setImpIn] = useState<Record<string, string>>({});
-  if (!righe.length)
-    return <p className="text-[12px] text-muted-foreground">{t("cpr.nessunaRiga")}</p>;
+  const [nuova, setNuova] = useState<null | {
+    entrata: boolean;
+    descrizione: string;
+    importo: string;
+    data: string;
+    secchio: SecchioCassa;
+    amex: boolean;
+  }>(null);
+  const n = Math.max(entrate.length, uscite.length);
+  const righe = Array.from({ length: n }, (_, i) => i);
+  const breve = etichettaProssimiBreve(limite);
+
+  const conferma = () => {
+    if (!nuova) return;
+    const imp = parseNum(nuova.importo);
+    if (!nuova.descrizione.trim() || imp == null || imp === 0) {
+      toast.error(t("cpr.manualeIncompleta"));
+      return;
+    }
+    onAggiungi({
+      tipo: nuova.amex ? "amex" : "manuale",
+      descrizione: nuova.descrizione.trim(),
+      importo: Math.abs(imp),
+      data: nuova.data || oggi,
+      secchio: nuova.entrata ? "ora" : nuova.secchio,
+      entrata: nuova.entrata || undefined,
+    });
+    setNuova(null);
+  };
+  const apri = (entrata: boolean) =>
+    setNuova({ entrata, descrizione: "", importo: "", data: oggi, secchio: "ora", amex: false });
+
+  const cellaUscita = (u: Cella | undefined, col: SecchioCassa) => {
+    if (!u) return <td className={celN} />;
+    if (u.secchio === col)
+      return (
+        <td className={`${celN} text-foreground`}>
+          <Importo c={u} readOnly={readOnly} onImporto={onImporto} t={t} />
+        </td>
+      );
+    if (readOnly) return <td className={celN} />;
+    return (
+      <td className={`${celN} p-0`}>
+        <button
+          type="button"
+          onClick={() => onSposta(u, col)}
+          title={t("cpr.spostaQui")}
+          className="h-full w-full px-2 py-1 text-right text-transparent hover:bg-primary/10 hover:text-muted-foreground"
+        >
+          ·
+        </button>
+      </td>
+    );
+  };
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[980px] border-collapse">
+    <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-[var(--shadow-card)]">
+      <table className="w-full min-w-[1080px] border-collapse text-[13px]">
+        <colgroup>
+          <col className="w-[115px]" />
+          <col className="w-[190px]" />
+          <col className="w-[115px]" />
+          <col className="w-[115px]" />
+          <col className="w-[115px]" />
+          <col className="w-[115px]" />
+          <col className="w-[230px]" />
+          <col />
+        </colgroup>
         <thead>
-          <tr className="border-b border-border">
-            <th className={th}>{t("cpr.scadenza")}</th>
-            <th className={th}>{t("cpr.controparte")}</th>
-            <th className={th}>{t("cpr.descrizione")}</th>
-            <th className={thR}>{t("cpr.importo")}</th>
-            <th className={th}>{t("cpr.secchio")}</th>
-            <th className={th}>{t("cpr.nota")}</th>
-            <th className={th}></th>
+          <tr>
+            <th className={celH}>{t("cpr.colEntrate")}</th>
+            <th className={celH}>{t("cpr.colNote")}</th>
+            <th className={celH}>{t("cpr.colSaldo")}</th>
+            <th className={celH}>{t("cpr.colUscite")}</th>
+            <th className={celH}>{etichettaProssimi(limite)}</th>
+            <th className={celH}>{t("cpr.colStandby")}</th>
+            <th className={celH}>{t("cpr.colNote")}</th>
+            <th className={celH}>{t("cpr.colNote2")}</th>
           </tr>
         </thead>
         <tbody>
-          {righe.map((r) => {
-            const scaduta = r.scadenza < oggi;
-            const editabile = r.tipo === "stipendi" || r.tipo === "fisso";
+          {/* riga 2: totale entrate e saldo */}
+          <tr>
+            <td className={`${celN} font-semibold text-foreground`}>{fmt(totali.entrate)}</td>
+            <td className={cel} />
+            <td className={`${celN} font-semibold text-foreground`}>{fmt(saldo)}</td>
+            <td className={cel} />
+            <td className={cel} />
+            <td className={cel} />
+            <td className={cel} />
+            <td className={cel} />
+          </tr>
+          {righe.map((i) => {
+            const e = entrate[i];
+            const u = uscite[i];
             return (
-              <tr
-                key={r.chiave}
-                className={`border-b border-border/60 ${r.secchio === "standby" ? "bg-amber-500/5" : ""} ${r.contestata ? "opacity-70" : ""}`}
-              >
-                <td className={`${td} whitespace-nowrap ${scaduta ? "text-status-absent" : ""}`}>
-                  {fmtData(r.scadenza)}
-                  {r.certa && (
-                    <span className="ml-1 rounded bg-secondary px-1 text-[10px] uppercase text-muted-foreground">
-                      {t("cpr.certaBreve")}
+              <tr key={i} className="group/r hover:bg-muted/20">
+                <td
+                  className={`${celN} ${e?.attesa ? "italic text-muted-foreground" : "text-foreground"}`}
+                >
+                  {e && <Importo c={e} readOnly={readOnly} onImporto={onImporto} t={t} />}
+                </td>
+                <td
+                  className={`${cel} ${e?.attesa ? "italic text-muted-foreground" : "text-foreground"}`}
+                >
+                  {e && (
+                    <span className="flex items-center gap-1">
+                      <span className="truncate" title={e.dettaglio}>
+                        {e.nome}
+                      </span>
+                      <span className="shrink-0 text-[10px] not-italic text-muted-foreground">
+                        {e.attesa ? t("cpr.attesa") : ddmm(e.data)}
+                      </span>
+                      {!readOnly && <Togli onClick={() => onTogli(e)} t={t} />}
                     </span>
                   )}
                 </td>
-                <td className={td}>
-                  {r.controparte}
-                  {r.contestata && (
-                    <span className="ml-1 rounded bg-status-absent/10 px-1 text-[10px] uppercase text-status-absent">
-                      {t("cpr.contestata")}
+                <td className={cel} />
+                {cellaUscita(u, "ora")}
+                {cellaUscita(u, "prossimi")}
+                {cellaUscita(u, "standby")}
+                <td className={`${cel} text-foreground`}>
+                  {u && (
+                    <span className="flex items-center gap-1">
+                      <span className="truncate" title={u.dettaglio}>
+                        {u.nome}
+                      </span>
+                      {u.documenti > 1 && (
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          ×{u.documenti}
+                        </span>
+                      )}
+                      {u.tipo === "passiva" && u.certa && (
+                        <span className="shrink-0 rounded bg-secondary px-1 text-[9px] uppercase text-muted-foreground">
+                          auto
+                        </span>
+                      )}
+                      {(u.tipo === "stipendi" || u.tipo === "fisso" || u.tipo === "fiscale") && (
+                        <span className="shrink-0 truncate text-[10px] text-muted-foreground">
+                          {u.dettaglio}
+                        </span>
+                      )}
                     </span>
                   )}
                 </td>
-                <td className={`${td} text-muted-foreground`}>{r.descrizione}</td>
-                <td className={tdR}>
-                  {editabile ? (
-                    <input
-                      value={impIn[r.chiave] ?? fmt(r.importo)}
-                      onChange={(e) => setImpIn((s) => ({ ...s, [r.chiave]: e.target.value }))}
-                      onBlur={() => {
-                        const v = impIn[r.chiave];
-                        if (v == null) return;
-                        const n = Number(v.replace(/\./g, "").replace(",", "."));
-                        setImpIn((s) => {
-                          const c = { ...s };
-                          delete c[r.chiave];
-                          return c;
-                        });
-                        if (Number.isFinite(n) && n >= 0) onImporto(r, Math.round(n * 100) / 100);
-                      }}
-                      className={`${inputCls} w-28 text-right`}
-                      title={
-                        r.importo !== r.importoOrigine
-                          ? `${t("cpr.importoOrigine")} ${fmt(r.importoOrigine)}`
-                          : ""
-                      }
-                    />
-                  ) : (
-                    fmt(r.importo)
-                  )}
-                  {r.importo !== r.importoOrigine && (
-                    <span className="ml-1 text-[10px] text-muted-foreground">*</span>
-                  )}
-                </td>
-                <td className={`${td} whitespace-nowrap`}>
-                  {entrate && onStandbyIncasso ? (
-                    <label className="flex items-center gap-1 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={r.standbyIncasso}
-                        onChange={(e) => onStandbyIncasso(r, e.target.checked)}
-                      />{" "}
-                      {t("cpr.standbyIncasso")}
-                    </label>
-                  ) : (
-                    <div className="flex rounded-lg border border-border overflow-hidden text-[11px]">
-                      {(["ora", "prossimi", "standby"] as const).map((b) => (
-                        <button
-                          key={b}
-                          type="button"
-                          onClick={() => onSecchio(r, b)}
-                          className={`px-2 py-0.5 ${r.secchio === b ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-                        >
-                          {secchioLabel(b, t)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </td>
-                <td className={td}>
-                  <input
-                    value={notaIn[r.chiave] ?? r.nota}
-                    onChange={(e) => setNotaIn((s) => ({ ...s, [r.chiave]: e.target.value }))}
-                    onBlur={() => {
-                      const v = notaIn[r.chiave];
-                      if (v == null) return;
-                      setNotaIn((s) => {
-                        const c = { ...s };
-                        delete c[r.chiave];
-                        return c;
-                      });
-                      if (v.trim() !== r.nota) onNota(r, v.trim());
-                    }}
-                    placeholder={t("cpr.notaPh")}
-                    className={`${inputCls} w-48`}
-                  />
-                </td>
-                <td className={`${td} whitespace-nowrap text-[11px]`}>
-                  <button
-                    type="button"
-                    onClick={() => onContestata(r, !r.contestata)}
-                    className="mr-2 text-muted-foreground underline-offset-2 hover:underline"
-                  >
-                    {r.contestata ? t("cpr.nonContestata") : t("cpr.contesta")}
-                  </button>
-                  {r.tipo === "manuale" || r.tipo === "amex" ? (
-                    <button
-                      type="button"
-                      onClick={() => onElimina(r)}
-                      className="text-muted-foreground hover:text-status-absent"
-                      title={t("common.delete")}
-                    >
-                      <Trash2 className="inline h-3.5 w-3.5" />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => onTogli(r)}
-                      className="text-muted-foreground underline-offset-2 hover:underline"
-                      title={t("cpr.togliTip")}
-                    >
-                      {t("cpr.togli")}
-                    </button>
+                <td className={`${cel} p-0`}>
+                  {u && (
+                    <span className="flex items-center">
+                      {u.dettaglio === "CDC" && (
+                        <span className="pl-2 text-[11px] font-semibold text-muted-foreground">
+                          CDC
+                        </span>
+                      )}
+                      <Nota c={u} readOnly={readOnly} onNota={onNota} />
+                      {!readOnly && (
+                        <span className="pr-1">
+                          <Togli onClick={() => onTogli(u)} t={t} />
+                        </span>
+                      )}
+                    </span>
                   )}
                 </td>
               </tr>
             );
           })}
+          {/* riga per aggiungere */}
+          {!readOnly && (
+            <tr>
+              {nuova?.entrata ? (
+                <>
+                  <td className={`${celN} p-1`}>
+                    <input
+                      autoFocus
+                      value={nuova.importo}
+                      onChange={(e) => setNuova({ ...nuova, importo: e.target.value })}
+                      onKeyDown={(e) => e.key === "Enter" && conferma()}
+                      placeholder={t("cpr.importo")}
+                      className={`${inputCls} w-full text-right`}
+                    />
+                  </td>
+                  <td className={`${cel} p-1`}>
+                    <span className="flex items-center gap-1">
+                      <input
+                        value={nuova.descrizione}
+                        onChange={(e) => setNuova({ ...nuova, descrizione: e.target.value })}
+                        onKeyDown={(e) => e.key === "Enter" && conferma()}
+                        placeholder={t("cpr.descrizione")}
+                        className={`${inputCls} w-full`}
+                      />
+                      <Ok onOk={conferma} onNo={() => setNuova(null)} t={t} />
+                    </span>
+                  </td>
+                </>
+              ) : (
+                <>
+                  <td className={`${cel} p-1`} />
+                  <td className={`${cel} p-1`}>
+                    <Aggiungi onClick={() => apri(true)} t={t} />
+                  </td>
+                </>
+              )}
+              <td className={cel} />
+              {nuova && !nuova.entrata ? (
+                <>
+                  <td className={`${celN} p-1`} colSpan={3}>
+                    <span className="flex items-center gap-1">
+                      <input
+                        autoFocus
+                        value={nuova.importo}
+                        onChange={(e) => setNuova({ ...nuova, importo: e.target.value })}
+                        onKeyDown={(e) => e.key === "Enter" && conferma()}
+                        placeholder={t("cpr.importo")}
+                        className={`${inputCls} w-28 text-right`}
+                      />
+                      <select
+                        value={nuova.secchio}
+                        onChange={(e) =>
+                          setNuova({ ...nuova, secchio: e.target.value as SecchioCassa })
+                        }
+                        className={inputCls}
+                      >
+                        <option value="ora">{t("cpr.colUscite")}</option>
+                        <option value="prossimi">{breve}</option>
+                        <option value="standby">{t("cpr.colStandby")}</option>
+                      </select>
+                      <input
+                        type="date"
+                        value={nuova.data}
+                        onChange={(e) => setNuova({ ...nuova, data: e.target.value })}
+                        className={inputCls}
+                      />
+                    </span>
+                  </td>
+                  <td className={`${cel} p-1`}>
+                    <input
+                      value={nuova.descrizione}
+                      onChange={(e) => setNuova({ ...nuova, descrizione: e.target.value })}
+                      onKeyDown={(e) => e.key === "Enter" && conferma()}
+                      placeholder={t("cpr.descrizione")}
+                      className={`${inputCls} w-full`}
+                    />
+                  </td>
+                  <td className={`${cel} p-1`}>
+                    <span className="flex items-center gap-2">
+                      <label className="flex items-center gap-1 text-[12px] text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={nuova.amex}
+                          onChange={(e) => setNuova({ ...nuova, amex: e.target.checked })}
+                        />
+                        CDC
+                      </label>
+                      <Ok onOk={conferma} onNo={() => setNuova(null)} t={t} />
+                    </span>
+                  </td>
+                </>
+              ) : (
+                <>
+                  <td className={cel} />
+                  <td className={cel} />
+                  <td className={cel} />
+                  <td className={`${cel} p-1`}>
+                    <Aggiungi onClick={() => apri(false)} t={t} />
+                  </td>
+                  <td className={cel} />
+                </>
+              )}
+            </tr>
+          )}
+          {/* totali come nel foglio */}
+          <tr>
+            <td className={celT}>{fmt(totali.entrateStandby)}</td>
+            <td className={cel} />
+            <td className={cel} />
+            <td className={celT}>{fmt(totali.usciteOra)}</td>
+            <td className={celT}>{fmt(totali.usciteProssimi)}</td>
+            <td className={celT}>{fmt(totali.usciteStandby)}</td>
+            <td className={celT}>{fmt(totali.totaleDaPagare)}</td>
+            <td className={`${celT} ${totali.cassaConStandby < 0 ? "text-status-absent" : ""}`}>
+              {fmt(totali.cassaConStandby)}
+            </td>
+          </tr>
+          <tr>
+            <td className={celL}>{t("cpr.lblStandbyIncasso")}</td>
+            <td className={cel} />
+            <td className={cel} />
+            <td className={celL}>{t("cpr.lblDaPagare")}</td>
+            <td className={celL}>
+              {t("cpr.lblDaPagare")} {breve}
+            </td>
+            <td className={celL}>{t("cpr.lblStandbyDaPagare")}</td>
+            <td className={celL}>{t("cpr.lblTotaleDaPagare")}</td>
+            <td className={celL}>{t("cpr.lblCassa")}</td>
+          </tr>
+          <tr>
+            <td className={cel} colSpan={8} />
+          </tr>
+          <tr>
+            <td className={cel} />
+            <td className={cel} />
+            <td className={cel} />
+            <td className={`${celT} ${totali.saldoDopoOra < 0 ? "text-status-absent" : ""}`}>
+              {fmt(totali.saldoDopoOra)}
+            </td>
+            <td className={`${celT} ${totali.saldoDopoProssimi < 0 ? "text-status-absent" : ""}`}>
+              {fmt(totali.saldoDopoProssimi)}
+            </td>
+            <td className={cel} />
+            <td className={cel} />
+            <td className={cel} />
+          </tr>
+          <tr>
+            <td className={cel} />
+            <td className={cel} />
+            <td className={cel} />
+            <td className={celL} colSpan={2}>
+              {t("cpr.lblSaldoDopo")}
+            </td>
+            <td className={cel} />
+            <td className={cel} />
+            <td className={cel} />
+          </tr>
         </tbody>
       </table>
     </div>
+  );
+}
+
+function Importo({
+  c,
+  readOnly,
+  onImporto,
+  t,
+}: {
+  c: Cella;
+  readOnly: boolean;
+  onImporto: (c: Cella, importo: number) => void;
+  t: TFn;
+}) {
+  const [v, setV] = useState<string | null>(null);
+  const corretto = Math.abs(c.importo - c.importoOrigine) > 0.005;
+  const titolo = corretto ? `${t("cpr.importoOrigine")} ${fmt(c.importoOrigine)}` : c.dettaglio;
+  if (readOnly || !c.editabile)
+    return (
+      <span title={titolo}>
+        {fmt(c.importo)}
+        {corretto && <span className="ml-0.5 text-[10px] text-muted-foreground">*</span>}
+      </span>
+    );
+  if (v == null)
+    return (
+      <button
+        type="button"
+        onClick={() => setV(fmt(c.importo))}
+        title={titolo}
+        className="w-full text-right underline decoration-dotted decoration-border underline-offset-4 hover:decoration-foreground"
+      >
+        {fmt(c.importo)}
+        {corretto && <span className="ml-0.5 text-[10px] text-muted-foreground">*</span>}
+      </button>
+    );
+  const commit = () => {
+    const n = parseNum(v);
+    setV(null);
+    if (n != null && n >= 0 && Math.abs(n - c.importo) > 0.005)
+      onImporto(c, Math.round(n * 100) / 100);
+  };
+  return (
+    <input
+      autoFocus
+      value={v}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") setV(null);
+      }}
+      className={`${inputCls} w-full text-right`}
+    />
+  );
+}
+
+function Nota({
+  c,
+  readOnly,
+  onNota,
+}: {
+  c: Cella;
+  readOnly: boolean;
+  onNota: (c: Cella, nota: string) => void;
+}) {
+  const [v, setV] = useState<string | null>(null);
+  if (readOnly) return <span className="px-2 py-1 text-foreground">{c.nota}</span>;
+  return (
+    <input
+      value={v ?? c.nota}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => {
+        if (v != null && v.trim() !== c.nota) onNota(c, v.trim());
+        setV(null);
+      }}
+      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+      className="w-full bg-transparent px-2 py-1 text-[13px] text-foreground focus:bg-background focus:outline-none"
+    />
+  );
+}
+
+function Togli({ onClick, t }: { onClick: () => void; t: TFn }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={t("cpr.togliTip")}
+      className="ml-auto shrink-0 text-muted-foreground opacity-0 group-hover/r:opacity-100 hover:text-status-absent"
+    >
+      <X className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
+function Aggiungi({ onClick, t }: { onClick: () => void; t: TFn }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-[12px] text-muted-foreground underline-offset-2 hover:underline"
+    >
+      {t("cpr.aggiungi")}
+    </button>
+  );
+}
+
+function Ok({ onOk, onNo, t }: { onOk: () => void; onNo: () => void; t: TFn }): ReactNode {
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <button
+        type="button"
+        onClick={onOk}
+        className="rounded border border-primary bg-primary px-2 py-0.5 text-[12px] text-primary-foreground"
+      >
+        {t("common.save")}
+      </button>
+      <button
+        type="button"
+        onClick={onNo}
+        className="rounded border border-border px-2 py-0.5 text-[12px] hover:bg-muted"
+      >
+        {t("common.cancel")}
+      </button>
+    </span>
   );
 }

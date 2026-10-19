@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.93.0",
+    date: "2026-10-19",
+    entries: [
+      {
+        title: "Cassa proprietà: è il foglio del commercialista, tale e quale",
+        description:
+          "La vista Cassa proprietà diventa il foglio che la proprietà legge: colonne Entrate | Note | Saldo | Uscite | 1-5 del mese dopo | Standby | Note | Note2 e i suoi totali in fondo, con le sue etichette. Entrate = incassi arrivati in banca dal primo del mese (già nel saldo) più gli attesi per cliente, correggibili; uscite una riga per fornitore (non per fattura), stipendi per appalto, Fiscale + BPM senza le previsionali, costi fissi; si lavora nelle celle (clic per spostare di colonna, clic sul numero per correggere, Note2 scrivibile, × per togliere, + aggiungi per le righe a mano e CDC per la carta). Fotografie come linguette, come i fogli 1210 e 1510. Saldo scritto a mano salvato quando la banca non risponde; i mesi di stipendi vecchi senza spunte non risorgono più.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.92.0",
     date: "2026-10-19",
     entries: [

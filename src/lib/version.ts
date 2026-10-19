@@ -7,7 +7,7 @@ export const APP_INFO = {
   name: "DR Portal",
   tagline: "Il portale aziendale di DR Logistica",
   vendor: "DR Logistica",
-  version: "1.92.0",
+  version: "1.93.0",
   build: "2026.10.19",
   releaseDate: "2026-10-19",
   copyright: `© ${new Date().getFullYear()} DR Logistica`,
