@@ -180,6 +180,10 @@ export function meseDopo(yyyymm: string): string {
   const [y, m] = yyyymm.split("-").map(Number);
   return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 7);
 }
+export function mesePrima(yyyymm: string): string {
+  const [y, m] = yyyymm.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
+}
 
 /** Limite di default: il giorno `giorno` del mese dopo. */
 export function limiteDefault(oggi: string, giorno: number): string {
@@ -199,9 +203,11 @@ export interface StipendiCassaRiga {
  *  (netti), tolte le spunte Pagato della tab Stipendi. Mese di pagamento =
  *  mese dopo la competenza; entrano i mesi con pagamento fino a `fino`
  *  (YYYY-MM) compreso, così si vedono anche gli arretrati (settembre non
- *  pagato a ottobre). Un mese PASSATO senza nessuna spunta Pagato è un mese
- *  in cui le spunte non si usavano ancora: si considera pagato per intero
- *  (altrimenti gennaio-agosto 2026 risorgerebbero come arretrati). */
+ *  pagato a ottobre). Gli arretrati si guardano solo fino al mese di
+ *  pagamento PRECEDENTE a quello corrente, e solo se quel mese ha almeno
+ *  una spunta Pagato: più indietro le spunte non si usavano o sono parziali
+ *  (cessati, liquidazioni) e gennaio-agosto 2026 risorgevano come arretrati
+ *  nel foglio della proprietà — visto live il 19/10. */
 export function stipendiDaPagare(
   db: StipendiDb,
   fino: string,
@@ -212,6 +218,7 @@ export function stipendiDaPagare(
     const mesePag = meseDopo(n.mese);
     if (mesePag > fino) continue;
     const flag = db.pagatiPerMese?.[n.mese] ?? [];
+    if (mesePag < mesePrima(meseCorrente)) continue;
     if (mesePag < meseCorrente && flag.length === 0) continue;
     const pagati = new Set(flag);
     const perAppalto = new Map<string, { importo: number; dipendenti: number }>();

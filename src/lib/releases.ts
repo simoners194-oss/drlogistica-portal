@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.93.1",
+    date: "2026-10-19",
+    entries: [
+      {
+        title: "Cassa proprietà: il foglio veste meglio",
+        description:
+          "In alto il saldo in banca grande (si scrive lì se la banca non risponde) con i tre numeri del foglio: da pagare, saldo dopo incassi e pagamenti, cassa con gli standby. Il foglio ha le testate colorate per blocco (entrate verde, uscite rosso, prossimi giorni ambra, standby ardesia), numeri più grandi e colorati per colonna, righe alternate, totali in evidenza; le linguette delle fotografie stanno in basso come in Excel. Gli stipendi arretrati si guardano solo fino al mese di paga precedente: gennaio-luglio non risorgono più.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.93.0",
     date: "2026-10-19",
     entries: [
