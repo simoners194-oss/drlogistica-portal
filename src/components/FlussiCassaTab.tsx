@@ -44,6 +44,7 @@ import {
   type MovimentoMedia,
 } from "@/lib/flussi-logic";
 import { SchedaFornitore, type FatturaScheda } from "@/components/SchedaFornitore";
+import { CassaProprietaView } from "@/components/CassaProprietaView";
 import { esportaCsvFile } from "@/lib/csv";
 import {
   spGetFatture,
@@ -131,6 +132,7 @@ export function FlussiCassaTab() {
   const [movimenti, setMovimenti] = useState<SpMovimento[] | null>(null);
 
   const [modo, setModo] = useState<"mese" | "settimana">("mese");
+  const [vista, setVista] = useState<"classica" | "proprieta">("classica");
   const [finoA, setFinoA] = useState("");
   const [daData, setDaData] = useState("");
   // Voci dei fornitori chiuse di default: si aprono col "+" gruppo per
@@ -1907,11 +1909,49 @@ export function FlussiCassaTab() {
       ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
       : "";
 
+  const switchVista = (
+    <div className="flex rounded-lg border border-border overflow-hidden text-[12px]">
+      {(["classica", "proprieta"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => setVista(v)}
+          className={`px-3 py-1 ${vista === v ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+        >
+          {v === "classica" ? t("fc.vistaClassica") : t("fc.vistaProprieta")}
+        </button>
+      ))}
+    </div>
+  );
+  // SECONDA VISTA (Simone 19/10/2026): la "Cassa proprietà" sul modello del
+  // commercialista. Stessi dati di questa tab (fatture con stato, esclusioni,
+  // schede fornitore, scadenziario fiscale, costi fissi, movimenti); i
+  // Flussi classici restano intatti.
+  if (vista === "proprieta")
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold text-foreground">{t("fc.vistaProprieta")}</span>
+          {switchVista}
+        </div>
+        <CassaProprietaView
+          attive={attive}
+          passive={passive}
+          esclusioni={esclusioni}
+          infoFornitori={infoFornitori}
+          fiscale={fiscale?.scadenze ?? []}
+          fissi={costiFissi}
+          movimenti={movimenti ?? []}
+        />
+      </div>
+    );
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
         <div className="mb-1 flex flex-wrap items-center gap-3">
           <span className="text-sm font-semibold text-foreground">{t("fc.titolo")}</span>
+          {switchVista}
           {salvando && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
         <p className="mb-3 text-xs text-muted-foreground">{t("fc.desc")}</p>

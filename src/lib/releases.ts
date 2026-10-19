@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.92.0",
+    date: "2026-10-19",
+    entries: [
+      {
+        title: "Flussi di cassa: la vista Cassa proprietà",
+        description:
+          "Seconda vista dei Flussi, sul modello del foglio del commercialista: la fotografia della cassa a una data con saldo in banca, entrate attese (certe o in standby) e uscite in tre secchi — ora, prossimi giorni fino a una data a scelta, standby — con nota e stato per riga. Niente medie né previsioni: fatture aperte, stipendi netti da pagare per appalto (correggibili), scadenze fiscali, costi fissi, più le righe manuali della proprietà e le spese della carta Amex. Totali come nel foglio, fotografie salvate e rileggibili, CSV. I Flussi classici restano com'erano.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.91.1",
     date: "2026-10-13",
     entries: [

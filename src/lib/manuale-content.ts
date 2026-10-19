@@ -423,6 +423,18 @@ Per comprimere o espandere un gruppo clicca sul suo nome in una riga qualsiasi, 
 
   // --- Flussi ---------------------------------------------------------------------
   {
+    id: "flu-cassa-proprieta",
+    sezione: "Flussi di cassa",
+    titolo: "La vista Cassa proprietà",
+    testo: `Dalla 1.92.0 i Flussi hanno una seconda vista, "Cassa proprietà", col bottone in alto accanto al titolo. È la fotografia della cassa a una data, fatta come il foglio del commercialista: il saldo in banca (dal collegamento bancario, o scritto a mano se la banca non risponde), le entrate attese, le uscite in tre secchi — ORA (scadenze del mese, scadute comprese), PROSSIMI GIORNI (fino alla data che scegli, di solito il 5 del mese dopo: il giorno di default si imposta e resta salvato) e STANDBY (parcheggiate apposta). Ogni riga ha i tre bottoni per spostarla di secchio, una nota libera ("contestare", "compensazione", "sentire Marelli"), il flag contestata e "togli" per nasconderla; sulle entrate c'è la spunta "standby incasso" per quelle che non consideri certe.
+
+Le righe arrivano da sole, senza medie né stime: fatture passive aperte (RID e RiBa segnate "auto", escono senza decidere), fatture attive aperte, stipendi netti ancora da pagare per appalto dal file paghe (le spunte Pagato della tab Stipendi li tolgono; l'importo si può correggere a mano, con l'asterisco a ricordarlo), scadenze fiscali non pagate, costi fissi del mese non ancora usciti. Quello che scade oltre la data limite resta in fondo, "oltre l'orizzonte", con i bottoni per portarlo dentro o parcheggiarlo. Le esclusioni dei Flussi valgono anche qui.
+
+Le righe che il portale non può sapere si aggiungono a mano: divisione utili, compensazioni, e le spese passate dalla carta Amex con la data di addebito (per ora a mano; l'import dell'estratto conto carta arriva dopo). In fondo i totali del commercialista: saldo dopo pagamenti, dopo i prossimi giorni, cassa dopo gli incassi certi, cassa con gli standby. "Salva fotografia" congela la situazione del giorno con una nota: le fotografie restano in elenco e si riaprono, come i suoi fogli "1210" e "1510". Esporta CSV come le altre pagine. I Flussi classici non cambiano.`,
+    chiavi:
+      "cassa proprietà fotografia saldo banca standby parcheggiate prossimi giorni scadenze imminenti commercialista divisione utili amex carta credito stipendi non pagati niente previsioni",
+  },
+  {
     id: "flu-lettura",
     sezione: "Flussi di cassa",
     titolo: "Come si legge la tabella dei Flussi",
