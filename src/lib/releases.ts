@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.93.2",
+    date: "2026-10-19",
+    entries: [
+      {
+        title: "Cassa proprietà: entrate divise e saldo subito",
+        description:
+          'La colonna Entrate è divisa in due blocchi con il loro totale: "Già entrate" (gli incassi arrivati in banca dal primo del mese) ed "Entranti" (quello che i clienti devono ancora pagare, che conta in standby incasso). Il saldo in banca arriva subito dalla cache invece di aspettare la rilettura dei movimenti.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.93.1",
     date: "2026-10-19",
     entries: [

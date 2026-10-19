@@ -152,6 +152,8 @@ import {
   saveEbApp,
   ebProvaApplicazione,
   ebSaldoAttuale,
+  ebSaldoInCache,
+  type EbSaldoCache,
   ebImpostaSaldoManuale,
   type EbSaldoInfo,
   ebAvviaCollegamento,
@@ -2081,6 +2083,14 @@ export const spEbSaldo = createServerFn({ method: "GET" }).handler(
   async (): Promise<EbSaldoInfo | null> => {
     await assertDirettore(await currentUser());
     return ebSaldoAttuale();
+  },
+);
+
+/** Saldo dalla cache, veloce (senza progressivo dei movimenti). */
+export const spEbSaldoCache = createServerFn({ method: "GET" }).handler(
+  async (): Promise<EbSaldoCache | null> => {
+    await assertDirettore(await currentUser());
+    return ebSaldoInCache();
   },
 );
 

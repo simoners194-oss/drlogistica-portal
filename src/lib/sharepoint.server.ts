@@ -7808,7 +7808,7 @@ export interface EbSaldoInfo {
   progressivoFinale: number;
 }
 
-type EbSaldoCache = Omit<EbSaldoInfo, "progressivoFinale">;
+export type EbSaldoCache = Omit<EbSaldoInfo, "progressivoFinale">;
 
 /** Contesto PSU dell'azione in corso: IP e browser dell'utente loggato.
  *  Inoltrati alla banca, marcano la richiesta come "utente presente"
@@ -7868,6 +7868,17 @@ export async function ebImpostaSaldoManuale(saldo: number): Promise<void> {
     aggiornatoAl: new Date().toISOString(),
   });
   logSp("info", "eb.saldo", "Saldo impostato manualmente (in attesa del prossimo sync)");
+}
+
+/** Solo l'ultimo saldo in cache (una lettura della riga EnableBanking,
+ *  niente banca e niente movimenti): per le viste che vogliono il numero
+ *  subito — la Cassa proprietà lo aspettava 10-20 s per colpa del
+ *  progressivo, che qui non serve (Simone 19/10/2026). */
+export async function ebSaldoInCache(): Promise<EbSaldoCache | null> {
+  const cfg = await discoverSharePoint();
+  requireEbList(cfg);
+  const row = await fetchEbRow(cfg);
+  return leggiSaldoCache(cfg, row?.fields ?? {});
 }
 
 // La banca limita gli accessi PSD2 giornalieri per conto: di norma si serve

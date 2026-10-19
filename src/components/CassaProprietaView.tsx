@@ -16,7 +16,7 @@ import type { FatturaConStato } from "@/lib/fatture-logic";
 import type { CostoFisso, FornitoreInfo } from "@/lib/flussi-logic";
 import type { ScadenzaFiscale } from "@/lib/fiscale-logic";
 import type { SpMovimento } from "@/lib/sharepoint.server";
-import { spEbSaldo } from "@/lib/sharepoint.functions";
+import { spEbSaldoCache } from "@/lib/sharepoint.functions";
 import { spStipendiGet } from "@/lib/stipendi.functions";
 import { spCassaGet, spCassaSalva } from "@/lib/cassa.functions";
 import type { StipendiDb } from "@/lib/stipendi-logic";
@@ -51,6 +51,9 @@ const parseNum = (s: string): number | null => {
 };
 const inputCls =
   "rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
+/** Ultimo saldo banca visto in questa sessione: si dipinge subito al rientro
+ *  nella vista, poi si riaggiorna dalla cache del server. */
+let saldoMemo: { saldo: number; al?: string } | null = null;
 
 /** Riga del foglio, uguale per la vista viva e per una fotografia. */
 interface Cella {
@@ -86,6 +89,19 @@ const daRiga = (r: RigaCassa): Cella => ({
   documenti: r.documenti,
   editabile: r.editabile,
 });
+
+/** La colonna Entrate in due blocchi col loro totale: "Già entrate" (in
+ *  banca, dentro il saldo) ed "Entranti" (attese = standby incasso) —
+ *  Simone 19/10/2026. */
+type SlotE = { kind: "head"; label: string; value: number } | { kind: "riga"; c: Cella };
+function slotsEntrate(entrate: readonly Cella[], totali: TotaliCassa, t: TFn): SlotE[] {
+  return [
+    { kind: "head", label: t("cpr.giaEntrate"), value: totali.entrateRicevute },
+    ...entrate.filter((c) => !c.attesa).map((c): SlotE => ({ kind: "riga", c })),
+    { kind: "head", label: t("cpr.entranti"), value: totali.entrateStandby },
+    ...entrate.filter((c) => c.attesa).map((c): SlotE => ({ kind: "riga", c })),
+  ];
+}
 
 function daFoto(r: FotografiaCassa["righe"][number]): Cella {
   return {
@@ -126,7 +142,7 @@ export function CassaProprietaView({
   const { t } = useLang();
   const [db, setDb] = useState<CassaDb | null>(null);
   const [stipendiDb, setStipendiDb] = useState<StipendiDb | null>(null);
-  const [saldoBanca, setSaldoBanca] = useState<{ saldo: number; al?: string } | null>(null);
+  const [saldoBanca, setSaldoBanca] = useState<{ saldo: number; al?: string } | null>(saldoMemo);
   const [saldoErr, setSaldoErr] = useState(false);
   const [oggi, setOggi] = useState(oggiISO());
   const [limite, setLimite] = useState("");
@@ -149,10 +165,14 @@ export function CassaProprietaView({
     spStipendiGet()
       .then((d) => setStipendiDb(d))
       .catch(() => setStipendiDb(null));
-    spEbSaldo()
+    // Saldo dalla cache del server (una riga SharePoint, niente banca e
+    // niente rilettura dei movimenti): arriva subito.
+    spEbSaldoCache()
       .then((s) => {
-        if (s) setSaldoBanca({ saldo: s.saldo, al: s.aggiornatoAl });
-        else setSaldoErr(true);
+        if (s) {
+          saldoMemo = { saldo: s.saldo, al: s.aggiornatoAl };
+          setSaldoBanca(saldoMemo);
+        } else setSaldoErr(true);
       })
       .catch(() => setSaldoErr(true));
   }, [t]);
@@ -347,14 +367,20 @@ export function CassaProprietaView({
 
   const righeCsv = () => {
     const out: (string | number)[][] = [];
-    const n = Math.max(entrate.length, uscite.length);
+    const sl = slotsEntrate(entrate, totali, t);
+    const n = Math.max(sl.length, uscite.length);
     out.push([totali.entrate, "", saldoVista, "", "", "", "", ""]);
     for (let i = 0; i < n; i++) {
-      const e = entrate[i];
+      const s = sl[i];
+      const e = s?.kind === "riga" ? s.c : undefined;
       const u = uscite[i];
       out.push([
-        e ? e.importo : "",
-        e ? `${e.nome}${e.attesa ? ` (${t("cpr.attesa")})` : ""}` : "",
+        s?.kind === "head" ? s.value : e ? e.importo : "",
+        s?.kind === "head"
+          ? s.label
+          : e
+            ? `${e.nome}${e.attesa ? ` (${t("cpr.attesa")})` : ""}`
+            : "",
         "",
         u && u.secchio === "ora" ? u.importo : "",
         u && u.secchio === "prossimi" ? u.importo : "",
@@ -678,7 +704,8 @@ function Foglio({
     secchio: SecchioCassa;
     amex: boolean;
   }>(null);
-  const n = Math.max(entrate.length, uscite.length);
+  const slotsE = slotsEntrate(entrate, totali, t);
+  const n = Math.max(slotsE.length, uscite.length);
   const righe = Array.from({ length: n }, (_, i) => i);
   const breve = etichettaProssimiBreve(limite);
 
@@ -806,36 +833,55 @@ function Foglio({
             <td className={cel} />
           </tr>
           {righe.map((i) => {
-            const e = entrate[i];
+            const slot = slotsE[i];
+            const e = slot?.kind === "riga" ? slot.c : undefined;
             const u = uscite[i];
             return (
               <tr key={i} className="group/r odd:bg-background/40 hover:bg-primary/5">
-                <td
-                  className={`${celN} ${TINTA.entrate.col} ${e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
-                >
-                  {e && <Importo c={e} readOnly={readOnly} onImporto={onImporto} t={t} />}
-                </td>
-                <td
-                  className={`${cel} ${TINTA.entrate.col} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
-                >
-                  {e && (
-                    <span className="flex items-center gap-1.5">
-                      <span className="truncate" title={e.dettaglio}>
-                        {e.nome}
+                {slot?.kind === "head" ? (
+                  <td
+                    colSpan={2}
+                    className={`${cel} bg-emerald-100/70 dark:bg-emerald-900/30 ${TINTA.entrate.num}`}
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider">
+                        {slot.label}
                       </span>
-                      {e.attesa ? (
-                        <span className="shrink-0 rounded-full border border-emerald-300 px-1.5 text-[10px] text-emerald-700 dark:border-emerald-700 dark:text-emerald-300">
-                          {t("cpr.attesa")}
-                        </span>
-                      ) : (
-                        <span className="shrink-0 text-[10.5px] text-muted-foreground">
-                          {ddmm(e.data)}
+                      <span className="text-[13.5px] font-bold tabular-nums">
+                        {fmt(slot.value)}
+                      </span>
+                    </span>
+                  </td>
+                ) : (
+                  <>
+                    <td
+                      className={`${celN} ${TINTA.entrate.col} ${e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
+                    >
+                      {e && <Importo c={e} readOnly={readOnly} onImporto={onImporto} t={t} />}
+                    </td>
+                    <td
+                      className={`${cel} ${TINTA.entrate.col} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
+                    >
+                      {e && (
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate" title={e.dettaglio}>
+                            {e.nome}
+                          </span>
+                          {e.attesa ? (
+                            <span className="shrink-0 rounded-full border border-emerald-300 px-1.5 text-[10px] text-emerald-700 dark:border-emerald-700 dark:text-emerald-300">
+                              {t("cpr.attesa")}
+                            </span>
+                          ) : (
+                            <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                              {ddmm(e.data)}
+                            </span>
+                          )}
+                          {!readOnly && <Togli onClick={() => onTogli(e)} t={t} />}
                         </span>
                       )}
-                      {!readOnly && <Togli onClick={() => onTogli(e)} t={t} />}
-                    </span>
-                  )}
-                </td>
+                    </td>
+                  </>
+                )}
                 <td className={`${cel} bg-muted/20`} />
                 {cellaUscita(u, "ora")}
                 {cellaUscita(u, "prossimi")}
