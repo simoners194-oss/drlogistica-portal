@@ -92,6 +92,21 @@ export function dataCellaIso(v: unknown): string {
   return "";
 }
 
+const MESI_PERIODO = [
+  "GENNAIO",
+  "FEBBRAIO",
+  "MARZO",
+  "APRILE",
+  "MAGGIO",
+  "GIUGNO",
+  "LUGLIO",
+  "AGOSTO",
+  "SETTEMBRE",
+  "OTTOBRE",
+  "NOVEMBRE",
+  "DICEMBRE",
+];
+
 /** Rate di finanziamenti e noleggi presenti nello scadenziario di Sabrina
  *  ma NON tributarie: restano fuori dalle voci fiscali del cash flow. */
 const RE_FINANZIAMENTO = /FIN\.?\s*TO|FINANZIAMENT|NOLEGGI|CONTRATTO\s+NR/i;
@@ -179,7 +194,18 @@ export function parseScadenzario(
       if (!voce || importo <= 0) continue;
       const annoRaw = C.anno >= 0 ? numCell(r[C.anno]) : 0;
       const anno = annoRaw >= 2000 && annoRaw < 2100 ? Math.round(annoRaw) : undefined;
-      const periodo = C.periodo >= 0 ? String(r[C.periodo] ?? "").trim() || undefined : undefined;
+      // PERIODO scritto come data in Excel ("INPS CONTRIBUTI AGOSTO 2026" ha
+      // 01/08/2026 nella cella): arrivava il seriale 46235 e la voce si
+      // leggeva "INPS 46235" — si rende "AGOSTO 2026" (caso 20/10/2026).
+      const periodoRaw = C.periodo >= 0 ? r[C.periodo] : undefined;
+      const periodoData = dataCellaIso(periodoRaw);
+      const periodo =
+        periodoData &&
+        (typeof periodoRaw === "number" || /^\d{4}-\d{2}-\d{2}/.test(String(periodoRaw)))
+          ? `${MESI_PERIODO[Number(periodoData.slice(5, 7)) - 1]} ${periodoData.slice(0, 4)}`
+          : C.periodo >= 0
+            ? String(periodoRaw ?? "").trim() || undefined
+            : undefined;
       const data = dataCellaIso(r[C.data]);
       if (daRegistrare) {
         // Foglio "da registrare": senza data = importo noto da rateizzare;

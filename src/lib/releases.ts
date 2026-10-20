@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.95.1",
+    date: "2026-10-20",
+    entries: [
+      {
+        title: "Fiscale: il periodo scritto come data si legge bene",
+        description:
+          'Nello scadenziario di Sabrina il periodo di una scadenza può essere una data ("INPS contributi agosto 2026" ha 01/08/2026 nella cella): il portale mostrava il numero di Excel ("INPS 46235"), ora mostra "AGOSTO 2026". Riletto il file aggiornato del 20/10 e tolti i quattro doppioni del 16/09 inseriti a mano a settembre, che ora stanno nel file.',
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.95.0",
     date: "2026-10-20",
     entries: [
