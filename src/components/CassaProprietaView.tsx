@@ -9,7 +9,7 @@
 // riga. Logica in lib/cassa-logic; dati in FinanzaData/cassa.json.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Camera, Loader2, Plus, X } from "lucide-react";
+import { CalendarDays, Camera, ListTodo, Loader2, Plus, X } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { EsportaStampa } from "@/components/EsportaStampa";
 import type { FatturaConStato } from "@/lib/fatture-logic";
@@ -21,6 +21,8 @@ import { spStipendiGet } from "@/lib/stipendi.functions";
 import { spCassaGet, spCassaSalva } from "@/lib/cassa.functions";
 import type { StipendiDb } from "@/lib/stipendi-logic";
 import {
+  agendaCassa,
+  calendarioEntrate,
   costruisciCassa,
   creaFotografia,
   emptyCassaDb,
@@ -30,12 +32,15 @@ import {
   stipendiDaPagare,
   type CassaDb,
   type FotografiaCassa,
+  type PrioritaCassa,
   type RigaCassa,
   type RigaManualeCassa,
   type SecchioCassa,
   type StatoRigaCassa,
   type TipoRigaCassa,
   type TotaliCassa,
+  type VoceAgenda,
+  type VoceAgendaVista,
 } from "@/lib/cassa-logic";
 
 type TFn = ReturnType<typeof useLang>["t"];
@@ -71,6 +76,8 @@ interface Cella {
   certa: boolean;
   documenti: number;
   editabile: boolean;
+  priorita?: PrioritaCassa;
+  dataScelta: boolean;
 }
 
 const daRiga = (r: RigaCassa): Cella => ({
@@ -88,6 +95,8 @@ const daRiga = (r: RigaCassa): Cella => ({
   certa: r.certa,
   documenti: r.documenti,
   editabile: r.editabile,
+  priorita: r.priorita,
+  dataScelta: r.dataScelta,
 });
 
 /** La colonna Entrate in due blocchi col loro totale: "Già entrate" (in
@@ -119,6 +128,8 @@ function daFoto(r: FotografiaCassa["righe"][number]): Cella {
     certa: false,
     documenti: r.nd ?? 1,
     editabile: false,
+    priorita: r.p,
+    dataScelta: false,
   };
 }
 
@@ -344,6 +355,38 @@ export function CassaProprietaView({
     if (c.tipo === "manuale" || c.tipo === "amex") eliminaManuale(c.chiave.slice(4));
     else setStato(c.chiave, { x: true });
   };
+  // Priorità della nota (agenda) e data attesa (calendario entrate).
+  const setPriorita = (c: Cella, p: PrioritaCassa | undefined) => {
+    if (c.tipo === "manuale" || c.tipo === "amex") aggiornaManuale(c.chiave.slice(4), { p });
+    else setStato(c.chiave, { p });
+  };
+  const setData = (c: Cella, d: string) => {
+    if (c.tipo === "manuale" || c.tipo === "amex")
+      aggiornaManuale(c.chiave.slice(4), { data: d || c.data });
+    else setStato(c.chiave, { d: d || undefined });
+  };
+  const aggiungiVoce = (testo: string, p: PrioritaCassa, scad?: string) => {
+    if (!db) return;
+    const v: VoceAgenda = {
+      id: `A${Date.now().toString(36)}`,
+      testo,
+      p,
+      scad: scad || undefined,
+      creata: new Date().toISOString(),
+    };
+    void salva({ ...db, agenda: [...(db.agenda ?? []), v] });
+  };
+  const toggleVoce = (id: string) => {
+    if (!db) return;
+    void salva({
+      ...db,
+      agenda: (db.agenda ?? []).map((v) => (v.id === id ? { ...v, fatta: !v.fatta } : v)),
+    });
+  };
+  const eliminaVoce = (id: string) => {
+    if (!db) return;
+    void salva({ ...db, agenda: (db.agenda ?? []).filter((v) => v.id !== id) });
+  };
 
   if (!db || !esito) {
     return (
@@ -364,6 +407,8 @@ export function CassaProprietaView({
   const limiteVista = foto ? foto.limite : limite;
   const saldoVista = foto ? foto.saldo : saldo;
   const dataVista = foto ? foto.data : oggi;
+  const calendario = foto ? [] : calendarioEntrate(esito.righe);
+  const agenda = foto ? [] : agendaCassa(esito.righe, db.agenda ?? []);
 
   const righeCsv = () => {
     const out: (string | number)[][] = [];
@@ -386,7 +431,15 @@ export function CassaProprietaView({
         u && u.secchio === "prossimi" ? u.importo : "",
         u && u.secchio === "standby" ? u.importo : "",
         u ? u.nome : "",
-        u ? [u.dettaglio === "CDC" ? "CDC" : "", u.nota].filter(Boolean).join(" ") : "",
+        u
+          ? [
+              u.dettaglio === "CDC" ? "CDC" : "",
+              u.priorita ? `[${u.priorita.toUpperCase()}]` : "",
+              u.nota,
+            ]
+              .filter(Boolean)
+              .join(" ")
+          : "",
       ]);
     }
     out.push([
@@ -521,6 +574,8 @@ export function CassaProprietaView({
           onNota={annota}
           onTogli={togli}
           onAggiungi={aggiungiManuale}
+          onPriorita={setPriorita}
+          onData={setData}
           oggi={oggi}
         />
         {/* Linguette come i fogli di Excel */}
@@ -553,6 +608,69 @@ export function CassaProprietaView({
           ))}
         </div>
       </div>
+
+      {/* Calendario entrate e agenda (Simone 20/10/2026) */}
+      {!foto && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
+            <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-foreground">
+              <CalendarDays className="h-4 w-4 text-emerald-600" /> {t("cpr.calendario")}
+              <span className="ml-auto text-[12px] font-normal tabular-nums text-muted-foreground">
+                {fmt(totali.entrateStandby)} €
+              </span>
+            </div>
+            {calendario.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground">{t("cpr.calendarioVuoto")}</p>
+            ) : (
+              <table className="w-full border-collapse text-[13px]">
+                <thead>
+                  <tr className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                    <th className="py-1 pr-2 text-left font-semibold">{t("cpr.data")}</th>
+                    <th className="py-1 pr-2 text-left font-semibold">{t("cpr.colNote")}</th>
+                    <th className="py-1 pr-2 text-right font-semibold">{t("cpr.importo")}</th>
+                    <th className="py-1 text-right font-semibold">{t("cpr.progressivo")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {calendario.map((v) => {
+                    const c = entrate.find((x) => x.chiave === v.chiave);
+                    return (
+                      <tr
+                        key={v.chiave}
+                        className={`border-t border-border/50 ${v.data < oggi ? "text-rose-600 dark:text-rose-400" : "text-foreground"}`}
+                      >
+                        <td className="py-1 pr-2 whitespace-nowrap">
+                          {c ? (
+                            <DataAttesa c={c} readOnly={false} onData={setData} t={t} />
+                          ) : (
+                            ddmm(v.data)
+                          )}
+                        </td>
+                        <td className="max-w-[220px] truncate py-1 pr-2">{v.nome}</td>
+                        <td className="py-1 pr-2 text-right tabular-nums">{fmt(v.importo)}</td>
+                        <td className="py-1 text-right tabular-nums text-muted-foreground">
+                          {fmt(v.progressivo)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <AgendaBox
+            t={t}
+            voci={agenda}
+            onAggiungi={aggiungiVoce}
+            onToggle={toggleVoce}
+            onElimina={eliminaVoce}
+            onTogliRiga={(chiave) => {
+              const c = [...entrate, ...uscite].find((x) => x.chiave === chiave);
+              if (c) setPriorita(c, undefined);
+            }}
+          />
+        </div>
+      )}
 
       {!foto && esito.oltre.length > 0 && (
         <div className="text-[12px] text-muted-foreground">
@@ -681,6 +799,8 @@ function Foglio({
   onNota,
   onTogli,
   onAggiungi,
+  onPriorita,
+  onData,
 }: {
   t: TFn;
   entrate: readonly Cella[];
@@ -695,6 +815,8 @@ function Foglio({
   onNota: (c: Cella, nota: string) => void;
   onTogli: (c: Cella) => void;
   onAggiungi: (r: Omit<RigaManualeCassa, "id">) => void;
+  onPriorita: (c: Cella, p: PrioritaCassa | undefined) => void;
+  onData: (c: Cella, d: string) => void;
 }) {
   const [nuova, setNuova] = useState<null | {
     entrata: boolean;
@@ -703,6 +825,7 @@ function Foglio({
     data: string;
     secchio: SecchioCassa;
     amex: boolean;
+    ricorrente: boolean;
   }>(null);
   const slotsE = slotsEntrate(entrate, totali, t);
   const n = Math.max(slotsE.length, uscite.length);
@@ -723,11 +846,20 @@ function Foglio({
       data: nuova.data || oggi,
       secchio: nuova.entrata ? "ora" : nuova.secchio,
       entrata: nuova.entrata || undefined,
+      ricorrente: nuova.ricorrente || undefined,
     });
     setNuova(null);
   };
   const apri = (entrata: boolean) =>
-    setNuova({ entrata, descrizione: "", importo: "", data: oggi, secchio: "ora", amex: false });
+    setNuova({
+      entrata,
+      descrizione: "",
+      importo: "",
+      data: oggi,
+      secchio: "ora",
+      amex: false,
+      ricorrente: false,
+    });
 
   const cellaUscita = (u: Cella | undefined, col: SecchioCassa) => {
     const tinta = TINTA[col];
@@ -868,9 +1000,7 @@ function Foglio({
                             {e.nome}
                           </span>
                           {e.attesa ? (
-                            <span className="shrink-0 rounded-full border border-emerald-300 px-1.5 text-[10px] text-emerald-700 dark:border-emerald-700 dark:text-emerald-300">
-                              {t("cpr.attesa")}
-                            </span>
+                            <DataAttesa c={e} readOnly={readOnly} onData={onData} t={t} />
                           ) : (
                             <span className="shrink-0 text-[10.5px] text-muted-foreground">
                               {ddmm(e.data)}
@@ -919,6 +1049,7 @@ function Foglio({
                         </span>
                       )}
                       <Nota c={u} readOnly={readOnly} onNota={onNota} />
+                      <Priorita c={u} readOnly={readOnly} onPriorita={onPriorita} t={t} />
                       {!readOnly && (
                         <span className="pr-2">
                           <Togli onClick={() => onTogli(u)} t={t} />
@@ -954,6 +1085,21 @@ function Foglio({
                         placeholder={t("cpr.descrizione")}
                         className={`${inputCls} w-full`}
                       />
+                      <input
+                        type="date"
+                        value={nuova.data}
+                        onChange={(e) => setNuova({ ...nuova, data: e.target.value })}
+                        title={t("cpr.dataAttesa")}
+                        className={inputCls}
+                      />
+                      <label className="flex shrink-0 items-center gap-1 text-[12px] text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={nuova.ricorrente}
+                          onChange={(e) => setNuova({ ...nuova, ricorrente: e.target.checked })}
+                        />
+                        {t("cpr.ricorrente")}
+                      </label>
                       <Ok onOk={conferma} onNo={() => setNuova(null)} t={t} />
                     </span>
                   </td>
@@ -1016,6 +1162,14 @@ function Foglio({
                           onChange={(e) => setNuova({ ...nuova, amex: e.target.checked })}
                         />
                         CDC
+                      </label>
+                      <label className="flex items-center gap-1 text-[12px] text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={nuova.ricorrente}
+                          onChange={(e) => setNuova({ ...nuova, ricorrente: e.target.checked })}
+                        />
+                        {t("cpr.ricorrente")}
                       </label>
                       <Ok onOk={conferma} onNo={() => setNuova(null)} t={t} />
                     </span>
@@ -1223,5 +1377,249 @@ function Ok({ onOk, onNo, t }: { onOk: () => void; onNo: () => void; t: TFn }): 
         {t("common.cancel")}
       </button>
     </span>
+  );
+}
+
+// --- data attesa, priorità, agenda ------------------------------------------
+const PRIO_CLS: Record<PrioritaCassa, string> = {
+  h: "bg-rose-500 text-white",
+  m: "bg-amber-500 text-white",
+  l: "bg-emerald-500 text-white",
+};
+const PRIO_TXT: Record<PrioritaCassa, string> = {
+  h: "text-rose-600 dark:text-rose-400",
+  m: "text-amber-600 dark:text-amber-400",
+  l: "text-emerald-600 dark:text-emerald-400",
+};
+function etichettaPriorita(p: PrioritaCassa | undefined, t: TFn): string {
+  return p === "h"
+    ? t("cpr.prioH")
+    : p === "m"
+      ? t("cpr.prioM")
+      : p === "l"
+        ? t("cpr.prioL")
+        : t("cpr.senzaPriorita");
+}
+
+/** "attesa · 31/10": la data in cui il cliente ha detto che paga, cliccabile. */
+function DataAttesa({
+  c,
+  readOnly,
+  onData,
+  t,
+}: {
+  c: Cella;
+  readOnly: boolean;
+  onData: (c: Cella, d: string) => void;
+  t: TFn;
+}) {
+  const [edit, setEdit] = useState(false);
+  const base =
+    "shrink-0 whitespace-nowrap rounded-full border px-1.5 text-[10px] " +
+    (c.dataScelta
+      ? "border-emerald-500 bg-emerald-500/10 font-semibold text-emerald-800 dark:text-emerald-200"
+      : "border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300");
+  if (readOnly)
+    return (
+      <span className={base}>
+        {t("cpr.attesa")} · {ddmm(c.data)}
+      </span>
+    );
+  if (edit)
+    return (
+      <input
+        type="date"
+        autoFocus
+        defaultValue={c.data}
+        onBlur={(e) => {
+          setEdit(false);
+          if (e.target.value && e.target.value !== c.data) onData(c, e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setEdit(false);
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        className={`${inputCls} py-0 text-[11px]`}
+      />
+    );
+  return (
+    <button
+      type="button"
+      onClick={() => setEdit(true)}
+      title={t("cpr.dataAttesa")}
+      className={base}
+    >
+      {t("cpr.attesa")} · {ddmm(c.data)}
+    </button>
+  );
+}
+
+/** Pallino di priorità in Note2: clic per passare bassa → media → alta → nessuna. */
+function Priorita({
+  c,
+  readOnly,
+  onPriorita,
+  t,
+}: {
+  c: Cella;
+  readOnly: boolean;
+  onPriorita: (c: Cella, p: PrioritaCassa | undefined) => void;
+  t: TFn;
+}) {
+  const p = c.priorita;
+  const next: PrioritaCassa | undefined =
+    p === undefined ? "l" : p === "l" ? "m" : p === "m" ? "h" : undefined;
+  const cls = p
+    ? PRIO_CLS[p]
+    : "border border-dashed border-border text-muted-foreground opacity-0 group-hover/r:opacity-100";
+  if (readOnly)
+    return p ? (
+      <span className={`mr-1 rounded px-1 text-[10px] font-bold uppercase ${PRIO_CLS[p]}`}>
+        {p}
+      </span>
+    ) : null;
+  return (
+    <button
+      type="button"
+      onClick={() => onPriorita(c, next)}
+      title={`${t("cpr.priorita")}: ${etichettaPriorita(p, t)}`}
+      className={`mr-1 h-5 w-5 shrink-0 rounded text-[10px] font-bold uppercase ${cls}`}
+    >
+      {p ?? "·"}
+    </button>
+  );
+}
+
+function AgendaBox({
+  t,
+  voci,
+  onAggiungi,
+  onToggle,
+  onElimina,
+  onTogliRiga,
+}: {
+  t: TFn;
+  voci: readonly VoceAgendaVista[];
+  onAggiungi: (testo: string, p: PrioritaCassa, scad?: string) => void;
+  onToggle: (id: string) => void;
+  onElimina: (id: string) => void;
+  onTogliRiga: (chiave: string) => void;
+}) {
+  const [testo, setTesto] = useState("");
+  const [p, setP] = useState<PrioritaCassa>("m");
+  const [scad, setScad] = useState("");
+  const invia = () => {
+    if (!testo.trim()) return;
+    onAggiungi(testo.trim(), p, scad || undefined);
+    setTesto("");
+    setScad("");
+  };
+  const aperte = voci.filter((v) => !v.fatta);
+  const conta = (q: PrioritaCassa) => aperte.filter((v) => v.p === q).length;
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
+      <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-foreground">
+        <ListTodo className="h-4 w-4 text-primary" /> {t("cpr.agenda")}
+        <span className="ml-auto flex items-center gap-1 text-[11px] font-normal">
+          {(["h", "m", "l"] as const).map((q) => (
+            <span key={q} className={`rounded px-1.5 ${PRIO_CLS[q]}`}>
+              {q.toUpperCase()} {conta(q)}
+            </span>
+          ))}
+        </span>
+      </div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          value={testo}
+          onChange={(e) => setTesto(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && invia()}
+          placeholder={t("cpr.nuovaVoce")}
+          className={`${inputCls} min-w-[180px] flex-1`}
+        />
+        <span className="flex overflow-hidden rounded-lg border border-border text-[11px] font-bold uppercase">
+          {(["l", "m", "h"] as const).map((q) => (
+            <button
+              key={q}
+              type="button"
+              onClick={() => setP(q)}
+              title={etichettaPriorita(q, t)}
+              className={`px-2 py-1 ${p === q ? PRIO_CLS[q] : "text-muted-foreground hover:bg-muted"}`}
+            >
+              {q}
+            </button>
+          ))}
+        </span>
+        <input
+          type="date"
+          value={scad}
+          onChange={(e) => setScad(e.target.value)}
+          className={inputCls}
+        />
+        <button
+          type="button"
+          onClick={invia}
+          className="inline-flex items-center gap-1 rounded-lg border border-primary bg-primary px-2.5 py-1 text-[12px] text-primary-foreground"
+        >
+          <Plus className="h-3.5 w-3.5" /> {t("cpr.aggiungi")}
+        </button>
+      </div>
+      {voci.length === 0 ? (
+        <p className="text-[12px] text-muted-foreground">{t("cpr.agendaVuota")}</p>
+      ) : (
+        <ul className="space-y-1">
+          {voci.map((v) => (
+            <li
+              key={v.id}
+              className={`group/a flex items-start gap-2 rounded-lg border-l-4 px-2 py-1 text-[13px] ${
+                v.p === "h"
+                  ? "border-rose-500 bg-rose-500/5"
+                  : v.p === "m"
+                    ? "border-amber-500 bg-amber-500/5"
+                    : "border-emerald-500 bg-emerald-500/5"
+              } ${v.fatta ? "opacity-50" : ""}`}
+            >
+              {v.rigaChiave ? (
+                <span
+                  className={`mt-0.5 rounded px-1 text-[10px] font-bold uppercase ${PRIO_CLS[v.p]}`}
+                >
+                  {v.p}
+                </span>
+              ) : (
+                <input
+                  type="checkbox"
+                  checked={v.fatta}
+                  onChange={() => onToggle(v.id)}
+                  title={t("cpr.fatta")}
+                  className="mt-1"
+                />
+              )}
+              <span className={`flex-1 ${v.fatta ? "line-through" : "text-foreground"}`}>
+                {v.testo}
+                {v.riga && (
+                  <span className="ml-1 text-[11px] text-muted-foreground">
+                    · {v.riga} · {t("cpr.rigaAgenda")}
+                  </span>
+                )}
+                {v.data && (
+                  <span
+                    className={`ml-1 text-[11px] ${!v.fatta && v.data < oggiISO() ? PRIO_TXT.h : "text-muted-foreground"}`}
+                  >
+                    {ddmm(v.data)}
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => (v.rigaChiave ? onTogliRiga(v.rigaChiave) : onElimina(v.id))}
+                className="text-muted-foreground opacity-0 hover:text-status-absent group-hover/a:opacity-100"
+                title={t("common.delete")}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

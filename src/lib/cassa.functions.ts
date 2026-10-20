@@ -5,7 +5,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { readSessionUser, type ServerSessionUser } from "./auth.server";
 import { haVistaDirezione } from "./richieste-logic";
 import { loadCassaDb, salvaCassaDb } from "./cassa.server";
-import type { CassaDb, RigaManualeCassa, SecchioCassa, StatoRigaCassa } from "./cassa-logic";
+import type {
+  CassaDb,
+  PrioritaCassa,
+  RigaManualeCassa,
+  SecchioCassa,
+  StatoRigaCassa,
+  VoceAgenda,
+} from "./cassa-logic";
 
 async function utenteCassa(): Promise<ServerSessionUser> {
   const me = await readSessionUser();
@@ -16,6 +23,9 @@ async function utenteCassa(): Promise<ServerSessionUser> {
 }
 
 const SECCHI: readonly SecchioCassa[] = ["ora", "prossimi", "standby"];
+const PRIORITA: readonly PrioritaCassa[] = ["l", "m", "h"];
+const priorita = (v: unknown): PrioritaCassa | undefined =>
+  PRIORITA.includes(v as PrioritaCassa) ? (v as PrioritaCassa) : undefined;
 const testo = (v: unknown, max: number) =>
   String(v ?? "")
     .trim()
@@ -44,6 +54,12 @@ function validaDb(input: unknown): CassaDb {
     if (s.s) st.s = true;
     if (s.x) st.x = true;
     if (s.i != null) st.i = numero(s.i);
+    if (s.d) {
+      const d = dataIso(s.d);
+      if (d) st.d = d;
+    }
+    const p = priorita(s.p);
+    if (p) st.p = p;
     if (Object.keys(st).length) stati[k] = st;
   }
   const manuali: RigaManualeCassa[] = (Array.isArray(o.manuali) ? o.manuali : [])
@@ -57,9 +73,22 @@ function validaDb(input: unknown): CassaDb {
       secchio: SECCHI.includes(m?.secchio as SecchioCassa) ? (m!.secchio as SecchioCassa) : "ora",
       nota: testo(m?.nota, 200) || undefined,
       entrata: m?.entrata ? true : undefined,
+      p: priorita(m?.p),
+      ricorrente: m?.ricorrente ? true : undefined,
     }))
     .filter((m) => m.descrizione && m.importo !== 0);
   const fotografie = (Array.isArray(o.fotografie) ? o.fotografie : []).slice(0, 120);
+  const agenda: VoceAgenda[] = (Array.isArray(o.agenda) ? o.agenda : [])
+    .slice(0, 300)
+    .map((v) => ({
+      id: testo(v?.id, 40) || `A${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`,
+      testo: testo(v?.testo, 300),
+      p: priorita(v?.p) ?? "m",
+      scad: dataIso(v?.scad) || undefined,
+      fatta: v?.fatta ? true : undefined,
+      creata: testo(v?.creata, 30) || new Date().toISOString(),
+    }))
+    .filter((v) => v.testo);
   const giorno = Number(o.giornoLimite);
   return {
     versione: Number(o.versione) || 0,
@@ -67,6 +96,7 @@ function validaDb(input: unknown): CassaDb {
     stati,
     manuali,
     fotografie,
+    agenda,
     saldoManuale:
       o.saldoManuale && Number.isFinite(Number(o.saldoManuale.importo))
         ? { importo: numero(o.saldoManuale.importo), data: dataIso(o.saldoManuale.data) }

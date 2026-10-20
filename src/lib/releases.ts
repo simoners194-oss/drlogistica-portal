@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.94.0",
+    date: "2026-10-20",
+    entries: [
+      {
+        title: "Cassa proprietà: calendario entrate, agenda con priorità, righe ogni mese",
+        description:
+          'Sotto il foglio due riquadri nuovi. Calendario entrate: le entrate attese per data con il progressivo; la data di ogni attesa si cambia con un clic (quando il cliente dice che paga) e le scadute sono in rosso. Agenda · cose da fare: ogni nota in Note2 può avere una priorità L/M/H (il pallino accanto alla nota: verde, ambra, rosso) e finisce in agenda; si aggiungono anche voci libere con data, da spuntare quando fatte. Le righe aggiunte a mano possono essere "ogni mese" (stipendi iMile, buoni pasto, commercialista…): si ripresentano da sole allo stesso giorno finché non le si elimina.',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.93.2",
     date: "2026-10-19",
     entries: [

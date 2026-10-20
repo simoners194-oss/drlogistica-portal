@@ -38,6 +38,8 @@ import type { ScadenzaFiscale } from "./fiscale-logic";
 import { chiaveNome, type StipendiDb } from "./stipendi-logic";
 
 export type SecchioCassa = "ora" | "prossimi" | "standby";
+/** Priorità delle cose da fare (agenda): bassa / media / alta. */
+export type PrioritaCassa = "l" | "m" | "h";
 export type TipoRigaCassa =
   "incasso" | "attiva" | "passiva" | "stipendi" | "fiscale" | "fisso" | "manuale" | "amex";
 
@@ -55,6 +57,10 @@ export interface StatoRigaCassa {
   i?: number;
   /** Tolta dal foglio. */
   x?: boolean;
+  /** Data scelta a mano (entrate attese: quando il cliente ha detto che paga). */
+  d?: string;
+  /** Priorità della nota (agenda cose da fare). */
+  p?: PrioritaCassa;
 }
 
 export interface RigaManualeCassa {
@@ -67,6 +73,22 @@ export interface RigaManualeCassa {
   nota?: string;
   /** true = entrata attesa (es. "Univex 110.000"); default uscita. */
   entrata?: boolean;
+  /** Priorità della nota (agenda). */
+  p?: PrioritaCassa;
+  /** Si ripresenta ogni mese, stesso giorno (stipendi iMile, buoni pasto,
+   *  commercialista…): le righe che non hanno una fattura nel portale. */
+  ricorrente?: boolean;
+}
+
+/** Voce libera dell'agenda (cose da fare non legate a una riga). */
+export interface VoceAgenda {
+  id: string;
+  testo: string;
+  p: PrioritaCassa;
+  /** Scadenza (YYYY-MM-DD), facoltativa. */
+  scad?: string;
+  fatta?: boolean;
+  creata: string;
 }
 
 export interface RigaFotografia {
@@ -82,6 +104,8 @@ export interface RigaFotografia {
   si?: boolean;
   /** Documenti raggruppati nella riga. */
   nd?: number;
+  /** Priorità della nota. */
+  p?: PrioritaCassa;
 }
 
 export interface TotaliCassa {
@@ -132,6 +156,8 @@ export interface CassaDb {
   fotografie: FotografiaCassa[];
   /** Saldo scritto a mano quando la banca non risponde (con la sua data). */
   saldoManuale?: { importo: number; data: string };
+  /** Agenda: cose da fare libere, con priorità. */
+  agenda?: VoceAgenda[];
   aggiornatoIl?: string;
   aggiornatoDa?: string;
 }
@@ -164,6 +190,10 @@ export interface RigaCassa {
   documenti: number;
   /** L'importo si può correggere a mano. */
   editabile: boolean;
+  /** Priorità della nota (agenda). */
+  priorita?: PrioritaCassa;
+  /** La data è stata scelta a mano. */
+  dataScelta: boolean;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -329,7 +359,14 @@ export function scadenzaPrevisionale(sc: ScadenzaFiscale): boolean {
 
 type Grezza = Omit<
   RigaCassa,
-  "secchio" | "secchioAuto" | "nota" | "contestata" | "standbyIncasso" | "importoOrigine"
+  | "secchio"
+  | "secchioAuto"
+  | "nota"
+  | "contestata"
+  | "standbyIncasso"
+  | "importoOrigine"
+  | "priorita"
+  | "dataScelta"
 >;
 
 function elencoNumeri(numeri: readonly string[]): string {
@@ -524,15 +561,22 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       editabile: true,
     });
   }
-  // Righe manuali (proprietà) e carta Amex ("CDC").
+  // Righe manuali (proprietà) e carta Amex ("CDC"). Una riga RICORRENTE
+  // si ripresenta ogni mese allo stesso giorno (dal mese della sua data in
+  // poi), finché non la si elimina.
   for (const m of db.manuali) {
+    let data = m.data || oggi;
+    if (m.ricorrente && data.slice(0, 7) < meseCorr) {
+      const giorno = Math.min(Number(data.slice(8, 10)) || 1, Number(fm.slice(8, 10)));
+      data = `${meseCorr}-${String(giorno).padStart(2, "0")}`;
+    }
     grezze.push({
       chiave: `man|${m.id}`,
       tipo: m.tipo,
       controparte: m.descrizione,
-      descrizione: m.tipo === "amex" ? "CDC" : "",
+      descrizione: m.tipo === "amex" ? "CDC" : m.ricorrente ? "ogni mese" : "",
       importo: r2(Math.abs(m.importo)),
-      scadenza: m.data || oggi,
+      scadenza: data,
       certa: m.tipo === "amex",
       entrata: Boolean(m.entrata),
       documenti: 1,
@@ -551,15 +595,21 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     const secchio: SecchioCassa =
       st.b ?? manuale?.secchio ?? (auto === "oltre" ? "prossimi" : auto);
     const importo = g.editabile && st.i != null && st.i >= 0 ? r2(st.i) : g.importo;
+    // Data scelta a mano: solo per le entrate attese (quando il cliente ha
+    // detto che paga) — alimenta il calendario entrate.
+    const dataScelta = Boolean(g.entrata && g.tipo !== "incasso" && st.d);
     const riga: RigaCassa = {
       ...g,
       importoOrigine: g.importo,
       importo,
+      scadenza: dataScelta ? st.d! : g.scadenza,
       secchio,
       secchioAuto: auto,
       standbyIncasso: g.entrata && g.tipo !== "incasso",
       nota: st.n ?? manuale?.nota ?? "",
       contestata: Boolean(st.c),
+      priorita: st.p ?? manuale?.p,
+      dataScelta,
     };
     if (auto === "oltre" && !st.b && !manuale) oltre.push(riga);
     else righe.push(riga);
@@ -633,6 +683,7 @@ export function creaFotografia(
       n: r.nota || undefined,
       si: r.standbyIncasso || undefined,
       nd: r.documenti > 1 ? r.documenti : undefined,
+      p: r.priorita,
     })),
   };
 }
@@ -657,4 +708,76 @@ export function confrontaFotografie(
       cambiate.push({ prima: p, dopo: r });
   }
   return { nuove, sparite, cambiate };
+}
+
+/** Calendario delle entrate attese: per data (scelta a mano o scadenza),
+ *  con il progressivo — "calendario entrate futuro, mettere date" (Simone
+ *  20/10/2026). */
+export interface VoceCalendario {
+  chiave: string;
+  data: string;
+  nome: string;
+  importo: number;
+  progressivo: number;
+  dataScelta: boolean;
+}
+export function calendarioEntrate(righe: readonly RigaCassa[]): VoceCalendario[] {
+  const attese = righe
+    .filter((r) => r.entrata && r.standbyIncasso && r.importo > 0.005)
+    .sort(
+      (a, b) =>
+        a.scadenza.localeCompare(b.scadenza) || a.controparte.localeCompare(b.controparte, "it"),
+    );
+  let prog = 0;
+  return attese.map((r) => {
+    prog = r2(prog + r.importo);
+    return {
+      chiave: r.chiave,
+      data: r.scadenza,
+      nome: r.controparte,
+      importo: r.importo,
+      progressivo: prog,
+      dataScelta: r.dataScelta,
+    };
+  });
+}
+
+/** Agenda: le note con priorità scritte sulle righe più le voci libere,
+ *  ordinate per priorità (alta prima) e data. */
+export interface VoceAgendaVista {
+  id: string;
+  testo: string;
+  p: PrioritaCassa;
+  data?: string;
+  /** Riga del foglio a cui è legata (vuoto = voce libera). */
+  riga?: string;
+  rigaChiave?: string;
+  fatta: boolean;
+}
+const ORD_P: Record<PrioritaCassa, number> = { h: 0, m: 1, l: 2 };
+export function agendaCassa(
+  righe: readonly RigaCassa[],
+  libere: readonly VoceAgenda[],
+): VoceAgendaVista[] {
+  const out: VoceAgendaVista[] = [];
+  for (const r of righe)
+    if (r.priorita)
+      out.push({
+        id: `r|${r.chiave}`,
+        testo: r.nota || r.controparte,
+        p: r.priorita,
+        data: r.scadenza,
+        riga: r.controparte,
+        rigaChiave: r.chiave,
+        fatta: false,
+      });
+  for (const v of libere)
+    out.push({ id: v.id, testo: v.testo, p: v.p, data: v.scad, fatta: Boolean(v.fatta) });
+  return out.sort(
+    (a, b) =>
+      Number(a.fatta) - Number(b.fatta) ||
+      ORD_P[a.p] - ORD_P[b.p] ||
+      (a.data ?? "9999").localeCompare(b.data ?? "9999") ||
+      a.testo.localeCompare(b.testo, "it"),
+  );
 }
