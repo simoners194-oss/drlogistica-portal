@@ -9,7 +9,7 @@
 // riga. Logica in lib/cassa-logic; dati in FinanzaData/cassa.json.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { CalendarDays, Camera, ListTodo, Loader2, Plus, X } from "lucide-react";
+import { CalendarDays, Camera, ListTodo, Loader2, Lock, Pencil, Plus, X } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { EsportaStampa } from "@/components/EsportaStampa";
 import type { FatturaConStato } from "@/lib/fatture-logic";
@@ -78,6 +78,8 @@ interface Cella {
   editabile: boolean;
   priorita?: PrioritaCassa;
   dataScelta: boolean;
+  modalita?: string;
+  stima?: boolean;
 }
 
 const daRiga = (r: RigaCassa): Cella => ({
@@ -97,6 +99,8 @@ const daRiga = (r: RigaCassa): Cella => ({
   editabile: r.editabile,
   priorita: r.priorita,
   dataScelta: r.dataScelta,
+  modalita: r.modalita,
+  stima: r.stima,
 });
 
 /** La colonna Entrate in due blocchi col loro totale: "Già entrate" (in
@@ -141,6 +145,7 @@ export function CassaProprietaView({
   fiscale,
   fissi,
   movimenti,
+  onApriFornitore,
 }: {
   attive: readonly FatturaConStato[];
   passive: readonly FatturaConStato[];
@@ -149,6 +154,8 @@ export function CassaProprietaView({
   fiscale: readonly ScadenzaFiscale[];
   fissi: readonly CostoFisso[];
   movimenti: readonly SpMovimento[];
+  /** Clic sul nome di un fornitore: apre la scheda come nei Flussi. */
+  onApriFornitore?: (nome: string) => void;
 }) {
   const { t } = useLang();
   const [db, setDb] = useState<CassaDb | null>(null);
@@ -202,9 +209,14 @@ export function CassaProprietaView({
   const stipendi = useMemo(
     () =>
       stipendiDb
-        ? stipendiDaPagare(stipendiDb, (limite || oggi).slice(0, 7), oggi.slice(0, 7))
+        ? stipendiDaPagare(
+            stipendiDb,
+            (limite || oggi).slice(0, 7),
+            oggi.slice(0, 7),
+            db?.chiusure ?? {},
+          )
         : [],
-    [stipendiDb, limite, oggi],
+    [stipendiDb, limite, oggi, db?.chiusure],
   );
 
   const esito = useMemo(() => {
@@ -576,8 +588,32 @@ export function CassaProprietaView({
           onAggiungi={aggiungiManuale}
           onPriorita={setPriorita}
           onData={setData}
+          onApriFornitore={onApriFornitore}
           oggi={oggi}
         />
+        {/* Legenda: cosa è scritto a mano, cosa è stimato, cosa esce da solo */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <span className={`rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}>
+              {t("cpr.manuale")}
+            </span>
+            {t("cpr.legendaManuale")}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className={`rounded px-1 text-[9px] font-bold uppercase ${PILL_STIMA}`}>
+              {t("cpr.stima")}
+            </span>
+            {t("cpr.legendaStima")}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span
+              className={`inline-flex items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_AUTO}`}
+            >
+              <Lock className="h-2.5 w-2.5" /> RID
+            </span>
+            {t("cpr.legendaAuto")}
+          </span>
+        </div>
         {/* Linguette come i fogli di Excel */}
         <div className="flex flex-wrap items-center gap-1 border-t border-border bg-muted/50 px-3 pt-1.5 pb-2 text-[12px]">
           <button
@@ -779,6 +815,13 @@ const TINTA = {
   },
   note: { testa: "bg-muted text-foreground", col: "", num: "" },
 } as const;
+/** Righe scritte a mano (non calcolate): tinta viola e pillola "manuale". */
+const TINTA_MAN = "bg-violet-50/80 dark:bg-violet-950/30";
+const PILL_MAN = "bg-violet-600 text-white";
+const PILL_STIMA = "bg-amber-500 text-white";
+const PILL_AUTO =
+  "border border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300";
+const eManuale = (c: Cella) => c.tipo === "manuale" || c.tipo === "amex";
 const cel = "border-b border-r border-border/60 px-3 py-1.5 align-middle last:border-r-0";
 const celN = `${cel} text-right tabular-nums whitespace-nowrap text-[13.5px]`;
 const celH = "px-3 py-2 text-left text-[12px] font-semibold uppercase tracking-wide";
@@ -801,6 +844,7 @@ function Foglio({
   onAggiungi,
   onPriorita,
   onData,
+  onApriFornitore,
 }: {
   t: TFn;
   entrate: readonly Cella[];
@@ -817,6 +861,7 @@ function Foglio({
   onAggiungi: (r: Omit<RigaManualeCassa, "id">) => void;
   onPriorita: (c: Cella, p: PrioritaCassa | undefined) => void;
   onData: (c: Cella, d: string) => void;
+  onApriFornitore?: (nome: string) => void;
 }) {
   const [nuova, setNuova] = useState<null | {
     entrata: boolean;
@@ -864,15 +909,21 @@ function Foglio({
   const cellaUscita = (u: Cella | undefined, col: SecchioCassa) => {
     const tinta = TINTA[col];
     if (!u) return <td className={`${celN} ${tinta.col}`} />;
+    const man = eManuale(u) ? TINTA_MAN : "";
     if (u.secchio === col)
       return (
-        <td className={`${celN} ${tinta.col} ${tinta.num} font-medium`}>
+        <td
+          className={`${celN} ${tinta.col} ${man} ${tinta.num} font-medium ${u.stima ? "italic" : ""}`}
+        >
           <Importo c={u} readOnly={readOnly} onImporto={onImporto} t={t} />
         </td>
       );
-    if (readOnly) return <td className={`${celN} ${tinta.col}`} />;
+    if (readOnly) return <td className={`${celN} ${tinta.col} ${man}`} />;
+    // RID/RiBa: l'addebito arriva da solo alla scadenza, non si parcheggia.
+    if (u.tipo === "passiva" && u.certa)
+      return <td className={`${celN} ${tinta.col}`} title={t("cpr.nonParcheggiabile")} />;
     return (
-      <td className={`${celN} ${tinta.col} p-0`}>
+      <td className={`${celN} ${tinta.col} ${man} p-0`}>
         <button
           type="button"
           onClick={() => onSposta(u, col)}
@@ -987,18 +1038,29 @@ function Foglio({
                 ) : (
                   <>
                     <td
-                      className={`${celN} ${TINTA.entrate.col} ${e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
+                      className={`${celN} ${TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
                     >
                       {e && <Importo c={e} readOnly={readOnly} onImporto={onImporto} t={t} />}
                     </td>
                     <td
-                      className={`${cel} ${TINTA.entrate.col} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
+                      className={`${cel} ${TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
                     >
                       {e && (
                         <span className="flex items-center gap-1.5">
-                          <span className="truncate" title={e.dettaglio}>
+                          <span
+                            className={`truncate ${eManuale(e) ? "italic" : ""}`}
+                            title={e.dettaglio}
+                          >
                             {e.nome}
                           </span>
+                          {eManuale(e) && (
+                            <span
+                              className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
+                              title={t("cpr.legendaManuale")}
+                            >
+                              <Pencil className="h-2.5 w-2.5" /> {t("cpr.manuale")}
+                            </span>
+                          )}
                           {e.attesa ? (
                             <DataAttesa c={e} readOnly={readOnly} onData={onData} t={t} />
                           ) : (
@@ -1016,31 +1078,69 @@ function Foglio({
                 {cellaUscita(u, "ora")}
                 {cellaUscita(u, "prossimi")}
                 {cellaUscita(u, "standby")}
-                <td className={`${cel} text-foreground`}>
+                <td className={`${cel} text-foreground ${u && eManuale(u) ? TINTA_MAN : ""}`}>
                   {u && (
                     <span className="flex items-center gap-1.5">
-                      <span className="truncate font-medium" title={u.dettaglio}>
-                        {u.nome}
-                      </span>
+                      {u.tipo === "passiva" && onApriFornitore ? (
+                        <button
+                          type="button"
+                          onClick={() => onApriFornitore(u.nome)}
+                          title={t("cpr.apriFornitore")}
+                          className="truncate text-left font-medium underline decoration-dotted decoration-border underline-offset-4 hover:text-primary hover:decoration-primary"
+                        >
+                          {u.nome}
+                        </button>
+                      ) : (
+                        <span
+                          className={`truncate font-medium ${eManuale(u) ? "italic" : ""}`}
+                          title={u.dettaglio}
+                        >
+                          {u.nome}
+                        </span>
+                      )}
                       {u.documenti > 1 && u.tipo !== "stipendi" && (
                         <span className="shrink-0 text-[10.5px] text-muted-foreground">
                           ×{u.documenti}
                         </span>
                       )}
                       {u.tipo === "passiva" && u.certa && (
-                        <span className="shrink-0 rounded bg-secondary px-1 text-[9px] uppercase text-muted-foreground">
-                          auto
+                        <span
+                          className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_AUTO}`}
+                          title={t("cpr.nonParcheggiabile")}
+                        >
+                          <Lock className="h-2.5 w-2.5" /> {u.modalita || "AUTO"}
+                        </span>
+                      )}
+                      {eManuale(u) && (
+                        <span
+                          className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
+                          title={t("cpr.legendaManuale")}
+                        >
+                          <Pencil className="h-2.5 w-2.5" /> {t("cpr.manuale")}
+                        </span>
+                      )}
+                      {u.dettaglio === "ogni mese" && (
+                        <span className="shrink-0 rounded border border-violet-400 px-1 text-[9px] uppercase text-violet-700 dark:text-violet-300">
+                          {t("cpr.ricorrente")}
+                        </span>
+                      )}
+                      {u.stima && (
+                        <span
+                          className={`shrink-0 rounded px-1 text-[9px] font-bold uppercase ${PILL_STIMA}`}
+                          title={t("cpr.legendaStima")}
+                        >
+                          {t("cpr.stima")}
                         </span>
                       )}
                       {(u.tipo === "stipendi" || u.tipo === "fisso" || u.tipo === "fiscale") && (
                         <span className="shrink-0 truncate text-[10.5px] text-muted-foreground">
-                          {u.dettaglio}
+                          {u.dettaglio.replace(/^stima · /, "")}
                         </span>
                       )}
                     </span>
                   )}
                 </td>
-                <td className={`${cel} p-0`}>
+                <td className={`${cel} p-0 ${u && eManuale(u) ? TINTA_MAN : ""}`}>
                   {u && (
                     <span className="flex items-center">
                       {u.dettaglio === "CDC" && (

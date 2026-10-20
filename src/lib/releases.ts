@@ -36,6 +36,20 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.95.0",
+    date: "2026-10-20",
+    entries: [
+      {
+        title:
+          "Cassa proprietà: righe manuali evidenziate, RID/RiBa bloccate, stipendi stimati, fornitori cliccabili",
+        description:
+          'Le righe scritte a mano hanno la tinta viola e la pillola "manuale" (più "ogni mese" se ricorrenti): si vede subito cosa non è calcolato dal portale. Le fatture con RID o RiBa hanno il lucchetto e non si possono spostare di colonna: l\'addebito esce da solo alla scadenza. Gli stipendi dei mesi non ancora caricati da Lucrezia sono stimati sulla media degli ultimi due mesi di netti, per appalto, con la pillola "stima" e correggibili; gli appalti chiusi (Postadoc e Ceva dal 30/09, Univex Savona dal 31/10) non vengono stimati. Il nome del fornitore si clicca e apre la scheda come nei Flussi classici. Legenda sotto il foglio.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.94.0",
     date: "2026-10-20",
     entries: [

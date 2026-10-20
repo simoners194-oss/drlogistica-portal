@@ -1942,7 +1942,18 @@ export function FlussiCassaTab() {
           fiscale={fiscale?.scadenze ?? []}
           fissi={costiFissi}
           movimenti={movimenti ?? []}
+          onApriFornitore={(nome) => setFornitoreAperto(chiaveFornitore(nome))}
         />
+        {rigaFornitoreAperta && (
+          <SchedaFornitore
+            riga={rigaFornitoreAperta}
+            fatture={fattureFornitoreAperto}
+            vocab={vocabFornitori}
+            busy={schedaBusy}
+            onSalva={salvaScheda}
+            onChiudi={() => setFornitoreAperto(null)}
+          />
+        )}
       </div>
     );
 

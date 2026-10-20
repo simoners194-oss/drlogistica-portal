@@ -89,6 +89,11 @@ function validaDb(input: unknown): CassaDb {
       creata: testo(v?.creata, 30) || new Date().toISOString(),
     }))
     .filter((v) => v.testo);
+  const chiusure: Record<string, string> = {};
+  for (const [k, v] of Object.entries(o.chiusure ?? {})) {
+    const m = testo(v, 7);
+    if (k && k.length <= 60 && /^\d{4}-\d{2}$/.test(m)) chiusure[testo(k, 60)] = m;
+  }
   const giorno = Number(o.giornoLimite);
   return {
     versione: Number(o.versione) || 0,
@@ -97,6 +102,7 @@ function validaDb(input: unknown): CassaDb {
     manuali,
     fotografie,
     agenda,
+    chiusure: Object.keys(chiusure).length ? chiusure : undefined,
     saldoManuale:
       o.saldoManuale && Number.isFinite(Number(o.saldoManuale.importo))
         ? { importo: numero(o.saldoManuale.importo), data: dataIso(o.saldoManuale.data) }

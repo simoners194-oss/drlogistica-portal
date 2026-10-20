@@ -158,6 +158,9 @@ export interface CassaDb {
   saldoManuale?: { importo: number; data: string };
   /** Agenda: cose da fare libere, con priorità. */
   agenda?: VoceAgenda[];
+  /** Appalti chiusi: ultimo mese di competenza con stipendi (YYYY-MM), per
+   *  prefisso del nome appalto. Sovrascrive/aggiunge a CHIUSURE_APPALTI. */
+  chiusure?: Record<string, string>;
   aggiornatoIl?: string;
   aggiornatoDa?: string;
 }
@@ -194,6 +197,11 @@ export interface RigaCassa {
   priorita?: PrioritaCassa;
   /** La data è stata scelta a mano. */
   dataScelta: boolean;
+  /** Modalità di pagamento delle passive quando è un addebito automatico
+   *  ("RID", "RIBA"): esce da sola, non si può parcheggiare. */
+  modalita?: string;
+  /** Stipendi STIMATI (mesi senza ancora i netti di Lucrezia). */
+  stima?: boolean;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -227,6 +235,29 @@ export interface StipendiCassaRiga {
   mesePagamento: string;
   importo: number;
   dipendenti: number;
+  /** Stima sugli ultimi netti disponibili (mese non ancora caricato). */
+  stima?: boolean;
+}
+
+/** Appalti chiusi (Simone 20/10/2026): ultimo mese di competenza con
+ *  stipendi. Postadoc chiuso il 30/09/2026, Ceva il 30/09/2026, Univex
+ *  Savona il 31/10/2026. Prefisso del nome appalto, maiuscolo. */
+export const CHIUSURE_APPALTI: Record<string, string> = {
+  "POSTA DOC": "2026-09",
+  POSTADOC: "2026-09",
+  CEVA: "2026-09",
+  "UNIVEX - SAVONA": "2026-10",
+  "UNIVEX SAVONA": "2026-10",
+};
+export function appaltoChiuso(
+  appalto: string,
+  meseCompetenza: string,
+  chiusure: Record<string, string> = CHIUSURE_APPALTI,
+): boolean {
+  const a = appalto.trim().toUpperCase();
+  for (const [prefisso, ultimo] of Object.entries({ ...CHIUSURE_APPALTI, ...chiusure }))
+    if (a.startsWith(prefisso.toUpperCase()) && meseCompetenza > ultimo) return true;
+  return false;
 }
 
 /** Stipendi ancora da pagare, per appalto e mese: dal file "Stipendi Dr"
@@ -242,6 +273,7 @@ export function stipendiDaPagare(
   db: StipendiDb,
   fino: string,
   meseCorrente: string = fino,
+  chiusure: Record<string, string> = {},
 ): StipendiCassaRiga[] {
   const out: StipendiCassaRiga[] = [];
   for (const n of db.netti ?? []) {
@@ -269,6 +301,42 @@ export function stipendiDaPagare(
         importo: a.importo,
         dipendenti: a.dipendenti,
       });
+  }
+  // STIMA per i mesi di competenza dopo l'ultimo caricato (Simone 20/10:
+  // "per i mesi futuri devi fare una stima"): media del netto in busta
+  // (stipendio) per appalto sugli ultimi due mesi disponibili, senza gli
+  // appalti chiusi. Si corregge a mano come le altre righe.
+  const mesi = [...new Set((db.netti ?? []).map((n) => n.mese))].sort();
+  const ultimo = mesi[mesi.length - 1];
+  if (ultimo) {
+    const base = (db.netti ?? []).filter((n) => n.mese === ultimo || n.mese === mesePrima(ultimo));
+    for (let mese = meseDopo(ultimo); meseDopo(mese) <= fino; mese = meseDopo(mese)) {
+      const perAppalto = new Map<string, { tot: number; mesi: Set<string>; dip: number }>();
+      for (const n of base)
+        for (const d of n.dipendenti) {
+          const k = (d.appalto ?? "").trim() || "Altri";
+          if (appaltoChiuso(k, mese, chiusure)) continue;
+          const imp = Number(d.stipendio) || 0;
+          if (imp <= 0.005) continue;
+          const a = perAppalto.get(k) ?? { tot: 0, mesi: new Set<string>(), dip: 0 };
+          a.tot += imp;
+          a.mesi.add(n.mese);
+          a.dip = Math.max(
+            a.dip,
+            n.dipendenti.filter((x) => ((x.appalto ?? "").trim() || "Altri") === k).length,
+          );
+          perAppalto.set(k, a);
+        }
+      for (const [appalto, a] of perAppalto)
+        out.push({
+          appalto,
+          meseCompetenza: mese,
+          mesePagamento: meseDopo(mese),
+          importo: r2(a.tot / Math.max(1, a.mesi.size)),
+          dipendenti: a.dip,
+          stima: true,
+        });
+    }
   }
   return out.sort(
     (a, b) =>
@@ -494,6 +562,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       entrata: false,
       documenti: g.n,
       editabile: false,
+      modalita: mod || undefined,
     });
   }
   // Stipendi: netti non pagati per appalto, il 10 del mese di pagamento.
@@ -502,7 +571,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       chiave: `stip|${s.meseCompetenza}|${s.appalto}`,
       tipo: "stipendi",
       controparte: `Stipendi ${s.appalto}`,
-      descrizione: `${etichettaMeseCassa(s.meseCompetenza)} · ${s.dipendenti} dip.`,
+      descrizione: `${s.stima ? "stima · " : ""}${etichettaMeseCassa(s.meseCompetenza)} · ${s.dipendenti} dip.`,
       importo: s.importo,
       scadenza: `${s.mesePagamento}-10`,
       certa: true,
@@ -510,6 +579,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       appalto: s.appalto,
       documenti: s.dipendenti,
       editabile: true,
+      stima: s.stima,
     });
   }
   // Fiscale: scadenze non pagate (anche scadute), senza le "previsionali",
