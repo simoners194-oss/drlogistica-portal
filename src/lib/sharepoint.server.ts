@@ -5191,17 +5191,24 @@ export async function cronIncassiBatch(
       // La data fattura del report sceglie tra gli omonimi; senza data (o
       // senza corrispondenza) si accetta SOLO il candidato unico — mai una
       // scelta arbitraria, che accreditava rate alla fattura sbagliata.
-      const f = r.dataFattura
-        ? (candidati.find((c) => c.dataDocumento === r.dataFattura) ??
-          (candidati.length === 1 ? candidati[0] : undefined))
-        : candidati.length === 1
+      // Il candidato unico di un ALTRO ANNO non si accetta più (27/10/2026):
+      // il documento vero manca nel portale e le rate non sono sue (così la
+      // NC 9/2025 Skylog si era presa i 25.085,55 della FT 9/2026).
+      const unico =
+        candidati.length === 1 &&
+        (!r.dataFattura || candidati[0].dataDocumento.slice(0, 4) === r.dataFattura.slice(0, 4))
           ? candidati[0]
           : undefined;
+      const f = r.dataFattura
+        ? (candidati.find((c) => c.dataDocumento === r.dataFattura) ?? unico)
+        : unico;
       if (!f) {
         esito.nonTrovate++;
-        // Omonimi non sciolti: le rate ci sono, solo non si sa di chi —
-        // nessuno dei candidati va azzerato a fine corsa.
-        for (const c of candidati) trovate[direzione].add(c.nomeFile);
+        // Omonimi non sciolti (due o più candidati, nessuno con la data
+        // giusta): le rate ci sono, solo non si sa di chi — nessuno di loro
+        // va azzerato a fine corsa. Il candidato unico scartato per l'anno
+        // invece non è protetto: quelle rate non sono sue.
+        if (candidati.length >= 2) for (const c of candidati) trovate[direzione].add(c.nomeFile);
         continue;
       }
       trovate[direzione].add(f.nomeFile);
