@@ -474,7 +474,9 @@ def ricognizione_nc(page) -> None:
 def spedisci_incassi(cfg: dict) -> None:
     """Aggrega le rate dei ReportMovimenti GIA' SCARICATI (l'ultimo zip per
     anno in scaricati/) e le spedisce a /cron-incassi. Niente browser.
-    Il server applica SOLO AUMENTI: le riduzioni le conta e le ignora."""
+    Il server applica SOLO AUMENTI: le riduzioni le conta e le ignora.
+    A fine corsa (ultimo blocco) conta le fatture con incassi nel portale
+    ma sparite dal report; con "forza" le azzera (27/10/2026)."""
     import urllib.request
     import zipfile
     from datetime import date, timedelta
@@ -663,12 +665,22 @@ def spedisci_incassi(cfg: dict) -> None:
         if not a.get("dataFattura"):
             a.pop("dataFattura", None)
     print(f"aggregati {len(lista)} totali per fattura — spedizione a blocchi da 60")
+    # CORSA (27/10/2026): il server, blocco per blocco, non sa quali fatture
+    # sono SPARITE dal report (incassi tolti su Aruba dopo una correzione).
+    # Con id della corsa, numero del blocco, blocchi totali e anni coperti,
+    # sull'ultimo blocco controlla l'archivio: il giro conta le fatture con
+    # incassi assenti dal report, "incassi forza" le azzera.
+    corsa_id = datetime.now().strftime("%Y%m%d%H%M%S")
+    anni_corsa = ",".join(sorted(a for a in per_anno if a != "0000"))
+    n_blocchi = max(1, (len(lista) + 59) // 60)
+    blocchi_falliti = 0
     for i in range(0, len(lista), 60):
         blocco = lista[i : i + 60]
         payload = base64.b64encode(json.dumps(blocco, ensure_ascii=False).encode("utf-8")).decode(
             "ascii"
         )
         url = url_cron + "&dati=" + urllib.parse.quote(payload, safe="")
+        url += f"&corsa={corsa_id}&blocco={i // 60 + 1}&blocchi={n_blocchi}&anni={anni_corsa}"
         try:
             # Cloudflare rifiuta lo User-Agent di python-urllib (403):
             # ci si presenta come un browser qualunque.
@@ -681,9 +693,17 @@ def spedisci_incassi(cfg: dict) -> None:
             with urllib.request.urlopen(req, timeout=300) as resp:
                 corpo = resp.read().decode("utf-8", "replace").replace("<!-- -->", "")
             m2 = re.search(r"(OK|ERRORE):[^<]*", corpo)
-            print(f"  blocco {i // 60 + 1}: {m2.group(0)[:200] if m2 else corpo[:120]}")
+            print(f"  blocco {i // 60 + 1}: {m2.group(0)[:900] if m2 else corpo[:120]}")
+            if not m2 or m2.group(0).startswith("ERRORE"):
+                blocchi_falliti += 1
         except Exception as e:
+            blocchi_falliti += 1
             print(f"  blocco {i // 60 + 1}: errore {e}")
+    if blocchi_falliti:
+        print(
+            f"ATTENZIONE: {blocchi_falliti} blocchi non consegnati — il controllo di fine corsa"
+            " (fatture sparite dal report) e' stato saltato dal server; rilanciare."
+        )
 
 
 def main() -> None:

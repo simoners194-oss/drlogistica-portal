@@ -760,14 +760,50 @@ export const spArubaCron = createServerFn({ method: "POST" })
 // Cron NC: riceve la mappa NC->fattura (base64 di un JSON) estratta dal
 // sito Aruba dallo script locale. Stesso token del cron fatture.
 export const spCronIncassi = createServerFn({ method: "POST" })
-  .inputValidator((input: { token: string; dati: string; forza?: boolean }) => {
-    const token = String(input?.token ?? "").trim();
-    if (!token || token.length > 100) throw new Error("Token mancante.");
-    const dati = String(input?.dati ?? "");
-    if (!dati || dati.length > 200_000) throw new Error("Dati mancanti o troppo grandi.");
-    // Riallineamento forzato (riduzioni applicate): solo a mano, mai dal giro.
-    return { token, dati, forza: input?.forza === true };
-  })
+  .inputValidator(
+    (input: {
+      token: string;
+      dati: string;
+      forza?: boolean;
+      corsa?: { id: string; blocco: number; blocchi: number; anni: number[] };
+    }) => {
+      const token = String(input?.token ?? "").trim();
+      if (!token || token.length > 100) throw new Error("Token mancante.");
+      const dati = String(input?.dati ?? "");
+      if (!dati || dati.length > 200_000) throw new Error("Dati mancanti o troppo grandi.");
+      // Corsa (27/10/2026): id, blocco corrente, blocchi totali, anni coperti
+      // dal report — sull'ultimo blocco il server cerca gli incassi spariti.
+      let corsa: { id: string; blocco: number; blocchi: number; anni: number[] } | undefined;
+      const c = input?.corsa;
+      if (c && typeof c === "object") {
+        const id = String(c.id ?? "").trim();
+        const blocco = Number(c.blocco);
+        const blocchi = Number(c.blocchi);
+        const anni = Array.isArray(c.anni)
+          ? [
+              ...new Set(
+                c.anni.map(Number).filter((a) => Number.isInteger(a) && a >= 2000 && a <= 2100),
+              ),
+            ]
+          : [];
+        if (
+          /^[A-Za-z0-9_-]{1,40}$/.test(id) &&
+          Number.isInteger(blocco) &&
+          Number.isInteger(blocchi) &&
+          blocco >= 1 &&
+          blocchi >= 1 &&
+          blocco <= blocchi &&
+          blocchi <= 500 &&
+          anni.length >= 1 &&
+          anni.length <= 10
+        )
+          corsa = { id, blocco, blocchi, anni };
+      }
+      // Riallineamento forzato (riduzioni applicate, incassi spariti
+      // azzerati): solo a mano, mai dal giro.
+      return { token, dati, forza: input?.forza === true, corsa };
+    },
+  )
   .handler(async ({ data }) => {
     await verificaTokenCronFatture(data.token);
     let grezzi: unknown;
@@ -803,7 +839,7 @@ export const spCronIncassi = createServerFn({ method: "POST" })
         };
       })
       .filter((r) => r.numero && Number.isFinite(r.incassato) && r.incassato >= 0);
-    return cronIncassiBatch(righe, { forza: data.forza });
+    return cronIncassiBatch(righe, { forza: data.forza, corsa: data.corsa });
   });
 
 export const spCronNc = createServerFn({ method: "POST" })

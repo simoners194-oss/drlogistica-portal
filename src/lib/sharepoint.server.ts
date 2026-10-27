@@ -65,6 +65,7 @@ import {
 import {
   normalizzaNomeFile,
   isNotaCredito,
+  incassiDaAzzerare,
   parseIncassoAruba,
   type RegolaFattura,
   type FatturaRaw,
@@ -4906,11 +4907,205 @@ export async function setIncassiAruba(
   return result;
 }
 
+/** CORSA del cron incassi (27/10/2026). Lo script spedisce il report a
+ *  blocchi da 60 e il server, blocco per blocco, non può sapere quali
+ *  fatture NON compaiono più nel report. Con `corsa` (id, numero del blocco,
+ *  blocchi totali, anni coperti dal report) ogni blocco accumula le fatture
+ *  TROVATE in FinanzaData/cron-incassi-corsa.json; all'ultimo blocco, se
+ *  tutti sono arrivati, si cercano le fatture con un incassato nel portale
+ *  ma assenti da tutto il report: incassi tolti su Aruba dopo una correzione
+ *  (8 documenti per 63.677 € fermi da settembre, mai azzerati). Il giro
+ *  schedulato le CONTA soltanto; `incassi forza` le azzera. */
+export interface CorsaIncassi {
+  id: string;
+  blocco: number;
+  blocchi: number;
+  anni: number[];
+}
+
+interface CorsaIncassiFile {
+  id: string;
+  iniziata: string;
+  anni: number[];
+  blocchi: number;
+  ricevuti: number[];
+  trovate: { Emessa: string[]; Ricevuta: string[] };
+  chiusa?: string;
+  /** Ultimo blocco: fatture con incassi assenti dal report (etichette). */
+  daAzzerare?: string[];
+  azzerate?: string[];
+  nota?: string;
+}
+
+const CORSA_INCASSI_PATH = "FinanzaData/cron-incassi-corsa.json";
+/** Tetto di sicurezza: più azzeramenti di così in una corsa sola non sono
+ *  una correzione, sono un report monco (un anno mancante, un file vuoto). */
+const MAX_AZZERAMENTI_CORSA = 40;
+
+async function leggiCorsaIncassi(siteId: string): Promise<CorsaIncassiFile | null> {
+  let meta: { id?: string };
+  try {
+    meta = await withDiscoveryRetry(() =>
+      gatewayJson<{ id?: string }>(`/sites/${siteId}/drive/root:/${CORSA_INCASSI_PATH}?$select=id`),
+    );
+  } catch (err) {
+    if (err instanceof SpHttpError && err.status === 404) return null;
+    throw err;
+  }
+  const full = await withDiscoveryRetry(() =>
+    gatewayJson<{ ["@microsoft.graph.downloadUrl"]?: string }>(
+      `/sites/${siteId}/drive/items/${meta.id}`,
+    ),
+  );
+  const url = full["@microsoft.graph.downloadUrl"];
+  if (!url) return null;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const raw = (await res.json()) as Partial<CorsaIncassiFile> | null;
+  if (!raw || typeof raw.id !== "string") return null;
+  return {
+    id: raw.id,
+    iniziata: String(raw.iniziata ?? ""),
+    anni: Array.isArray(raw.anni) ? raw.anni.map(Number).filter(Number.isFinite) : [],
+    blocchi: Number(raw.blocchi) || 0,
+    ricevuti: Array.isArray(raw.ricevuti) ? raw.ricevuti.map(Number) : [],
+    trovate: {
+      Emessa: Array.isArray(raw.trovate?.Emessa) ? raw.trovate.Emessa.map(String) : [],
+      Ricevuta: Array.isArray(raw.trovate?.Ricevuta) ? raw.trovate.Ricevuta.map(String) : [],
+    },
+    chiusa: typeof raw.chiusa === "string" ? raw.chiusa : undefined,
+    daAzzerare: Array.isArray(raw.daAzzerare) ? raw.daAzzerare.map(String) : undefined,
+    azzerate: Array.isArray(raw.azzerate) ? raw.azzerate.map(String) : undefined,
+    nota: typeof raw.nota === "string" ? raw.nota : undefined,
+  };
+}
+
+async function salvaCorsaIncassi(siteId: string, file: CorsaIncassiFile): Promise<void> {
+  await withDiscoveryRetry(() =>
+    gatewayJson(`/sites/${siteId}/drive/root:/${CORSA_INCASSI_PATH}:/content`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(file),
+    }),
+  );
+}
+
+/** Registra il blocco nella corsa; sull'ULTIMO blocco cerca le fatture con
+ *  incassi assenti dal report e, solo con `forza`, le azzera (stesse colonne
+ *  della matita "Non incassata": importo e data a vuoto, stato riaperto). */
+async function chiudiBloccoCorsa(
+  corsa: CorsaIncassi,
+  trovate: { Emessa: ReadonlySet<string>; Ricevuta: ReadonlySet<string> },
+  forza: boolean,
+): Promise<{ daAzzerare: string[]; azzerate: string[]; nota?: string }> {
+  const cfg = await discoverSharePoint();
+  let file = await leggiCorsaIncassi(cfg.siteId);
+  if (!file || file.id !== corsa.id || file.chiusa) {
+    file = {
+      id: corsa.id,
+      iniziata: new Date().toISOString(),
+      anni: corsa.anni,
+      blocchi: corsa.blocchi,
+      ricevuti: [],
+      trovate: { Emessa: [], Ricevuta: [] },
+    };
+  }
+  if (!file.ricevuti.includes(corsa.blocco)) file.ricevuti.push(corsa.blocco);
+  for (const d of ["Emessa", "Ricevuta"] as const) {
+    const s = new Set(file.trovate[d]);
+    for (const n of trovate[d]) s.add(n);
+    file.trovate[d] = [...s];
+  }
+  if (corsa.blocco !== corsa.blocchi) {
+    await salvaCorsaIncassi(cfg.siteId, file);
+    return { daAzzerare: [], azzerate: [] };
+  }
+  // Ultimo blocco: si guarda l'archivio SOLO se la corsa è completa — con un
+  // blocco perso per strada le sue 60 fatture sembrerebbero tutte sparite.
+  const mancanti: number[] = [];
+  for (let b = 1; b <= corsa.blocchi; b++) if (!file.ricevuti.includes(b)) mancanti.push(b);
+  file.chiusa = new Date().toISOString();
+  if (mancanti.length) {
+    file.nota = `corsa incompleta (blocchi mancanti: ${mancanti.join(", ")}): controllo saltato`;
+    await salvaCorsaIncassi(cfg.siteId, file);
+    logSp("warn", "cron.incassi", file.nota);
+    return { daAzzerare: [], azzerate: [], nota: file.nota };
+  }
+  const candidati: { direzione: DirezioneFattura; f: SpFattura }[] = [];
+  for (const direzione of ["Emessa", "Ricevuta"] as const) {
+    const fatture = await fetchFatture(direzione);
+    for (const f of incassiDaAzzerare(fatture, new Set(file.trovate[direzione]), file.anni))
+      candidati.push({ direzione, f });
+  }
+  const etichetta = (f: SpFattura) =>
+    `${f.numero} ${f.cliente.slice(0, 30)} ${(f.incassatoAruba ?? 0).toFixed(2)}`;
+  file.daAzzerare = candidati.map((c) => etichetta(c.f));
+  if (!candidati.length) {
+    await salvaCorsaIncassi(cfg.siteId, file);
+    return { daAzzerare: [], azzerate: [] };
+  }
+  if (candidati.length > MAX_AZZERAMENTI_CORSA) {
+    file.nota = `${candidati.length} fatture con incassi assenti dal report: troppe per una corsa sola (tetto ${MAX_AZZERAMENTI_CORSA}), report sospetto — nessuna modifica`;
+    await salvaCorsaIncassi(cfg.siteId, file);
+    logSp("error", "cron.incassi", file.nota, { details: { elenco: file.daAzzerare } });
+    return { daAzzerare: file.daAzzerare, azzerate: [], nota: file.nota };
+  }
+  if (!forza) {
+    file.nota = `${candidati.length} fatture con incassi assenti dal report: si azzerano con "incassi forza"`;
+    await salvaCorsaIncassi(cfg.siteId, file);
+    logSp("warn", "cron.incassi", file.nota, { details: { elenco: file.daAzzerare } });
+    return { daAzzerare: file.daAzzerare, azzerate: [], nota: file.nota };
+  }
+  const azzerate: string[] = [];
+  const errori: string[] = [];
+  for (const direzione of ["Emessa", "Ricevuta"] as const) {
+    const gruppo = candidati.filter((c) => c.direzione === direzione);
+    if (!gruppo.length) continue;
+    const listId = requireFattureList(cfg, direzione);
+    const F = fattureListPer(cfg, direzione).fields;
+    const patch: Record<string, unknown> = {};
+    if (F.IncassatoAruba) patch[F.IncassatoAruba] = null;
+    if (F.IncassoAruba) patch[F.IncassoAruba] = "Non incassata";
+    if (F.DataIncasso) patch[F.DataIncasso] = null;
+    const BATCH = 4;
+    for (let i = 0; i < gruppo.length; i += BATCH) {
+      const blocco = gruppo.slice(i, i + BATCH);
+      const esiti = await Promise.allSettled(
+        blocco.map((c) =>
+          gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${c.f.id}/fields`, {
+            method: "PATCH",
+            body: JSON.stringify(patch),
+          }),
+        ),
+      );
+      esiti.forEach((e, j) => {
+        if (e.status === "fulfilled") azzerate.push(etichetta(blocco[j].f));
+        else
+          errori.push(
+            `${etichetta(blocco[j].f)}: ${e.reason instanceof Error ? e.reason.message : String(e.reason)}`,
+          );
+      });
+    }
+  }
+  file.azzerate = azzerate;
+  if (errori.length)
+    file.nota = `${errori.length} azzeramenti falliti: ${errori.join(" | ").slice(0, 400)}`;
+  await salvaCorsaIncassi(cfg.siteId, file);
+  logSp(
+    errori.length ? "error" : "info",
+    "cron.incassi",
+    `Riallineamento forzato: ${azzerate.length} fatture azzerate (incassi tolti su Aruba)${errori.length ? `, ${errori.length} errori` : ""}`,
+    { details: { azzerate, errori } },
+  );
+  return { daAzzerare: file.daAzzerare, azzerate, nota: file.nota };
+}
+
 /** CRON INCASSI — SOLO AUMENTI, per costruzione. Riceve gli aggregati per
  *  fattura (somma rate + ultima data) calcolati dallo script locale sui
  *  ReportMovimenti e li applica con tre guardie: (1) una riduzione
  *  dell'incassato NON viene mai applicata, solo contata; (2) nessun
- *  azzeramento: le fatture assenti dal blocco non si toccano; (3) il
+ *  azzeramento dal singolo blocco: le fatture assenti non si toccano (vedi
+ *  la corsa qui sopra per l'azzeramento a fine report, solo forzato); (3) il
  *  matching e' lo stesso del flusso manuale (numero+controparte, ripiego
  *  sul numero), niente euristiche nuove. */
 export async function cronIncassiBatch(
@@ -4928,17 +5123,40 @@ export async function cronIncassiBatch(
    *  correzione fatta A MANO su Aruba (incassi tolti o ridotti) il giro
    *  automatico non porta mai la riduzione nel portale, per scelta. Con
    *  `forza` — solo da `scarica_aruba.py incassi forza`, lanciato a mano — le
-   *  riduzioni si applicano. Gli azzeramenti restano impossibili da qui: una
-   *  fattura senza più incassi non compare nel report, si riapre dalla
-   *  matita in Fatture (che ora azzera anche l'importo). */
-  opzioni: { forza?: boolean } = {},
+   *  riduzioni si applicano e, a fine corsa, si azzerano le fatture sparite
+   *  dal report (27/10/2026). La matita in Fatture resta per il caso singolo. */
+  opzioni: { forza?: boolean; corsa?: CorsaIncassi } = {},
 ): Promise<{
   aggiornate: number;
   invariate: number;
   riduzioniIgnorate: number;
   nonTrovate: number;
+  /** Solo sull'ultimo blocco di una corsa: fatture con incassi nel portale
+   *  ma assenti dal report (contate dal giro, azzerate con `forza`). */
+  daAzzerare: number;
+  azzerate: number;
+  azzerateElenco: string[];
+  azzerateNota?: string;
 }> {
-  const esito = { aggiornate: 0, invariate: 0, riduzioniIgnorate: 0, nonTrovate: 0 };
+  const esito: {
+    aggiornate: number;
+    invariate: number;
+    riduzioniIgnorate: number;
+    nonTrovate: number;
+    daAzzerare: number;
+    azzerate: number;
+    azzerateElenco: string[];
+    azzerateNota?: string;
+  } = {
+    aggiornate: 0,
+    invariate: 0,
+    riduzioniIgnorate: 0,
+    nonTrovate: 0,
+    daAzzerare: 0,
+    azzerate: 0,
+    azzerateElenco: [],
+  };
+  const trovate = { Emessa: new Set<string>(), Ricevuta: new Set<string>() };
   for (const direzione of ["Emessa", "Ricevuta"] as const) {
     const flusso = direzione === "Emessa" ? "INCASSO" : "PAGAMENTO";
     const gruppo = righe.filter((r) => r.flusso === flusso);
@@ -4981,8 +5199,12 @@ export async function cronIncassiBatch(
           : undefined;
       if (!f) {
         esito.nonTrovate++;
+        // Omonimi non sciolti: le rate ci sono, solo non si sa di chi —
+        // nessuno dei candidati va azzerato a fine corsa.
+        for (const c of candidati) trovate[direzione].add(c.nomeFile);
         continue;
       }
+      trovate[direzione].add(f.nomeFile);
       const attuale = f.incassatoAruba;
       const nuovo = Math.round(r.incassato * 100) / 100;
       if (attuale != null && nuovo < attuale - 0.005 && !opzioni.forza) {
@@ -5006,10 +5228,17 @@ export async function cronIncassiBatch(
       esito.aggiornate += res.aggiornate;
     }
   }
+  if (opzioni.corsa) {
+    const chiusura = await chiudiBloccoCorsa(opzioni.corsa, trovate, opzioni.forza === true);
+    esito.daAzzerare = chiusura.daAzzerare.length;
+    esito.azzerate = chiusura.azzerate.length;
+    esito.azzerateElenco = chiusura.azzerate;
+    esito.azzerateNota = chiusura.nota;
+  }
   logSp(
     "info",
     "cron.incassi",
-    `Cron incassi${opzioni.forza ? " (FORZATO, riduzioni applicate)" : ""}: ${esito.aggiornate} aggiornate, ${esito.invariate} invariate, ${esito.riduzioniIgnorate} riduzioni IGNORATE, ${esito.nonTrovate} non trovate`,
+    `Cron incassi${opzioni.forza ? " (FORZATO, riduzioni applicate)" : ""}: ${esito.aggiornate} aggiornate, ${esito.invariate} invariate, ${esito.riduzioniIgnorate} riduzioni IGNORATE, ${esito.nonTrovate} non trovate${opzioni.corsa ? ` — corsa ${opzioni.corsa.id} blocco ${opzioni.corsa.blocco}/${opzioni.corsa.blocchi}` : ""}`,
   );
   await segnaUltimoAruba("UltimoIncassi");
   return esito;

@@ -383,9 +383,11 @@ Caso particolare già gestito: quando su Aruba una fattura di un consulente risu
 
 Quindi: primo, Ctrl+F5 (magari è la pagina vecchia); secondo, guarda quando è passato l'ultimo giro; terzo, se serve subito lancia il giro su richiesta. Se dopo un giro completo lo stato ancora non torna, allora sì che è una segnalazione.
 
-Il caso contrario, "su Aruba l'ho riaperta ma sul portale resta incassata", è voluto: il giro non riduce mai un incasso e non riporta mai una fattura indietro, per non farsi ingannare da un report sbagliato. Dalla 1.90.0 la correzione fatta apposta su Aruba si porta nel portale così: in Fatture, matita "Stato incasso" sulla fattura → "Non incassata", che azzera anche l'importo delle rate; poi, se su Aruba restano incassi parziali (acconti, compensazioni), lo script di scarico lanciato a mano come "incassi forza" scrive anche le riduzioni. Il giro delle 7:15 resta prudente come prima.`,
+Il caso contrario, "su Aruba l'ho riaperta ma sul portale resta incassata", è voluto: il giro non riduce mai un incasso e non riporta mai una fattura indietro, per non farsi ingannare da un report sbagliato. Dalla 1.90.0 la correzione fatta apposta su Aruba si porta nel portale così: in Fatture, matita "Stato incasso" sulla fattura → "Non incassata", che azzera anche l'importo delle rate; poi, se su Aruba restano incassi parziali (acconti, compensazioni), lo script di scarico lanciato a mano come "incassi forza" scrive anche le riduzioni. Il giro delle 7:15 resta prudente come prima.
+
+Dalla 1.96.0 per gli incassi tolti del tutto non serve più la matita: a fine corsa il giro conta le fatture che hanno un incasso nel portale ma non compaiono più nel report di Aruba (nel log del PC: "N con incassi assenti dal report") e "incassi forza" le azzera da solo, come farebbe la matita. Il giro schedulato conta e non tocca; con un blocco perso per strada o più di 40 fatture in una volta non si azzera niente, perché è il report a essere sospetto.`,
     chiavi:
-      "aruba pagata portale aperta stato giro pc sincronizza incasso non aggiornato riaperta riduzione forza matita non incassata",
+      "aruba pagata portale aperta stato giro pc sincronizza incasso non aggiornato riaperta riduzione forza matita non incassata sparite azzerate corsa report assenti",
   },
   {
     id: "fat-termini-opzioni",

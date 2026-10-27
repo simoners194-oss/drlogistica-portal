@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.96.0",
+    date: "2026-10-27",
+    entries: [
+      {
+        title: "Aruba: gli incassi tolti su Aruba spariscono anche dal portale",
+        description:
+          'Il giro degli incassi non azzerava mai una fattura: se su Aruba un incasso era stato registrato sul documento sbagliato e poi tolto, nel portale il documento restava "incassato" per sempre (otto documenti per 63.677 € fermi da settembre: Univex, Nolvex, Univex Healthcare, Skylog). Ora lo script manda il report come una corsa unica: a fine corsa il giro conta le fatture con incassi nel portale ma assenti dal report e lo scrive nel log del PC ("N con incassi assenti dal report"); "incassi forza", lanciato a mano, le azzera da solo come farebbe la matita (importo e data a vuoto, stato "Non incassata"). Tre guardie: corsa incompleta = nessun azzeramento; più di 40 in una volta = report sospetto, nessuna modifica; si toccano solo gli anni coperti dal report.',
+        tag: "fix",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.95.1",
     date: "2026-10-20",
     entries: [

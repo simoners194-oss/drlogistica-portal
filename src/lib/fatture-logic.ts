@@ -1895,3 +1895,27 @@ export function residuoAperto(x: FatturaConStato): number {
       : x.f.totale;
   return Math.max(0, Math.round((dovuto - nc - inc) * 100) / 100);
 }
+
+/** RIALLINEAMENTO FORZATO — quali fatture AZZERARE a fine corsa (27/10/2026).
+ *  Hanno un incassato nel portale, non sono tra le fatture trovate
+ *  dall'intero report Aruba e il loro anno di riferimento (data dell'ultimo
+ *  incasso, altrimenti data documento) è coperto dal report. Fuori dagli
+ *  anni coperti non si tocca nulla: un incasso del 2024 non può "sparire"
+ *  da un report che legge solo 2025 e 2026. Caso tipico: incasso registrato
+ *  su Aruba sul documento sbagliato e poi tolto — il giro non riduce mai e
+ *  nel portale la fattura restava incassata per sempre. */
+export function incassiDaAzzerare<
+  T extends {
+    nomeFile: string;
+    incassatoAruba?: number;
+    dataIncasso?: string;
+    dataDocumento: string;
+  },
+>(fatture: readonly T[], trovate: ReadonlySet<string>, anni: readonly number[]): T[] {
+  return fatture.filter((f) => {
+    if (f.incassatoAruba == null || Math.abs(f.incassatoAruba) < 0.005) return false;
+    if (trovate.has(f.nomeFile)) return false;
+    const anno = Number((f.dataIncasso || f.dataDocumento || "").slice(0, 4));
+    return Number.isInteger(anno) && anni.includes(anno);
+  });
+}
