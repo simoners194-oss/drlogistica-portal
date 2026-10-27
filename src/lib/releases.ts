@@ -42,7 +42,7 @@ export const RELEASES: readonly Release[] = [
       {
         title: "Aruba: il controllo di fine corsa si attiva davvero",
         description:
-          "Il controllo delle fatture con incassi assenti dal report (1.96.0) non partiva mai: l'identificativo della corsa, tutto numerico, veniva letto come numero e scartato. Ora il portale lo accetta in entrambe le forme e lo script lo manda con un prefisso. Primo caso reale: una corsa interrotta a metà dalla rete non ha toccato niente, come previsto.",
+          "Il controllo delle fatture con incassi assenti dal report (1.96.0) non partiva mai: l'identificativo della corsa, tutto numerico, veniva letto come numero e scartato. Ora il portale lo accetta in entrambe le forme e lo script lo manda con un prefisso. Primo caso reale: una corsa interrotta a metà dalla rete non ha toccato niente, come previsto. Due rifiniture dal primo riallineamento vero (19 fatture azzerate): tra le copie di una fattura reinviata allo SdI l'incasso va sulla copia valida, non su una scartata; una fattura stornata su Aruba resta stornata, le si toglie solo l'importo fantasma.",
         tag: "fix",
         audience: "gestione",
       },

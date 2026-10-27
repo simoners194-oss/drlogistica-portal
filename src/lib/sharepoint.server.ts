@@ -66,6 +66,7 @@ import {
   normalizzaNomeFile,
   isNotaCredito,
   incassiDaAzzerare,
+  isEsclusaDalCredito,
   parseIncassoAruba,
   type RegolaFattura,
   type FatturaRaw,
@@ -5063,10 +5064,16 @@ async function chiudiBloccoCorsa(
     if (!gruppo.length) continue;
     const listId = requireFattureList(cfg, direzione);
     const F = fattureListPer(cfg, direzione).fields;
-    const patch: Record<string, unknown> = {};
-    if (F.IncassatoAruba) patch[F.IncassatoAruba] = null;
-    if (F.IncassoAruba) patch[F.IncassoAruba] = "Non incassata";
-    if (F.DataIncasso) patch[F.DataIncasso] = null;
+    const patchPer = (f: SpFattura): Record<string, unknown> => {
+      const p: Record<string, unknown> = {};
+      if (F.IncassatoAruba) p[F.IncassatoAruba] = null;
+      // Una fattura STORNATA su Aruba resta stornata (CL Logistics 2024, storni
+      // del 04/09): si toglie solo l'importo fantasma.
+      if (F.IncassoAruba && !/stornat/i.test(f.incassoAruba ?? ""))
+        p[F.IncassoAruba] = "Non incassata";
+      if (F.DataIncasso) p[F.DataIncasso] = null;
+      return p;
+    };
     const BATCH = 4;
     for (let i = 0; i < gruppo.length; i += BATCH) {
       const blocco = gruppo.slice(i, i + BATCH);
@@ -5074,7 +5081,7 @@ async function chiudiBloccoCorsa(
         blocco.map((c) =>
           gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${c.f.id}/fields`, {
             method: "PATCH",
-            body: JSON.stringify(patch),
+            body: JSON.stringify(patchPer(c.f)),
           }),
         ),
       );
@@ -5199,9 +5206,13 @@ export async function cronIncassiBatch(
         (!r.dataFattura || candidati[0].dataDocumento.slice(0, 4) === r.dataFattura.slice(0, 4))
           ? candidati[0]
           : undefined;
-      const f = r.dataFattura
-        ? (candidati.find((c) => c.dataDocumento === r.dataFattura) ?? unico)
-        : unico;
+      // Tra gli omonimi con la stessa data (reinvii SdI: FPR 38/26 iMile in 4
+      // copie, 3 scartate) si preferisce la copia NON scartata: l'incasso sta
+      // sulla fattura valida, le copie scartate si azzerano a fine corsa.
+      const conData = r.dataFattura
+        ? candidati.filter((c) => c.dataDocumento === r.dataFattura)
+        : [];
+      const f = conData.find((c) => !isEsclusaDalCredito(c)) ?? conData[0] ?? unico;
       if (!f) {
         esito.nonTrovate++;
         // Omonimi non sciolti (due o più candidati, nessuno con la data
