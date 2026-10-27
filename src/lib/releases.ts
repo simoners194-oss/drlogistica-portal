@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.96.1",
+    date: "2026-10-27",
+    entries: [
+      {
+        title: "Aruba: il controllo di fine corsa si attiva davvero",
+        description:
+          "Il controllo delle fatture con incassi assenti dal report (1.96.0) non partiva mai: l'identificativo della corsa, tutto numerico, veniva letto come numero e scartato. Ora il portale lo accetta in entrambe le forme e lo script lo manda con un prefisso. Primo caso reale: una corsa interrotta a metà dalla rete non ha toccato niente, come previsto.",
+        tag: "fix",
+        audience: "gestione",
+      },
+    ],
+  },
+  {
     version: "1.96.0",
     date: "2026-10-27",
     entries: [

@@ -670,7 +670,9 @@ def spedisci_incassi(cfg: dict) -> None:
     # Con id della corsa, numero del blocco, blocchi totali e anni coperti,
     # sull'ultimo blocco controlla l'archivio: il giro conta le fatture con
     # incassi assenti dal report, "incassi forza" le azzera.
-    corsa_id = datetime.now().strftime("%Y%m%d%H%M%S")
+    # prefisso "c": un id tutto numerico il router del portale lo legge come numero
+    # e la corsa non si attiva (visto il 27/10).
+    corsa_id = "c" + datetime.now().strftime("%Y%m%d%H%M%S")
     anni_corsa = ",".join(sorted(a for a in per_anno if a != "0000"))
     n_blocchi = max(1, (len(lista) + 59) // 60)
     blocchi_falliti = 0

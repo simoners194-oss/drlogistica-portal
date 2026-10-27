@@ -27,7 +27,13 @@ export const Route = createFileRoute("/cron-incassi")({
     token: typeof search.token === "string" ? search.token : "",
     dati: typeof search.dati === "string" ? search.dati : "",
     forza: search.forza === "1" || search.forza === 1 || search.forza === true,
-    corsa: typeof search.corsa === "string" ? search.corsa : "",
+    // Il router legge "20261027160030" come numero: la corsa va accettata anche così.
+    corsa:
+      typeof search.corsa === "string"
+        ? search.corsa
+        : typeof search.corsa === "number" && Number.isSafeInteger(search.corsa)
+          ? String(search.corsa)
+          : "",
     blocco: intero(search.blocco),
     blocchi: intero(search.blocchi),
     anni: typeof search.anni === "string" ? search.anni : "",
