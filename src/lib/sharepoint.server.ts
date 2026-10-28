@@ -8179,7 +8179,17 @@ export async function ebCompletaCollegamento(
   code: string,
 ): Promise<{ conti: EbConto[]; consensoScade: string }> {
   const cred = await getEbCredenziali();
-  const res = await ebCreaSessione(cred, code);
+  let res: Awaited<ReturnType<typeof ebCreaSessione>>;
+  try {
+    res = await ebCreaSessione(cred, code);
+  } catch (err) {
+    logSp(
+      "error",
+      "eb.auth",
+      `Completamento collegamento banca fallito: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    throw err;
+  }
   const cfg = await discoverSharePoint();
   const F = cfg.enableBankingFields;
   if (F.ConsensoScade) await patchEbConfig({ [F.ConsensoScade]: res.consensoScade });

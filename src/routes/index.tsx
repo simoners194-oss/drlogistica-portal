@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { spLogin, spWhoAmI } from "@/lib/sharepoint.functions";
 import { APP_NAME, APP_TAGLINE } from "@/lib/modules";
 import { defaultLandingFor, normalizeRuolo, readSession, writeSession } from "@/lib/session";
+import { EB_RITORNO_KEY } from "@/lib/eb-ritorno";
 import { AppFooter } from "@/components/AppFooter";
 import { APP_INFO } from "@/lib/version";
 import { LangSwitcher, useLang } from "@/lib/i18n";
@@ -35,18 +36,31 @@ function Index() {
   const [error, setError] = useState<string | null>(null);
 
   // Ritorno dall'autorizzazione bancaria (Enable Banking): la banca rimanda
-  // qui con ?code=…. Il codice si mette da parte e si completa dal pannello
-  // Banca in Amministrazione (subito, se l'utente è già loggato).
+  // qui con ?code=… (o ?error=… se la SCA è fallita). Il ritorno si mette da
+  // parte in localStorage — condiviso da TUTTE le finestre del profilo, app
+  // installata compresa (28/10/2026: con sessionStorage il codice restava
+  // nella finestra d'arrivo e il pannello in un'altra non lo vedeva mai) — e
+  // si completa dal pannello Banca in Amministrazione (subito, se loggati).
+  const [ritornoBanca, setRitornoBanca] = useState<"codice" | "errore" | null>(null);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
-    if (!code) return;
+    const errore = params.get("error") || params.get("error_description") || params.get("message");
+    if (!code && !errore) return;
     try {
-      window.sessionStorage.setItem("dr:eb:code", code);
+      window.localStorage.setItem(
+        EB_RITORNO_KEY,
+        JSON.stringify({
+          code: code ?? undefined,
+          errore: code ? undefined : errore,
+          ts: Date.now(),
+        }),
+      );
     } catch {
-      /* sessionStorage non disponibile */
+      /* localStorage non disponibile */
     }
     window.history.replaceState(null, "", "/");
+    setRitornoBanca(code ? "codice" : "errore");
     if (readSession()) navigate({ to: "/amministrazione" });
   }, [navigate]);
 
@@ -141,6 +155,11 @@ function Index() {
                 }}
                 disabled={busy}
               />
+              {ritornoBanca && !error && (
+                <p className="text-sm rounded-lg border border-border bg-muted px-3 py-2 text-foreground">
+                  {t(ritornoBanca === "codice" ? "fin.ebRitornoLogin" : "fin.ebRitornoErroreLogin")}
+                </p>
+              )}
               {error && (
                 <p className="text-xs text-status-absent" role="alert">
                   {error}

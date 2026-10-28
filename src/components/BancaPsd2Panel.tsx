@@ -22,6 +22,7 @@ import {
   spEbCronToken,
 } from "@/lib/sharepoint.functions";
 import type { EbStato, EbSyncResult, EbSaldoInfo } from "@/lib/sharepoint.server";
+import { prelevaRitornoBanca, RITORNO_MAX_ETA_MS } from "@/lib/eb-ritorno";
 
 const inputCls =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
@@ -74,37 +75,38 @@ export function BancaPsd2Panel() {
       });
   };
 
+  // Esito dell'ultimo ritorno dalla banca: resta scritto nel pannello (un
+  // toast di pochi secondi si perde, e il 28/10 nessuno ha capito perché il
+  // consenso non si aggiornava).
+  const [ritornoEsito, setRitornoEsito] = useState<{ ok: boolean; testo: string } | null>(null);
+
   // Completa il collegamento con il codice arrivato dalla redirect della banca
-  // (messo da parte dalla pagina di login in sessionStorage).
+  // (messo da parte dalla pagina di login, vedi eb-ritorno.ts).
   const completa = async (code: string) => {
     setBusy("completa");
     try {
       const res = await spEbCompletaCollegamento({ data: { code } });
       setConti(res.conti);
       loadStato();
+      setRitornoEsito({ ok: true, testo: `${t("fin.ebScegliConto")} (${res.conti.length})` });
       toast.success(t("fin.ebScegliConto"));
     } catch (err) {
+      setRitornoEsito({ ok: false, testo: `${t("fin.ebCompletaErr")} ${errMsg(err)}` });
       toast.error(t("fin.ebErr"), { description: errMsg(err) });
     } finally {
       setBusy(null);
-      try {
-        window.sessionStorage.removeItem("dr:eb:code");
-      } catch {
-        /* sessionStorage non disponibile */
-      }
     }
   };
 
   useEffect(() => {
     loadStato();
     loadSaldo();
-    let code: string | null = null;
-    try {
-      code = window.sessionStorage.getItem("dr:eb:code");
-    } catch {
-      /* sessionStorage non disponibile */
-    }
-    if (code) void completa(code);
+    const r = prelevaRitornoBanca();
+    if (!r) return;
+    if (r.errore) setRitornoEsito({ ok: false, testo: `${t("fin.ebRitornoErrore")} ${r.errore}` });
+    else if (r.code && Date.now() - r.ts > RITORNO_MAX_ETA_MS)
+      setRitornoEsito({ ok: false, testo: t("fin.ebRitornoVecchio") });
+    else if (r.code) void completa(r.code);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -486,6 +488,13 @@ export function BancaPsd2Panel() {
                     </span>
                   )}
                 </div>
+                {ritornoEsito && (
+                  <p
+                    className={`text-xs rounded-md border px-2 py-1.5 ${ritornoEsito.ok ? "border-border text-foreground" : "border-status-absent/40 text-status-absent"}`}
+                  >
+                    {ritornoEsito.testo}
+                  </p>
+                )}
                 {saldoErr && (
                   <p className="text-xs text-status-absent">
                     {t("fin.ebSaldoAttuale")}: {saldoErr}

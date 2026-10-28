@@ -674,8 +674,9 @@ Se un import grosso si interrompe a metà, rilancialo con lo stesso file: quello
     id: "amm-banca",
     sezione: "Amministrazione",
     titolo: "Il collegamento banca e il consenso",
-    testo: `Il collegamento al conto è in sola lettura e il consenso va rinnovato circa ogni 89 giorni approvando dall'app della banca (la scadenza è scritta nella card). "Sincronizza ora" forza un giro; il "recupero da data" ripesca giorni saltati, per esempio movimenti contabilizzati tardi dalla banca.`,
-    chiavi: "consenso 89 giorni rinnova sincronizza ora recupero data banca collegamento",
+    testo: `Il collegamento al conto è in sola lettura e il consenso va rinnovato circa ogni 89 giorni approvando dall'app della banca (la scadenza è scritta nella card). Il rinnovo finisce sulla pagina di conferma della banca con il pulsante "Torna al merchant": va premuto subito, è lui che riporta il codice al portale; senza quel clic il consenso esiste in banca ma il portale non lo sa. Il codice vale pochi minuti e viene riconosciuto da qualunque finestra del portale, app installata compresa; l'esito del completamento resta scritto nella card. "Sincronizza ora" forza un giro; il "recupero da data" ripesca giorni saltati, per esempio movimenti contabilizzati tardi dalla banca.`,
+    chiavi:
+      "consenso 89 giorni rinnova sincronizza ora recupero data banca collegamento torna al merchant codice ritorno",
   },
   {
     id: "amm-anagrafica",

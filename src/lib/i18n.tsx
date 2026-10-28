@@ -1334,7 +1334,15 @@ const en = {
   "fin.ebCollega": "Connect bank",
   "fin.ebRinnova": "Renew consent",
   "fin.ebCollegaDesc":
-    "Connecting opens the bank's authorization page: approve with the bank's app and you will be brought back here.",
+    "Connecting opens the bank's authorization page: approve with the bank's app, then on the bank's confirmation page press \"Torna al merchant\" (Back to merchant) right away: that button brings the return code to the portal. Without it the consent exists at the bank but the portal cannot use it.",
+  "fin.ebRitornoLogin":
+    "Return from the bank received: sign in and the connection will be completed in Administration.",
+  "fin.ebRitornoErroreLogin":
+    "The bank returned an error: sign in and check the Bank panel in Administration.",
+  "fin.ebRitornoErrore": "The bank returned an error:",
+  "fin.ebRitornoVecchio":
+    "A return code from the bank was waiting for more than 15 minutes: it has expired, renew the consent again.",
+  "fin.ebCompletaErr": "Completing the connection failed:",
   "fin.ebConto": "Account",
   "fin.ebConsenso": "Consent valid until",
   "fin.ebTaglio": "Cutover date",
@@ -3296,7 +3304,15 @@ const it: Record<DictKey, string> = {
   "fin.ebCollega": "Collega banca",
   "fin.ebRinnova": "Rinnova consenso",
   "fin.ebCollegaDesc":
-    "Il collegamento apre la pagina di autorizzazione della banca: approva con l'app della banca e verrai riportato qui.",
+    'Il collegamento apre la pagina di autorizzazione della banca: approva con l\'app della banca e poi, sulla pagina di conferma della banca, premi subito "Torna al merchant": è quel pulsante che riporta il codice al portale. Senza, il consenso esiste in banca ma il portale non può usarlo.',
+  "fin.ebRitornoLogin":
+    "Ritorno dalla banca ricevuto: accedi e il collegamento si completa in Amministrazione.",
+  "fin.ebRitornoErroreLogin":
+    "La banca ha risposto con un errore: accedi e guarda il pannello Banca in Amministrazione.",
+  "fin.ebRitornoErrore": "La banca ha risposto con un errore:",
+  "fin.ebRitornoVecchio":
+    "Un codice di ritorno della banca è rimasto in attesa per più di 15 minuti: è scaduto, rifai il rinnovo del consenso.",
+  "fin.ebCompletaErr": "Completamento del collegamento fallito:",
   "fin.ebConto": "Conto",
   "fin.ebConsenso": "Consenso valido fino al",
   "fin.ebTaglio": "Data di taglio",

@@ -36,6 +36,18 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.96.2",
+    date: "2026-10-28",
+    entries: [
+      {
+        title: "Banca: il rinnovo del consenso non si perde più per strada",
+        description: `Il 28/10 il consenso risultava rinnovato in banca ma il portale restava fermo: la pagina di Banco BPM non torna indietro da sola, va premuto "Torna al merchant", e il codice di ritorno veniva conservato solo nella finestra d'arrivo. Ora il codice vale per tutte le finestre (app installata compresa), la pagina di accesso avvisa che il ritorno dalla banca è stato ricevuto, l'esito del completamento (riuscito o fallito, con il motivo) resta scritto nel pannello Banca e l'istruzione sul pulsante "Torna al merchant" è nel pannello e nel Manuale.`,
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.96.1",
     date: "2026-10-27",
     entries: [
