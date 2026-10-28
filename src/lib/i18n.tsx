@@ -1334,7 +1334,7 @@ const en = {
   "fin.ebCollega": "Connect bank",
   "fin.ebRinnova": "Renew consent",
   "fin.ebCollegaDesc":
-    "Connecting opens the bank's authorization page: approve with the bank's app, then on the bank's confirmation page press \"Torna al merchant\" (Back to merchant) right away: that button brings the return code to the portal. Without it the consent exists at the bank but the portal cannot use it.",
+    'Connecting opens the bank\'s authorization page and takes TWO rounds (Banco BPM asks a second consent for history older than 90 days): sign in, authorize, approve in the bank\'s app, press "Torna al merchant"; the bank\'s sign-in page opens again: sign in, authorize and approve a second time, press "Torna al merchant" again. Only then the portal comes back with the account choice. Without the second round the consent exists at the bank but the portal cannot use it.',
   "fin.ebRitornoLogin":
     "Return from the bank received: sign in and the connection will be completed in Administration.",
   "fin.ebRitornoErroreLogin":
@@ -3304,7 +3304,7 @@ const it: Record<DictKey, string> = {
   "fin.ebCollega": "Collega banca",
   "fin.ebRinnova": "Rinnova consenso",
   "fin.ebCollegaDesc":
-    'Il collegamento apre la pagina di autorizzazione della banca: approva con l\'app della banca e poi, sulla pagina di conferma della banca, premi subito "Torna al merchant": è quel pulsante che riporta il codice al portale. Senza, il consenso esiste in banca ma il portale non può usarlo.',
+    'Il collegamento apre la pagina della banca e richiede DUE giri (Banco BPM chiede un secondo consenso per lo storico oltre 90 giorni): login, Autorizza, approvazione nell\'app, "Torna al merchant"; si riapre la pagina di login della banca: di nuovo login, Autorizza, approvazione nell\'app e "Torna al merchant". Solo allora torna il portale con la scelta del conto. Senza il secondo giro il consenso esiste in banca ma il portale non può usarlo.',
   "fin.ebRitornoLogin":
     "Ritorno dalla banca ricevuto: accedi e il collegamento si completa in Amministrazione.",
   "fin.ebRitornoErroreLogin":

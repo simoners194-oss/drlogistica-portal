@@ -36,6 +36,18 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.96.3",
+    date: "2026-10-28",
+    entries: [
+      {
+        title: "Banca: il rinnovo del consenso sono due giri, ed è scritto",
+        description: `Con Banco BPM il consenso si rinnova in due passaggi uguali (login, Autorizza, app, "Torna al merchant"): il secondo serve per lo storico oltre 90 giorni e si apre da solo come una nuova pagina di login della banca. Il pannello Banca e il Manuale ora lo spiegano passo per passo. Collegamento rinnovato il 28/10 fino al 26/01/2027.`,
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.96.2",
     date: "2026-10-28",
     entries: [
