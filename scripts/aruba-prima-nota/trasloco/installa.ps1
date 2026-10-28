@@ -21,7 +21,13 @@ $nomeRichiesta = "DR Portal - giro su richiesta"
 function Titolo($t) { Write-Host ""; Write-Host "== $t" -ForegroundColor Cyan }
 function Ok($t) { Write-Host "   OK  $t" -ForegroundColor Green }
 function Avviso($t) { Write-Host "   !!  $t" -ForegroundColor Yellow }
-function Chiudi($codice) { Write-Host ""; Read-Host "Premi Invio per chiudere" | Out-Null; exit $codice }
+function Chiudi($codice) {
+  Write-Host ""
+  Write-Host "   (tutto quello che e' comparso qui sta anche in installa.log, accanto a questo file)"
+  try { Stop-Transcript | Out-Null } catch {}
+  Read-Host "Premi Invio per chiudere" | Out-Null
+  exit $codice
+}
 function Errore($t) { Write-Host ""; Write-Host "   ERRORE: $t" -ForegroundColor Red; Chiudi 1 }
 
 # Lancia un programma senza finestre e senza che lo stderr diventi un errore
@@ -60,6 +66,10 @@ function Registra($nome, $template, $cartella, $utente, $inizio) {
 }
 
 try {
+  # Copia di tutto l'output in installa.log (stessa cartella): se qualcosa va
+  # storto si legge dopo, senza dover rifare tutto davanti allo schermo.
+  try { Start-Transcript -Path (Join-Path $PSScriptRoot "installa.log") -Append | Out-Null } catch {}
+  Write-Host ("installa.ps1 avviato il " + (Get-Date).ToString("dd/MM/yyyy HH:mm:ss"))
   $cartella = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
   $utente = "$env:USERDOMAIN\$env:USERNAME"
 
