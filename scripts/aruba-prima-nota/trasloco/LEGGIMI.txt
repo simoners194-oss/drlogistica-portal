@@ -1,0 +1,79 @@
+DR PORTAL - I GIRI ARUBA SU UN ALTRO PC (utente Windows: Armand)
+==================================================================
+
+Cosa c'è nel pacchetto
+----------------------
+- dr-portal\scripts\aruba-prima-nota\ : gli script dei giri (scarica_aruba.py,
+  poll_giro.py, i due .bat, avvia_nascosto.js, la libreria xlrd) e questa
+  cartella "trasloco" con l'installatore.
+- NON c'è config.json: contiene utente e password di Aruba e l'indirizzo del
+  portale con il token. Va copiato dal PC vecchio a mano (chiavetta), nella
+  stessa cartella degli script. Mai per e-mail o chat.
+- Non serve niente di Claude e nessun account: sono solo Python e l'Utilità
+  di pianificazione di Windows.
+
+Cosa serve sul PC nuovo
+-----------------------
+1. Python 3.14 da https://www.python.org/downloads/windows/ : "Install Now",
+   con la spunta "Add python.exe to PATH". Va bene anche un Python 3.10 o più
+   recente già presente.
+2. Microsoft Edge (c'è già su Windows 11): lo scarico lo usa invisibile.
+3. Basta così. Playwright, il pacchetto che guida il browser, lo installa
+   l'installatore se manca.
+
+Installazione
+-------------
+1. Scompattare lo zip in C:\Users\Armand\Documents\GitHub\
+   (si ottiene C:\Users\Armand\Documents\GitHub\dr-portal\scripts\aruba-prima-nota\...).
+   Qualsiasi altra cartella va bene: l'installatore usa la posizione in cui si trova.
+2. Copiare config.json dal PC vecchio in
+   C:\Users\Armand\Documents\GitHub\dr-portal\scripts\aruba-prima-nota\
+   (sul PC vecchio sta in C:\Users\simon\Documents\GitHub\dr-portal\scripts\aruba-prima-nota\).
+3. Doppio clic su installa.bat (in ...\aruba-prima-nota\trasloco), DA UTENTE
+   NORMALE, non "come amministratore". L'installatore:
+   - controlla cartella, config.json, Python, Playwright (lo installa se manca), Edge;
+   - scrive il percorso di Python nei due .bat se non è C:\Python314;
+   - registra le due attività pianificate per l'utente che lo lancia, senza
+     finestre (partono tramite wscript, niente schermata nera del prompt);
+   - chiede se sul PC vecchio le attività sono già spente: se no le lascia
+     DISATTIVATE, da attivare dopo rilanciando installa.bat;
+   - propone di disattivare la sospensione del PC;
+   - propone una corsa di prova e mostra le righe chiave del log.
+4. Una corsa buona nel log (log_esecuzioni.txt) ha "Browser avviato (msedge)"
+   e "[stipendi] OK".
+
+Ordine giusto, per non far girare i giri su due PC insieme
+----------------------------------------------------------
+1. PC nuovo: installa.bat, risposta "n" alla domanda sul PC vecchio (attività
+   registrate ma spente). La corsa di prova si può fare lo stesso, in un orario
+   lontano dai giri del vecchio (9:05, 12:05, 15:05, 16:35) e senza premere
+   "Sincronizza da Aruba" sul portale nel frattempo.
+2. PC vecchio: disattivare le due attività (lo fa Simone).
+3. PC nuovo: rilanciare installa.bat e rispondere "s": da quel momento gira
+   tutto dal nuovo.
+
+Da tenere presente
+------------------
+- Le attività girano SOLO con l'utente connesso: il PC resta acceso e Armand
+  resta loggato (schermo bloccato va benissimo). Sospensione disattivata.
+- Orari: lunedì-sabato 9:05, 12:05, 15:05, 16:35, più il controllo ogni
+  10 minuti del bottone "Sincronizza da Aruba" del portale.
+- Log: ...\aruba-prima-nota\log_esecuzioni.txt. In caso di errore lo script
+  salva screenshot e HTML in ...\aruba-prima-nota\errori\.
+- Playwright deve essere installato dall'utente che fa girare i giri, da un
+  prompt normale (è quello che fa l'installatore): un'installazione fatta da
+  un altro utente o da un ambiente isolato non si vede dall'Utilità di
+  pianificazione e il passo incassi muore in silenzio.
+- Non serve "playwright install chromium": si usa Edge. Con Smart App Control
+  acceso il Chromium di Playwright verrebbe bloccato.
+- Le attività si vedono in Utilità di pianificazione > Libreria, nomi
+  "DR Portal - Aruba giornaliero" e "DR Portal - giro su richiesta".
+
+Aggiornamenti degli script
+--------------------------
+Quando scarica_aruba.py cambia (le modifiche arrivano su GitHub, repo
+simoners194-oss/drlogistica-portal), sul PC nuovo basta sostituire il file
+nella cartella aruba-prima-nota. In alternativa la cartella dr-portal può
+essere un clone del repo con accesso in sola lettura: allora "git pull"
+aggiorna tutto. installa.bat si può rilanciare in qualsiasi momento:
+sovrascrive le attività senza creare doppioni.

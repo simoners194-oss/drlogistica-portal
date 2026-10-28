@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.96.4",
+    date: "2026-10-28",
+    entries: [
+      {
+        title: "Giro Aruba: trasloco guidato su un altro PC, senza finestre",
+        description:
+          "Le due attività pianificate che fanno girare lo scarico da Aruba si spostano su un PC dedicato con un installatore (scripts/aruba-prima-nota/trasloco): controlla Python, Playwright ed Edge, registra le attività, fa una corsa di prova. Da portare a mano solo config.json. Le attività partono senza la finestra nera del prompt, anche sul PC attuale. Mai attive su due PC insieme.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.96.3",
     date: "2026-10-28",
     entries: [
