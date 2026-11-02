@@ -49,6 +49,9 @@ const fmt = (n: number) =>
   n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtData = (iso: string) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 const ddmm = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "");
+/** Con l'anno a due cifre: per le attese ("entranti metti anche anno", Simone 02/11/2026). */
+const ddmmyy = (iso: string) =>
+  iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : "";
 const oggiISO = () => new Date().toISOString().slice(0, 10);
 const parseNum = (s: string): number | null => {
   const n = Number(s.trim().replace(/\./g, "").replace(",", "."));
@@ -71,6 +74,8 @@ interface Cella {
   secchio: SecchioCassa;
   entrata: boolean;
   attesa: boolean;
+  /** Entrata attesa messa in standby (blocco "Standby" delle entrate). */
+  parcheggiata: boolean;
   nota: string;
   data: string;
   certa: boolean;
@@ -80,7 +85,53 @@ interface Cella {
   dataScelta: boolean;
   modalita?: string;
   stima?: boolean;
+  /** Per raggruppare le uscite per tipologia o per cliente. */
+  tipologia?: string;
+  cliente?: string;
 }
+
+/** Vista raggruppata delle uscite (Simone 02/11/2026: "raggruppare le spese
+ *  per tipologia o per cliente"): una riga per gruppo e colonna, in sola
+ *  lettura (chiave "grp|…"), con l'elenco dei fornitori nel dettaglio. */
+type Raggruppa = "fornitore" | "tipologia" | "cliente";
+function raggruppaUscite(uscite: readonly Cella[], per: Raggruppa, t: TFn): Cella[] {
+  if (per === "fornitore") return [...uscite];
+  const gruppi = new Map<string, Cella & { nomi: string[] }>();
+  for (const u of uscite) {
+    const g =
+      (per === "tipologia" ? u.tipologia : u.cliente)?.trim() ||
+      t(per === "tipologia" ? "cpr.senzaTipologia" : "cpr.senzaCliente");
+    const k = `grp|${per}|${g.toLowerCase()}|${u.secchio}`;
+    const r = gruppi.get(k) ?? {
+      ...u,
+      chiave: k,
+      tipo: "passiva",
+      nome: g,
+      dettaglio: "",
+      importo: 0,
+      importoOrigine: 0,
+      nota: "",
+      certa: true,
+      documenti: 0,
+      editabile: false,
+      priorita: undefined,
+      dataScelta: false,
+      modalita: undefined,
+      stima: false,
+      nomi: [],
+    };
+    r.importo = Math.round((r.importo + u.importo) * 100) / 100;
+    r.importoOrigine = r.importo;
+    r.documenti += 1;
+    if (u.data < r.data) r.data = u.data;
+    r.nomi.push(`${u.nome} ${fmt(u.importo)}`);
+    gruppi.set(k, r);
+  }
+  return [...gruppi.values()]
+    .map((r) => ({ ...r, dettaglio: r.nomi.join(" · ") }))
+    .sort((a, b) => b.importo - a.importo || a.nome.localeCompare(b.nome, "it"));
+}
+const eGruppo = (c: Cella) => c.chiave.startsWith("grp|");
 
 const daRiga = (r: RigaCassa): Cella => ({
   chiave: r.chiave,
@@ -91,7 +142,8 @@ const daRiga = (r: RigaCassa): Cella => ({
   importoOrigine: r.importoOrigine,
   secchio: r.secchio,
   entrata: r.entrata,
-  attesa: r.standbyIncasso,
+  attesa: r.standbyIncasso || r.parcheggiata,
+  parcheggiata: r.parcheggiata,
   nota: r.nota,
   data: r.scadenza,
   certa: r.certa,
@@ -101,18 +153,27 @@ const daRiga = (r: RigaCassa): Cella => ({
   dataScelta: r.dataScelta,
   modalita: r.modalita,
   stima: r.stima,
+  tipologia: r.tipologia,
+  cliente: r.cliente,
 });
 
-/** La colonna Entrate in due blocchi col loro totale: "Già entrate" (in
- *  banca, dentro il saldo) ed "Entranti" (attese = standby incasso) —
- *  Simone 19/10/2026. */
+/** La colonna Entrate in tre blocchi col loro totale: "Già entrate" (in
+ *  banca, dentro il saldo), "Entranti" (attese = standby incasso, al netto
+ *  degli acconti) e "Standby" (attese parcheggiate, non contano) — Simone
+ *  19/10 e 02/11/2026. */
 type SlotE = { kind: "head"; label: string; value: number } | { kind: "riga"; c: Cella };
 function slotsEntrate(entrate: readonly Cella[], totali: TotaliCassa, t: TFn): SlotE[] {
+  const entranti =
+    totali.acconti > 0
+      ? `${t("cpr.entranti")} − ${t("cpr.acconti")} ${fmt(totali.acconti)}`
+      : t("cpr.entranti");
   return [
     { kind: "head", label: t("cpr.giaEntrate"), value: totali.entrateRicevute },
     ...entrate.filter((c) => !c.attesa).map((c): SlotE => ({ kind: "riga", c })),
-    { kind: "head", label: t("cpr.entranti"), value: totali.entrateStandby },
-    ...entrate.filter((c) => c.attesa).map((c): SlotE => ({ kind: "riga", c })),
+    { kind: "head", label: entranti, value: totali.entrantiNette },
+    ...entrate.filter((c) => c.attesa && !c.parcheggiata).map((c): SlotE => ({ kind: "riga", c })),
+    { kind: "head", label: t("cpr.colStandby"), value: totali.entrateParcheggiate },
+    ...entrate.filter((c) => c.parcheggiata).map((c): SlotE => ({ kind: "riga", c })),
   ];
 }
 
@@ -126,7 +187,8 @@ function daFoto(r: FotografiaCassa["righe"][number]): Cella {
     importoOrigine: r.i,
     secchio: r.b,
     entrata: r.e,
-    attesa: Boolean(r.si),
+    attesa: Boolean(r.si) || Boolean(r.sp),
+    parcheggiata: Boolean(r.sp),
     nota: r.n ?? "",
     data: r.s,
     certa: false,
@@ -168,6 +230,8 @@ export function CassaProprietaView({
   const [salvando, setSalvando] = useState(false);
   const [mostraOltre, setMostraOltre] = useState(false);
   const [fotoId, setFotoId] = useState<string | null>(null);
+  // Uscite per fornitore (il foglio) oppure raggruppate per tipologia o cliente.
+  const [raggruppa, setRaggruppa] = useState<Raggruppa>("fornitore");
 
   useEffect(() => {
     spCassaGet()
@@ -377,6 +441,24 @@ export function CassaProprietaView({
       aggiornaManuale(c.chiave.slice(4), { data: d || c.data });
     else setStato(c.chiave, { d: d || undefined });
   };
+  // Entrata attesa in standby / di nuovo tra le entranti (flag `s`, vale
+  // anche per le righe manuali: lo stato è per chiave).
+  const parcheggia = (c: Cella, on: boolean) => setStato(c.chiave, { s: on || undefined });
+  // Acconti già incassati sugli entranti del mese (colonna Reale).
+  const setAcconti = (importo: number) => {
+    if (!db) return;
+    const acconti = { ...(db.acconti ?? {}) };
+    const mese = oggi.slice(0, 7);
+    if (importo > 0.005) acconti[mese] = Math.round(importo * 100) / 100;
+    else delete acconti[mese];
+    void salva({ ...db, acconti });
+  };
+  // Rinomina una riga scritta a mano (clic sul nome): "stipendi iMile" →
+  // "Acconto per DR Logistics (Aldo)", Simone 02/11/2026.
+  const rinomina = (c: Cella, nome: string) => {
+    if ((c.tipo === "manuale" || c.tipo === "amex") && nome.trim())
+      aggiornaManuale(c.chiave.slice(4), { descrizione: nome.trim() });
+  };
   const aggiungiVoce = (testo: string, p: PrioritaCassa, scad?: string) => {
     if (!db) return;
     const v: VoceAgenda = {
@@ -412,9 +494,13 @@ export function CassaProprietaView({
   const entrate = foto
     ? foto.righe.filter((r) => r.e).map(daFoto)
     : esito.righe.filter((r) => r.entrata).map(daRiga);
-  const uscite = foto
-    ? foto.righe.filter((r) => !r.e).map(daFoto)
-    : esito.righe.filter((r) => !r.entrata).map(daRiga);
+  const uscite = raggruppaUscite(
+    foto
+      ? foto.righe.filter((r) => !r.e).map(daFoto)
+      : esito.righe.filter((r) => !r.entrata).map(daRiga),
+    raggruppa,
+    t,
+  );
   const totali = foto ? foto.totali : esito.totali;
   const limiteVista = foto ? foto.limite : limite;
   const saldoVista = foto ? foto.saldo : saldo;
@@ -426,7 +512,7 @@ export function CassaProprietaView({
     const out: (string | number)[][] = [];
     const sl = slotsEntrate(entrate, totali, t);
     const n = Math.max(sl.length, uscite.length);
-    out.push([totali.entrate, "", saldoVista, "", "", "", "", ""]);
+    out.push([totali.entrate, "", saldoVista, totali.reale, "", "", "", "", "", ""]);
     for (let i = 0; i < n; i++) {
       const s = sl[i];
       const e = s?.kind === "riga" ? s.c : undefined;
@@ -436,12 +522,14 @@ export function CassaProprietaView({
         s?.kind === "head"
           ? s.label
           : e
-            ? `${e.nome}${e.attesa ? ` (${t("cpr.attesa")})` : ""}`
+            ? `${e.nome}${e.attesa ? ` (${t("cpr.attesa")} ${ddmmyy(e.data)})` : ""}`
             : "",
+        "",
         "",
         u && u.secchio === "ora" ? u.importo : "",
         u && u.secchio === "prossimi" ? u.importo : "",
         u && u.secchio === "standby" ? u.importo : "",
+        u && u.secchio === "standby2" ? u.importo : "",
         u ? u.nome : "",
         u
           ? [
@@ -456,26 +544,30 @@ export function CassaProprietaView({
     }
     out.push([
       totali.entrateStandby,
+      totali.entrateParcheggiate,
       "",
-      "",
+      totali.acconti,
       totali.usciteOra,
       totali.usciteProssimi,
       totali.usciteStandby,
+      totali.usciteStandby2,
       totali.totaleDaPagare,
       totali.cassaConStandby,
     ]);
     out.push([
       t("cpr.lblStandbyIncasso"),
+      t("cpr.lblEntrateStandby"),
       "",
-      "",
+      t("cpr.acconti"),
       t("cpr.lblDaPagare"),
       `${t("cpr.lblDaPagare")} ${etichettaProssimiBreve(limiteVista)}`,
       t("cpr.lblStandbyDaPagare"),
+      t("cpr.lblStandby2"),
       t("cpr.lblTotaleDaPagare"),
       t("cpr.lblCassa"),
     ]);
-    out.push(["", "", "", totali.saldoDopoOra, totali.saldoDopoProssimi, "", "", ""]);
-    out.push(["", "", "", t("cpr.lblSaldoDopo"), "", "", "", ""]);
+    out.push(["", "", "", "", totali.saldoDopoOra, totali.saldoDopoProssimi, "", "", "", ""]);
+    out.push(["", "", "", "", t("cpr.lblSaldoDopo"), "", "", "", "", ""]);
     return out;
   };
 
@@ -545,6 +637,31 @@ export function CassaProprietaView({
                 className={inputCls}
               />
             </label>
+            {/* Uscite per fornitore / tipologia / cliente (Simone 02/11/2026) */}
+            <span className="flex items-center gap-2 text-muted-foreground">
+              {t("cpr.raggruppa")}
+              <span
+                className="flex overflow-hidden rounded-lg border border-border text-[12px]"
+                title={t("cpr.raggruppateTip")}
+              >
+                {(["fornitore", "tipologia", "cliente"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setRaggruppa(v)}
+                    className={`px-2.5 py-1 ${raggruppa === v ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                  >
+                    {t(
+                      v === "fornitore"
+                        ? "cpr.perFornitore"
+                        : v === "tipologia"
+                          ? "cpr.perTipologia"
+                          : "cpr.perCliente",
+                    )}
+                  </button>
+                ))}
+              </span>
+            </span>
             {salvando && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
             <button
               type="button"
@@ -559,9 +676,11 @@ export function CassaProprietaView({
                 t("cpr.colEntrate"),
                 t("cpr.colNote"),
                 t("cpr.colSaldo"),
+                t("cpr.colReale"),
                 t("cpr.colUscite"),
                 etichettaProssimi(limiteVista),
                 t("cpr.colStandby"),
+                t("cpr.colStandby2"),
                 t("cpr.colNote"),
                 t("cpr.colNote2"),
               ]}
@@ -588,17 +707,42 @@ export function CassaProprietaView({
           onAggiungi={aggiungiManuale}
           onPriorita={setPriorita}
           onData={setData}
+          onParcheggia={parcheggia}
+          onAcconti={setAcconti}
+          onRinomina={rinomina}
           onApriFornitore={onApriFornitore}
           oggi={oggi}
         />
+        {/* RID/RiBa già scaduti: la banca li ha già presi, fuori dal foglio */}
+        {!foto && esito.addebitate.length > 0 && (
+          <div
+            className="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground"
+            title={esito.addebitate
+              .map((r) => `${r.controparte} ${fmt(r.importo)} (${ddmm(r.scadenza)})`)
+              .join(" · ")}
+          >
+            <Lock className="mr-1 inline h-3 w-3" />
+            {t("cpr.addebitati")}{" "}
+            <span className="font-semibold text-foreground">
+              {esito.addebitate.length} · {fmt(totali.usciteAddebitate)} €
+            </span>{" "}
+            (
+            {esito.addebitate
+              .slice(0, 6)
+              .map((r) => r.controparte)
+              .join(", ")}
+            {esito.addebitate.length > 6 ? ", …" : ""})
+          </div>
+        )}
         {/* Legenda: cosa è scritto a mano, cosa è stimato, cosa esce da solo */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1">
             <span className={`rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}>
               {t("cpr.manuale")}
             </span>
-            {t("cpr.legendaManuale")}
+            {t("cpr.legendaManuale")} · {t("cpr.rinomina")}
           </span>
+          <span>{t("cpr.regolaFineMese")}</span>
           <span className="inline-flex items-center gap-1">
             <span className={`rounded px-1 text-[9px] font-bold uppercase ${PILL_STIMA}`}>
               {t("cpr.stima")}
@@ -813,8 +957,16 @@ const TINTA = {
     col: "bg-slate-100/70 dark:bg-slate-800/40",
     num: "text-slate-600 dark:text-slate-300",
   },
+  // Standby prolungato ("Standby 2"): più scuro, fuori dai conti.
+  standby2: {
+    testa: "bg-slate-700 text-white",
+    col: "bg-slate-200/70 dark:bg-slate-800/70",
+    num: "text-slate-700 dark:text-slate-200",
+  },
   note: { testa: "bg-muted text-foreground", col: "", num: "" },
 } as const;
+/** Colonna "Reale" accanto al saldo: saldo + entranti − da pagare − prossimi. */
+const TINTA_REALE = "bg-sky-50/70 dark:bg-sky-950/30";
 /** Righe scritte a mano (non calcolate): tinta viola e pillola "manuale". */
 const TINTA_MAN = "bg-violet-50/80 dark:bg-violet-950/30";
 const PILL_MAN = "bg-violet-600 text-white";
@@ -844,6 +996,9 @@ function Foglio({
   onAggiungi,
   onPriorita,
   onData,
+  onParcheggia,
+  onAcconti,
+  onRinomina,
   onApriFornitore,
 }: {
   t: TFn;
@@ -861,6 +1016,12 @@ function Foglio({
   onAggiungi: (r: Omit<RigaManualeCassa, "id">) => void;
   onPriorita: (c: Cella, p: PrioritaCassa | undefined) => void;
   onData: (c: Cella, d: string) => void;
+  /** Entrata attesa in standby (true) o di nuovo tra le entranti (false). */
+  onParcheggia: (c: Cella, on: boolean) => void;
+  /** Acconti già incassati sugli entranti del mese (colonna Reale). */
+  onAcconti: (importo: number) => void;
+  /** Nuovo nome per una riga scritta a mano. */
+  onRinomina: (c: Cella, nome: string) => void;
   onApriFornitore?: (nome: string) => void;
 }) {
   const [nuova, setNuova] = useState<null | {
@@ -919,6 +1080,9 @@ function Foglio({
         </td>
       );
     if (readOnly) return <td className={`${celN} ${tinta.col} ${man}`} />;
+    // Vista raggruppata (tipologia/cliente): sola lettura.
+    if (eGruppo(u))
+      return <td className={`${celN} ${tinta.col}`} title={t("cpr.raggruppateTip")} />;
     // RID/RiBa: l'addebito arriva da solo alla scadenza, non si parcheggia.
     if (u.tipo === "passiva" && u.certa)
       return <td className={`${celN} ${tinta.col}`} title={t("cpr.nonParcheggiabile")} />;
@@ -937,28 +1101,32 @@ function Foglio({
   };
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[1120px] border-collapse text-[13px]">
+    // Il foglio scorre dentro la sua cornice (barra di scorrimento sua, come
+    // Excel), con le testate fisse in alto — Simone 02/11/2026.
+    <div className="max-h-[78vh] overflow-auto">
+      <table className="w-full min-w-[1400px] border-collapse text-[13px]">
         <colgroup>
-          <col className="w-[125px]" />
+          <col className="w-[120px]" />
           <col className="w-[215px]" />
-          <col className="w-[125px]" />
-          <col className="w-[125px]" />
-          <col className="w-[125px]" />
-          <col className="w-[125px]" />
-          <col className="w-[300px]" />
+          <col className="w-[120px]" />
+          <col className="w-[135px]" />
+          <col className="w-[120px]" />
+          <col className="w-[120px]" />
+          <col className="w-[120px]" />
+          <col className="w-[120px]" />
+          <col className="w-[280px]" />
           <col />
         </colgroup>
-        <thead>
+        <thead className="sticky top-0 z-10 bg-card">
           <tr>
             <th
-              colSpan={3}
+              colSpan={4}
               className={`${celH} ${TINTA.entrate.testa} border-r border-white/30 text-center text-[11px]`}
             >
               {t("cpr.colEntrate")}
             </th>
             <th
-              colSpan={5}
+              colSpan={6}
               className={`${celH} bg-primary text-center text-[11px] text-primary-foreground`}
             >
               {t("cpr.colUscite")}
@@ -981,6 +1149,12 @@ function Foglio({
               {t("cpr.colSaldo")}
             </th>
             <th
+              className={`${celH} ${TINTA_REALE} border-r border-border/60 text-right text-sky-800 dark:text-sky-300`}
+              title={t("cpr.lblReale")}
+            >
+              {t("cpr.colReale")}
+            </th>
+            <th
               className={`${celH} ${TINTA.ora.col} ${TINTA.ora.num} border-r border-border/60 text-right`}
             >
               {t("cpr.colUscite")}
@@ -995,6 +1169,12 @@ function Foglio({
             >
               {t("cpr.colStandby")}
             </th>
+            <th
+              className={`${celH} ${TINTA.standby2.col} ${TINTA.standby2.num} border-r border-border/60 text-right`}
+              title={t("cpr.lblStandby2")}
+            >
+              {t("cpr.colStandby2")}
+            </th>
             <th className={`${celH} border-r border-border/60 bg-muted/60 text-foreground`}>
               {t("cpr.colNote")}
             </th>
@@ -1002,16 +1182,27 @@ function Foglio({
           </tr>
         </thead>
         <tbody>
-          {/* riga 2: totale entrate e saldo, come nel foglio */}
+          {/* riga 2: totale entrate, saldo e il "reale" (saldo + entranti −
+              da pagare − prossimi), con gli acconti già incassati da togliere */}
           <tr className="bg-muted/30">
             <td className={`${celT} ${TINTA.entrate.num}`}>{fmt(totali.entrate)}</td>
             <td className={`${cel} text-[11px] uppercase tracking-wider text-muted-foreground`}>
               {t("cpr.lblTotaleEntrate")}
             </td>
             <td className={`${celT} text-foreground`}>{fmt(saldo)}</td>
+            <td className={`${celN} ${TINTA_REALE} align-top`}>
+              <div
+                className={`py-1 text-[15px] font-bold ${totali.reale < 0 ? "text-rose-600 dark:text-rose-400" : "text-sky-800 dark:text-sky-300"}`}
+                title={t("cpr.lblReale")}
+              >
+                {fmt(totali.reale)}
+              </div>
+              <Acconti importo={totali.acconti} readOnly={readOnly} onAcconti={onAcconti} t={t} />
+            </td>
             <td className={`${cel} ${TINTA.ora.col}`} />
             <td className={`${cel} ${TINTA.prossimi.col}`} />
             <td className={`${cel} ${TINTA.standby.col}`} />
+            <td className={`${cel} ${TINTA.standby2.col}`} />
             <td className={cel} />
             <td className={cel} />
           </tr>
@@ -1038,21 +1229,22 @@ function Foglio({
                 ) : (
                   <>
                     <td
-                      className={`${celN} ${TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
+                      className={`${celN} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.parcheggiata ? "italic text-slate-500 line-through decoration-slate-400" : e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
                     >
                       {e && <Importo c={e} readOnly={readOnly} onImporto={onImporto} t={t} />}
                     </td>
                     <td
-                      className={`${cel} ${TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
+                      className={`${cel} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
                     >
                       {e && (
                         <span className="flex items-center gap-1.5">
-                          <span
-                            className={`truncate ${eManuale(e) ? "italic" : ""}`}
-                            title={e.dettaglio}
-                          >
-                            {e.nome}
-                          </span>
+                          <NomeRiga
+                            c={e}
+                            readOnly={readOnly}
+                            onRinomina={onRinomina}
+                            t={t}
+                            className={`max-w-[200px] truncate ${eManuale(e) ? "italic" : ""}`}
+                          />
                           {eManuale(e) && (
                             <span
                               className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
@@ -1068,6 +1260,9 @@ function Foglio({
                               {ddmm(e.data)}
                             </span>
                           )}
+                          {e.attesa && !readOnly && (
+                            <ToggleStandby c={e} onParcheggia={onParcheggia} t={t} />
+                          )}
                           {!readOnly && <Togli onClick={() => onTogli(e)} t={t} />}
                         </span>
                       )}
@@ -1075,13 +1270,15 @@ function Foglio({
                   </>
                 )}
                 <td className={`${cel} bg-muted/20`} />
+                <td className={`${cel} ${TINTA_REALE}`} />
                 {cellaUscita(u, "ora")}
                 {cellaUscita(u, "prossimi")}
                 {cellaUscita(u, "standby")}
+                {cellaUscita(u, "standby2")}
                 <td className={`${cel} text-foreground ${u && eManuale(u) ? TINTA_MAN : ""}`}>
                   {u && (
                     <span className="flex items-center gap-1.5">
-                      {u.tipo === "passiva" && onApriFornitore ? (
+                      {u.tipo === "passiva" && onApriFornitore && !eGruppo(u) ? (
                         <button
                           type="button"
                           onClick={() => onApriFornitore(u.nome)}
@@ -1091,12 +1288,13 @@ function Foglio({
                           {u.nome}
                         </button>
                       ) : (
-                        <span
+                        <NomeRiga
+                          c={u}
+                          readOnly={readOnly}
+                          onRinomina={onRinomina}
+                          t={t}
                           className={`truncate font-medium ${eManuale(u) ? "italic" : ""}`}
-                          title={u.dettaglio}
-                        >
-                          {u.nome}
-                        </span>
+                        />
                       )}
                       {u.documenti > 1 && u.tipo !== "stipendi" && (
                         <span className="shrink-0 text-[10.5px] text-muted-foreground">
@@ -1141,7 +1339,7 @@ function Foglio({
                   )}
                 </td>
                 <td className={`${cel} p-0 ${u && eManuale(u) ? TINTA_MAN : ""}`}>
-                  {u && (
+                  {u && !eGruppo(u) && (
                     <span className="flex items-center">
                       {u.dettaglio === "CDC" && (
                         <span className="pl-3 text-[11px] font-semibold text-muted-foreground">
@@ -1213,9 +1411,10 @@ function Foglio({
                 </>
               )}
               <td className={`${cel} bg-muted/20`} />
+              <td className={`${cel} ${TINTA_REALE}`} />
               {nuova && !nuova.entrata ? (
                 <>
-                  <td className={`${celN} p-1`} colSpan={3}>
+                  <td className={`${celN} p-1`} colSpan={4}>
                     <span className="flex items-center gap-1">
                       <input
                         autoFocus
@@ -1235,6 +1434,7 @@ function Foglio({
                         <option value="ora">{t("cpr.colUscite")}</option>
                         <option value="prossimi">{breve}</option>
                         <option value="standby">{t("cpr.colStandby")}</option>
+                        <option value="standby2">{t("cpr.colStandby2")}</option>
                       </select>
                       <input
                         type="date"
@@ -1280,6 +1480,7 @@ function Foglio({
                   <td className={`${cel} ${TINTA.ora.col}`} />
                   <td className={`${cel} ${TINTA.prossimi.col}`} />
                   <td className={`${cel} ${TINTA.standby.col}`} />
+                  <td className={`${cel} ${TINTA.standby2.col}`} />
                   <td className={`${cel} py-1`}>
                     <Aggiungi onClick={() => apri(false)} t={t} />
                   </td>
@@ -1293,11 +1494,17 @@ function Foglio({
           {/* totali come nel foglio: valori e sotto le sue etichette */}
           <tr className="border-t-2 border-border bg-muted/50">
             <td className={`${celT} ${TINTA.entrate.num}`}>{fmt(totali.entrateStandby)}</td>
+            <td className={`${celT} ${TINTA.standby.num} text-left`}>
+              {fmt(totali.entrateParcheggiate)}
+            </td>
             <td className={cel} />
-            <td className={cel} />
+            <td className={`${celT} text-sky-800 dark:text-sky-300`}>
+              {totali.acconti > 0 ? `−${fmt(totali.acconti)}` : ""}
+            </td>
             <td className={`${celT} ${TINTA.ora.num}`}>{fmt(totali.usciteOra)}</td>
             <td className={`${celT} ${TINTA.prossimi.num}`}>{fmt(totali.usciteProssimi)}</td>
             <td className={`${celT} ${TINTA.standby.num}`}>{fmt(totali.usciteStandby)}</td>
+            <td className={`${celT} ${TINTA.standby2.num}`}>{fmt(totali.usciteStandby2)}</td>
             <td className={`${celT} text-foreground`}>{fmt(totali.totaleDaPagare)}</td>
             <td
               className={`${celT} ${totali.cassaConStandby < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}`}
@@ -1307,20 +1514,23 @@ function Foglio({
           </tr>
           <tr className="bg-muted/50">
             <td className={`${celL} text-right`}>{t("cpr.lblStandbyIncasso")}</td>
+            <td className={celL}>{t("cpr.lblEntrateStandby")}</td>
             <td className={cel} />
-            <td className={cel} />
+            <td className={`${celL} text-right`}>{totali.acconti > 0 ? t("cpr.acconti") : ""}</td>
             <td className={`${celL} text-right`}>{t("cpr.lblDaPagare")}</td>
             <td className={`${celL} text-right`}>
               {t("cpr.lblDaPagare")} {breve}
             </td>
             <td className={`${celL} text-right`}>{t("cpr.lblStandbyDaPagare")}</td>
+            <td className={`${celL} text-right`}>{t("cpr.lblStandby2")}</td>
             <td className={`${celL} text-right`}>{t("cpr.lblTotaleDaPagare")}</td>
             <td className={`${celL} text-right`}>{t("cpr.lblCassa")}</td>
           </tr>
           <tr>
-            <td className={`${cel} py-1.5`} colSpan={8} />
+            <td className={`${cel} py-1.5`} colSpan={10} />
           </tr>
           <tr className="bg-primary/5">
+            <td className={cel} />
             <td className={cel} />
             <td className={cel} />
             <td className={cel} />
@@ -1337,14 +1547,17 @@ function Foglio({
             <td className={cel} />
             <td className={cel} />
             <td className={cel} />
+            <td className={cel} />
           </tr>
           <tr className="bg-primary/5">
+            <td className={`${cel} border-b-0`} />
             <td className={`${cel} border-b-0`} />
             <td className={`${cel} border-b-0`} />
             <td className={`${cel} border-b-0`} />
             <td className={`${celL} border-b-0 text-right`} colSpan={2}>
               {t("cpr.lblSaldoDopo")} · {t("cpr.lblDopoProssimi")} {breve}
             </td>
+            <td className={`${cel} border-b-0`} />
             <td className={`${cel} border-b-0`} />
             <td className={`${cel} border-b-0`} />
             <td className={`${cel} border-b-0`} />
@@ -1522,7 +1735,7 @@ function DataAttesa({
   if (readOnly)
     return (
       <span className={base}>
-        {t("cpr.attesa")} · {ddmm(c.data)}
+        {t("cpr.attesa")} · {ddmmyy(c.data)}
       </span>
     );
   if (edit)
@@ -1549,7 +1762,126 @@ function DataAttesa({
       title={t("cpr.dataAttesa")}
       className={base}
     >
-      {t("cpr.attesa")} · {ddmm(c.data)}
+      {t("cpr.attesa")} · {ddmmyy(c.data)}
+    </button>
+  );
+}
+
+/** Acconti già incassati sugli entranti del mese: campo sotto il "reale",
+ *  nella colonna Reale (Simone 02/11/2026: "possibilità di inserire un
+ *  acconto di entrata, che me lo va a scalare dal totale entrante"). */
+function Acconti({
+  importo,
+  readOnly,
+  onAcconti,
+  t,
+}: {
+  importo: number;
+  readOnly: boolean;
+  onAcconti: (importo: number) => void;
+  t: TFn;
+}) {
+  const [testo, setTesto] = useState<string | null>(null);
+  if (readOnly)
+    return importo > 0 ? (
+      <div className="text-[10.5px] text-muted-foreground">
+        {t("cpr.acconti")}: −{fmt(importo)}
+      </div>
+    ) : null;
+  return (
+    <label
+      className="flex items-center justify-end gap-1 text-[10px] uppercase tracking-wider text-muted-foreground"
+      title={t("cpr.accontiTip")}
+    >
+      {t("cpr.acconti")} −
+      <input
+        value={testo ?? (importo > 0 ? fmt(importo) : "")}
+        onChange={(e) => setTesto(e.target.value)}
+        onBlur={() => {
+          if (testo == null) return;
+          const n = testo.trim() ? parseNum(testo) : 0;
+          setTesto(null);
+          if (n != null && Math.abs(n - importo) > 0.005) onAcconti(Math.abs(n));
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") setTesto(null);
+        }}
+        placeholder="0,00"
+        className={`${inputCls} w-24 py-0 text-right text-[12px] normal-case tracking-normal`}
+      />
+    </label>
+  );
+}
+
+/** Nome della riga: per le righe scritte a mano si rinomina con un clic. */
+function NomeRiga({
+  c,
+  readOnly,
+  onRinomina,
+  t,
+  className,
+}: {
+  c: Cella;
+  readOnly: boolean;
+  onRinomina: (c: Cella, nome: string) => void;
+  t: TFn;
+  className: string;
+}) {
+  const [edit, setEdit] = useState(false);
+  if (!eManuale(c) || readOnly || c.chiave.startsWith("grp|"))
+    return (
+      <span className={className} title={c.dettaglio}>
+        {c.nome}
+      </span>
+    );
+  if (edit)
+    return (
+      <input
+        autoFocus
+        defaultValue={c.nome}
+        onBlur={(e) => {
+          setEdit(false);
+          const v = e.target.value.trim();
+          if (v && v !== c.nome) onRinomina(c, v);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setEdit(false);
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        className={`${inputCls} w-full py-0 text-[12px]`}
+      />
+    );
+  return (
+    <button
+      type="button"
+      onClick={() => setEdit(true)}
+      title={t("cpr.rinomina")}
+      className={`${className} text-left underline decoration-dotted decoration-border underline-offset-4 hover:text-primary hover:decoration-primary`}
+    >
+      {c.nome}
+    </button>
+  );
+}
+
+/** Entrata attesa: in standby (non conta) o di nuovo tra le entranti. */
+function ToggleStandby({
+  c,
+  onParcheggia,
+  t,
+}: {
+  c: Cella;
+  onParcheggia: (c: Cella, on: boolean) => void;
+  t: TFn;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onParcheggia(c, !c.parcheggiata)}
+      title={c.parcheggiata ? t("cpr.riattivaEntrata") : t("cpr.parcheggiaEntrata")}
+      className={`shrink-0 rounded border px-1 text-[9px] font-bold uppercase ${c.parcheggiata ? "border-emerald-400 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300" : "border-slate-400 text-slate-600 hover:bg-slate-500/10 dark:text-slate-300"}`}
+    >
+      {c.parcheggiata ? "↩" : "⏸"}
     </button>
   );
 }

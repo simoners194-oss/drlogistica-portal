@@ -36,6 +36,35 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.97.0",
+    date: "2026-11-02",
+    entries: [
+      {
+        title: "Cassa proprietà: colonna Reale con gli acconti, standby delle entrate, Standby 2",
+        description:
+          'Accanto al saldo la colonna Reale (saldo + entranti del mese − da pagare − prossimi giorni) con il campo acconti, che toglie dagli entranti quanto è già arrivato. Ogni entrata attesa si mette in standby con ⏸: resta nel foglio ma non conta. Quarta colonna delle uscite "Standby 2" per le spese parcheggiate a lungo, fuori dal totale da pagare. Le attese mostrano anche l\'anno.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title:
+          "Cassa proprietà: Fiscale, IVA e Banca separati; RID scaduti fuori dalle uscite; fine mese = primo del mese dopo",
+        description:
+          "Le scadenze fiscali stanno in tre righe: Fiscale (F24 e rateizzazioni, anche dell'IVA), IVA corrente e Banca (finanziamenti). I RID/RiBa e gli addebiti già scaduti non sono più tra le uscite da pagare, perché la banca li ha già presi: sotto il foglio si legge quanti e per quanto. Una fattura che scade l'ultimo del mese vale dal primo del mese dopo.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+      {
+        title:
+          "Cassa proprietà: uscite per tipologia o per cliente, righe manuali rinominabili, foglio con la sua barra di scorrimento",
+        description:
+          'Il bottone "Uscite per" raggruppa le spese per tipologia di costo o per cliente/appalto (sola lettura, elenco dei fornitori nel dettaglio). Il nome di una riga scritta a mano si cambia con un clic. Il foglio scorre dentro la sua cornice con le testate fisse.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.96.4",
     date: "2026-10-28",
     entries: [

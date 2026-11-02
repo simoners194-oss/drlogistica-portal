@@ -27,6 +27,7 @@
 // conti (carta Amex = "CDC" nel suo foglio).
 import { residuoAperto, type FatturaConStato } from "./fatture-logic";
 import {
+  chiaveFornitore,
   esclusaDaFlussi,
   fissoAttivo,
   matchFisso,
@@ -37,7 +38,10 @@ import {
 import type { ScadenzaFiscale } from "./fiscale-logic";
 import { chiaveNome, type StipendiDb } from "./stipendi-logic";
 
-export type SecchioCassa = "ora" | "prossimi" | "standby";
+/** Colonne delle uscite: da pagare ora, primi giorni del mese dopo, standby,
+ *  standby prolungato ("Standby 2", Simone 02/11/2026: parcheggiate a lungo,
+ *  fuori da "totale da pagare" e dalla cassa). */
+export type SecchioCassa = "ora" | "prossimi" | "standby" | "standby2";
 /** Priorità delle cose da fare (agenda): bassa / media / alta. */
 export type PrioritaCassa = "l" | "m" | "h";
 export type TipoRigaCassa =
@@ -51,7 +55,8 @@ export interface StatoRigaCassa {
   n?: string;
   /** Contestata (non più usato dalla vista, conservato). */
   c?: boolean;
-  /** Riservato (non più usato: gli attesi sono sempre "standby incasso"). */
+  /** Entrata attesa messa in STANDBY (parcheggiata, Simone 02/11/2026): resta
+   *  nel foglio nel blocco "Standby" ma non conta tra le entranti né nella cassa. */
   s?: boolean;
   /** Importo corretto a mano (stipendi, fiscale, costi fissi, attesi). */
   i?: number;
@@ -102,6 +107,8 @@ export interface RigaFotografia {
   e: boolean;
   n?: string;
   si?: boolean;
+  /** Entrata attesa parcheggiata (standby entrate). */
+  sp?: boolean;
   /** Documenti raggruppati nella riga. */
   nd?: number;
   /** Priorità della nota. */
@@ -114,14 +121,24 @@ export interface TotaliCassa {
   entrate: number;
   /** Incassi già in banca dal primo del mese (informativo). */
   entrateRicevute: number;
-  /** B55 "standby incasso": entrate attese, non ancora in banca. */
+  /** B55 "standby incasso": entrate attese, non ancora in banca (senza le
+   *  parcheggiate), al lordo degli acconti. */
   entrateStandby: number;
+  /** Entrate attese messe in standby (parcheggiate): fuori da tutto. */
+  entrateParcheggiate: number;
+  /** Acconti già arrivati in banca sugli entranti del mese (scritti a mano
+   *  nella colonna Reale): si tolgono dal totale entrante. */
+  acconti: number;
+  /** Entranti al netto degli acconti = quello che deve ancora arrivare. */
+  entrantiNette: number;
   /** E55 "da pagare". */
   usciteOra: number;
   /** F55 "da pagare 1-5/11". */
   usciteProssimi: number;
   /** G55 "standby da pagare". */
   usciteStandby: number;
+  /** "Standby 2": standby prolungato, fuori da "totale da pagare" e dalla cassa. */
+  usciteStandby2: number;
   /** H55 "totale da pagare" = da pagare + standby. */
   totaleDaPagare: number;
   /** E58 "saldo dopo incassi e pagamenti" = saldo − da pagare. */
@@ -130,6 +147,13 @@ export interface TotaliCassa {
   saldoDopoProssimi: number;
   /** I55 "cassa+standby incassi-standby da pagare". */
   cassaConStandby: number;
+  /** Colonna "Reale" accanto al saldo (Simone 02/11/2026): saldo + entranti
+   *  del mese (netti degli acconti) − da pagare − prossimi giorni. */
+  reale: number;
+  /** RID/RiBa con scadenza già passata: la banca li ha già addebitati, non
+   *  stanno più tra le uscite (informativi). */
+  usciteAddebitate: number;
+  nAddebitate: number;
   /** Righe fuori orizzonte (scadenza oltre il limite), solo informative. */
   nOltre: number;
   usciteOltre: number;
@@ -161,6 +185,9 @@ export interface CassaDb {
   /** Appalti chiusi: ultimo mese di competenza con stipendi (YYYY-MM), per
    *  prefisso del nome appalto. Sovrascrive/aggiunge a CHIUSURE_APPALTI. */
   chiusure?: Record<string, string>;
+  /** Acconti già incassati sugli entranti, per mese (YYYY-MM → importo):
+   *  si scrivono nella colonna Reale e si tolgono dal totale entrante. */
+  acconti?: Record<string, number>;
   aggiornatoIl?: string;
   aggiornatoDa?: string;
 }
@@ -186,6 +213,8 @@ export interface RigaCassa {
   secchioAuto: SecchioCassa | "oltre";
   /** Entrata attesa (non in banca): conta in "standby incasso". */
   standbyIncasso: boolean;
+  /** Entrata attesa parcheggiata (blocco "Standby" delle entrate): non conta. */
+  parcheggiata: boolean;
   nota: string;
   contestata: boolean;
   appalto?: string;
@@ -202,6 +231,12 @@ export interface RigaCassa {
   modalita?: string;
   /** Stipendi STIMATI (mesi senza ancora i netti di Lucrezia). */
   stima?: boolean;
+  /** Per raggruppare le uscite (Simone 02/11/2026): tipologia di costo
+   *  (dalle fatture, poi dalla macrovoce del fornitore) e cliente/appalto di
+   *  riferimento (ClienteRif, poi l'appalto del fornitore, gli stipendi per
+   *  appalto). Vuoti = "senza". */
+  tipologia?: string;
+  cliente?: string;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -218,6 +253,13 @@ export function meseDopo(yyyymm: string): string {
   const [y, m] = yyyymm.split("-").map(Number);
   return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 7);
 }
+/** REGOLA (Simone 02/11/2026): una fattura che scade l'ultimo giorno del
+ *  mese si paga/incassa il primo del mese dopo. */
+export function scadenzaEffettiva(iso: string): string {
+  const d = iso.slice(0, 10);
+  return d && d === fineMese(d) ? `${meseDopo(d.slice(0, 7))}-01` : d;
+}
+
 export function mesePrima(yyyymm: string): string {
   const [y, m] = yyyymm.split("-").map(Number);
   return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
@@ -373,6 +415,9 @@ export interface EsitoCassa {
   righe: RigaCassa[];
   /** Fuori orizzonte: scadenza oltre il limite e nessuna scelta a mano. */
   oltre: RigaCassa[];
+  /** RID/RiBa già scaduti: la banca li ha già presi, stanno fuori dal foglio
+   *  (Simone 02/11/2026: "come mai non sono stati scalati i RID"). */
+  addebitate: RigaCassa[];
   totali: TotaliCassa;
 }
 
@@ -425,6 +470,21 @@ export function scadenzaPrevisionale(sc: ScadenzaFiscale): boolean {
   return /previsional/i.test([sc.voce, sc.periodo, sc.modalita, sc.note].join(" "));
 }
 
+/** Le tre righe fiscali del foglio (Simone 02/11/2026). */
+export type GruppoFiscale = "fiscale" | "iva" | "banca";
+export const NOME_GRUPPO_FISCALE: Record<GruppoFiscale, string> = {
+  fiscale: "Fiscale",
+  iva: "IVA",
+  banca: "Banca",
+};
+/** "Banca" = rate di finanziamento; "IVA" = l'IVA dell'anno corrente (non le
+ *  sue rateizzazioni, che sono "rate" e stanno nel Fiscale insieme agli F24). */
+export function gruppoFiscale(sc: Pick<ScadenzaFiscale, "voce" | "categoria">): GruppoFiscale {
+  if (sc.categoria === "finanziamento") return "banca";
+  if (sc.categoria === "corrente" && /\biva\b/i.test(sc.voce)) return "iva";
+  return "fiscale";
+}
+
 type Grezza = Omit<
   RigaCassa,
   | "secchio"
@@ -432,6 +492,7 @@ type Grezza = Omit<
   | "nota"
   | "contestata"
   | "standbyIncasso"
+  | "parcheggiata"
   | "importoOrigine"
   | "priorita"
   | "dataScelta"
@@ -485,7 +546,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   for (const x of input.attive) {
     const res = residuoAperto(x);
     if (res <= 1 || !x.s.scadenza) continue;
-    const scad = x.s.scadenza.slice(0, 10);
+    const scad = scadenzaEffettiva(x.s.scadenza);
     if (scad > limite) continue;
     if (esclusaDaFlussi(input.esclusioni, x.f.cliente, scad.slice(0, 7))) continue;
     const k = chiaveCliente(x.f.cliente);
@@ -522,16 +583,24 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       scad: string;
       mods: Set<string>;
       numeri: string[];
+      tip: Map<string, number>;
+      cli: Map<string, number>;
     }
   >();
+  // RID/RiBa già SCADUTI: la banca li ha già addebitati (il saldo li ha già
+  // dentro), quindi non sono più "da pagare": vanno in una lista a parte,
+  // solo informativa — Simone 02/11/2026 ("come mai non sono stati scalati").
+  const addebitate: RigaCassa[] = [];
   for (const x of input.passive) {
     const res = residuoAperto(x);
     if (res <= 1 || !x.s.scadenza) continue;
-    const scad = x.s.scadenza.slice(0, 10);
+    const scad = scadenzaEffettiva(x.s.scadenza);
     if (esclusaDaFlussi(input.esclusioni, x.f.cliente, scad.slice(0, 7))) continue;
     const mod = modalitaFattura(x.f, input.infoFornitori);
     const auto = secchioAuto(scad);
-    const k = `${chiaveCliente(x.f.cliente)}|${auto}`;
+    const addebitata = mod !== "altro" && scad <= oggi;
+    const k = `${chiaveCliente(x.f.cliente)}|${auto}${addebitata ? "|add" : ""}`;
+    const info = input.infoFornitori.get(chiaveFornitore(x.f.cliente));
     const g = gruppiPas.get(k) ?? {
       nome: x.f.cliente,
       auto,
@@ -540,18 +609,27 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       scad,
       mods: new Set<string>(),
       numeri: [],
+      tip: new Map<string, number>(),
+      cli: new Map<string, number>(),
     };
     g.importo = r2(g.importo + res);
     g.n++;
     if (scad < g.scad) g.scad = scad;
     g.mods.add(mod);
     g.numeri.push(x.f.numero);
+    // Tipologia e cliente della fattura (poi macrovoce/appalto del fornitore).
+    const tip = (x.f.tipologiaCosto ?? info?.macrovoce ?? "").trim();
+    const cli = (x.f.clienteRif ?? info?.appalto ?? "").trim();
+    if (tip) g.tip.set(tip, (g.tip.get(tip) ?? 0) + 1);
+    if (cli) g.cli.set(cli, (g.cli.get(cli) ?? 0) + 1);
     gruppiPas.set(k, g);
   }
+  const piuFrequente = (m: Map<string, number>): string | undefined =>
+    [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
   for (const [k, g] of gruppiPas) {
     const certa = g.mods.size > 0 && ![...g.mods].includes("altro");
     const mod = certa ? [...g.mods][0].toUpperCase() : "";
-    grezze.push({
+    const riga: Grezza = {
       chiave: `pasg|${k}`,
       tipo: "passiva",
       controparte: g.nome,
@@ -563,7 +641,24 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       documenti: g.n,
       editabile: false,
       modalita: mod || undefined,
-    });
+      tipologia: piuFrequente(g.tip),
+      cliente: piuFrequente(g.cli),
+    };
+    if (k.endsWith("|add") && certa) {
+      addebitate.push({
+        ...riga,
+        importoOrigine: riga.importo,
+        secchio: "ora",
+        secchioAuto: "ora",
+        standbyIncasso: false,
+        parcheggiata: false,
+        nota: "",
+        contestata: false,
+        dataScelta: false,
+      });
+      continue;
+    }
+    grezze.push(riga);
   }
   // Stipendi: netti non pagati per appalto, il 10 del mese di pagamento.
   for (const s of input.stipendi) {
@@ -580,31 +675,69 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       documenti: s.dipendenti,
       editabile: true,
       stima: s.stima,
+      tipologia: "Stipendi",
+      cliente: s.appalto,
     });
   }
   // Fiscale: scadenze non pagate (anche scadute), senza le "previsionali",
-  // una riga per colonna come il suo "Fiscale + BPM".
+  // in TRE righe per colonna (Simone 02/11/2026): "Fiscale" = F24 e
+  // rateizzazioni (di F24 e di IVA, categoria "rate"), "IVA" = l'IVA
+  // corrente (si parcheggia o si paga), "Banca" = rate di finanziamento.
   const gruppiFis = new Map<
-    SecchioCassa | "oltre",
-    { importo: number; n: number; scad: string; voci: string[]; fin: boolean }
+    string,
+    {
+      gruppo: GruppoFiscale;
+      auto: SecchioCassa | "oltre";
+      importo: number;
+      n: number;
+      scad: string;
+      voci: string[];
+    }
   >();
   for (const sc of input.fiscale) {
     if (sc.pagato || !sc.dataPagamento || scadenzaPrevisionale(sc)) continue;
     const scad = sc.dataPagamento.slice(0, 10);
     const auto = secchioAuto(scad);
-    const g = gruppiFis.get(auto) ?? { importo: 0, n: 0, scad, voci: [], fin: false };
+    const gruppo = gruppoFiscale(sc);
+    // Rata di finanziamento ad ADDEBITO automatico già scaduta: come i RID,
+    // la banca l'ha già presa (sta nel saldo), non è più da pagare.
+    if (scad <= oggi && /addebit|\brid\b|riba/i.test(sc.modalita ?? "")) {
+      addebitate.push({
+        chiave: `fisc|${sc.id ?? `${sc.voce}|${scad}`}`,
+        tipo: "fiscale",
+        controparte: `${NOME_GRUPPO_FISCALE[gruppo]} · ${sc.voce}`,
+        descrizione: [sc.periodo, sc.modalita].filter(Boolean).join(" · "),
+        importo: r2(Math.abs(sc.importo)),
+        importoOrigine: r2(Math.abs(sc.importo)),
+        scadenza: scad,
+        certa: true,
+        entrata: false,
+        secchio: "ora",
+        secchioAuto: "ora",
+        standbyIncasso: false,
+        parcheggiata: false,
+        nota: "",
+        contestata: false,
+        documenti: 1,
+        editabile: false,
+        dataScelta: false,
+        tipologia: NOME_GRUPPO_FISCALE[gruppo],
+      });
+      continue;
+    }
+    const k = `${gruppo}|${auto}`;
+    const g = gruppiFis.get(k) ?? { gruppo, auto, importo: 0, n: 0, scad, voci: [] };
     g.importo = r2(g.importo + Math.abs(sc.importo));
     g.n++;
     if (scad < g.scad) g.scad = scad;
     g.voci.push([sc.voce, sc.periodo].filter(Boolean).join(" "));
-    if (sc.categoria === "finanziamento") g.fin = true;
-    gruppiFis.set(auto, g);
+    gruppiFis.set(k, g);
   }
-  for (const [auto, g] of gruppiFis)
+  for (const [k, g] of gruppiFis)
     grezze.push({
-      chiave: `fiscg|${meseCorr}|${auto}`,
+      chiave: `fiscg|${meseCorr}|${k}`,
       tipo: "fiscale",
-      controparte: g.fin ? "Fiscale + BPM" : "Fiscale",
+      controparte: NOME_GRUPPO_FISCALE[g.gruppo],
       descrizione: elencoNumeri(g.voci),
       importo: g.importo,
       scadenza: g.scad,
@@ -612,6 +745,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       entrata: false,
       documenti: g.n,
       editabile: true,
+      tipologia: NOME_GRUPPO_FISCALE[g.gruppo],
     });
   // Costi fissi del mese: se è già uscito un movimento che li somiglia, no.
   const moviMese = input.movimenti.filter((m) => m.dataContabile.slice(0, 7) === meseCorr);
@@ -629,6 +763,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       entrata: false,
       documenti: 1,
       editabile: true,
+      tipologia: "Costi fissi",
     });
   }
   // Righe manuali (proprietà) e carta Amex ("CDC"). Una riga RICORRENTE
@@ -651,6 +786,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       entrata: Boolean(m.entrata),
       documenti: 1,
       editabile: true,
+      tipologia: m.tipo === "amex" ? "CDC" : "Manuale",
     });
   }
 
@@ -668,6 +804,9 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     // Data scelta a mano: solo per le entrate attese (quando il cliente ha
     // detto che paga) — alimenta il calendario entrate.
     const dataScelta = Boolean(g.entrata && g.tipo !== "incasso" && st.d);
+    const attesa = g.entrata && g.tipo !== "incasso";
+    // Entrata attesa in STANDBY (flag `s`): resta nel foglio ma non conta.
+    const parcheggiata = attesa && Boolean(st.s);
     const riga: RigaCassa = {
       ...g,
       importoOrigine: g.importo,
@@ -675,7 +814,8 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       scadenza: dataScelta ? st.d! : g.scadenza,
       secchio,
       secchioAuto: auto,
-      standbyIncasso: g.entrata && g.tipo !== "incasso",
+      standbyIncasso: attesa && !parcheggiata,
+      parcheggiata,
       nota: st.n ?? manuale?.nota ?? "",
       contestata: Boolean(st.c),
       priorita: st.p ?? manuale?.p,
@@ -684,10 +824,10 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     if (auto === "oltre" && !st.b && !manuale) oltre.push(riga);
     else righe.push(riga);
   }
-  // Ordine del foglio: a sinistra gli incassi per data poi gli attesi; a
-  // destra per scadenza e nome, a prescindere dalla colonna (così una riga
-  // spostata di colonna non cambia posto).
-  const tipoOrd = (r: RigaCassa) => (r.tipo === "incasso" ? 0 : 1);
+  // Ordine del foglio: a sinistra gli incassi per data, poi gli attesi, in
+  // fondo gli attesi parcheggiati; a destra per scadenza e nome, a
+  // prescindere dalla colonna (così una riga spostata non cambia posto).
+  const tipoOrd = (r: RigaCassa) => (r.tipo === "incasso" ? 0 : r.parcheggiata ? 2 : 1);
   righe.sort(
     (a, b) =>
       Number(b.entrata) - Number(a.entrata) ||
@@ -699,33 +839,48 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     (a, b) =>
       a.scadenza.localeCompare(b.scadenza) || a.controparte.localeCompare(b.controparte, "it"),
   );
+  addebitate.sort(
+    (a, b) =>
+      a.scadenza.localeCompare(b.scadenza) || a.controparte.localeCompare(b.controparte, "it"),
+  );
 
   const somma = (xs: readonly RigaCassa[]) => r2(xs.reduce((s, r) => s + r.importo, 0));
   const entrate = righe.filter((r) => r.entrata);
   const uscite = righe.filter((r) => !r.entrata);
-  const entrateRicevute = somma(entrate.filter((r) => !r.standbyIncasso));
+  const entrateRicevute = somma(entrate.filter((r) => !r.standbyIncasso && !r.parcheggiata));
   const entrateStandby = somma(entrate.filter((r) => r.standbyIncasso));
+  const entrateParcheggiate = somma(entrate.filter((r) => r.parcheggiata));
+  const acconti = r2(Math.max(0, db.acconti?.[meseCorr] ?? 0));
+  const entrantiNette = r2(entrateStandby - acconti);
   const usciteOra = somma(uscite.filter((r) => r.secchio === "ora"));
   const usciteProssimi = somma(uscite.filter((r) => r.secchio === "prossimi"));
   const usciteStandby = somma(uscite.filter((r) => r.secchio === "standby"));
+  const usciteStandby2 = somma(uscite.filter((r) => r.secchio === "standby2"));
   const saldoDopoOra = r2(input.saldo - usciteOra);
   const saldoDopoProssimi = r2(saldoDopoOra - usciteProssimi);
   const totali: TotaliCassa = {
     saldo: r2(input.saldo),
-    entrate: r2(entrateRicevute + entrateStandby),
+    entrate: r2(entrateRicevute + entrantiNette),
     entrateRicevute,
     entrateStandby,
+    entrateParcheggiate,
+    acconti,
+    entrantiNette,
     usciteOra,
     usciteProssimi,
     usciteStandby,
+    usciteStandby2,
     totaleDaPagare: r2(usciteOra + usciteStandby),
     saldoDopoOra,
     saldoDopoProssimi,
-    cassaConStandby: r2(saldoDopoProssimi + entrateStandby - usciteStandby),
+    cassaConStandby: r2(saldoDopoProssimi + entrantiNette - usciteStandby),
+    reale: r2(saldoDopoProssimi + entrantiNette),
+    usciteAddebitate: somma(addebitate),
+    nAddebitate: addebitate.length,
     nOltre: oltre.length,
     usciteOltre: somma(oltre.filter((r) => !r.entrata)),
   };
-  return { righe, oltre, totali };
+  return { righe, oltre, addebitate, totali };
 }
 
 export function creaFotografia(
@@ -752,6 +907,7 @@ export function creaFotografia(
       e: r.entrata,
       n: r.nota || undefined,
       si: r.standbyIncasso || undefined,
+      sp: r.parcheggiata || undefined,
       nd: r.documenti > 1 ? r.documenti : undefined,
       p: r.priorita,
     })),
