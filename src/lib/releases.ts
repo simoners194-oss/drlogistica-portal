@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.97.1",
+    date: "2026-11-02",
+    entries: [
+      {
+        title: "Cassa proprietà: il pulsante di standby delle entrate si legge",
+        description:
+          'Accanto alla data di ogni entrata attesa la pillola "⏸ Standby" (e "↩ Entranti" per tornare indietro) al posto della sola icona. Il blocco Standby delle entrate sta in fondo all\'elenco degli entranti, dentro il foglio che scorre: in soldoni, quello che non ci pagheranno mai; Standby 2 sulle uscite è quello che non pagheremo mai.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.97.0",
     date: "2026-11-02",
     entries: [

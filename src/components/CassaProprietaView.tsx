@@ -1879,9 +1879,9 @@ function ToggleStandby({
       type="button"
       onClick={() => onParcheggia(c, !c.parcheggiata)}
       title={c.parcheggiata ? t("cpr.riattivaEntrata") : t("cpr.parcheggiaEntrata")}
-      className={`shrink-0 rounded border px-1 text-[9px] font-bold uppercase ${c.parcheggiata ? "border-emerald-400 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300" : "border-slate-400 text-slate-600 hover:bg-slate-500/10 dark:text-slate-300"}`}
+      className={`shrink-0 rounded border px-1.5 text-[9px] font-bold uppercase ${c.parcheggiata ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300" : "border-slate-400 bg-slate-500/10 text-slate-700 hover:bg-slate-500/20 dark:text-slate-200"}`}
     >
-      {c.parcheggiata ? "↩" : "⏸"}
+      {c.parcheggiata ? `↩ ${t("cpr.entranti")}` : `⏸ ${t("cpr.colStandby")}`}
     </button>
   );
 }
