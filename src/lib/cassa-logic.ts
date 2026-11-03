@@ -828,11 +828,22 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   // fondo gli attesi parcheggiati; a destra per scadenza e nome, a
   // prescindere dalla colonna (così una riga spostata non cambia posto).
   const tipoOrd = (r: RigaCassa) => (r.tipo === "incasso" ? 0 : r.parcheggiata ? 2 : 1);
+  // Le tre righe fiscali (Fiscale, IVA, Banca) stanno vicine, alla data della
+  // prima scadenza fiscale e in quest'ordine, anche se in colonne diverse
+  // (Simone 03/11/2026: "avvicina IVA, Fiscale e Banca").
+  const ORD_FISC: Record<string, number> = { Fiscale: 0, IVA: 1, Banca: 2 };
+  const dataFisc = righe
+    .filter((r) => r.tipo === "fiscale")
+    .map((r) => r.scadenza)
+    .sort()[0];
+  const dataOrd = (r: RigaCassa) => (r.tipo === "fiscale" && dataFisc ? dataFisc : r.scadenza);
+  const fiscOrd = (r: RigaCassa) => (r.tipo === "fiscale" ? (ORD_FISC[r.controparte] ?? 3) : 5);
   righe.sort(
     (a, b) =>
       Number(b.entrata) - Number(a.entrata) ||
       tipoOrd(a) - tipoOrd(b) ||
-      a.scadenza.localeCompare(b.scadenza) ||
+      dataOrd(a).localeCompare(dataOrd(b)) ||
+      fiscOrd(a) - fiscOrd(b) ||
       a.controparte.localeCompare(b.controparte, "it"),
   );
   oltre.sort(

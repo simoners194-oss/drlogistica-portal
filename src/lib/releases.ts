@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.97.2",
+    date: "2026-11-03",
+    entries: [
+      {
+        title: "Cassa proprietà: Fiscale, IVA e Banca una sotto l'altra",
+        description:
+          "Le tre righe fiscali stanno vicine nel foglio, nell'ordine Fiscale, IVA, Banca, alla data della prima scadenza fiscale, anche quando finiscono in colonne diverse.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.97.1",
     date: "2026-11-02",
     entries: [
