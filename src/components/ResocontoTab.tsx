@@ -388,11 +388,17 @@ export function ResocontoTab() {
     if (ecNessuno) {
       movSel = [];
     } else if (ecSel.length) {
-      // Filtro estratto ESPLICITO: vince su tutto il resto.
-      const chiavi = new Set(ecSel);
-      movSel = movTutti.filter(
-        (m) => m.cliente && chiavi.has(clienteGroupKey(m.cliente) || m.cliente),
-      );
+      // Filtro estratto ESPLICITO: vince su tutto il resto. Le chiavi salvate
+      // nelle viste sono esatte, ma la banca a volte allunga il nome della
+      // controparte ("univex freight srl competenza" il 13/10/2026): vale
+      // anche la chiave che CONTIENE una di quelle scelte, altrimenti i
+      // bonifici spariscono dall'estratto della vista (Simone 04/11/2026).
+      const chiavi = [...new Set(ecSel)];
+      movSel = movTutti.filter((m) => {
+        if (!m.cliente) return false;
+        const k = clienteGroupKey(m.cliente) || m.cliente;
+        return chiavi.some((c) => k === c || k.includes(c));
+      });
     } else {
       // Automatico: l'estratto segue Cliente/Fornitore. Con nessun filtro il
       // quadro è GLOBALE: tutti i movimenti con controparte, tutte le fatture.

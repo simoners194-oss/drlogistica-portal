@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.101.1",
+    date: "2026-11-04",
+    entries: [
+      {
+        title: "Resoconto: le viste salvate ritrovano i bonifici con il nome allungato",
+        description:
+          'Nella vista "UNIVEX TOTALONE" l\'estratto conto dava 1.369.130,26 invece di 1.564.205,00: mancavano i due bonifici del 13 e 14 ottobre, che la banca ha registrato come "univex freight srl competenza" e "univex healthcare srl competenza". Ora una vista prende anche le controparti il cui nome contiene quello salvato.',
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.101.0",
     date: "2026-11-04",
     entries: [
