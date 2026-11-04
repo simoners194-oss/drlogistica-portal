@@ -22,7 +22,9 @@ async function utenteCassa(): Promise<ServerSessionUser> {
   return me;
 }
 
-const SECCHI: readonly SecchioCassa[] = ["ora", "prossimi", "standby"];
+// "standby2" c'e' dalla 1.97.0: senza, il validatore scartava lo spostamento
+// e la riga tornava nella colonna automatica (Simone 04/11/2026).
+const SECCHI: readonly SecchioCassa[] = ["ora", "prossimi", "standby", "standby2"];
 const PRIORITA: readonly PrioritaCassa[] = ["l", "m", "h"];
 const priorita = (v: unknown): PrioritaCassa | undefined =>
   PRIORITA.includes(v as PrioritaCassa) ? (v as PrioritaCassa) : undefined;

@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.98.1",
+    date: "2026-11-04",
+    entries: [
+      {
+        title: "Cassa proprietà: lo spostamento in Standby 2 ora resta",
+        description:
+          "Spostando un'uscita (o una riga scritta a mano) nella colonna Standby 2 la riga tornava nella colonna di partenza: il salvataggio scartava la colonna nuova. Corretto; Standby e Standby 2 si comportano allo stesso modo.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.98.0",
     date: "2026-11-04",
     entries: [
