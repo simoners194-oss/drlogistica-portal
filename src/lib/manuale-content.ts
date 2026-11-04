@@ -394,16 +394,19 @@ Il giro parte dal PC che ha le due attività pianificate di Windows ("DR Portal 
   {
     id: "fat-termini-opzioni",
     sezione: "Fatture",
-    titolo: "Scadenza dal 1° del mese e competenza al mese prima (accordi per cliente)",
+    titolo:
+      "Scadenza dal 1° del mese, competenza al mese prima, scadenza in fattura ignorata (accordi per controparte)",
     testo: `Nei Termini di pagamento (Finanze → Regole, scheda Clienti) ogni cliente ha i suoi giorni. Dalla 1.81.0 ci sono due opzioni in più, pensate per l'accordo con Univex (24/09) ma valide per chiunque le abbia:
 
 "Scadenza dal 1° del mese della fattura": se la fattura NON dichiara una scadenza propria, i giorni partono dal primo del mese in cui è stata emessa, non dalla data fattura. Una fattura del 21/07 a 65 giorni scade il 4/09, non il 24/09. Se invece nell'XML c'è una scadenza vera (diversa dalla data fattura), vince quella. Per i clienti senza l'opzione resta la regola di sempre: termini dalla data fattura.
 
 "Competenza = mese precedente": quando il mese non è scritto nella descrizione della fattura, la competenza è il mese prima dell'emissione, qualunque sia il giorno (senza l'opzione vale la regola del giorno 15). Se il mese è scritto in fattura ("competenze giugno"), vince sempre quello.
 
-Le opzioni si vedono come etichette accanto al cliente nell'elenco dei termini ("dal 1° del mese", "mese prec.") e si tolgono rientrando nel termine con la matita. Cambiano solo scadenze, ritardi e mese di competenza: importi e stati d'incasso non si toccano.`,
+Le opzioni si vedono come etichette accanto al cliente nell'elenco dei termini ("dal 1° del mese", "mese prec.") e si tolgono rientrando nel termine con la matita. Cambiano solo scadenze, ritardi e mese di competenza: importi e stati d'incasso non si toccano.
+
+Dalla 1.98.0 c'è una terza spunta, per clienti E fornitori: "Ignora la scadenza scritta in fattura". Con la spunta la data dichiarata nell'XML non conta mai e valgono solo i giorni della regola (dalla data fattura, oppure dal 1° del mese se c'è anche quell'opzione). Serve soprattutto ai fornitori, dove di norma vince la scadenza scritta in fattura, e ai clienti con "dal 1° del mese"; per gli altri clienti i termini contrattuali valgono già da soli. Nell'elenco si riconosce dall'etichetta "solo giorni regola". Le scadenze cambiano ovunque: Fatture, Flussi, Cassa proprietà, solleciti.`,
     chiavi:
-      "termini scadenza primo del mese decorrenza competenza mese precedente univex accordo ritardo sollecito",
+      "termini scadenza primo del mese decorrenza competenza mese precedente univex accordo ritardo sollecito ignora scadenza fattura solo giorni regola fornitori xml",
   },
   {
     id: "fat-colonne",
@@ -446,9 +449,11 @@ Dalla 1.97.0 (richieste della proprietà del 02/11/2026) il foglio ha quattro co
 
 Tre regole nuove sui numeri. Le righe fiscali sono tre: "Fiscale" (F24 e tutte le rateizzazioni, anche quelle dell'IVA), "IVA" (l'IVA corrente, che si parcheggia o si paga) e "Banca" (le rate di finanziamento), ognuna nella sua colonna per scadenza ma una sotto l'altra nel foglio, in quest'ordine. I RID/RiBa già scaduti (e le rate di finanziamento ad addebito già scadute) non stanno più tra le uscite: la banca li ha già presi e il saldo li ha già dentro; sotto il foglio una riga dice quanti sono e per quanto. Una fattura che scade l'ultimo giorno del mese vale come scadenza il primo del mese dopo (quindi va nei "prossimi giorni", non in "da pagare").
 
-Due comodità: il bottone "Uscite per" sopra il foglio raggruppa le spese per tipologia di costo (dalle fatture, poi dalla macrovoce del fornitore) o per cliente/appalto (ClienteRif, poi l'appalto del fornitore, gli stipendi per appalto), in sola lettura con l'elenco dei fornitori nel dettaglio; "fornitore" riporta al foglio normale. Il nome di una riga scritta a mano si cambia con un clic (così "Stipendi iMile" è diventata "Acconto per DR Logistics (Aldo)"). Il foglio scorre dentro la sua cornice con le testate fisse.`,
+Due comodità: il bottone "Uscite per" sopra il foglio raggruppa le spese per tipologia di costo (dalle fatture, poi dalla macrovoce del fornitore) o per cliente/appalto (ClienteRif, poi l'appalto del fornitore, gli stipendi per appalto), in sola lettura con l'elenco dei fornitori nel dettaglio; "fornitore" riporta al foglio normale. Il nome di una riga scritta a mano si cambia con un clic (così "Stipendi iMile" è diventata "Acconto per DR Logistics (Aldo)"). Il foglio scorre dentro la sua cornice con le testate fisse.
+
+Dalla 1.98.0 (richieste di Simone del 04/11/2026) i nomi del foglio sono link, come nella vista classica: il cliente di un'entrata (attesa o già in banca) apre la scheda con le sue fatture aperte (numero, data, scadenza con la regola di fine mese, importo, residuo, stato Aruba, giorni di ritardo); il fornitore di un'uscita apre la scheda fornitore dei Flussi, anche dalla lista "oltre il limite" e dagli addebitati; con "Uscite per" tipologia o cliente, il nome del gruppo apre l'elenco dei fornitori dentro, ognuno cliccabile. Le entrate attese stanno su UNA RIGA PER CLIENTE E SCADENZA: le fatture dello stesso cliente con la stessa data restano insieme, quelle con date diverse vanno su righe diverse (standby, nota e data scelta sulla vecchia riga unica si ereditano). Sulle uscite, accanto al nome del fornitore, il foglietto mostra al passaggio il promemoria scritto nella sua scheda (cosa fa davvero, regole da ricordare); nel dettaglio della riga c'è anche la causale scritta su ogni fattura.`,
     chiavi:
-      "cassa proprietà foglio commercialista fotografia saldo banca standby parcheggiate prossimi giorni 1-5 novembre scadenze imminenti divisione utili amex cdc carta credito stipendi non pagati niente previsioni entrate attese incassi arrivati da pagare totale da pagare calendario entrate data attesa agenda cose da fare priorità alta media bassa ogni mese ricorrente stipendi imile reale acconti standby 2 prolungato entrate in standby fiscale iva banca rid addebitati fine mese primo del mese raggruppa tipologia cliente rinomina acconto dr logistics",
+      "cassa proprietà foglio commercialista link scheda cliente fatture aperte gruppo fornitori promemoria causale fattura una riga per scadenza fotografia saldo banca standby parcheggiate prossimi giorni 1-5 novembre scadenze imminenti divisione utili amex cdc carta credito stipendi non pagati niente previsioni entrate attese incassi arrivati da pagare totale da pagare calendario entrate data attesa agenda cose da fare priorità alta media bassa ogni mese ricorrente stipendi imile reale acconti standby 2 prolungato entrate in standby fiscale iva banca rid addebitati fine mese primo del mese raggruppa tipologia cliente rinomina acconto dr logistics",
   },
   {
     id: "flu-lettura",

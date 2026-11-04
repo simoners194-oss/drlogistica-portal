@@ -237,11 +237,14 @@ export interface RigaCassa {
    *  appalto). Vuoti = "senza". */
   tipologia?: string;
   cliente?: string;
+  /** Promemoria scritto sulla scheda del fornitore (cosa fa davvero, regole
+   *  da ricordare): si legge col mouse sull'icona accanto al nome. */
+  promemoria?: string;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const chiaveCliente = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+export const chiaveCliente = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 export function fineMese(iso: string): string {
   const [y, m] = iso.slice(0, 7).split("-").map(Number);
@@ -496,7 +499,11 @@ type Grezza = Omit<
   | "importoOrigine"
   | "priorita"
   | "dataScelta"
->;
+> & {
+  /** Chiave con cui la riga era salvata prima (entranti per cliente, fino
+   *  alla 1.97.x): le decisioni prese allora valgono ancora. */
+  chiaveVecchia?: string;
+};
 
 function elencoNumeri(numeri: readonly string[]): string {
   const n = numeri.length;
@@ -539,9 +546,13 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   // ENTRATE attese: fatture attive aperte con scadenza entro il limite,
   // una riga per cliente (l'importo si corregge a mano con quello che il
   // cliente annuncia). Esclusioni dei Flussi rispettate.
+  // Simone 04/11/2026 ("una riga per fattura entrante se ha date diverse"):
+  // una riga per cliente E scadenza — le fatture dello stesso cliente con
+  // la stessa scadenza stanno insieme, quelle con date diverse su righe
+  // diverse.
   const gruppiAtt = new Map<
     string,
-    { nome: string; importo: number; n: number; scad: string; numeri: string[] }
+    { nome: string; k: string; importo: number; n: number; scad: string; numeri: string[] }
   >();
   for (const x of input.attive) {
     const res = residuoAperto(x);
@@ -550,16 +561,19 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     if (scad > limite) continue;
     if (esclusaDaFlussi(input.esclusioni, x.f.cliente, scad.slice(0, 7))) continue;
     const k = chiaveCliente(x.f.cliente);
-    const g = gruppiAtt.get(k) ?? { nome: x.f.cliente, importo: 0, n: 0, scad, numeri: [] };
+    const kd = `${k}|${scad}`;
+    const g = gruppiAtt.get(kd) ?? { nome: x.f.cliente, k, importo: 0, n: 0, scad, numeri: [] };
     g.importo = r2(g.importo + res);
     g.n++;
-    if (scad < g.scad) g.scad = scad;
     g.numeri.push(x.f.numero);
-    gruppiAtt.set(k, g);
+    gruppiAtt.set(kd, g);
   }
-  for (const [k, g] of gruppiAtt)
+  for (const g of gruppiAtt.values())
     grezze.push({
-      chiave: `attc|${meseCorr}|${k}`,
+      chiave: `attc|${meseCorr}|${g.k}|${g.scad}`,
+      // Fino alla 1.97.x la riga era una per cliente: le decisioni prese
+      // allora (standby, nota, data) si ereditano se la riga nuova non ne ha.
+      chiaveVecchia: `attc|${meseCorr}|${g.k}`,
       tipo: "attiva",
       controparte: g.nome,
       descrizione: `${g.n} fatt. ${elencoNumeri(g.numeri)} · scad. ${ddmm(g.scad)}`,
@@ -583,6 +597,8 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       scad: string;
       mods: Set<string>;
       numeri: string[];
+      /** "numero: causale" delle fatture (Simone 04/11/2026). */
+      causali: string[];
       tip: Map<string, number>;
       cli: Map<string, number>;
     }
@@ -609,6 +625,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       scad,
       mods: new Set<string>(),
       numeri: [],
+      causali: [],
       tip: new Map<string, number>(),
       cli: new Map<string, number>(),
     };
@@ -617,6 +634,10 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     if (scad < g.scad) g.scad = scad;
     g.mods.add(mod);
     g.numeri.push(x.f.numero);
+    // Causale scritta in fattura ("segnare per ogni fattura da pagare anche
+    // la causale", Simone 04/11/2026): nel dettaglio della riga.
+    const causale = (x.f.oggetto ?? "").replace(/\s+/g, " ").trim();
+    if (causale) g.causali.push(`${x.f.numero}: ${causale.slice(0, 80)}`);
     // Tipologia e cliente della fattura (poi macrovoce/appalto del fornitore).
     const tip = (x.f.tipologiaCosto ?? info?.macrovoce ?? "").trim();
     const cli = (x.f.clienteRif ?? info?.appalto ?? "").trim();
@@ -633,7 +654,12 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       chiave: `pasg|${k}`,
       tipo: "passiva",
       controparte: g.nome,
-      descrizione: `${g.n} fatt. ${elencoNumeri(g.numeri)} · scad. ${ddmm(g.scad)}${mod ? ` · ${mod}` : ""}`,
+      promemoria: input.infoFornitori.get(chiaveFornitore(g.nome))?.promemoria || undefined,
+      descrizione: `${g.n} fatt. ${elencoNumeri(g.numeri)} · scad. ${ddmm(g.scad)}${mod ? ` · ${mod}` : ""}${
+        g.causali.length
+          ? ` · ${g.causali.slice(0, 4).join(" · ")}${g.causali.length > 4 ? " …" : ""}`
+          : ""
+      }`,
       importo: g.importo,
       scadenza: g.scad,
       certa,
@@ -793,7 +819,13 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   const righe: RigaCassa[] = [];
   const oltre: RigaCassa[] = [];
   for (const g of grezze) {
-    const st = stato(g.chiave);
+    // Riga senza decisioni proprie: valgono quelle della chiave vecchia,
+    // tranne l'importo corretto a mano (era dell'intero cliente).
+    const st: StatoRigaCassa = db.stati[g.chiave]
+      ? stato(g.chiave)
+      : g.chiaveVecchia && db.stati[g.chiaveVecchia]
+        ? { ...stato(g.chiaveVecchia), i: undefined }
+        : {};
     if (st.x) continue;
     const manuale = db.manuali.find((m) => `man|${m.id}` === g.chiave);
     const auto: SecchioCassa | "oltre" =

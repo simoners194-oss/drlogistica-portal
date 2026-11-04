@@ -1817,6 +1817,7 @@ function FinanzaPage() {
     oggetto?: string;
     decorrenzaMese?: boolean;
     competenzaPrecedente?: boolean;
+    ignoraScadenza?: boolean;
   };
   const [termini, setTermini] = useState<TermineRiga[] | null>(null);
   const [tCliente, setTCliente] = useState("");
@@ -1827,6 +1828,9 @@ function FinanzaPage() {
   // precedente quando non e' scritta in fattura.
   const [tDecorrenza, setTDecorrenza] = useState(false);
   const [tCompPrec, setTCompPrec] = useState(false);
+  // "Ignora la scadenza scritta in fattura" (Simone 04/11/2026): contano
+  // solo i giorni della regola, per clienti e fornitori.
+  const [tIgnoraScad, setTIgnoraScad] = useState(false);
   // Parole chiave sull'oggetto fattura: rendono il termine una REGOLA
   // (es. IMILE + "locazione, affitto" -> 0 giorni, a vista).
   const [tOggetto, setTOggetto] = useState("");
@@ -1857,6 +1861,7 @@ function FinanzaPage() {
               oggetto: oggetto || undefined,
               decorrenzaMese: tDecorrenza,
               competenzaPrecedente: tCompPrec,
+              ignoraScadenza: tIgnoraScad,
             },
           ],
         },
@@ -1867,6 +1872,7 @@ function FinanzaPage() {
       setTOggetto("");
       setTDecorrenza(false);
       setTCompPrec(false);
+      setTIgnoraScad(false);
       loadRegole();
       toast.success(t("fin.termSalvato"));
     } catch (err) {
@@ -5341,26 +5347,36 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                   className={inputCls}
                 />
               </div>
-              {tDirezione === "Emessa" && (
-                <div className="flex flex-col gap-1 text-xs text-foreground">
-                  <label className="flex items-center gap-2" title={t("fin.termDecorrenzaTip")}>
-                    <input
-                      type="checkbox"
-                      checked={tDecorrenza}
-                      onChange={(e) => setTDecorrenza(e.target.checked)}
-                    />
-                    {t("fin.termDecorrenza")}
-                  </label>
-                  <label className="flex items-center gap-2" title={t("fin.termCompPrecTip")}>
-                    <input
-                      type="checkbox"
-                      checked={tCompPrec}
-                      onChange={(e) => setTCompPrec(e.target.checked)}
-                    />
-                    {t("fin.termCompPrec")}
-                  </label>
-                </div>
-              )}
+              <div className="flex flex-col gap-1 text-xs text-foreground">
+                {tDirezione === "Emessa" && (
+                  <>
+                    <label className="flex items-center gap-2" title={t("fin.termDecorrenzaTip")}>
+                      <input
+                        type="checkbox"
+                        checked={tDecorrenza}
+                        onChange={(e) => setTDecorrenza(e.target.checked)}
+                      />
+                      {t("fin.termDecorrenza")}
+                    </label>
+                    <label className="flex items-center gap-2" title={t("fin.termCompPrecTip")}>
+                      <input
+                        type="checkbox"
+                        checked={tCompPrec}
+                        onChange={(e) => setTCompPrec(e.target.checked)}
+                      />
+                      {t("fin.termCompPrec")}
+                    </label>
+                  </>
+                )}
+                <label className="flex items-center gap-2" title={t("fin.termIgnoraScadTip")}>
+                  <input
+                    type="checkbox"
+                    checked={tIgnoraScad}
+                    onChange={(e) => setTIgnoraScad(e.target.checked)}
+                  />
+                  {t("fin.termIgnoraScad")}
+                </label>
+              </div>
               <button
                 type="button"
                 disabled={tBusy}
@@ -5410,6 +5426,14 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                             {t("fin.termCompPrecBadge")}
                           </span>
                         )}
+                        {x.ignoraScadenza && (
+                          <span
+                            className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
+                            title={t("fin.termIgnoraScadTip")}
+                          >
+                            {t("fin.termIgnoraScadBadge")}
+                          </span>
+                        )}
                       </span>
                       <b className="tabular-nums">
                         {x.giorni} {t("fin.termGg")}
@@ -5423,6 +5447,7 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                           setTOggetto(x.oggetto ?? "");
                           setTDecorrenza(!!x.decorrenzaMese);
                           setTCompPrec(!!x.competenzaPrecedente);
+                          setTIgnoraScad(!!x.ignoraScadenza);
                           // Il modulo sta in cima alla card: con 50+ righe il
                           // click sembrava non fare NULLA (successo il 08/09).
                           // Si scorre al modulo e si mette il focus sul campo.

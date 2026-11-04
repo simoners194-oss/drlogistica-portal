@@ -9,9 +9,20 @@
 // riga. Logica in lib/cassa-logic; dati in FinanzaData/cassa.json.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { CalendarDays, Camera, ListTodo, Loader2, Lock, Pencil, Plus, X } from "lucide-react";
+import {
+  CalendarDays,
+  Camera,
+  ListTodo,
+  Loader2,
+  Lock,
+  Pencil,
+  Plus,
+  StickyNote,
+  X,
+} from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { EsportaStampa } from "@/components/EsportaStampa";
+import { SchedaClienteCassa, SchedaGruppoCassa } from "@/components/CassaSchede";
 import type { FatturaConStato } from "@/lib/fatture-logic";
 import type { CostoFisso, FornitoreInfo } from "@/lib/flussi-logic";
 import type { ScadenzaFiscale } from "@/lib/fiscale-logic";
@@ -88,6 +99,10 @@ interface Cella {
   /** Per raggruppare le uscite per tipologia o per cliente. */
   tipologia?: string;
   cliente?: string;
+  /** Righe di gruppo: i fornitori dentro, per aprirli con un clic. */
+  membri?: { nome: string; importo: number; tipo: TipoRigaCassa }[];
+  /** Promemoria della scheda fornitore (icona col testo al passaggio). */
+  promemoria?: string;
 }
 
 /** Vista raggruppata delle uscite (Simone 02/11/2026: "raggruppare le spese
@@ -118,6 +133,7 @@ function raggruppaUscite(uscite: readonly Cella[], per: Raggruppa, t: TFn): Cell
       dataScelta: false,
       modalita: undefined,
       stima: false,
+      membri: [],
       nomi: [],
     };
     r.importo = Math.round((r.importo + u.importo) * 100) / 100;
@@ -125,6 +141,7 @@ function raggruppaUscite(uscite: readonly Cella[], per: Raggruppa, t: TFn): Cell
     r.documenti += 1;
     if (u.data < r.data) r.data = u.data;
     r.nomi.push(`${u.nome} ${fmt(u.importo)}`);
+    r.membri?.push({ nome: u.nome, importo: u.importo, tipo: u.tipo });
     gruppi.set(k, r);
   }
   return [...gruppi.values()]
@@ -132,6 +149,9 @@ function raggruppaUscite(uscite: readonly Cella[], per: Raggruppa, t: TFn): Cell
     .sort((a, b) => b.importo - a.importo || a.nome.localeCompare(b.nome, "it"));
 }
 const eGruppo = (c: Cella) => c.chiave.startsWith("grp|");
+/** I nomi del foglio sono link (Simone 04/11/2026, "come su vista classica"). */
+const LINK_CLS =
+  "text-left underline decoration-dotted decoration-border underline-offset-4 hover:text-primary hover:decoration-primary";
 
 const daRiga = (r: RigaCassa): Cella => ({
   chiave: r.chiave,
@@ -155,6 +175,7 @@ const daRiga = (r: RigaCassa): Cella => ({
   stima: r.stima,
   tipologia: r.tipologia,
   cliente: r.cliente,
+  promemoria: r.promemoria,
 });
 
 /** La colonna Entrate in tre blocchi col loro totale: "Già entrate" (in
@@ -232,6 +253,11 @@ export function CassaProprietaView({
   const [fotoId, setFotoId] = useState<string | null>(null);
   // Uscite per fornitore (il foglio) oppure raggruppate per tipologia o cliente.
   const [raggruppa, setRaggruppa] = useState<Raggruppa>("fornitore");
+  // Schede che si aprono dai nomi del foglio (Simone 04/11/2026): cliente
+  // (le sue fatture aperte) e gruppo (i fornitori dentro); i fornitori
+  // aprono la scheda dei Flussi tramite onApriFornitore.
+  const [clienteAperto, setClienteAperto] = useState<string | null>(null);
+  const [gruppoAperto, setGruppoAperto] = useState<Cella | null>(null);
 
   useEffect(() => {
     spCassaGet()
@@ -711,8 +737,25 @@ export function CassaProprietaView({
           onAcconti={setAcconti}
           onRinomina={rinomina}
           onApriFornitore={onApriFornitore}
+          onApriCliente={setClienteAperto}
+          onApriGruppo={setGruppoAperto}
           oggi={oggi}
         />
+        {clienteAperto && (
+          <SchedaClienteCassa
+            nome={clienteAperto}
+            attive={attive}
+            oggi={oggi}
+            onChiudi={() => setClienteAperto(null)}
+          />
+        )}
+        {gruppoAperto && (
+          <SchedaGruppoCassa
+            gruppo={gruppoAperto}
+            onApriFornitore={onApriFornitore}
+            onChiudi={() => setGruppoAperto(null)}
+          />
+        )}
         {/* RID/RiBa già scaduti: la banca li ha già presi, fuori dal foglio */}
         {!foto && esito.addebitate.length > 0 && (
           <div
@@ -727,10 +770,23 @@ export function CassaProprietaView({
               {esito.addebitate.length} · {fmt(totali.usciteAddebitate)} €
             </span>{" "}
             (
-            {esito.addebitate
-              .slice(0, 6)
-              .map((r) => r.controparte)
-              .join(", ")}
+            {esito.addebitate.slice(0, 6).map((r, i) => (
+              <span key={r.chiave}>
+                {i > 0 && ", "}
+                {r.tipo === "passiva" && onApriFornitore ? (
+                  <button
+                    type="button"
+                    onClick={() => onApriFornitore(r.controparte)}
+                    title={t("cpr.apriFornitore")}
+                    className={LINK_CLS}
+                  >
+                    {r.controparte}
+                  </button>
+                ) : (
+                  r.controparte
+                )}
+              </span>
+            ))}
             {esito.addebitate.length > 6 ? ", …" : ""})
           </div>
         )}
@@ -869,7 +925,18 @@ export function CassaProprietaView({
                   <tr key={r.chiave} className="border-b border-border/40">
                     <td className="py-0.5 pr-3 whitespace-nowrap">{ddmm(r.scadenza)}</td>
                     <td className="py-0.5 pr-3 text-foreground">
-                      {r.controparte}
+                      {r.tipo === "passiva" && onApriFornitore ? (
+                        <button
+                          type="button"
+                          onClick={() => onApriFornitore(r.controparte)}
+                          title={t("cpr.apriFornitore")}
+                          className={LINK_CLS}
+                        >
+                          {r.controparte}
+                        </button>
+                      ) : (
+                        r.controparte
+                      )}
                       {r.documenti > 1 && r.tipo !== "stipendi" && (
                         <span className="ml-1 text-muted-foreground">×{r.documenti}</span>
                       )}
@@ -1000,6 +1067,8 @@ function Foglio({
   onAcconti,
   onRinomina,
   onApriFornitore,
+  onApriCliente,
+  onApriGruppo,
 }: {
   t: TFn;
   entrate: readonly Cella[];
@@ -1023,6 +1092,10 @@ function Foglio({
   /** Nuovo nome per una riga scritta a mano. */
   onRinomina: (c: Cella, nome: string) => void;
   onApriFornitore?: (nome: string) => void;
+  /** Clic sul nome di un cliente: le sue fatture aperte. */
+  onApriCliente: (nome: string) => void;
+  /** Clic sul nome di un gruppo (uscite per tipologia/cliente): i fornitori dentro. */
+  onApriGruppo: (c: Cella) => void;
 }) {
   const [nuova, setNuova] = useState<null | {
     entrata: boolean;
@@ -1238,13 +1311,24 @@ function Foglio({
                     >
                       {e && (
                         <span className="flex items-center gap-1.5">
-                          <NomeRiga
-                            c={e}
-                            readOnly={readOnly}
-                            onRinomina={onRinomina}
-                            t={t}
-                            className={`max-w-[200px] truncate ${eManuale(e) ? "italic" : ""}`}
-                          />
+                          {e.tipo === "attiva" || e.tipo === "incasso" ? (
+                            <button
+                              type="button"
+                              onClick={() => onApriCliente(e.nome)}
+                              title={t("cpr.apriCliente")}
+                              className={`max-w-[200px] truncate ${LINK_CLS}`}
+                            >
+                              {e.nome}
+                            </button>
+                          ) : (
+                            <NomeRiga
+                              c={e}
+                              readOnly={readOnly}
+                              onRinomina={onRinomina}
+                              t={t}
+                              className={`max-w-[200px] truncate ${eManuale(e) ? "italic" : ""}`}
+                            />
+                          )}
                           {eManuale(e) && (
                             <span
                               className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
@@ -1287,6 +1371,15 @@ function Foglio({
                         >
                           {u.nome}
                         </button>
+                      ) : eGruppo(u) ? (
+                        <button
+                          type="button"
+                          onClick={() => onApriGruppo(u)}
+                          title={t("cpr.apriGruppo")}
+                          className={`truncate font-medium ${LINK_CLS}`}
+                        >
+                          {u.nome}
+                        </button>
                       ) : (
                         <NomeRiga
                           c={u}
@@ -1295,6 +1388,11 @@ function Foglio({
                           t={t}
                           className={`truncate font-medium ${eManuale(u) ? "italic" : ""}`}
                         />
+                      )}
+                      {u.promemoria && (
+                        <span className="shrink-0 cursor-help text-amber-600" title={u.promemoria}>
+                          <StickyNote className="h-3 w-3" />
+                        </span>
                       )}
                       {u.documenti > 1 && u.tipo !== "stipendi" && (
                         <span className="shrink-0 text-[10.5px] text-muted-foreground">

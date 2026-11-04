@@ -50,6 +50,10 @@ export interface FornitoreInfo {
   referente?: string;
   macrovoce?: string;
   appalto?: string;
+  /** Promemoria libero (Simone 04/11/2026): cosa fa davvero il fornitore e
+   *  le regole da ricordare. Vive nella colonna Promemoria (testo lungo),
+   *  non nel JSON delle Note. */
+  promemoria?: string;
 }
 
 /** Chiave di raggruppamento del fornitore (stessa dei Flussi/Resoconto). */
@@ -101,12 +105,16 @@ export interface FornitoreSalvato extends FornitoreInfo {
 
 /** Mappa chiave fornitore → informazioni salvate (righe genere "fornitore"). */
 export function mappaFornitori(
-  righe: readonly { genere: string; nome: string; note?: string }[],
+  righe: readonly { genere: string; nome: string; note?: string; promemoria?: string }[],
 ): Map<string, FornitoreSalvato> {
   const out = new Map<string, FornitoreSalvato>();
   for (const r of righe) {
     if (r.genere !== "fornitore" || !r.nome.trim()) continue;
-    out.set(chiaveFornitore(r.nome), { nomeRiga: r.nome, ...parseFornitoreInfo(r.note) });
+    out.set(chiaveFornitore(r.nome), {
+      nomeRiga: r.nome,
+      ...parseFornitoreInfo(r.note),
+      promemoria: r.promemoria?.trim() || undefined,
+    });
   }
   return out;
 }
@@ -152,6 +160,8 @@ export interface RigaFornitore {
   referente: string;
   macrovoce: string;
   appalto: string;
+  /** Promemoria libero della scheda (cosa fa davvero, regole da ricordare). */
+  promemoria: string;
   /** Proposte dalle fatture (tipologia di costo / cliente di riferimento). */
   macrovoceAuto: string;
   appaltoAuto: string;
@@ -279,6 +289,7 @@ export function riepilogoFornitori(
       referente: salvato?.referente ?? "",
       macrovoce: salvato?.macrovoce ?? "",
       appalto: salvato?.appalto ?? "",
+      promemoria: salvato?.promemoria ?? "",
       macrovoceAuto: piuFrequente(a.macro),
       appaltoAuto: piuFrequente(a.appalti),
       scaduto: r2(a.scaduto),

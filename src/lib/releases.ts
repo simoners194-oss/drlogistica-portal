@@ -36,6 +36,40 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.98.0",
+    date: "2026-11-04",
+    entries: [
+      {
+        title: "Regole: spunta per ignorare la scadenza scritta in fattura",
+        description:
+          "Nei Termini di pagamento (Finanze → Regole) c'è la terza spunta \"Ignora la scadenza scritta in fattura\", per clienti e fornitori: la data dichiarata nell'XML non conta mai e valgono solo i giorni della regola (dalla data fattura, o dal 1° del mese se c'è anche quell'opzione). Serve soprattutto ai fornitori, dove finora vinceva la scadenza scritta in fattura. Etichetta \"solo giorni regola\" nell'elenco.",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: i nomi sono link come nella vista classica",
+        description:
+          "Il cliente di un'entrata apre la scheda con le sue fatture aperte (numero, data, scadenza, importo, residuo, stato Aruba, ritardo); il fornitore di un'uscita apre la scheda fornitore dei Flussi, anche dalla lista \"oltre il limite\" e dagli addebitati; con le uscite per tipologia o cliente, il nome del gruppo apre l'elenco dei fornitori dentro.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: entrate attese una riga per cliente e scadenza",
+        description:
+          "Le fatture dello stesso cliente con la stessa scadenza restano insieme, quelle con date diverse stanno su righe diverse. Standby, nota e data scelta sulla vecchia riga unica del cliente si ereditano.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+      {
+        title: "Scheda fornitore: promemoria e causale delle fatture",
+        description:
+          "Nella scheda fornitore (Flussi e Cassa proprietà) c'è un campo libero \"Promemoria\" per scrivere cosa fa davvero il fornitore e le regole da ricordare quando si paga; nella Cassa proprietà il foglietto accanto al nome lo mostra al passaggio. L'elenco delle fatture aperte della scheda e il dettaglio della riga in Cassa riportano la causale scritta su ogni fattura.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.97.2",
     date: "2026-11-03",
     entries: [

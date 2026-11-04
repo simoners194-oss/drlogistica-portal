@@ -115,6 +115,8 @@ export interface FatturaScheda {
   residuo: number;
   inRitardo: boolean;
   modalita: ModalitaPagamento;
+  /** Causale scritta in fattura (Simone 04/11/2026). */
+  oggetto?: string;
 }
 
 export function SchedaFornitore({
@@ -137,18 +139,21 @@ export function SchedaFornitore({
   const [referente, setReferente] = useState(riga.referente);
   const [macrovoce, setMacrovoce] = useState(riga.macrovoce);
   const [appalto, setAppalto] = useState(riga.appalto);
+  const [promemoria, setPromemoria] = useState(riga.promemoria);
   // Riallineo le caselle quando cambia il fornitore (o dopo un salvataggio).
   useEffect(() => {
     setModalita(riga.override ?? "");
     setReferente(riga.referente);
     setMacrovoce(riga.macrovoce);
     setAppalto(riga.appalto);
-  }, [riga.chiave, riga.override, riga.referente, riga.macrovoce, riga.appalto]);
+    setPromemoria(riga.promemoria);
+  }, [riga.chiave, riga.override, riga.referente, riga.macrovoce, riga.appalto, riga.promemoria]);
   const cambiato =
     (modalita || undefined) !== riga.override ||
     referente.trim() !== riga.referente ||
     macrovoce.trim() !== riga.macrovoce ||
-    appalto.trim() !== riga.appalto;
+    appalto.trim() !== riga.appalto ||
+    promemoria.trim() !== riga.promemoria;
 
   const lbl = "text-[11px] uppercase text-muted-foreground";
   const stat = (etichetta: string, valore: string, cls = "") => (
@@ -238,6 +243,20 @@ export function SchedaFornitore({
             />
           </div>
         </div>
+        {/* Promemoria libero (Simone 04/11/2026): cosa fa davvero il
+            fornitore e le regole da ricordare quando si paga. */}
+        <div className="mb-3">
+          <div className={lbl}>{t("for.promemoria")}</div>
+          <textarea
+            value={promemoria}
+            disabled={busy}
+            rows={3}
+            maxLength={2000}
+            placeholder={t("for.promemoriaPh")}
+            onChange={(e) => setPromemoria(e.target.value)}
+            className={`${inputVocabCls} min-h-16 resize-y`}
+          />
+        </div>
         <div className="mb-4 flex items-center gap-2">
           <button
             type="button"
@@ -248,6 +267,7 @@ export function SchedaFornitore({
                 referente: referente.trim(),
                 macrovoce: macrovoce.trim(),
                 appalto: appalto.trim(),
+                promemoria: promemoria.trim(),
               })
             }
             className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"
@@ -290,6 +310,7 @@ export function SchedaFornitore({
                 <th className="px-2 py-1">{t("for.colNumero")}</th>
                 <th className="px-2 py-1">{t("fis.colData")}</th>
                 <th className="px-2 py-1">{t("for.colScad")}</th>
+                <th className="px-2 py-1">{t("for.colCausale")}</th>
                 <th className="px-2 py-1 text-right">{t("for.colResiduo")}</th>
                 <th className="px-2 py-1 text-center">{t("for.colModalita")}</th>
               </tr>
@@ -306,6 +327,12 @@ export function SchedaFornitore({
                   >
                     {dataIt(f.scadenza)}
                   </td>
+                  <td
+                    className="max-w-64 truncate px-2 py-0.5 text-muted-foreground"
+                    title={f.oggetto ?? ""}
+                  >
+                    {f.oggetto ?? ""}
+                  </td>
                   <td className="whitespace-nowrap px-2 py-0.5 text-right tabular-nums">
                     {fmtImporto(f.residuo)}
                   </td>
@@ -318,7 +345,7 @@ export function SchedaFornitore({
               ))}
               {fatture.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-3 text-center text-muted-foreground">
+                  <td colSpan={6} className="py-3 text-center text-muted-foreground">
                     {t("for.nessunaFattura")}
                   </td>
                 </tr>

@@ -942,6 +942,18 @@ const en = {
   "cpr.nonParcheggiabile":
     "Direct debit (RID/RiBa): it leaves on its own at the due date, it cannot be moved",
   "cpr.apriFornitore": "Open the supplier card",
+  "cpr.apriCliente": "Open the client's open invoices",
+  "cpr.apriGruppo": "Open the suppliers in this group",
+  "cpr.schedaCliente": "Open invoices",
+  "cpr.schedaClienteVuota":
+    "No open invoice under this name (a bank receipt may carry a name different from the invoice).",
+  "cpr.schedaClienteNota":
+    "Open balance of the issued invoices net of Aruba/bank receipts and linked credit notes; due date with the end-of-month rule (the last day of the month counts as the 1st of the next).",
+  "cpr.schedaGruppo": "Suppliers in the group",
+  "cpr.colAruba": "Aruba",
+  "cpr.scaduto": "overdue",
+  "cpr.apertoTot": "Open",
+  "cpr.diCuiScaduto": "of which overdue",
   "cpr.attesa": "expected",
   "cpr.spostaQui": "Move here",
   "cpr.togliTip": "Remove this line from the sheet",
@@ -1159,6 +1171,10 @@ const en = {
   "for.fattureAperte": "Open invoices in the flow",
   "for.nessunaFattura": "No open invoice in the flow.",
   "for.schedaNota": "The same boxes are in the Suppliers tab.",
+  "for.promemoria": "Reminder: what they actually do and rules to remember",
+  "for.promemoriaPh":
+    "e.g. Cerro transports for iMile; pays only at month end; call before paying…",
+  "for.colCausale": "Invoice subject",
   "for.colResiduo": "Outstanding",
   "for.colNumero": "Number",
   "for.colScad": "Due date",
@@ -1327,6 +1343,10 @@ const en = {
   "fin.termCompPrecTip":
     "When the month is not written in the invoice description, the competence month is the one before issue, whatever the day.",
   "fin.termCompPrecBadge": "prev. month",
+  "fin.termIgnoraScad": "Ignore the due date written on the invoice",
+  "fin.termIgnoraScadTip":
+    "The due date declared in the XML does not count: only the days of this rule apply (from the invoice date, or from the 1st of the month when that option is on). For suppliers, without this flag the due date written on the invoice wins.",
+  "fin.termIgnoraScadBadge": "rule days only",
   "fin.termEmailPh": "administration@client.com (optional)",
   "fin.termClientiTab": "Clients (they pay us)",
   "fin.termFornitoriTab": "Suppliers (we pay)",
@@ -2933,6 +2953,18 @@ const it: Record<DictKey, string> = {
   "cpr.nonParcheggiabile":
     "Addebito automatico (RID/RiBa): esce da solo alla scadenza, non si può spostare",
   "cpr.apriFornitore": "Apri la scheda fornitore",
+  "cpr.apriCliente": "Apri le fatture aperte del cliente",
+  "cpr.apriGruppo": "Apri l'elenco dei fornitori del gruppo",
+  "cpr.schedaCliente": "Fatture aperte",
+  "cpr.schedaClienteVuota":
+    "Nessuna fattura aperta con questo nome (un incasso in banca può avere un nome diverso da quello in fattura).",
+  "cpr.schedaClienteNota":
+    "Residuo delle fatture emesse al netto di incassi Aruba/banca e note di credito collegate; scadenza con la regola di fine mese (l'ultimo giorno del mese vale come il 1° del mese dopo).",
+  "cpr.schedaGruppo": "Fornitori del gruppo",
+  "cpr.colAruba": "Aruba",
+  "cpr.scaduto": "di ritardo",
+  "cpr.apertoTot": "Aperto",
+  "cpr.diCuiScaduto": "di cui scaduto",
   "cpr.attesa": "attesa",
   "cpr.spostaQui": "Sposta qui",
   "cpr.togliTip": "Togli questa riga dal foglio",
@@ -3151,6 +3183,10 @@ const it: Record<DictKey, string> = {
   "for.fattureAperte": "Fatture aperte nel flusso",
   "for.nessunaFattura": "Nessuna fattura aperta nel flusso.",
   "for.schedaNota": "Le stesse caselle stanno nella tab Fornitori.",
+  "for.promemoria": "Promemoria: cosa fa davvero e regole da ricordare",
+  "for.promemoriaPh":
+    "es. trasporti Cerro per iMile; paga solo a fine mese; chiamare prima di pagare…",
+  "for.colCausale": "Causale in fattura",
   "for.colResiduo": "Residuo",
   "for.colNumero": "Numero",
   "for.colScad": "Scadenza",
@@ -3319,6 +3355,10 @@ const it: Record<DictKey, string> = {
   "fin.termCompPrecTip":
     "Quando il mese non è scritto nella descrizione della fattura, la competenza è il mese prima dell'emissione, qualunque sia il giorno.",
   "fin.termCompPrecBadge": "mese prec.",
+  "fin.termIgnoraScad": "Ignora la scadenza scritta in fattura",
+  "fin.termIgnoraScadTip":
+    "La scadenza dichiarata nell'XML non conta: valgono solo i giorni di questa regola (dalla data fattura, oppure dal 1° del mese se l'opzione è attiva). Per i fornitori, senza questa spunta vince la scadenza scritta in fattura.",
+  "fin.termIgnoraScadBadge": "solo giorni regola",
   "fin.termEmailPh": "amministrazione@cliente.it (facoltativa)",
   "fin.termClientiTab": "Clienti (ci pagano)",
   "fin.termFornitoriTab": "Fornitori (paghiamo noi)",

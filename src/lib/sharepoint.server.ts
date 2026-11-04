@@ -355,6 +355,8 @@ export const SP_DISPLAY = {
     MeseFine: "MeseFine", // esclusione: fino a (opzionale)
     Importo: "Importo", // voce: col segno (uscite negative)
     Note: "Note",
+    // Testo lungo (04/11/2026): promemoria della scheda fornitore. OPZIONALE.
+    Promemoria: "Promemoria",
   },
   dettagliDistinte: {
     Appalto: "Appalto",
@@ -433,6 +435,9 @@ export const SP_DISPLAY = {
     // dal 1° del mese di emissione e competenza al mese precedente. OPZIONALI.
     DecorrenzaMese: "DecorrenzaMese",
     CompetenzaPrecedente: "CompetenzaPrecedente",
+    // Sì/No (04/11/2026): la scadenza scritta in fattura non conta, valgono
+    // solo i giorni della regola. OPZIONALE.
+    IgnoraScadenza: "IgnoraScadenza",
   },
   // Abbinamenti fattura ↔ movimento bancario (n:n con importo allocato).
   // Chiavi NATURALI (nome file + chiave movimento): sopravvivono a
@@ -6514,6 +6519,7 @@ export async function importTermini(
     /** undefined = non toccare (foglio contratti); true/false = imposta. */
     decorrenzaMese?: boolean;
     competenzaPrecedente?: boolean;
+    ignoraScadenza?: boolean;
   }[],
 ): Promise<{ nuovi: number; aggiornati: number; invariati: number }> {
   const cfg = await discoverSharePoint();
@@ -6537,7 +6543,13 @@ export async function importTermini(
     competenzaPrecedente: F.CompetenzaPrecedente
       ? boolField((it.fields ?? {})[F.CompetenzaPrecedente])
       : false,
+    ignoraScadenza: F.IgnoraScadenza ? boolField((it.fields ?? {})[F.IgnoraScadenza]) : false,
   }));
+  // La spunta nuova non si perde in silenzio: senza la colonna si dice cosa manca.
+  if (!F.IgnoraScadenza && rows.some((r) => r.ignoraScadenza))
+    throw new Error(
+      'Colonna "IgnoraScadenza" assente sulla lista TerminiPagamento: crearla (Sì/No) e fare Riscopri.',
+    );
   const out = { nuovi: 0, aggiornati: 0, invariati: 0 };
   for (const r of rows) {
     const dir = r.direzione ?? "Emessa";
@@ -6569,6 +6581,12 @@ export async function importTermini(
         r.competenzaPrecedente !== prev.competenzaPrecedente
       )
         patch[F.CompetenzaPrecedente] = r.competenzaPrecedente;
+      if (
+        F.IgnoraScadenza &&
+        r.ignoraScadenza !== undefined &&
+        r.ignoraScadenza !== prev.ignoraScadenza
+      )
+        patch[F.IgnoraScadenza] = r.ignoraScadenza;
       if (!Object.keys(patch).length) {
         out.invariati++;
         continue;
@@ -6587,6 +6605,7 @@ export async function importTermini(
       if (F.Oggetto && r.oggetto) fields[F.Oggetto] = r.oggetto.trim();
       if (F.DecorrenzaMese && r.decorrenzaMese) fields[F.DecorrenzaMese] = true;
       if (F.CompetenzaPrecedente && r.competenzaPrecedente) fields[F.CompetenzaPrecedente] = true;
+      if (F.IgnoraScadenza && r.ignoraScadenza) fields[F.IgnoraScadenza] = true;
       await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listTermini}/items`, {
         method: "POST",
         body: JSON.stringify({ fields }),
@@ -6858,6 +6877,9 @@ export interface FlussoCassaRiga {
   /** Solo voci, col segno (uscite negative). */
   importo: number;
   note?: string;
+  /** Scheda fornitore: promemoria libero (colonna Promemoria, testo lungo).
+   *  undefined in scrittura = non toccare. */
+  promemoria?: string;
 }
 
 const ERR_LISTA_FLUSSI =
@@ -6905,6 +6927,7 @@ export async function fetchFlussiCassa(): Promise<FlussoCassaRiga[]> {
         meseFine: /^\d{4}-\d{2}$/.test(meseFine) ? meseFine : undefined,
         importo: F.Importo ? Number(f[F.Importo] ?? 0) || 0 : 0,
         note: F.Note ? String(f[F.Note] ?? "").trim() || undefined : undefined,
+        promemoria: F.Promemoria ? String(f[F.Promemoria] ?? "").trim() || undefined : undefined,
       };
     })
     .filter((x) => x.nome);
@@ -6928,6 +6951,15 @@ export async function upsertFlussoCassa(input: Omit<FlussoCassaRiga, "id">): Pro
   if (F.MeseFine) fields[F.MeseFine] = input.meseFine ?? "";
   fields[F.Importo] = input.importo;
   if (F.Note) fields[F.Note] = input.note ?? "";
+  // Promemoria della scheda fornitore: si scrive solo quando arriva (le
+  // altre scritture lasciano il testo com'è).
+  if (input.promemoria !== undefined) {
+    if (!F.Promemoria && input.promemoria.trim())
+      throw new Error(
+        'Colonna "Promemoria" assente sulla lista FlussiCassa: crearla (testo su più righe) e fare Riscopri.',
+      );
+    if (F.Promemoria) fields[F.Promemoria] = input.promemoria;
+  }
   // Upsert per nome: voci (per mese), spunte Altre spese e schede fornitore
   // (una riga per fornitore: la scheda si riscrive, non si duplica).
   if (
@@ -7552,6 +7584,9 @@ export async function fetchTerminiPagamento(): Promise<TerminePagamento[]> {
             : undefined,
           competenzaPrecedente: F.CompetenzaPrecedente
             ? boolField(f[F.CompetenzaPrecedente]) || undefined
+            : undefined,
+          ignoraScadenza: F.IgnoraScadenza
+            ? boolField(f[F.IgnoraScadenza]) || undefined
             : undefined,
         };
       })

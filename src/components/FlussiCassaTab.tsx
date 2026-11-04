@@ -422,6 +422,7 @@ export function FlussiCassaTab() {
         residuo: residuoAperto(x),
         inRitardo: x.s.inRitardo,
         modalita: modDi(x.f),
+        oggetto: x.f.oggetto,
       }))
       .sort((a, b) => a.scadenza.localeCompare(b.scadenza));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -436,6 +437,7 @@ export function FlussiCassaTab() {
           genere: "fornitore",
           importo: 0,
           note: serializeFornitoreInfo(info),
+          promemoria: info.promemoria ?? "",
         },
       });
       await ricaricaFlussi();

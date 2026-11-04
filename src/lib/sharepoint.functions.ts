@@ -710,6 +710,11 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
       meseFine: meseFine || undefined,
       importo: Number.isFinite(importo) ? Math.round(importo * 100) / 100 : 0,
       note: note || undefined,
+      // Promemoria (testo lungo): assente = non toccare la colonna.
+      promemoria:
+        input?.promemoria === undefined
+          ? undefined
+          : String(input.promemoria).trim().slice(0, 2000),
     };
   })
   .handler(async ({ data }): Promise<{ ok: true }> => {
@@ -1788,6 +1793,7 @@ export const spImportTermini = createServerFn({ method: "POST" })
         oggetto?: string;
         decorrenzaMese?: boolean;
         competenzaPrecedente?: boolean;
+        ignoraScadenza?: boolean;
       }[];
     }) => {
       if (!Array.isArray(input?.rows) || input.rows.length === 0)
@@ -1804,6 +1810,7 @@ export const spImportTermini = createServerFn({ method: "POST" })
             decorrenzaMese: r?.decorrenzaMese === undefined ? undefined : !!r.decorrenzaMese,
             competenzaPrecedente:
               r?.competenzaPrecedente === undefined ? undefined : !!r.competenzaPrecedente,
+            ignoraScadenza: r?.ignoraScadenza === undefined ? undefined : !!r.ignoraScadenza,
           }))
           // 0 giorni (a vista) e' ammesso solo per le regole con parola chiave.
           .filter(

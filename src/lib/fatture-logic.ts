@@ -132,6 +132,12 @@ export interface TerminePagamento {
   /** Competenza = mese PRECEDENTE all'emissione quando il mese non e'
    *  scritto in fattura (descrizione/causale), qualunque sia il giorno. */
   competenzaPrecedente?: boolean;
+  /** Simone 04/11/2026: la scadenza scritta in fattura NON conta, valgono
+   *  solo i giorni della regola (dalla data fattura, o dal 1° del mese con
+   *  l'opzione sopra). Serve ai FORNITORI (dove di norma vince la scadenza
+   *  dell'XML) e ai clienti con "dal 1° del mese"; per gli altri clienti i
+   *  termini contrattuali valgono gia' da soli. */
+  ignoraScadenza?: boolean;
 }
 
 export interface AbbinamentoIncasso {
@@ -933,10 +939,15 @@ export function computeStatoFattura(
   // fattura: "a vista" non e' una scadenza), altrimenti giorni dal 1° del
   // mese di emissione. Senza quell'opzione resta la regola del direttore:
   // per le attive contano SEMPRE i termini contrattuali dalla data fattura.
-  const termineEm =
-    f.direzione === "Emessa" ? terminePerCliente(f.cliente, termini, "Emessa", f.oggetto) : null;
+  // Con "ignora la scadenza in fattura" sulla regola (Simone 04/11/2026) la
+  // data dichiarata nell'XML non conta mai: solo i giorni della regola.
+  const termine = terminePerCliente(f.cliente, termini, f.direzione, f.oggetto);
+  const termineEm = f.direzione === "Emessa" ? termine : null;
   const dichiarata =
-    f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza) && f.scadenza !== f.dataDocumento
+    !termine?.ignoraScadenza &&
+    f.scadenza &&
+    /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza) &&
+    f.scadenza !== f.dataDocumento
       ? f.scadenza
       : "";
   const scadenza =
@@ -944,11 +955,11 @@ export function computeStatoFattura(
       ? termineEm?.decorrenzaMese
         ? dichiarata || scadenzaFattura(`${f.dataDocumento.slice(0, 7)}-01`, termineEm.giorni)
         : scadenzaFattura(f.dataDocumento, termineEm?.giorni ?? TERMINI_DEFAULT_GIORNI)
-      : f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza)
+      : !termine?.ignoraScadenza && f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza)
         ? f.scadenza
         : scadenzaFattura(
-            f.dataDocumento,
-            giorniPerCliente(f.cliente, termini, "Ricevuta", f.oggetto),
+            termine?.decorrenzaMese ? `${f.dataDocumento.slice(0, 7)}-01` : f.dataDocumento,
+            termine?.giorni ?? TERMINI_DEFAULT_GIORNI,
           );
   // Le note di credito non si "incassano" e le scartate/rifiutate dallo SdI
   // non sono crediti: entrambe fuori dal computo di residui e ritardi.
