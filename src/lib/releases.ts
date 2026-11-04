@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.101.0",
+    date: "2026-11-04",
+    entries: [
+      {
+        title: "Resoconto: saldo per controparte con le passive",
+        description:
+          'Sotto il quadro c\'è la tabella "Saldo per controparte": attive e passive della stessa controparte sulla stessa riga (fatture, note di credito, incassato o pagato anche in compensazione, aperto) e il saldo da incassare meno da pagare. Il quadro mostra anche le "Passive totali" con pagate/compensate e da pagare.',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.100.0",
     date: "2026-11-04",
     entries: [

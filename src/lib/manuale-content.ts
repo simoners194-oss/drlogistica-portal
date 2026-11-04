@@ -352,6 +352,14 @@ Sotto ci sono anche gli elenchi completi — tutte le fatture da incassare e da 
   },
 
   {
+    id: "res-saldo-controparte",
+    sezione: "Resoconto",
+    titolo: "Saldo per controparte: attive e passive affiancate",
+    testo: `Dalla 1.101.0 (Simone 04/11/2026) sotto il quadro del Resoconto c'è la tabella "Saldo per controparte": per ogni cliente o fornitore della selezione (o di tutti, se non c'è filtro) le fatture attive e le passive stanno sulla stessa riga: fatture, note di credito, incassato o pagato (anche in compensazione, com'è registrato su Aruba), aperto, e il saldo = da incassare meno da pagare. Serve per chi è cliente e fornitore insieme (Univex, Nolvex, Posta Doc): si vede subito quanto ci deve al netto di quello che gli dobbiamo. Scegliendo un gruppo di controparti nei filtri si ottiene il saldo del gruppo società per società, con il totale in fondo. Nel quadro sopra c'è anche "Passive totali" con pagate/compensate e da pagare, come per le attive. Le righe sono ordinate per saldo; con più di 25 controparti il bottone apre l'elenco completo.`,
+    chiavi:
+      "resoconto saldo controparte attive passive affiancate compensazione univex nolvex postadoc passive totali quanto ci deve",
+  },
+  {
     id: "res-estratto-gruppo",
     sezione: "Resoconto e incassi",
     titolo: "L'estratto conto di gruppo (Univex e simili)",

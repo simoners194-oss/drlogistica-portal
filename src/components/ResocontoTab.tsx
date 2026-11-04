@@ -106,6 +106,7 @@ export function ResocontoTab() {
   // indipendente: chiuso di default, filtrabile per anno e mese.
   const [dataRiferimento, setDataRiferimento] = useState("");
   const [elencoAperto, setElencoAperto] = useState(false);
+  const [mostraTuttiSaldi, setMostraTuttiSaldi] = useState(false);
   const [elencoAnni, setElencoAnni] = useState<string[]>([]);
   const [elencoMesi, setElencoMesi] = useState<string[]>([]);
   // COMPENSAZIONE A SPUNTA (richiesta FR 08/09): quadratini sulle righe
@@ -426,6 +427,7 @@ export function ResocontoTab() {
       netto: Math.round((incassatoAtt - pagatoPas) * 100) / 100,
       differenza,
       totAtt: Math.round((incassatoAtt + resAtt) * 100) / 100,
+      totPas: Math.round((pagatoPas + resPas) * 100) / 100,
       resAtt: Math.round(resAtt * 100) / 100,
       ritAtt: Math.round(ritAtt * 100) / 100,
       resPas: Math.round(resPas * 100) / 100,
@@ -436,6 +438,126 @@ export function ResocontoTab() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attive, passive, movimenti, clientiSel, fornitoriSel, estrattoSel, opzioniClienti, gruppi]);
+
+  // --- SALDO PER CONTROPARTE (Simone 04/11/2026: "deve comparire sui
+  // riepiloghi del resoconto"): per ogni controparte della selezione le
+  // attive e le passive affiancate — fatture, note di credito, incassato o
+  // pagato (anche in compensazione, com'è registrato su Aruba), aperto — e il
+  // saldo = da incassare − da pagare. Per chi è cliente e fornitore insieme
+  // (Univex, Nolvex, Posta Doc) è il numero da chiedere.
+  type RigaSaldo = {
+    chiave: string;
+    nome: string;
+    attFt: number;
+    attNc: number;
+    attInc: number;
+    attAp: number;
+    pasFt: number;
+    pasNc: number;
+    pasPag: number;
+    pasAp: number;
+    saldo: number;
+  };
+  const saldiControparte = useMemo((): RigaSaldo[] => {
+    const cliNessuno = clientiSel.includes(NESSUNO);
+    const forNessuno = fornitoriSel.includes(NESSUNO);
+    const cliSel = espandiGruppi(
+      clientiSel.filter((x) => x !== NESSUNO),
+      opzioniClienti,
+    );
+    const forSel = espandiGruppi(
+      fornitoriSel.filter((x) => x !== NESSUNO),
+      opzioniFornitori,
+    );
+    const righe = new Map<string, RigaSaldo>();
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const riga = (nome: string) => {
+      const k = clienteGroupKey(nome) || nome;
+      const r = righe.get(k) ?? {
+        chiave: k,
+        nome,
+        attFt: 0,
+        attNc: 0,
+        attInc: 0,
+        attAp: 0,
+        pasFt: 0,
+        pasNc: 0,
+        pasPag: 0,
+        pasAp: 0,
+        saldo: 0,
+      };
+      righe.set(k, r);
+      return r;
+    };
+    if (!cliNessuno)
+      for (const x of attive) {
+        if (!inSelezione(x.f.cliente, cliSel) || x.s.aruba === "Stornata") continue;
+        const r = riga(x.f.cliente);
+        if (x.s.stato === "NC") r.attNc += Math.abs(x.f.totale);
+        else {
+          r.attFt += Math.abs(x.f.totale);
+          r.attInc += incassatoDi(x);
+          r.attAp += Math.max(0, residuoDi(x));
+        }
+      }
+    if (!forNessuno)
+      for (const x of passive) {
+        if (!inSelezione(x.f.cliente, forSel) || x.s.aruba === "Stornata") continue;
+        const r = riga(x.f.cliente);
+        if (x.s.stato === "NC") r.pasNc += Math.abs(x.f.totale);
+        else {
+          r.pasFt += Math.abs(x.f.totale);
+          r.pasPag += incassatoDi(x);
+          r.pasAp += Math.max(0, residuoDi(x));
+        }
+      }
+    return [...righe.values()]
+      .map((r) => ({
+        ...r,
+        attFt: r2(r.attFt),
+        attNc: r2(r.attNc),
+        attInc: r2(r.attInc),
+        attAp: r2(r.attAp),
+        pasFt: r2(r.pasFt),
+        pasNc: r2(r.pasNc),
+        pasPag: r2(r.pasPag),
+        pasAp: r2(r.pasAp),
+        saldo: r2(r.attAp - r.pasAp),
+      }))
+      .sort(
+        (a, b) => Math.abs(b.saldo) - Math.abs(a.saldo) || b.attFt + b.pasFt - (a.attFt + a.pasFt),
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attive, passive, clientiSel, fornitoriSel, opzioniClienti, opzioniFornitori, gruppi]);
+  const totaliSaldi = useMemo(() => {
+    const t0 = {
+      attFt: 0,
+      attNc: 0,
+      attInc: 0,
+      attAp: 0,
+      pasFt: 0,
+      pasNc: 0,
+      pasPag: 0,
+      pasAp: 0,
+      saldo: 0,
+    };
+    for (const r of saldiControparte) {
+      t0.attFt += r.attFt;
+      t0.attNc += r.attNc;
+      t0.attInc += r.attInc;
+      t0.attAp += r.attAp;
+      t0.pasFt += r.pasFt;
+      t0.pasNc += r.pasNc;
+      t0.pasPag += r.pasPag;
+      t0.pasAp += r.pasAp;
+      t0.saldo += r.saldo;
+    }
+    return t0;
+  }, [saldiControparte]);
+  const tdNum = "py-1 px-2 text-right tabular-nums whitespace-nowrap";
+  const cellaSaldo = (v: number, cls = "") => (
+    <td className={`${tdNum} ${cls}`}>{Math.abs(v) > 0.005 ? fmtImporto(v) : "—"}</td>
+  );
 
   // --- Ritardi (da incassare e da pagare), con fasce -------------------------
   const inFascia = (gg: number) => {
@@ -1106,6 +1228,16 @@ export function ResocontoTab() {
                   €)
                 </span>
               </div>
+              <div>
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  {t("rt.totPassive")}
+                </span>{" "}
+                <b className="tabular-nums text-foreground">{fmtImporto(quadro.totPas)} €</b>{" "}
+                <span className="text-[11px] text-muted-foreground">
+                  ({t("rt.saldoPagate")} {fmtImporto(quadro.pagatoPas)} € · {t("rt.daPagare")}{" "}
+                  {fmtImporto(quadro.resPas)} €)
+                </span>
+              </div>
               <div className="flex flex-wrap gap-x-6 gap-y-1">
                 <div>
                   <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -1136,6 +1268,114 @@ export function ResocontoTab() {
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">{t("rt.nota")}</p>
           </div>
+
+          {/* SALDO PER CONTROPARTE: attive e passive della stessa controparte
+              affiancate, col saldo (Simone 04/11/2026). */}
+          {saldiControparte.length > 0 && (
+            <div className="rounded-2xl border border-border bg-card px-5 py-4 shadow-[var(--shadow-card)]">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                <div className="text-sm font-semibold text-foreground">{t("rt.saldoTitolo")}</div>
+                <div className="text-[11px] text-muted-foreground">{t("rt.saldoDesc")}</div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="text-[10px] uppercase text-muted-foreground">
+                      <th rowSpan={2} className="py-1 pr-3 text-left align-bottom">
+                        {t("rt.saldoControparte")}
+                      </th>
+                      <th
+                        colSpan={4}
+                        className="border-b border-border/60 py-1 text-center text-status-present"
+                      >
+                        {t("fin.tabAttive")}
+                      </th>
+                      <th
+                        colSpan={4}
+                        className="border-b border-border/60 py-1 text-center text-status-absent"
+                      >
+                        {t("fin.tabPassive")}
+                      </th>
+                      <th rowSpan={2} className="py-1 pl-3 text-right align-bottom">
+                        {t("rt.saldoNetto")}
+                      </th>
+                    </tr>
+                    <tr className="border-b border-border text-[10px] uppercase text-muted-foreground">
+                      {[
+                        t("rt.saldoFatture"),
+                        t("rt.saldoNc"),
+                        t("rt.incassate"),
+                        t("rt.nonIncassate"),
+                        t("rt.saldoFatture"),
+                        t("rt.saldoNc"),
+                        t("rt.saldoPagate"),
+                        t("rt.daPagare"),
+                      ].map((h, i) => (
+                        <th key={i} className="py-1 px-2 text-right">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(mostraTuttiSaldi ? saldiControparte : saldiControparte.slice(0, 25)).map(
+                      (r) => (
+                        <tr key={r.chiave} className="border-b border-border/40">
+                          <td className="max-w-56 truncate py-1 pr-3 font-medium" title={r.nome}>
+                            {r.nome}
+                          </td>
+                          {cellaSaldo(r.attFt)}
+                          {cellaSaldo(r.attNc, "text-muted-foreground")}
+                          {cellaSaldo(r.attInc)}
+                          {cellaSaldo(r.attAp, r.attAp > 0.005 ? "font-medium" : "")}
+                          {cellaSaldo(r.pasFt)}
+                          {cellaSaldo(r.pasNc, "text-muted-foreground")}
+                          {cellaSaldo(r.pasPag)}
+                          {cellaSaldo(r.pasAp, r.pasAp > 0.005 ? "font-medium" : "")}
+                          <td
+                            className={`py-1 pl-3 text-right tabular-nums font-semibold whitespace-nowrap ${r.saldo >= 0 ? "text-status-present" : "text-status-absent"}`}
+                          >
+                            {fmtImporto(r.saldo)} €
+                          </td>
+                        </tr>
+                      ),
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-border font-semibold">
+                      <td className="py-1.5 pr-3">
+                        {t("rt.saldoTotale")} ({saldiControparte.length})
+                      </td>
+                      {cellaSaldo(totaliSaldi.attFt)}
+                      {cellaSaldo(totaliSaldi.attNc, "text-muted-foreground")}
+                      {cellaSaldo(totaliSaldi.attInc)}
+                      {cellaSaldo(totaliSaldi.attAp)}
+                      {cellaSaldo(totaliSaldi.pasFt)}
+                      {cellaSaldo(totaliSaldi.pasNc, "text-muted-foreground")}
+                      {cellaSaldo(totaliSaldi.pasPag)}
+                      {cellaSaldo(totaliSaldi.pasAp)}
+                      <td
+                        className={`py-1.5 pl-3 text-right tabular-nums whitespace-nowrap ${totaliSaldi.saldo >= 0 ? "text-status-present" : "text-status-absent"}`}
+                      >
+                        {fmtImporto(totaliSaldi.saldo)} €
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              {saldiControparte.length > 25 && (
+                <button
+                  type="button"
+                  onClick={() => setMostraTuttiSaldi((v) => !v)}
+                  className="mt-2 text-xs text-primary underline-offset-2 hover:underline"
+                >
+                  {mostraTuttiSaldi
+                    ? t("rt.saldoMeno")
+                    : `${t("rt.saldoTutte")} (${saldiControparte.length})`}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* SITUAZIONE AL ... : la data guida le card dei ritardi sotto. */}
           <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card px-5 py-3 shadow-[var(--shadow-card)]">
