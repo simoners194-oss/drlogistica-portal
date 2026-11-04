@@ -140,6 +140,7 @@ export function SchedaFornitore({
   const [macrovoce, setMacrovoce] = useState(riga.macrovoce);
   const [appalto, setAppalto] = useState(riga.appalto);
   const [promemoria, setPromemoria] = useState(riga.promemoria);
+  const [compensa, setCompensa] = useState(riga.compensa);
   // Riallineo le caselle quando cambia il fornitore (o dopo un salvataggio).
   useEffect(() => {
     setModalita(riga.override ?? "");
@@ -147,13 +148,23 @@ export function SchedaFornitore({
     setMacrovoce(riga.macrovoce);
     setAppalto(riga.appalto);
     setPromemoria(riga.promemoria);
-  }, [riga.chiave, riga.override, riga.referente, riga.macrovoce, riga.appalto, riga.promemoria]);
+    setCompensa(riga.compensa);
+  }, [
+    riga.chiave,
+    riga.override,
+    riga.referente,
+    riga.macrovoce,
+    riga.appalto,
+    riga.promemoria,
+    riga.compensa,
+  ]);
   const cambiato =
     (modalita || undefined) !== riga.override ||
     referente.trim() !== riga.referente ||
     macrovoce.trim() !== riga.macrovoce ||
     appalto.trim() !== riga.appalto ||
-    promemoria.trim() !== riga.promemoria;
+    promemoria.trim() !== riga.promemoria ||
+    compensa !== riga.compensa;
 
   const lbl = "text-[11px] uppercase text-muted-foreground";
   const stat = (etichetta: string, valore: string, cls = "") => (
@@ -257,6 +268,18 @@ export function SchedaFornitore({
             className={`${inputVocabCls} min-h-16 resize-y`}
           />
         </div>
+        {/* Paga in compensazione (Simone 04/11/2026): in Cassa proprietà le
+            sue fatture si scalano dagli entranti, non stanno tra le uscite. */}
+        <label className="mb-3 flex items-center gap-2 text-[13px]" title={t("for.compensaTip")}>
+          <input
+            type="checkbox"
+            checked={compensa}
+            disabled={busy}
+            onChange={(e) => setCompensa(e.target.checked)}
+          />
+          {t("for.compensa")}
+          <span className="text-[11px] text-muted-foreground">{t("for.compensaTip")}</span>
+        </label>
         <div className="mb-4 flex items-center gap-2">
           <button
             type="button"
@@ -268,6 +291,7 @@ export function SchedaFornitore({
                 macrovoce: macrovoce.trim(),
                 appalto: appalto.trim(),
                 promemoria: promemoria.trim(),
+                compensa,
               })
             }
             className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"

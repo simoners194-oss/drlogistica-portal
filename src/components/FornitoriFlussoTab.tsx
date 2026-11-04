@@ -191,6 +191,7 @@ export function FornitoriFlussoTab() {
       referente: valore(r, "referente"),
       macrovoce: valore(r, "macrovoce"),
       appalto: valore(r, "appalto"),
+      compensa: r.compensa,
       ...patch,
     };
     setSalvando((s) => new Set(s).add(r.chiave));
@@ -359,6 +360,14 @@ export function FornitoriFlussoTab() {
                       <div className="truncate font-medium" title={r.nome}>
                         {r.nome}
                       </div>
+                      {r.compensa && (
+                        <div
+                          className="text-[10px] font-medium text-rose-700"
+                          title={t("for.compensaTip")}
+                        >
+                          {t("for.compensaBadge")}
+                        </div>
+                      )}
                       {r.mista && (
                         <div className="text-[10px] text-muted-foreground">{t("for.mista")}</div>
                       )}

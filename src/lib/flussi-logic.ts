@@ -54,6 +54,10 @@ export interface FornitoreInfo {
    *  le regole da ricordare. Vive nella colonna Promemoria (testo lungo),
    *  non nel JSON delle Note. */
   promemoria?: string;
+  /** Paga in compensazione (Simone 04/11/2026: Ceva, Number1, Univex…): in
+   *  Cassa proprietà le sue fatture si scalano dagli entranti, non stanno
+   *  tra le uscite. Nel JSON delle Note: "k". */
+  compensa?: boolean;
 }
 
 /** Chiave di raggruppamento del fornitore (stessa dei Flussi/Resoconto). */
@@ -82,6 +86,7 @@ export function parseFornitoreInfo(note?: string | null): FornitoreInfo {
     if (pulisci(j.r)) out.referente = pulisci(j.r);
     if (pulisci(j.c)) out.macrovoce = pulisci(j.c);
     if (pulisci(j.a)) out.appalto = pulisci(j.a);
+    if (j.k) out.compensa = true;
     return out;
   } catch {
     return {};
@@ -94,6 +99,7 @@ export function serializeFornitoreInfo(info: FornitoreInfo): string {
   if (pulisci(info.referente)) j.r = pulisci(info.referente);
   if (pulisci(info.macrovoce)) j.c = pulisci(info.macrovoce);
   if (pulisci(info.appalto)) j.a = pulisci(info.appalto);
+  if (info.compensa) j.k = "1";
   return JSON.stringify(j);
 }
 
@@ -162,6 +168,8 @@ export interface RigaFornitore {
   appalto: string;
   /** Promemoria libero della scheda (cosa fa davvero, regole da ricordare). */
   promemoria: string;
+  /** Paga in compensazione: in Cassa proprietà le sue fatture si scalano dagli entranti. */
+  compensa: boolean;
   /** Proposte dalle fatture (tipologia di costo / cliente di riferimento). */
   macrovoceAuto: string;
   appaltoAuto: string;
@@ -290,6 +298,7 @@ export function riepilogoFornitori(
       macrovoce: salvato?.macrovoce ?? "",
       appalto: salvato?.appalto ?? "",
       promemoria: salvato?.promemoria ?? "",
+      compensa: salvato?.compensa ?? false,
       macrovoceAuto: piuFrequente(a.macro),
       appaltoAuto: piuFrequente(a.appalti),
       scaduto: r2(a.scaduto),

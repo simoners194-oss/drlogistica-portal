@@ -8,7 +8,12 @@ import type { ReactNode } from "react";
 import { useLang } from "@/lib/i18n";
 import { residuoAperto, type FatturaConStato } from "@/lib/fatture-logic";
 import { chiaveFornitore } from "@/lib/flussi-logic";
-import { chiaveCliente, scadenzaEffettiva, type TipoRigaCassa } from "@/lib/cassa-logic";
+import {
+  chiaveCliente,
+  scadenzaEffettiva,
+  type TipoRigaCassa,
+  type VoceDettaglioCassa,
+} from "@/lib/cassa-logic";
 
 const fmt = (n: number) =>
   n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -160,6 +165,69 @@ export function SchedaClienteCassa({
         </table>
       )}
       <p className="mt-3 text-[11px] text-muted-foreground">{t("cpr.schedaClienteNota")}</p>
+    </Finestra>
+  );
+}
+
+/** Le scadenze dentro una riga fiscale (Fiscale / IVA / Banca): voce,
+ *  scadenza, modalità, importo — Simone 04/11/2026 ("cliccando sul Fiscale
+ *  voglio che si apra il popup con i dettagli"). */
+export function SchedaFiscaleCassa({
+  nome,
+  voci,
+  importo,
+  onChiudi,
+}: {
+  nome: string;
+  voci: readonly VoceDettaglioCassa[];
+  importo: number;
+  onChiudi: () => void;
+}) {
+  const { t } = useLang();
+  const righe = [...voci].sort(
+    (a, b) => a.data.localeCompare(b.data) || a.nome.localeCompare(b.nome, "it"),
+  );
+  const somma = righe.reduce((s, v) => s + v.importo, 0);
+  const th = "py-1 pr-3 text-left text-[11px] uppercase text-muted-foreground";
+  return (
+    <Finestra
+      titolo={nome}
+      sottotitolo={`${t("cpr.schedaFiscale")}: ${righe.length}`}
+      onChiudi={onChiudi}
+    >
+      <table className="w-full text-[13px]">
+        <thead>
+          <tr className="border-b border-border">
+            <th className={th}>{t("cpr.colScadenza")}</th>
+            <th className={th}>{t("cpr.colVoce")}</th>
+            <th className={th}>{t("cpr.colModalita")}</th>
+            <th className={`${th} text-right`}>{t("fis.colImporto")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {righe.map((v, i) => (
+            <tr key={`${v.data}|${v.nome}|${i}`} className="border-b border-border/40">
+              <td className="py-1 pr-3 whitespace-nowrap">{ddmmyy(v.data)}</td>
+              <td className="py-1 pr-3">{v.nome}</td>
+              <td className="py-1 pr-3 text-[12px] text-muted-foreground">{v.extra ?? ""}</td>
+              <td className="py-1 text-right tabular-nums whitespace-nowrap">{fmt(v.importo)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-border font-semibold">
+            <td className="py-1.5 pr-3" colSpan={3}>
+              {t("cpr.apertoTot")}
+              {Math.abs(somma - importo) > 0.005 && (
+                <span className="ml-2 font-normal text-muted-foreground">
+                  ({t("cpr.importoOrigine")} {fmt(somma)})
+                </span>
+              )}
+            </td>
+            <td className="py-1.5 text-right tabular-nums">{fmt(importo)}</td>
+          </tr>
+        </tfoot>
+      </table>
     </Finestra>
   );
 }

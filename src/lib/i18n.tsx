@@ -954,6 +954,15 @@ const en = {
   "cpr.scaduto": "overdue",
   "cpr.apertoTot": "Open",
   "cpr.diCuiScaduto": "of which overdue",
+  "cpr.compensazione": "compensation",
+  "cpr.legendaCompensazione":
+    "invoices of those who pay by compensation: out of the outflows, deducted from the incoming",
+  "cpr.diCuiComp": "of which compensations",
+  "cpr.apriFiscale": "Open the due items inside this row",
+  "cpr.schedaFiscale": "Due items",
+  "cpr.colVoce": "Item",
+  "cpr.colModalita": "Method",
+  "cpr.colScadenza": "Due date",
   "cpr.attesa": "expected",
   "cpr.spostaQui": "Move here",
   "cpr.togliTip": "Remove this line from the sheet",
@@ -1175,6 +1184,10 @@ const en = {
   "for.promemoriaPh":
     "e.g. Cerro transports for iMile; pays only at month end; call before paying…",
   "for.colCausale": "Invoice subject",
+  "for.compensa": "Pays by compensation",
+  "for.compensaTip":
+    "In the owner's cash sheet their invoices are not outflows: they are deducted from the incoming amounts as a negative row under their name.",
+  "for.compensaBadge": "compensates",
   "for.colResiduo": "Outstanding",
   "for.colNumero": "Number",
   "for.colScad": "Due date",
@@ -2965,6 +2978,15 @@ const it: Record<DictKey, string> = {
   "cpr.scaduto": "di ritardo",
   "cpr.apertoTot": "Aperto",
   "cpr.diCuiScaduto": "di cui scaduto",
+  "cpr.compensazione": "compensazione",
+  "cpr.legendaCompensazione":
+    "fatture di chi paga in compensazione: tolte dalle uscite, scalate dagli entranti",
+  "cpr.diCuiComp": "di cui compensazioni",
+  "cpr.apriFiscale": "Apri le scadenze dentro la riga",
+  "cpr.schedaFiscale": "Scadenze",
+  "cpr.colVoce": "Voce",
+  "cpr.colModalita": "Modalità",
+  "cpr.colScadenza": "Scadenza",
   "cpr.attesa": "attesa",
   "cpr.spostaQui": "Sposta qui",
   "cpr.togliTip": "Togli questa riga dal foglio",
@@ -3187,6 +3209,10 @@ const it: Record<DictKey, string> = {
   "for.promemoriaPh":
     "es. trasporti Cerro per iMile; paga solo a fine mese; chiamare prima di pagare…",
   "for.colCausale": "Causale in fattura",
+  "for.compensa": "Paga in compensazione",
+  "for.compensaTip":
+    "In Cassa proprietà le sue fatture non stanno tra le uscite: si scalano dagli entranti, come riga negativa col suo nome.",
+  "for.compensaBadge": "compensa",
   "for.colResiduo": "Residuo",
   "for.colNumero": "Numero",
   "for.colScad": "Scadenza",

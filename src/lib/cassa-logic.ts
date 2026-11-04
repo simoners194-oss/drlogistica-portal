@@ -45,7 +45,25 @@ export type SecchioCassa = "ora" | "prossimi" | "standby" | "standby2";
 /** Priorità delle cose da fare (agenda): bassa / media / alta. */
 export type PrioritaCassa = "l" | "m" | "h";
 export type TipoRigaCassa =
-  "incasso" | "attiva" | "passiva" | "stipendi" | "fiscale" | "fisso" | "manuale" | "amex";
+  | "incasso"
+  | "attiva"
+  | "passiva"
+  | "stipendi"
+  | "fiscale"
+  | "fisso"
+  | "manuale"
+  | "amex"
+  /** Fatture di un fornitore che PAGA IN COMPENSAZIONE: riga negativa tra
+   *  gli entranti (Simone 04/11/2026), mai tra le uscite. */
+  | "compensazione";
+
+/** Una scadenza dentro una riga del foglio (righe fiscali): per il popup. */
+export interface VoceDettaglioCassa {
+  nome: string;
+  importo: number;
+  data: string;
+  extra?: string;
+}
 
 /** Stato salvato per riga (chiave stabile): colonna scelta, nota, flag. */
 export interface StatoRigaCassa {
@@ -131,6 +149,8 @@ export interface TotaliCassa {
   acconti: number;
   /** Entranti al netto degli acconti = quello che deve ancora arrivare. */
   entrantiNette: number;
+  /** Fatture di chi paga in compensazione: negative, già dentro entrateStandby. */
+  compensazioni: number;
   /** E55 "da pagare". */
   usciteOra: number;
   /** F55 "da pagare 1-5/11". */
@@ -240,6 +260,8 @@ export interface RigaCassa {
   /** Promemoria scritto sulla scheda del fornitore (cosa fa davvero, regole
    *  da ricordare): si legge col mouse sull'icona accanto al nome. */
   promemoria?: string;
+  /** Scadenze dentro la riga (Fiscale/IVA/Banca): si aprono con un clic. */
+  voci?: VoceDettaglioCassa[];
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -607,16 +629,34 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   // dentro), quindi non sono più "da pagare": vanno in una lista a parte,
   // solo informativa — Simone 02/11/2026 ("come mai non sono stati scalati").
   const addebitate: RigaCassa[] = [];
+  // Fornitori che PAGANO IN COMPENSAZIONE (spunta sulla scheda fornitore —
+  // Simone 04/11/2026: Ceva, Number1, Univex…): le loro fatture non sono
+  // uscite, si scalano dagli entranti con una riga negativa per fornitore.
+  const gruppiComp = new Map<
+    string,
+    { nome: string; importo: number; n: number; scad: string; numeri: string[] }
+  >();
   for (const x of input.passive) {
     const res = residuoAperto(x);
     if (res <= 1 || !x.s.scadenza) continue;
     const scad = scadenzaEffettiva(x.s.scadenza);
     if (esclusaDaFlussi(input.esclusioni, x.f.cliente, scad.slice(0, 7))) continue;
+    const info = input.infoFornitori.get(chiaveFornitore(x.f.cliente));
+    if (info?.compensa) {
+      if (scad > limite) continue;
+      const kc = chiaveFornitore(x.f.cliente);
+      const c = gruppiComp.get(kc) ?? { nome: x.f.cliente, importo: 0, n: 0, scad, numeri: [] };
+      c.importo = r2(c.importo + res);
+      c.n++;
+      if (scad < c.scad) c.scad = scad;
+      c.numeri.push(x.f.numero);
+      gruppiComp.set(kc, c);
+      continue;
+    }
     const mod = modalitaFattura(x.f, input.infoFornitori);
     const auto = secchioAuto(scad);
     const addebitata = mod !== "altro" && scad <= oggi;
     const k = `${chiaveCliente(x.f.cliente)}|${auto}${addebitata ? "|add" : ""}`;
-    const info = input.infoFornitori.get(chiaveFornitore(x.f.cliente));
     const g = gruppiPas.get(k) ?? {
       nome: x.f.cliente,
       auto,
@@ -718,6 +758,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       n: number;
       scad: string;
       voci: string[];
+      dett: VoceDettaglioCassa[];
     }
   >();
   for (const sc of input.fiscale) {
@@ -752,11 +793,17 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       continue;
     }
     const k = `${gruppo}|${auto}`;
-    const g = gruppiFis.get(k) ?? { gruppo, auto, importo: 0, n: 0, scad, voci: [] };
+    const g = gruppiFis.get(k) ?? { gruppo, auto, importo: 0, n: 0, scad, voci: [], dett: [] };
     g.importo = r2(g.importo + Math.abs(sc.importo));
     g.n++;
     if (scad < g.scad) g.scad = scad;
     g.voci.push([sc.voce, sc.periodo].filter(Boolean).join(" "));
+    g.dett.push({
+      nome: [sc.voce, sc.periodo].filter(Boolean).join(" "),
+      importo: r2(Math.abs(sc.importo)),
+      data: scad,
+      extra: sc.modalita,
+    });
     gruppiFis.set(k, g);
   }
   for (const [k, g] of gruppiFis)
@@ -772,6 +819,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       documenti: g.n,
       editabile: true,
       tipologia: NOME_GRUPPO_FISCALE[g.gruppo],
+      voci: g.dett,
     });
   // Costi fissi del mese: se è già uscito un movimento che li somiglia, no.
   const moviMese = input.movimenti.filter((m) => m.dataContabile.slice(0, 7) === meseCorr);
@@ -816,6 +864,23 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     });
   }
 
+  // Compensazioni: una riga NEGATIVA tra gli entranti per ogni fornitore che
+  // paga in compensazione (le sue fatture aperte entro il limite).
+  for (const [kc, c] of gruppiComp)
+    grezze.push({
+      chiave: `comp|${meseCorr}|${kc}`,
+      tipo: "compensazione",
+      controparte: c.nome,
+      descrizione: `compensazione · ${c.n} fatt. ${elencoNumeri(c.numeri)} · scad. ${ddmm(c.scad)}`,
+      importo: r2(-c.importo),
+      scadenza: c.scad,
+      certa: false,
+      entrata: true,
+      documenti: c.n,
+      editabile: false,
+      promemoria: input.infoFornitori.get(kc)?.promemoria || undefined,
+    });
+
   const righe: RigaCassa[] = [];
   const oltre: RigaCassa[] = [];
   for (const g of grezze) {
@@ -859,7 +924,9 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   // Ordine del foglio: a sinistra gli incassi per data, poi gli attesi, in
   // fondo gli attesi parcheggiati; a destra per scadenza e nome, a
   // prescindere dalla colonna (così una riga spostata non cambia posto).
-  const tipoOrd = (r: RigaCassa) => (r.tipo === "incasso" ? 0 : r.parcheggiata ? 2 : 1);
+  // Le compensazioni stanno in coda agli entranti (prima delle parcheggiate).
+  const tipoOrd = (r: RigaCassa) =>
+    r.tipo === "incasso" ? 0 : r.parcheggiata ? 3 : r.tipo === "compensazione" ? 2 : 1;
   // Le tre righe fiscali (Fiscale, IVA, Banca) stanno vicine, alla data della
   // prima scadenza fiscale e in quest'ordine, anche se in colonne diverse
   // (Simone 03/11/2026: "avvicina IVA, Fiscale e Banca").
@@ -895,6 +962,9 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   const entrateParcheggiate = somma(entrate.filter((r) => r.parcheggiata));
   const acconti = r2(Math.max(0, db.acconti?.[meseCorr] ?? 0));
   const entrantiNette = r2(entrateStandby - acconti);
+  const compensazioni = somma(
+    entrate.filter((r) => r.tipo === "compensazione" && r.standbyIncasso),
+  );
   const usciteOra = somma(uscite.filter((r) => r.secchio === "ora"));
   const usciteProssimi = somma(uscite.filter((r) => r.secchio === "prossimi"));
   const usciteStandby = somma(uscite.filter((r) => r.secchio === "standby"));
@@ -909,6 +979,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     entrateParcheggiate,
     acconti,
     entrantiNette,
+    compensazioni,
     usciteOra,
     usciteProssimi,
     usciteStandby,

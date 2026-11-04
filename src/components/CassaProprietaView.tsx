@@ -22,7 +22,11 @@ import {
 } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { EsportaStampa } from "@/components/EsportaStampa";
-import { SchedaClienteCassa, SchedaGruppoCassa } from "@/components/CassaSchede";
+import {
+  SchedaClienteCassa,
+  SchedaFiscaleCassa,
+  SchedaGruppoCassa,
+} from "@/components/CassaSchede";
 import type { FatturaConStato } from "@/lib/fatture-logic";
 import type { CostoFisso, FornitoreInfo } from "@/lib/flussi-logic";
 import type { ScadenzaFiscale } from "@/lib/fiscale-logic";
@@ -52,6 +56,7 @@ import {
   type TotaliCassa,
   type VoceAgenda,
   type VoceAgendaVista,
+  type VoceDettaglioCassa,
 } from "@/lib/cassa-logic";
 
 type TFn = ReturnType<typeof useLang>["t"];
@@ -103,6 +108,8 @@ interface Cella {
   membri?: { nome: string; importo: number; tipo: TipoRigaCassa }[];
   /** Promemoria della scheda fornitore (icona col testo al passaggio). */
   promemoria?: string;
+  /** Scadenze dentro la riga (Fiscale/IVA/Banca): per il popup. */
+  voci?: VoceDettaglioCassa[];
 }
 
 /** Vista raggruppata delle uscite (Simone 02/11/2026: "raggruppare le spese
@@ -176,6 +183,7 @@ const daRiga = (r: RigaCassa): Cella => ({
   tipologia: r.tipologia,
   cliente: r.cliente,
   promemoria: r.promemoria,
+  voci: r.voci,
 });
 
 /** La colonna Entrate in tre blocchi col loro totale: "Già entrate" (in
@@ -258,6 +266,7 @@ export function CassaProprietaView({
   // aprono la scheda dei Flussi tramite onApriFornitore.
   const [clienteAperto, setClienteAperto] = useState<string | null>(null);
   const [gruppoAperto, setGruppoAperto] = useState<Cella | null>(null);
+  const [fiscaleAperto, setFiscaleAperto] = useState<Cella | null>(null);
 
   useEffect(() => {
     spCassaGet()
@@ -739,6 +748,7 @@ export function CassaProprietaView({
           onApriFornitore={onApriFornitore}
           onApriCliente={setClienteAperto}
           onApriGruppo={setGruppoAperto}
+          onApriFiscale={setFiscaleAperto}
           oggi={oggi}
         />
         {clienteAperto && (
@@ -754,6 +764,14 @@ export function CassaProprietaView({
             gruppo={gruppoAperto}
             onApriFornitore={onApriFornitore}
             onChiudi={() => setGruppoAperto(null)}
+          />
+        )}
+        {fiscaleAperto && (
+          <SchedaFiscaleCassa
+            nome={fiscaleAperto.nome}
+            voci={fiscaleAperto.voci ?? []}
+            importo={fiscaleAperto.importo}
+            onChiudi={() => setFiscaleAperto(null)}
           />
         )}
         {/* RID/RiBa già scaduti: la banca li ha già presi, fuori dal foglio */}
@@ -797,6 +815,12 @@ export function CassaProprietaView({
               {t("cpr.manuale")}
             </span>
             {t("cpr.legendaManuale")} · {t("cpr.rinomina")}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className={`rounded px-1 text-[9px] font-bold uppercase ${PILL_COMP}`}>
+              {t("cpr.compensazione")}
+            </span>
+            {t("cpr.legendaCompensazione")}
           </span>
           <span>{t("cpr.regolaFineMese")}</span>
           <span className="inline-flex items-center gap-1">
@@ -1037,6 +1061,7 @@ const TINTA_REALE = "bg-sky-50/70 dark:bg-sky-950/30";
 /** Righe scritte a mano (non calcolate): tinta viola e pillola "manuale". */
 const TINTA_MAN = "bg-violet-50/80 dark:bg-violet-950/30";
 const PILL_MAN = "bg-violet-600 text-white";
+const PILL_COMP = "bg-rose-600 text-white";
 const PILL_STIMA = "bg-amber-500 text-white";
 const PILL_AUTO =
   "border border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300";
@@ -1069,6 +1094,7 @@ function Foglio({
   onApriFornitore,
   onApriCliente,
   onApriGruppo,
+  onApriFiscale,
 }: {
   t: TFn;
   entrate: readonly Cella[];
@@ -1096,6 +1122,8 @@ function Foglio({
   onApriCliente: (nome: string) => void;
   /** Clic sul nome di un gruppo (uscite per tipologia/cliente): i fornitori dentro. */
   onApriGruppo: (c: Cella) => void;
+  /** Clic su Fiscale/IVA/Banca: le scadenze dentro la riga. */
+  onApriFiscale: (c: Cella) => void;
 }) {
   const [nuova, setNuova] = useState<null | {
     entrata: boolean;
@@ -1304,7 +1332,11 @@ function Foglio({
                     <td
                       className={`${celN} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.parcheggiata ? "italic text-slate-500 line-through decoration-slate-400" : e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
                     >
-                      {e && <Importo c={e} readOnly={readOnly} onImporto={onImporto} t={t} />}
+                      {e && (
+                        <span className={e.importo < 0 ? "text-rose-700 dark:text-rose-400" : ""}>
+                          <Importo c={e} readOnly={readOnly} onImporto={onImporto} t={t} />
+                        </span>
+                      )}
                     </td>
                     <td
                       className={`${cel} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
@@ -1316,6 +1348,15 @@ function Foglio({
                               type="button"
                               onClick={() => onApriCliente(e.nome)}
                               title={t("cpr.apriCliente")}
+                              className={`max-w-[200px] truncate ${LINK_CLS}`}
+                            >
+                              {e.nome}
+                            </button>
+                          ) : e.tipo === "compensazione" && onApriFornitore ? (
+                            <button
+                              type="button"
+                              onClick={() => onApriFornitore(e.nome)}
+                              title={t("cpr.apriFornitore")}
                               className={`max-w-[200px] truncate ${LINK_CLS}`}
                             >
                               {e.nome}
@@ -1335,6 +1376,14 @@ function Foglio({
                               title={t("cpr.legendaManuale")}
                             >
                               <Pencil className="h-2.5 w-2.5" /> {t("cpr.manuale")}
+                            </span>
+                          )}
+                          {e.tipo === "compensazione" && (
+                            <span
+                              className={`inline-flex shrink-0 items-center rounded px-1 text-[9px] font-bold uppercase ${PILL_COMP}`}
+                              title={e.dettaglio}
+                            >
+                              {t("cpr.compensazione")}
                             </span>
                           )}
                           {e.attesa ? (
@@ -1362,7 +1411,16 @@ function Foglio({
                 <td className={`${cel} text-foreground ${u && eManuale(u) ? TINTA_MAN : ""}`}>
                   {u && (
                     <span className="flex items-center gap-1.5">
-                      {u.tipo === "passiva" && onApriFornitore && !eGruppo(u) ? (
+                      {u.tipo === "fiscale" && u.voci?.length ? (
+                        <button
+                          type="button"
+                          onClick={() => onApriFiscale(u)}
+                          title={t("cpr.apriFiscale")}
+                          className={`truncate font-medium ${LINK_CLS}`}
+                        >
+                          {u.nome}
+                        </button>
+                      ) : u.tipo === "passiva" && onApriFornitore && !eGruppo(u) ? (
                         <button
                           type="button"
                           onClick={() => onApriFornitore(u.nome)}
@@ -1591,7 +1649,14 @@ function Foglio({
         <tfoot>
           {/* totali come nel foglio: valori e sotto le sue etichette */}
           <tr className="border-t-2 border-border bg-muted/50">
-            <td className={`${celT} ${TINTA.entrate.num}`}>{fmt(totali.entrateStandby)}</td>
+            <td className={`${celT} ${TINTA.entrate.num}`}>
+              {fmt(totali.entrateStandby)}
+              {(totali.compensazioni ?? 0) !== 0 && (
+                <div className="text-[10px] font-normal text-rose-700 dark:text-rose-400">
+                  {t("cpr.diCuiComp")} {fmt(totali.compensazioni)}
+                </div>
+              )}
+            </td>
             <td className={`${celT} ${TINTA.standby.num} text-left`}>
               {fmt(totali.entrateParcheggiate)}
             </td>

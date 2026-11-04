@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.99.0",
+    date: "2026-11-04",
+    entries: [
+      {
+        title: "Cassa proprietà: chi paga in compensazione si scala dagli entranti",
+        description:
+          'Nella scheda fornitore c\'è la spunta "Paga in compensazione" (già attiva per Ceva, Number1, le tre Univex e Posta Doc): le fatture di quel fornitore escono dalle uscite e diventano una riga negativa tra gli entranti, con l\'etichetta rossa "compensazione" e l\'elenco delle fatture nel dettaglio. Sotto il totale entranti c\'è "di cui compensazioni".',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: clic su Fiscale, IVA o Banca apre le scadenze",
+        description:
+          "Il popup elenca le scadenze dentro la riga (data, voce, modalità, importo) con il totale, per riscontrare il numero con lo scadenziario di Sabrina.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.98.1",
     date: "2026-11-04",
     entries: [
