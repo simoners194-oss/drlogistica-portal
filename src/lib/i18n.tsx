@@ -937,7 +937,8 @@ const en = {
   "cpr.manuale": "manual",
   "cpr.stima": "estimate",
   "cpr.legendaManuale": "typed by hand, not computed",
-  "cpr.legendaStima": "payroll estimated on the latest net pay",
+  "cpr.legendaStima":
+    "payroll estimated on the latest net pay; recurring invoices (fuel) estimated on the average of the last six",
   "cpr.legendaAuto": "direct debit (RID/RiBa): leaves on its own, cannot be put on hold",
   "cpr.nonParcheggiabile":
     "Direct debit (RID/RiBa): it leaves on its own at the due date, it cannot be moved",
@@ -1188,6 +1189,9 @@ const en = {
   "for.compensaTip":
     "In the owner's cash sheet their invoices are not outflows: they are deducted from the incoming amounts as a negative row under their name.",
   "for.compensaBadge": "compensates",
+  "for.stimaGiorni": "Recurring invoices: estimate the next ones every (days)",
+  "for.stimaTip":
+    "In the owner's cash sheet, after the last invoice received, the next expected ones are added with the average of the last six (fuel: 15 = the 15th and the last day of the month). 0 = no estimate.",
   "for.colResiduo": "Outstanding",
   "for.colNumero": "Number",
   "for.colScad": "Due date",
@@ -2961,7 +2965,8 @@ const it: Record<DictKey, string> = {
   "cpr.manuale": "manuale",
   "cpr.stima": "stima",
   "cpr.legendaManuale": "scritta a mano, non calcolata",
-  "cpr.legendaStima": "stipendi stimati sugli ultimi netti caricati",
+  "cpr.legendaStima":
+    "stipendi stimati sugli ultimi netti caricati; fatture ricorrenti (carburanti) stimate sulla media delle ultime sei",
   "cpr.legendaAuto": "addebito automatico (RID/RiBa): esce da solo, non si parcheggia",
   "cpr.nonParcheggiabile":
     "Addebito automatico (RID/RiBa): esce da solo alla scadenza, non si può spostare",
@@ -3213,6 +3218,9 @@ const it: Record<DictKey, string> = {
   "for.compensaTip":
     "In Cassa proprietà le sue fatture non stanno tra le uscite: si scalano dagli entranti, come riga negativa col suo nome.",
   "for.compensaBadge": "compensa",
+  "for.stimaGiorni": "Fatture ricorrenti: stima le prossime ogni (giorni)",
+  "for.stimaTip":
+    "In Cassa proprietà, dopo l'ultima fattura arrivata, si aggiungono le prossime attese con la media delle ultime sei (carburanti: 15 = il 15 e l'ultimo del mese). 0 = nessuna stima.",
   "for.colResiduo": "Residuo",
   "for.colNumero": "Numero",
   "for.colScad": "Scadenza",

@@ -58,6 +58,10 @@ export interface FornitoreInfo {
    *  Cassa proprietà le sue fatture si scalano dagli entranti, non stanno
    *  tra le uscite. Nel JSON delle Note: "k". */
   compensa?: boolean;
+  /** Fatture ricorrenti (Simone 04/11/2026: carburanti ENI e Kuwait ogni 15
+   *  giorni): in Cassa proprietà si stimano le prossime fatture sulla media
+   *  delle ultime, ogni N giorni. 0/assente = nessuna stima. Nel JSON: "g". */
+  stimaGiorni?: number;
 }
 
 /** Chiave di raggruppamento del fornitore (stessa dei Flussi/Resoconto). */
@@ -87,6 +91,8 @@ export function parseFornitoreInfo(note?: string | null): FornitoreInfo {
     if (pulisci(j.c)) out.macrovoce = pulisci(j.c);
     if (pulisci(j.a)) out.appalto = pulisci(j.a);
     if (j.k) out.compensa = true;
+    const g = Number(j.g);
+    if (Number.isFinite(g) && g > 0 && g <= 366) out.stimaGiorni = Math.round(g);
     return out;
   } catch {
     return {};
@@ -100,6 +106,7 @@ export function serializeFornitoreInfo(info: FornitoreInfo): string {
   if (pulisci(info.macrovoce)) j.c = pulisci(info.macrovoce);
   if (pulisci(info.appalto)) j.a = pulisci(info.appalto);
   if (info.compensa) j.k = "1";
+  if (info.stimaGiorni && info.stimaGiorni > 0) j.g = String(Math.round(info.stimaGiorni));
   return JSON.stringify(j);
 }
 
@@ -170,6 +177,8 @@ export interface RigaFornitore {
   promemoria: string;
   /** Paga in compensazione: in Cassa proprietà le sue fatture si scalano dagli entranti. */
   compensa: boolean;
+  /** Fatture ricorrenti: stima in Cassa ogni N giorni (0 = nessuna stima). */
+  stimaGiorni: number;
   /** Proposte dalle fatture (tipologia di costo / cliente di riferimento). */
   macrovoceAuto: string;
   appaltoAuto: string;
@@ -299,6 +308,7 @@ export function riepilogoFornitori(
       appalto: salvato?.appalto ?? "",
       promemoria: salvato?.promemoria ?? "",
       compensa: salvato?.compensa ?? false,
+      stimaGiorni: salvato?.stimaGiorni ?? 0,
       macrovoceAuto: piuFrequente(a.macro),
       appaltoAuto: piuFrequente(a.appalti),
       scaduto: r2(a.scaduto),

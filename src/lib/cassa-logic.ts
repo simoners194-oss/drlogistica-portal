@@ -25,7 +25,7 @@
 // fiscali non "previsionali", costi fissi) più le righe manuali della
 // proprietà (divisione utili, compensazioni) e le spese passate da altri
 // conti (carta Amex = "CDC" nel suo foglio).
-import { residuoAperto, type FatturaConStato } from "./fatture-logic";
+import { isNotaCredito, residuoAperto, type FatturaConStato } from "./fatture-logic";
 import {
   chiaveFornitore,
   esclusaDaFlussi,
@@ -588,6 +588,95 @@ function elencoNumeri(numeri: readonly string[]): string {
   return n > 3 ? `${testa} +${n - 3}` : testa;
 }
 
+const giorniTra = (a: string, b: string) =>
+  Math.round(
+    (Date.UTC(Number(b.slice(0, 4)), Number(b.slice(5, 7)) - 1, Number(b.slice(8, 10))) -
+      Date.UTC(Number(a.slice(0, 4)), Number(a.slice(5, 7)) - 1, Number(a.slice(8, 10)))) /
+      86400000,
+  );
+const piuGiorni = (iso: string, n: number): string => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+/** Fatture ricorrenti STIMATE (Simone 04/11/2026: "i carburanti arrivano
+ *  ogni 15 giorni, guarda l'andamento e replicalo"): per i fornitori con
+ *  `stimaGiorni` sulla scheda (ENI e Kuwait = 15), dopo l'ultima fattura
+ *  vera si aggiunge una riga per ogni fattura attesa entro il limite.
+ *  Importo = media delle ultime sei fatture; date = con la cadenza di 15
+ *  giorni il 15 e l'ultimo del mese (come fanno ENI e Kuwait), altrimenti
+ *  ogni N giorni; scadenza = data + ritardo tipico delle ultime (mediana),
+ *  con la regola di fine mese. Quando la fattura vera arriva, la stima di
+ *  quella data sparisce da sola: si riparte sempre dall'ultima fattura vera. */
+export function stimeFattureRicorrenti(
+  passive: readonly FatturaConStato[],
+  info: ReadonlyMap<string, FornitoreInfo>,
+  oggi: string,
+  limite: string,
+  esclusioni: readonly { nome: string; mese?: string; meseFine?: string }[] = [],
+): Grezza[] {
+  const out: Grezza[] = [];
+  const perForn = new Map<string, FatturaConStato[]>();
+  for (const x of passive) {
+    if (isNotaCredito(x.f.tipoDocumento) || /stornat/i.test(x.f.incassoAruba ?? "")) continue;
+    const k = chiaveFornitore(x.f.cliente);
+    if (!((info.get(k)?.stimaGiorni ?? 0) > 0)) continue;
+    const lista = perForn.get(k) ?? [];
+    lista.push(x);
+    perForn.set(k, lista);
+  }
+  for (const [k, fatt] of perForn) {
+    fatt.sort((a, b) => a.f.dataDocumento.localeCompare(b.f.dataDocumento));
+    const ultime = fatt.slice(-6);
+    const ultima = ultime[ultime.length - 1];
+    const cadenza = info.get(k)?.stimaGiorni ?? 15;
+    const media = r2(ultime.reduce((s, x) => s + Math.abs(x.f.totale), 0) / ultime.length);
+    if (media <= 0.005) continue;
+    const ritardi = ultime
+      .filter((x) => x.s.scadenza)
+      .map((x) => giorniTra(x.f.dataDocumento, scadenzaEffettiva(x.s.scadenza)))
+      .filter((n) => n >= 0 && n <= 120)
+      .sort((a, b) => a - b);
+    const ritardo = ritardi.length ? ritardi[Math.floor(ritardi.length / 2)] : cadenza;
+    const mod = modalitaFattura(ultima.f, info);
+    const certa = mod !== "altro";
+    const tip = (ultima.f.tipologiaCosto ?? info.get(k)?.macrovoce ?? "").trim();
+    const cli = (ultima.f.clienteRif ?? info.get(k)?.appalto ?? "").trim();
+    let data = ultima.f.dataDocumento;
+    for (let i = 0; i < 24; i++) {
+      if (cadenza === 15) {
+        // il 15 e l'ultimo del mese: dopo una fattura di metà mese (fino al
+        // 20) viene quella di fine mese, dopo una di fine mese il 15 del mese dopo
+        data =
+          Number(data.slice(8, 10)) <= 20 ? fineMese(data) : `${meseDopo(data.slice(0, 7))}-15`;
+      } else data = piuGiorni(data, cadenza);
+      const scad = scadenzaEffettiva(piuGiorni(data, ritardo));
+      if (scad > limite) break;
+      if (scad <= oggi) continue;
+      if (esclusaDaFlussi(esclusioni, ultima.f.cliente, scad.slice(0, 7))) continue;
+      out.push({
+        chiave: `pstima|${k}|${data}`,
+        tipo: "passiva",
+        controparte: ultima.f.cliente,
+        descrizione: `stima · fattura attesa il ${ddmm(data)} · media delle ultime ${ultime.length}${certa ? ` · ${mod.toUpperCase()}` : ""}`,
+        importo: media,
+        scadenza: scad,
+        certa,
+        entrata: false,
+        documenti: 1,
+        editabile: true,
+        modalita: certa ? mod.toUpperCase() : undefined,
+        stima: true,
+        tipologia: tip || undefined,
+        cliente: cli || undefined,
+        promemoria: info.get(k)?.promemoria || undefined,
+      });
+    }
+  }
+  return out;
+}
+
 export function costruisciCassa(input: InputCassa): EsitoCassa {
   const { oggi, limite, db } = input;
   const fm = fineMese(oggi);
@@ -919,6 +1008,16 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     });
   }
 
+  // Fatture RICORRENTI stimate (carburanti ogni 15 giorni): dopo l'ultima
+  // fattura vera, una riga per ogni fattura attesa entro il limite.
+  for (const g of stimeFattureRicorrenti(
+    input.passive,
+    input.infoFornitori,
+    oggi,
+    limite,
+    input.esclusioni,
+  ))
+    grezze.push(g);
   // Compensazioni: una riga NEGATIVA tra gli entranti per ogni fornitore che
   // paga in compensazione (le sue fatture aperte entro il limite).
   for (const [kc, c] of gruppiComp)

@@ -141,6 +141,7 @@ export function SchedaFornitore({
   const [appalto, setAppalto] = useState(riga.appalto);
   const [promemoria, setPromemoria] = useState(riga.promemoria);
   const [compensa, setCompensa] = useState(riga.compensa);
+  const [stimaGiorni, setStimaGiorni] = useState(String(riga.stimaGiorni || ""));
   // Riallineo le caselle quando cambia il fornitore (o dopo un salvataggio).
   useEffect(() => {
     setModalita(riga.override ?? "");
@@ -149,6 +150,7 @@ export function SchedaFornitore({
     setAppalto(riga.appalto);
     setPromemoria(riga.promemoria);
     setCompensa(riga.compensa);
+    setStimaGiorni(String(riga.stimaGiorni || ""));
   }, [
     riga.chiave,
     riga.override,
@@ -157,6 +159,7 @@ export function SchedaFornitore({
     riga.appalto,
     riga.promemoria,
     riga.compensa,
+    riga.stimaGiorni,
   ]);
   const cambiato =
     (modalita || undefined) !== riga.override ||
@@ -164,7 +167,8 @@ export function SchedaFornitore({
     macrovoce.trim() !== riga.macrovoce ||
     appalto.trim() !== riga.appalto ||
     promemoria.trim() !== riga.promemoria ||
-    compensa !== riga.compensa;
+    compensa !== riga.compensa ||
+    (Number(stimaGiorni) || 0) !== (riga.stimaGiorni || 0);
 
   const lbl = "text-[11px] uppercase text-muted-foreground";
   const stat = (etichetta: string, valore: string, cls = "") => (
@@ -280,6 +284,25 @@ export function SchedaFornitore({
           {t("for.compensa")}
           <span className="text-[11px] text-muted-foreground">{t("for.compensaTip")}</span>
         </label>
+        {/* Fatture ricorrenti (Simone 04/11/2026: carburanti ogni 15 giorni):
+            la Cassa stima le prossime sulla media delle ultime sei. */}
+        <label
+          className="mb-3 flex flex-wrap items-center gap-2 text-[13px]"
+          title={t("for.stimaTip")}
+        >
+          {t("for.stimaGiorni")}
+          <input
+            type="number"
+            min={0}
+            max={366}
+            value={stimaGiorni}
+            disabled={busy}
+            onChange={(e) => setStimaGiorni(e.target.value)}
+            placeholder="0"
+            className={`${inputVocabCls} w-20 text-right`}
+          />
+          <span className="text-[11px] text-muted-foreground">{t("for.stimaTip")}</span>
+        </label>
         <div className="mb-4 flex items-center gap-2">
           <button
             type="button"
@@ -292,6 +315,7 @@ export function SchedaFornitore({
                 appalto: appalto.trim(),
                 promemoria: promemoria.trim(),
                 compensa,
+                stimaGiorni: Number(stimaGiorni) || undefined,
               })
             }
             className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"

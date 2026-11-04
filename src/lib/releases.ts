@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.100.0",
+    date: "2026-11-04",
+    entries: [
+      {
+        title: "Cassa proprietà: carburanti stimati ogni 15 giorni",
+        description:
+          "Nella scheda fornitore c'è \"Fatture ricorrenti: stima le prossime ogni N giorni\" (già 15 per ENI e Kuwait). Dopo l'ultima fattura arrivata la Cassa aggiunge le prossime attese fino al limite, con la media delle ultime sei, alle date del 15 e dell'ultimo del mese e la scadenza RID tipica; l'importo si corregge a mano e la stima sparisce quando arriva la fattura vera.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.99.1",
     date: "2026-11-04",
     entries: [

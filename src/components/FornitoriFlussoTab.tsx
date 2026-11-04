@@ -192,6 +192,7 @@ export function FornitoriFlussoTab() {
       macrovoce: valore(r, "macrovoce"),
       appalto: valore(r, "appalto"),
       compensa: r.compensa,
+      stimaGiorni: r.stimaGiorni || undefined,
       ...patch,
     };
     setSalvando((s) => new Set(s).add(r.chiave));
