@@ -315,6 +315,8 @@ export const CHIUSURE_APPALTI: Record<string, string> = {
   CEVA: "2026-09",
   "UNIVEX - SAVONA": "2026-10",
   "UNIVEX SAVONA": "2026-10",
+  // Widem (Valsamoggia) chiuso il 30/09/2026 — Simone 04/11/2026.
+  WIDEM: "2026-09",
 };
 export function appaltoChiuso(
   appalto: string,
@@ -376,30 +378,38 @@ export function stipendiDaPagare(
   const mesi = [...new Set((db.netti ?? []).map((n) => n.mese))].sort();
   const ultimo = mesi[mesi.length - 1];
   if (ultimo) {
-    const base = (db.netti ?? []).filter((n) => n.mese === ultimo || n.mese === mesePrima(ultimo));
+    // Simone 04/11/2026 ("come hai fatto a fare sto conto"): la stima è PER
+    // PERSONA, non per etichetta di appalto. Contano solo i dipendenti
+    // presenti nell'ULTIMO mese caricato, ognuno con la media del suo netto
+    // sugli ultimi due mesi (se c'era anche nel mese prima) e con l'appalto
+    // dell'ultimo mese: chi non c'è più non pesa, chi cambia etichetta
+    // ("UFFICIO FIANO" → "UFFICIO FIANO ROMANO") non viene contato due volte
+    // e un mese anomalo di una persona pesa la metà.
+    const ultimoNetti = (db.netti ?? []).find((n) => n.mese === ultimo);
+    const precNetti = (db.netti ?? []).find((n) => n.mese === mesePrima(ultimo));
+    const prec = new Map(
+      (precNetti?.dipendenti ?? []).map((d) => [chiaveNome(d.nome), Number(d.stipendio) || 0]),
+    );
     for (let mese = meseDopo(ultimo); meseDopo(mese) <= fino; mese = meseDopo(mese)) {
-      const perAppalto = new Map<string, { tot: number; mesi: Set<string>; dip: number }>();
-      for (const n of base)
-        for (const d of n.dipendenti) {
-          const k = (d.appalto ?? "").trim() || "Altri";
-          if (appaltoChiuso(k, mese, chiusure)) continue;
-          const imp = Number(d.stipendio) || 0;
-          if (imp <= 0.005) continue;
-          const a = perAppalto.get(k) ?? { tot: 0, mesi: new Set<string>(), dip: 0 };
-          a.tot += imp;
-          a.mesi.add(n.mese);
-          a.dip = Math.max(
-            a.dip,
-            n.dipendenti.filter((x) => ((x.appalto ?? "").trim() || "Altri") === k).length,
-          );
-          perAppalto.set(k, a);
-        }
+      const perAppalto = new Map<string, { tot: number; dip: number }>();
+      for (const d of ultimoNetti?.dipendenti ?? []) {
+        const k = (d.appalto ?? "").trim() || "Altri";
+        if (appaltoChiuso(k, mese, chiusure)) continue;
+        const imp = Number(d.stipendio) || 0;
+        if (imp <= 0.005) continue;
+        const p = prec.get(chiaveNome(d.nome)) ?? 0;
+        const stima = p > 0.005 ? (imp + p) / 2 : imp;
+        const a = perAppalto.get(k) ?? { tot: 0, dip: 0 };
+        a.tot += stima;
+        a.dip++;
+        perAppalto.set(k, a);
+      }
       for (const [appalto, a] of perAppalto)
         out.push({
           appalto,
           meseCompetenza: mese,
           mesePagamento: meseDopo(mese),
-          importo: r2(a.tot / Math.max(1, a.mesi.size)),
+          importo: r2(a.tot),
           dipendenti: a.dip,
           stima: true,
         });
@@ -502,12 +512,57 @@ export const NOME_GRUPPO_FISCALE: Record<GruppoFiscale, string> = {
   iva: "IVA",
   banca: "Banca",
 };
-/** "Banca" = rate di finanziamento; "IVA" = l'IVA dell'anno corrente (non le
- *  sue rateizzazioni, che sono "rate" e stanno nel Fiscale insieme agli F24). */
-export function gruppoFiscale(sc: Pick<ScadenzaFiscale, "voce" | "categoria">): GruppoFiscale {
+/** "Banca" = rate di finanziamento; "IVA" = solo l'IVA DA PAGARE, cioè la
+ *  liquidazione alla sua scadenza naturale (Simone 04/11/2026); le
+ *  rateizzazioni dell'IVA ("IVA APRILE" pagata a novembre, e le "rate")
+ *  stanno nel Fiscale insieme agli F24. */
+export function gruppoFiscale(
+  sc: Pick<ScadenzaFiscale, "voce" | "categoria"> &
+    Partial<Pick<ScadenzaFiscale, "periodo" | "anno" | "dataPagamento">>,
+): GruppoFiscale {
   if (sc.categoria === "finanziamento") return "banca";
-  if (sc.categoria === "corrente" && /\biva\b/i.test(sc.voce)) return "iva";
+  if (sc.categoria === "corrente" && /\biva\b/i.test(sc.voce) && ivaDaPagare(sc)) return "iva";
   return "fiscale";
+}
+
+/** Scadenza naturale dell'IVA del periodo: mensile = 16 del mese dopo;
+ *  trimestrale = 16/05, 20/08, 16/11 e 16/03 dell'anno dopo; annuale = 16/03
+ *  dell'anno dopo; acconto = 27/12. null se il periodo non si capisce. */
+export function scadenzaNaturaleIva(
+  periodo: string,
+  anno: number | undefined,
+  data: string,
+): string | null {
+  const p = periodo.trim().toLowerCase();
+  const a = anno ?? Number(data.slice(0, 4));
+  if (!Number.isFinite(a)) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const m = MESI_LUNGHI.indexOf(p) + 1;
+  if (m > 0) return m === 12 ? `${a + 1}-01-16` : `${a}-${pad(m + 1)}-16`;
+  const tri = /^(iv|iii|ii|i)\b/.exec(p);
+  if (tri && /trim/.test(p)) {
+    const t = tri[1];
+    if (t === "i") return `${a}-05-16`;
+    if (t === "ii") return `${a}-08-20`;
+    if (t === "iii") return `${a}-11-16`;
+    return `${a + 1}-03-16`;
+  }
+  if (/annual/.test(p)) return `${a + 1}-03-16`;
+  if (/acconto/.test(p)) return `${a}-12-27`;
+  return null;
+}
+
+/** IVA "da pagare" = pagata entro 45 giorni dalla sua scadenza naturale;
+ *  più in là è una rateizzazione. Periodo non riconosciuto = da pagare. */
+function ivaDaPagare(
+  sc: Partial<Pick<ScadenzaFiscale, "periodo" | "anno" | "dataPagamento">>,
+): boolean {
+  if (!sc.dataPagamento) return true;
+  const nat = scadenzaNaturaleIva(sc.periodo ?? "", sc.anno, sc.dataPagamento);
+  if (!nat) return true;
+  const utc = (iso: string) =>
+    Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+  return Math.abs((utc(sc.dataPagamento) - utc(nat)) / 86400000) <= 45;
 }
 
 type Grezza = Omit<

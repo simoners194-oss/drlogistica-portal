@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.99.1",
+    date: "2026-11-04",
+    entries: [
+      {
+        title: "Cassa proprietà: nella riga IVA solo l'IVA da pagare",
+        description:
+          'Nella riga IVA resta solo la liquidazione alla sua scadenza naturale (entro 45 giorni); le rateizzazioni dell\'IVA, come "IVA APRILE" pagata a novembre, passano nella riga Fiscale insieme agli F24.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: stima stipendi per persona",
+        description:
+          "La stima dei mesi non ancora caricati si calcola per dipendente: solo chi è presente nell'ultimo mese caricato, con la media del suo netto sugli ultimi due mesi e l'appalto dell'ultimo mese. Prima si faceva per etichetta di appalto: chi cambiava etichetta (Ufficio Fiano → Ufficio Fiano Romano) veniva contato due volte e un mese anomalo pesava intero.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.99.0",
     date: "2026-11-04",
     entries: [
