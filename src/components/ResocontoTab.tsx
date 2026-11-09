@@ -72,6 +72,16 @@ const FASCE: { label: string; da: number; a: number | null }[] = [
 // trascina dentro l'intera azienda e si confrontano mele con pere.
 const NESSUNO = "__nessuno__";
 
+/** Riquadro dei "quattro numeri": etichetta piccola, importo grande. */
+function Tile4({ etichetta, valore, cls }: { etichetta: string; valore: number; cls: string }) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-background px-4 py-3">
+      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{etichetta}</div>
+      <div className={`mt-1 text-xl font-semibold tabular-nums ${cls}`}>{fmtImporto(valore)} €</div>
+    </div>
+  );
+}
+
 export function ResocontoTab() {
   const { t } = useLang();
   const [fattureEm, setFattureEm] = useState<SpFattura[] | null>(null);
@@ -415,6 +425,18 @@ export function ResocontoTab() {
       });
     }
     const estratto = movSel.reduce((s, m) => s + m.importo, 0);
+    // I QUATTRO NUMERI (Simone 09/11/2026, caso Posta Doc): incassato e
+    // pagato in BANCA (bonifici, non Aruba), fatturato attivo e passivo al
+    // netto delle note di credito (stornate e scartate escluse).
+    const incassiBanca = movSel.reduce((s, m) => s + (m.importo > 0 ? m.importo : 0), 0);
+    const pagatoBanca = movSel.reduce((s, m) => s + (m.importo < 0 ? -m.importo : 0), 0);
+    const fatturatoNetto = (xs: typeof attSel) =>
+      xs.reduce((s, x) => {
+        if (x.s.aruba === "Stornata" || /scartat|rifiutat/i.test(x.f.statoSdI ?? "")) return s;
+        return s + (x.s.stato === "NC" ? -Math.abs(x.f.totale) : Math.abs(x.f.totale));
+      }, 0);
+    const fattAtt = fatturatoNetto(attSel);
+    const fattPas = fatturatoNetto(pasSel);
     const incassatoAtt = attSel.reduce((s, x) => s + incassatoDi(x), 0);
     const pagatoPas = pasSel.reduce((s, x) => s + incassatoDi(x), 0);
     // Residui (fatture non ancora incassate/pagate) per la riga dei totali:
@@ -439,6 +461,13 @@ export function ResocontoTab() {
       resPas: Math.round(resPas * 100) / 100,
       saldoResiduo: Math.round((resAtt - resPas) * 100) / 100,
       nMov: movSel.length,
+      incassiBanca: Math.round(incassiBanca * 100) / 100,
+      pagatoBanca: Math.round(pagatoBanca * 100) / 100,
+      fattAtt: Math.round(fattAtt * 100) / 100,
+      fattPas: Math.round(fattPas * 100) / 100,
+      // Saldo con la controparte: quello che ci deve ancora (positivo) o
+      // che dobbiamo noi (negativo) = attivo − incassato − (passivo − pagato).
+      saldoControparte: Math.round((fattAtt - incassiBanca - (fattPas - pagatoBanca)) * 100) / 100,
       ok: Math.abs(differenza) <= 1,
     };
 
@@ -1140,6 +1169,50 @@ export function ResocontoTab() {
         </div>
       ) : (
         <>
+          {/* I QUATTRO NUMERI (Simone 09/11/2026, dopo il caso Posta Doc):
+              incassato in banca, fatturato attivo, fatturato passivo, pagato
+              in banca, e il saldo con la controparte — verde se ci devono,
+              rosso se dobbiamo noi. Vale per qualunque vista o filtro. */}
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <div className="text-sm font-semibold text-foreground">{t("rt.q4Titolo")}</div>
+              <div className="text-[11px] text-muted-foreground">{t("rt.q4Desc")}</div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+              <Tile4
+                etichetta={t("rt.q4Incassato")}
+                valore={quadro.incassiBanca}
+                cls="text-status-present"
+              />
+              <Tile4 etichetta={t("rt.q4FattAtt")} valore={quadro.fattAtt} cls="text-foreground" />
+              <Tile4 etichetta={t("rt.q4FattPas")} valore={quadro.fattPas} cls="text-foreground" />
+              <Tile4
+                etichetta={t("rt.q4Pagato")}
+                valore={quadro.pagatoBanca}
+                cls="text-status-absent"
+              />
+              <div
+                className={`rounded-xl border-2 px-4 py-3 ${
+                  quadro.saldoControparte >= 0
+                    ? "border-status-present bg-status-present/10"
+                    : "border-status-absent bg-status-absent/10"
+                }`}
+              >
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  {quadro.saldoControparte >= 0 ? t("rt.q4SaldoAvere") : t("rt.q4SaldoDare")}
+                </div>
+                <div
+                  className={`mt-1 text-2xl font-bold tabular-nums ${
+                    quadro.saldoControparte >= 0 ? "text-status-present" : "text-status-absent"
+                  }`}
+                >
+                  {fmtImporto(Math.abs(quadro.saldoControparte))} €
+                </div>
+                <div className="mt-1 text-[11px] text-muted-foreground">{t("rt.q4Formula")}</div>
+              </div>
+            </div>
+          </div>
+
           {/* Lo specchietto del direttore: Situazione fatture vs Estratto
               conto, con l'OK verde quando la differenza è zero. */}
           <div

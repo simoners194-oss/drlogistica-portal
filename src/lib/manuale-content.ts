@@ -352,6 +352,14 @@ Sotto ci sono anche gli elenchi completi — tutte le fatture da incassare e da 
   },
 
   {
+    id: "res-quattro-numeri",
+    sezione: "Resoconto",
+    titolo: "I quattro numeri della controparte e il saldo verde/rosso",
+    testo: `Dalla 1.102.0 (Simone 09/11/2026, dopo il caso Posta Doc) in cima al Resoconto, sopra lo specchietto Aruba, c'è il riquadro "I quattro numeri della controparte", valido per qualunque filtro o vista salvata: Incassato in banca (i bonifici ricevuti dalle controparti selezionate), Fatturato attivo al netto delle note di credito, Fatturato passivo al netto delle NC, Pagato in banca (i nostri bonifici a loro). In fondo il saldo = attivo − incassato − (passivo − pagato): verde con "ci devono" quando è a nostro favore, rosso con "dobbiamo noi" quando è a loro favore. È la stessa logica con cui si è quadrata Posta Doc (5.222.635,93 − 4.166.947,72 − 371.112,28 + 1.500 = 686.075,93). Banca e Aruba qui non si mischiano: incassato e pagato vengono dai movimenti bancari, le fatture da Aruba; lo specchietto sotto continua a dire se Aruba è aggiornata rispetto alla banca.`,
+    chiavi:
+      "resoconto quattro numeri incassato in banca fatturato attivo passivo pagato saldo verde rosso ci devono dobbiamo noi controparte postadoc",
+  },
+  {
     id: "res-saldo-controparte",
     sezione: "Resoconto",
     titolo: "Saldo per controparte: attive e passive affiancate",

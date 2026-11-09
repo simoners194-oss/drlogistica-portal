@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.102.0",
+    date: "2026-11-09",
+    entries: [
+      {
+        title: "Resoconto: i quattro numeri della controparte e il saldo verde/rosso",
+        description:
+          "In cima al Resoconto, per qualunque filtro o vista: incassato in banca, fatturato attivo (netto NC), fatturato passivo (netto NC), pagato in banca, e il saldo = attivo − incassato − (passivo − pagato), verde se ci devono, rosso se dobbiamo noi. Banca e Aruba restano separati: lo specchietto sotto dice se Aruba è aggiornata.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.101.1",
     date: "2026-11-04",
     entries: [
