@@ -357,6 +357,8 @@ export const SP_DISPLAY = {
     Note: "Note",
     // Testo lungo (04/11/2026): promemoria della scheda fornitore. OPZIONALE.
     Promemoria: "Promemoria",
+    // Testo lungo (09/11/2026): quote per appalto della scheda fornitore (JSON). OPZIONALE.
+    Ripartizione: "Ripartizione",
   },
   dettagliDistinte: {
     Appalto: "Appalto",
@@ -6880,6 +6882,9 @@ export interface FlussoCassaRiga {
   /** Scheda fornitore: promemoria libero (colonna Promemoria, testo lungo).
    *  undefined in scrittura = non toccare. */
   promemoria?: string;
+  /** Scheda fornitore: quote per appalto, JSON [{appalto, quota}] (colonna
+   *  Ripartizione, testo lungo). undefined in scrittura = non toccare. */
+  ripartizione?: string;
 }
 
 const ERR_LISTA_FLUSSI =
@@ -6928,6 +6933,9 @@ export async function fetchFlussiCassa(): Promise<FlussoCassaRiga[]> {
         importo: F.Importo ? Number(f[F.Importo] ?? 0) || 0 : 0,
         note: F.Note ? String(f[F.Note] ?? "").trim() || undefined : undefined,
         promemoria: F.Promemoria ? String(f[F.Promemoria] ?? "").trim() || undefined : undefined,
+        ripartizione: F.Ripartizione
+          ? String(f[F.Ripartizione] ?? "").trim() || undefined
+          : undefined,
       };
     })
     .filter((x) => x.nome);
@@ -6959,6 +6967,13 @@ export async function upsertFlussoCassa(input: Omit<FlussoCassaRiga, "id">): Pro
         'Colonna "Promemoria" assente sulla lista FlussiCassa: crearla (testo su più righe) e fare Riscopri.',
       );
     if (F.Promemoria) fields[F.Promemoria] = input.promemoria;
+  }
+  if (input.ripartizione !== undefined) {
+    if (!F.Ripartizione && input.ripartizione.trim())
+      throw new Error(
+        'Colonna "Ripartizione" assente sulla lista FlussiCassa: crearla (testo su più righe) e fare Riscopri.',
+      );
+    if (F.Ripartizione) fields[F.Ripartizione] = input.ripartizione;
   }
   // Upsert per nome: voci (per mese), spunte Altre spese e schede fornitore
   // (una riga per fornitore: la scheda si riscrive, non si duplica).

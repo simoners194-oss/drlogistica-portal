@@ -32,8 +32,11 @@ import {
   fissoAttivo,
   matchFisso,
   modalitaFattura,
+  quoteFornitore,
   type CostoFisso,
   type FornitoreInfo,
+  type ParcoPerRipartizione,
+  type QuotaAppalto,
 } from "./flussi-logic";
 import type { ScadenzaFiscale } from "./fiscale-logic";
 import { chiaveNome, type StipendiDb } from "./stipendi-logic";
@@ -262,6 +265,9 @@ export interface RigaCassa {
   promemoria?: string;
   /** Scadenze dentro la riga (Fiscale/IVA/Banca): si aprono con un clic. */
   voci?: VoceDettaglioCassa[];
+  /** Quote per appalto del fornitore (scheda o mezzi): "Uscite per cliente"
+   *  divide la riga secondo queste percentuali — Simone 09/11/2026. */
+  quote?: QuotaAppalto[];
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -422,6 +428,8 @@ export function stipendiDaPagare(
 }
 
 export interface InputCassa {
+  /** Parco mezzi (modulo Mezzi) per la ripartizione automatica dei fornitori. */
+  mezzi?: ParcoPerRipartizione;
   /** Data della fotografia (YYYY-MM-DD). */
   oggi: string;
   /** Fino a quando guardare (YYYY-MM-DD), oltre la fine del mese. */
@@ -615,6 +623,7 @@ export function stimeFattureRicorrenti(
   oggi: string,
   limite: string,
   esclusioni: readonly { nome: string; mese?: string; meseFine?: string }[] = [],
+  mezzi?: ParcoPerRipartizione,
 ): Grezza[] {
   const out: Grezza[] = [];
   const perForn = new Map<string, FatturaConStato[]>();
@@ -670,6 +679,7 @@ export function stimeFattureRicorrenti(
         stima: true,
         tipologia: tip || undefined,
         cliente: cli || undefined,
+        quote: quoteFornitore(info.get(k), ultima.f.cliente, mezzi),
         promemoria: info.get(k)?.promemoria || undefined,
       });
     }
@@ -853,6 +863,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       modalita: mod || undefined,
       tipologia: piuFrequente(g.tip),
       cliente: piuFrequente(g.cli),
+      quote: quoteFornitore(input.infoFornitori.get(chiaveFornitore(g.nome)), g.nome, input.mezzi),
     };
     if (k.endsWith("|add") && certa) {
       addebitate.push({
@@ -1016,6 +1027,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     oggi,
     limite,
     input.esclusioni,
+    input.mezzi,
   ))
     grezze.push(g);
   // Compensazioni: una riga NEGATIVA tra gli entranti per ogni fornitore che

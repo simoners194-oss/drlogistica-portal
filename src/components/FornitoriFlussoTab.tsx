@@ -29,6 +29,7 @@ import {
   type FornitoreInfo,
   type ModalitaPagamento,
   type RigaFornitore,
+  etichettaRipartizione,
 } from "@/lib/flussi-logic";
 import { SelectVocab } from "@/components/SchedaFornitore";
 import {
@@ -193,6 +194,8 @@ export function FornitoriFlussoTab() {
       appalto: valore(r, "appalto"),
       compensa: r.compensa,
       stimaGiorni: r.stimaGiorni || undefined,
+      ripartizione: r.ripartizione,
+      ripartizioneAuto: r.ripartizioneAuto,
       ...patch,
     };
     setSalvando((s) => new Set(s).add(r.chiave));
@@ -430,6 +433,15 @@ export function FornitoriFlussoTab() {
                         onBlur={() => alBlur(r)}
                         className={inputCls}
                       />
+                      {(r.ripartizione.length > 0 || r.ripartizioneAuto) && (
+                        <div
+                          className="mt-0.5 max-w-56 truncate text-[10px] text-muted-foreground"
+                          title={t("for.ripTitolo")}
+                        >
+                          {r.ripartizioneAuto ? `${t("for.ripAutoBadge")} · ` : ""}
+                          {etichettaRipartizione(r.ripartizione) || "…"}
+                        </div>
+                      )}
                     </td>
                     <td className={`${tdN} ${r.scaduto > 0.005 ? "text-status-absent" : ""}`}>
                       {r.scaduto > 0.005 ? fmtImporto(r.scaduto) : "—"}

@@ -446,6 +446,18 @@ Per comprimere o espandere un gruppo clicca sul suo nome in una riga qualsiasi, 
 
   // --- Flussi ---------------------------------------------------------------------
   {
+    id: "flu-ripartizione-appalti",
+    sezione: "Flussi di cassa",
+    titolo: "Un fornitore su più appalti: la ripartizione in percentuale, anche dai mezzi",
+    testo: `Dalla 1.103.0 (Simone 09/11/2026: "assegnare un fornitore a più appalti per dividere meglio le spese") la scheda fornitore (Flussi → clic sul nome, o Cassa proprietà) ha il blocco "Ripartizione tra appalti": una riga per appalto con la sua percentuale, totale 100. Serve per i costi dei mezzi che stanno su più appalti: noleggi, carburante, pedaggi, multe, officine.
+
+"Bilancia dai mezzi" la calcola il portale dal modulo Mezzi: se il fornitore ha contratti di noleggio attivi (il noleggiatore del contratto è lui), ogni mezzo pesa col suo canone sull'appalto del mezzo; se non ha contratti (carburante, pedaggi, multe) pesa il parco attivo per appalto, un peso per mezzo. Con la spunta accesa le quote restano agganciate ai mezzi e si aggiornano da sole quando un mezzo cambia appalto; "Proponi dai mezzi" le scrive una volta sola e poi si correggono a mano. I mezzi resi, dismessi, venduti o rottamati non contano; quelli senza appalto finiscono in "Altri".
+
+Dove si vede: nella tab Fornitori sotto l'appalto ("Zingali 60% · Univex 40%", con "dai mezzi" se automatica) e in Cassa proprietà con "Uscite per cliente", dove la riga del fornitore si divide tra gli appalti secondo le quote (nel dettaglio del gruppo ogni fornitore porta la sua percentuale). Senza ripartizione vale, come prima, l'appalto unico della scheda.`,
+    chiavi:
+      "fornitore più appalti ripartizione percentuale quote mezzi noleggio carburante pedaggi multe bilancia dai mezzi uscite per cliente dividere spese",
+  },
+  {
     id: "flu-cassa-proprieta",
     sezione: "Flussi di cassa",
     titolo: "La vista Cassa proprietà (il foglio)",

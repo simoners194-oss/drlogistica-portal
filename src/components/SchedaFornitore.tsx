@@ -12,6 +12,7 @@ import {
   REFERENTI_DR,
   type FornitoreInfo,
   type ModalitaPagamento,
+  type QuotaAppalto,
   type RigaFornitore,
   type VocabolarioFornitori,
 } from "@/lib/flussi-logic";
@@ -126,6 +127,7 @@ export function SchedaFornitore({
   busy,
   onSalva,
   onChiudi,
+  quoteMezzi,
 }: {
   riga: RigaFornitore;
   fatture: FatturaScheda[];
@@ -133,6 +135,8 @@ export function SchedaFornitore({
   busy: boolean;
   onSalva: (info: FornitoreInfo) => Promise<void>;
   onChiudi: () => void;
+  /** Quote proposte dal modulo Mezzi (contratti di noleggio / parco), se ci sono. */
+  quoteMezzi?: QuotaAppalto[];
 }) {
   const { t } = useLang();
   const [modalita, setModalita] = useState<ModalitaPagamento | "">(riga.override ?? "");
@@ -142,6 +146,13 @@ export function SchedaFornitore({
   const [promemoria, setPromemoria] = useState(riga.promemoria);
   const [compensa, setCompensa] = useState(riga.compensa);
   const [stimaGiorni, setStimaGiorni] = useState(String(riga.stimaGiorni || ""));
+  // Ripartizione tra più appalti (Simone 09/11/2026): quote a mano oppure
+  // "bilanciate dal sistema" dai mezzi.
+  const [ripartizione, setRipartizione] = useState<QuotaAppalto[]>(riga.ripartizione);
+  const [ripAuto, setRipAuto] = useState(riga.ripartizioneAuto);
+  const sommaQuote = ripartizione.reduce((s, q) => s + (Number(q.quota) || 0), 0);
+  const aggQuota = (i: number, patch: Partial<QuotaAppalto>) =>
+    setRipartizione(ripartizione.map((q, j) => (j === i ? { ...q, ...patch } : q)));
   // Riallineo le caselle quando cambia il fornitore (o dopo un salvataggio).
   useEffect(() => {
     setModalita(riga.override ?? "");
@@ -151,6 +162,8 @@ export function SchedaFornitore({
     setPromemoria(riga.promemoria);
     setCompensa(riga.compensa);
     setStimaGiorni(String(riga.stimaGiorni || ""));
+    setRipartizione(riga.ripartizione);
+    setRipAuto(riga.ripartizioneAuto);
   }, [
     riga.chiave,
     riga.override,
@@ -160,6 +173,8 @@ export function SchedaFornitore({
     riga.promemoria,
     riga.compensa,
     riga.stimaGiorni,
+    riga.ripartizione,
+    riga.ripartizioneAuto,
   ]);
   const cambiato =
     (modalita || undefined) !== riga.override ||
@@ -168,7 +183,9 @@ export function SchedaFornitore({
     appalto.trim() !== riga.appalto ||
     promemoria.trim() !== riga.promemoria ||
     compensa !== riga.compensa ||
-    (Number(stimaGiorni) || 0) !== (riga.stimaGiorni || 0);
+    (Number(stimaGiorni) || 0) !== (riga.stimaGiorni || 0) ||
+    ripAuto !== riga.ripartizioneAuto ||
+    JSON.stringify(ripartizione) !== JSON.stringify(riga.ripartizione);
 
   const lbl = "text-[11px] uppercase text-muted-foreground";
   const stat = (etichetta: string, valore: string, cls = "") => (
@@ -258,6 +275,91 @@ export function SchedaFornitore({
             />
           </div>
         </div>
+        {/* Ripartizione tra più appalti (Simone 09/11/2026): per dividere le
+            spese del fornitore (noleggi, carburante, pedaggi, multe) tra gli
+            appalti, a mano in percentuale o bilanciate dai mezzi. */}
+        <div className="mb-3 rounded-xl border border-border/60 p-3">
+          <div className="mb-1 flex flex-wrap items-center gap-3">
+            <span className={lbl}>{t("for.ripTitolo")}</span>
+            <label className="flex items-center gap-1.5 text-[12px]" title={t("for.ripAutoTip")}>
+              <input
+                type="checkbox"
+                checked={ripAuto}
+                disabled={busy || !(quoteMezzi && quoteMezzi.length)}
+                onChange={(e) => {
+                  setRipAuto(e.target.checked);
+                  if (e.target.checked && quoteMezzi?.length) setRipartizione(quoteMezzi);
+                }}
+              />
+              {t("for.ripAuto")}
+              {!(quoteMezzi && quoteMezzi.length) && (
+                <span className="text-[11px] text-muted-foreground">({t("for.ripNoMezzi")})</span>
+              )}
+            </label>
+            {quoteMezzi && quoteMezzi.length > 0 && !ripAuto && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setRipartizione(quoteMezzi)}
+                className="text-[12px] text-primary underline-offset-2 hover:underline"
+              >
+                {t("for.ripDaMezzi")}
+              </button>
+            )}
+            <span
+              className={`ml-auto text-[12px] tabular-nums ${ripartizione.length && Math.abs(sommaQuote - 100) > 0.05 ? "text-status-absent" : "text-muted-foreground"}`}
+            >
+              {t("for.ripTotale")} {sommaQuote.toFixed(1)}%
+            </span>
+          </div>
+          {ripartizione.map((q, i) => (
+            <div key={i} className="mb-1 flex items-center gap-2">
+              <div className="flex-1">
+                <SelectVocab
+                  value={q.appalto}
+                  opzioni={vocab.appalti}
+                  placeholder={t("for.appaltoPh")}
+                  disabled={busy || ripAuto}
+                  onSelect={(v) => aggQuota(i, { appalto: v })}
+                  onTesto={(v) => aggQuota(i, { appalto: v })}
+                />
+              </div>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                value={q.quota}
+                disabled={busy || ripAuto}
+                onChange={(e) => aggQuota(i, { quota: Number(e.target.value) || 0 })}
+                className={`${inputVocabCls} w-20 text-right`}
+              />
+              <span className="text-[12px] text-muted-foreground">%</span>
+              {!ripAuto && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setRipartizione(ripartizione.filter((_, j) => j !== i))}
+                  title={t("common.delete")}
+                  className="text-[12px] text-muted-foreground hover:text-status-absent"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          {!ripAuto && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setRipartizione([...ripartizione, { appalto: "", quota: 0 }])}
+              className="text-[12px] text-primary underline-offset-2 hover:underline"
+            >
+              {t("for.ripAggiungi")}
+            </button>
+          )}
+          <p className="mt-1 text-[11px] text-muted-foreground">{t("for.ripNota")}</p>
+        </div>
         {/* Promemoria libero (Simone 04/11/2026): cosa fa davvero il
             fornitore e le regole da ricordare quando si paga. */}
         <div className="mb-3">
@@ -316,6 +418,8 @@ export function SchedaFornitore({
                 promemoria: promemoria.trim(),
                 compensa,
                 stimaGiorni: Number(stimaGiorni) || undefined,
+                ripartizione: ripartizione.filter((q) => q.appalto.trim() && q.quota > 0),
+                ripartizioneAuto: ripAuto,
               })
             }
             className="rounded-lg bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground disabled:opacity-40"

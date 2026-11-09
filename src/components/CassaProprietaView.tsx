@@ -28,7 +28,12 @@ import {
   SchedaGruppoCassa,
 } from "@/components/CassaSchede";
 import type { FatturaConStato } from "@/lib/fatture-logic";
-import type { CostoFisso, FornitoreInfo } from "@/lib/flussi-logic";
+import type {
+  CostoFisso,
+  FornitoreInfo,
+  ParcoPerRipartizione,
+  QuotaAppalto,
+} from "@/lib/flussi-logic";
 import type { ScadenzaFiscale } from "@/lib/fiscale-logic";
 import type { SpMovimento } from "@/lib/sharepoint.server";
 import { spEbSaldoCache } from "@/lib/sharepoint.functions";
@@ -110,6 +115,8 @@ interface Cella {
   promemoria?: string;
   /** Scadenze dentro la riga (Fiscale/IVA/Banca): per il popup. */
   voci?: VoceDettaglioCassa[];
+  /** Quote per appalto del fornitore: "Uscite per cliente" divide la riga. */
+  quote?: QuotaAppalto[];
 }
 
 /** Vista raggruppata delle uscite (Simone 02/11/2026: "raggruppare le spese
@@ -120,36 +127,55 @@ function raggruppaUscite(uscite: readonly Cella[], per: Raggruppa, t: TFn): Cell
   if (per === "fornitore") return [...uscite];
   const gruppi = new Map<string, Cella & { nomi: string[] }>();
   for (const u of uscite) {
-    const g =
-      (per === "tipologia" ? u.tipologia : u.cliente)?.trim() ||
-      t(per === "tipologia" ? "cpr.senzaTipologia" : "cpr.senzaCliente");
-    const k = `grp|${per}|${g.toLowerCase()}|${u.secchio}`;
-    const r = gruppi.get(k) ?? {
-      ...u,
-      chiave: k,
-      tipo: "passiva",
-      nome: g,
-      dettaglio: "",
-      importo: 0,
-      importoOrigine: 0,
-      nota: "",
-      certa: true,
-      documenti: 0,
-      editabile: false,
-      priorita: undefined,
-      dataScelta: false,
-      modalita: undefined,
-      stima: false,
-      membri: [],
-      nomi: [],
-    };
-    r.importo = Math.round((r.importo + u.importo) * 100) / 100;
-    r.importoOrigine = r.importo;
-    r.documenti += 1;
-    if (u.data < r.data) r.data = u.data;
-    r.nomi.push(`${u.nome} ${fmt(u.importo)}`);
-    r.membri?.push({ nome: u.nome, importo: u.importo, tipo: u.tipo });
-    gruppi.set(k, r);
+    // Per cliente, un fornitore ripartito su più appalti (quote della scheda
+    // o dai mezzi) si divide: ogni appalto prende la sua percentuale —
+    // Simone 09/11/2026 ("dividere meglio le spese").
+    const parti =
+      per === "cliente" && u.quote && u.quote.length > 1
+        ? u.quote.map((q) => ({
+            g: q.appalto.trim() || t("cpr.senzaCliente"),
+            importo: Math.round(u.importo * q.quota) / 100,
+            nome: `${u.nome} ${q.quota}%`,
+          }))
+        : [
+            {
+              g:
+                (per === "tipologia" ? u.tipologia : u.cliente)?.trim() ||
+                t(per === "tipologia" ? "cpr.senzaTipologia" : "cpr.senzaCliente"),
+              importo: u.importo,
+              nome: u.nome,
+            },
+          ];
+    for (const p of parti) {
+      const g = p.g;
+      const k = `grp|${per}|${g.toLowerCase()}|${u.secchio}`;
+      const r = gruppi.get(k) ?? {
+        ...u,
+        chiave: k,
+        tipo: "passiva",
+        nome: g,
+        dettaglio: "",
+        importo: 0,
+        importoOrigine: 0,
+        nota: "",
+        certa: true,
+        documenti: 0,
+        editabile: false,
+        priorita: undefined,
+        dataScelta: false,
+        modalita: undefined,
+        stima: false,
+        membri: [],
+        nomi: [],
+      };
+      r.importo = Math.round((r.importo + p.importo) * 100) / 100;
+      r.importoOrigine = r.importo;
+      r.documenti += 1;
+      if (u.data < r.data) r.data = u.data;
+      r.nomi.push(`${p.nome} ${fmt(p.importo)}`);
+      r.membri?.push({ nome: u.nome, importo: p.importo, tipo: u.tipo });
+      gruppi.set(k, r);
+    }
   }
   return [...gruppi.values()]
     .map((r) => ({ ...r, dettaglio: r.nomi.join(" · ") }))
@@ -184,6 +210,7 @@ const daRiga = (r: RigaCassa): Cella => ({
   cliente: r.cliente,
   promemoria: r.promemoria,
   voci: r.voci,
+  quote: r.quote,
 });
 
 /** La colonna Entrate in tre blocchi col loro totale: "Già entrate" (in
@@ -237,6 +264,7 @@ export function CassaProprietaView({
   fissi,
   movimenti,
   onApriFornitore,
+  mezzi,
 }: {
   attive: readonly FatturaConStato[];
   passive: readonly FatturaConStato[];
@@ -247,6 +275,8 @@ export function CassaProprietaView({
   movimenti: readonly SpMovimento[];
   /** Clic sul nome di un fornitore: apre la scheda come nei Flussi. */
   onApriFornitore?: (nome: string) => void;
+  /** Parco mezzi per la ripartizione automatica dei fornitori (facoltativo). */
+  mezzi?: ParcoPerRipartizione;
 }) {
   const { t } = useLang();
   const [db, setDb] = useState<CassaDb | null>(null);
@@ -338,6 +368,7 @@ export function CassaProprietaView({
         dataContabile: m.dataContabile,
       })),
       stipendi,
+      mezzi,
       db,
     });
   }, [
@@ -353,6 +384,7 @@ export function CassaProprietaView({
     fissi,
     movimenti,
     stipendi,
+    mezzi,
   ]);
 
   // --- salvataggio: ogni modifica scrive subito il db (piccolo) -------------

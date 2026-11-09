@@ -715,6 +715,11 @@ export const spUpsertFlussoCassa = createServerFn({ method: "POST" })
         input?.promemoria === undefined
           ? undefined
           : String(input.promemoria).trim().slice(0, 2000),
+      // Quote per appalto (JSON): assente = non toccare la colonna.
+      ripartizione:
+        input?.ripartizione === undefined
+          ? undefined
+          : String(input.ripartizione).trim().slice(0, 4000),
     };
   })
   .handler(async ({ data }): Promise<{ ok: true }> => {

@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.103.0",
+    date: "2026-11-09",
+    entries: [
+      {
+        title: "Fornitori su più appalti: ripartizione in percentuale, anche dai mezzi",
+        description:
+          'Nella scheda fornitore c\'è "Ripartizione tra appalti": quote in percentuale per dividere noleggi, carburante, pedaggi e multe tra gli appalti. "Bilancia dai mezzi" le calcola dal modulo Mezzi (contratti di noleggio del fornitore pesati col canone, altrimenti il parco attivo per appalto) e le tiene aggiornate. In Cassa proprietà, con "Uscite per cliente", la riga del fornitore si divide secondo le quote; nella tab Fornitori la ripartizione si legge sotto l\'appalto.',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.102.0",
     date: "2026-11-09",
     entries: [

@@ -1185,6 +1185,17 @@ const en = {
   "for.promemoriaPh":
     "e.g. Cerro transports for iMile; pays only at month end; call before paying…",
   "for.colCausale": "Invoice subject",
+  "for.ripTitolo": "Split across contracts",
+  "for.ripAuto": "Balance from the fleet",
+  "for.ripAutoTip":
+    "Shares are computed from the Fleet module: the supplier's rental contracts (weight = fee), otherwise the active fleet per contract. They update by themselves when the fleet changes.",
+  "for.ripNoMezzi": "no vehicle with a contract in the Fleet module",
+  "for.ripDaMezzi": "Propose from the fleet",
+  "for.ripTotale": "Total",
+  "for.ripAggiungi": "+ add contract",
+  "for.ripNota":
+    "Splits the supplier's costs across contracts (rentals, fuel, tolls, fines). In the owner's cash sheet, with \"Outflows by client\", each row is split by these shares. Empty = all on the contract above.",
+  "for.ripAutoBadge": "from the fleet",
   "for.compensa": "Pays by compensation",
   "for.compensaTip":
     "In the owner's cash sheet their invoices are not outflows: they are deducted from the incoming amounts as a negative row under their name.",
@@ -3236,6 +3247,17 @@ const it: Record<DictKey, string> = {
   "for.promemoriaPh":
     "es. trasporti Cerro per iMile; paga solo a fine mese; chiamare prima di pagare…",
   "for.colCausale": "Causale in fattura",
+  "for.ripTitolo": "Ripartizione tra appalti",
+  "for.ripAuto": "Bilancia dai mezzi",
+  "for.ripAutoTip":
+    "Le quote si calcolano dal modulo Mezzi: i contratti di noleggio del fornitore (peso = canone), altrimenti il parco attivo per appalto. Si aggiornano da sole quando cambiano i mezzi.",
+  "for.ripNoMezzi": "nessun mezzo con appalto nel modulo Mezzi",
+  "for.ripDaMezzi": "Proponi dai mezzi",
+  "for.ripTotale": "Totale",
+  "for.ripAggiungi": "+ aggiungi appalto",
+  "for.ripNota":
+    'Divide le spese del fornitore tra gli appalti (noleggi, carburante, pedaggi, multe). In Cassa proprietà, con "Uscite per cliente", ogni riga si spacca secondo queste quote. Vuota = tutto sull\'appalto qui sopra.',
+  "for.ripAutoBadge": "dai mezzi",
   "for.compensa": "Paga in compensazione",
   "for.compensaTip":
     "In Cassa proprietà le sue fatture non stanno tra le uscite: si scalano dagli entranti, come riga negativa col suo nome.",

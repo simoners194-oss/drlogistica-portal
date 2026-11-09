@@ -44,6 +44,25 @@ export function modalitaDaMetodo(metodo: string | undefined | null): ModalitaPag
   return "altro";
 }
 
+/** Una quota della ripartizione di un fornitore tra gli appalti (percento). */
+export interface QuotaAppalto {
+  appalto: string;
+  quota: number;
+}
+
+/** Il minimo del modulo Mezzi che serve a ripartire un fornitore: parco con
+ *  appalto e stato, contratti di noleggio con noleggiatore e canone. */
+export interface ParcoPerRipartizione {
+  mezzi: readonly { id: string; appalto?: string; stato: string }[];
+  contratti: readonly {
+    mezzoId: string;
+    noleggiatore?: string;
+    canoneMensileEur?: number;
+    attivo?: boolean;
+    dataFine?: string;
+  }[];
+}
+
 export interface FornitoreInfo {
   /** Override manuale: assente = automatico dalle fatture. */
   modalita?: ModalitaPagamento;
@@ -62,6 +81,13 @@ export interface FornitoreInfo {
    *  giorni): in Cassa proprietà si stimano le prossime fatture sulla media
    *  delle ultime, ogni N giorni. 0/assente = nessuna stima. Nel JSON: "g". */
   stimaGiorni?: number;
+  /** Ripartizione dei costi tra più appalti (Simone 09/11/2026: noleggi,
+   *  carburante, pedaggi, multe): quote in percento, somma 100. Vuota =
+   *  tutto sull'`appalto`. Vive nella colonna Ripartizione (JSON), non nelle Note. */
+  ripartizione?: QuotaAppalto[];
+  /** Quote calcolate dal modulo Mezzi (contratti di noleggio del fornitore,
+   *  altrimenti il parco attivo per appalto): si aggiornano da sole. Note: "ra". */
+  ripartizioneAuto?: boolean;
 }
 
 /** Chiave di raggruppamento del fornitore (stessa dei Flussi/Resoconto). */
@@ -91,6 +117,7 @@ export function parseFornitoreInfo(note?: string | null): FornitoreInfo {
     if (pulisci(j.c)) out.macrovoce = pulisci(j.c);
     if (pulisci(j.a)) out.appalto = pulisci(j.a);
     if (j.k) out.compensa = true;
+    if (j.ra) out.ripartizioneAuto = true;
     const g = Number(j.g);
     if (Number.isFinite(g) && g > 0 && g <= 366) out.stimaGiorni = Math.round(g);
     return out;
@@ -106,6 +133,7 @@ export function serializeFornitoreInfo(info: FornitoreInfo): string {
   if (pulisci(info.macrovoce)) j.c = pulisci(info.macrovoce);
   if (pulisci(info.appalto)) j.a = pulisci(info.appalto);
   if (info.compensa) j.k = "1";
+  if (info.ripartizioneAuto) j.ra = "1";
   if (info.stimaGiorni && info.stimaGiorni > 0) j.g = String(Math.round(info.stimaGiorni));
   return JSON.stringify(j);
 }
@@ -118,18 +146,132 @@ export interface FornitoreSalvato extends FornitoreInfo {
 
 /** Mappa chiave fornitore → informazioni salvate (righe genere "fornitore"). */
 export function mappaFornitori(
-  righe: readonly { genere: string; nome: string; note?: string; promemoria?: string }[],
+  righe: readonly {
+    genere: string;
+    nome: string;
+    note?: string;
+    promemoria?: string;
+    ripartizione?: string;
+  }[],
 ): Map<string, FornitoreSalvato> {
   const out = new Map<string, FornitoreSalvato>();
   for (const r of righe) {
     if (r.genere !== "fornitore" || !r.nome.trim()) continue;
+    const rip = parseRipartizione(r.ripartizione);
     out.set(chiaveFornitore(r.nome), {
       nomeRiga: r.nome,
       ...parseFornitoreInfo(r.note),
       promemoria: r.promemoria?.trim() || undefined,
+      ripartizione: rip.length ? rip : undefined,
     });
   }
   return out;
+}
+
+/** Colonna Ripartizione (JSON [{appalto, quota}]): tollerante, vuota = []. */
+export function parseRipartizione(json?: string | null): QuotaAppalto[] {
+  const s = String(json ?? "").trim();
+  if (!s.startsWith("[")) return [];
+  try {
+    const arr = JSON.parse(s) as unknown;
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map((x) => {
+        const o = (x ?? {}) as { appalto?: unknown; quota?: unknown; a?: unknown; q?: unknown };
+        const appalto = String(o.appalto ?? o.a ?? "").trim();
+        const quota = Number(o.quota ?? o.q);
+        return { appalto, quota: Number.isFinite(quota) ? Math.round(quota * 10) / 10 : 0 };
+      })
+      .filter((q) => q.appalto && q.quota > 0);
+  } catch {
+    return [];
+  }
+}
+
+export function serializeRipartizione(quote: readonly QuotaAppalto[]): string {
+  const pulite = quote
+    .map((q) => ({ appalto: q.appalto.trim().slice(0, 60), quota: Math.round(q.quota * 10) / 10 }))
+    .filter((q) => q.appalto && q.quota > 0);
+  return pulite.length ? JSON.stringify(pulite) : "";
+}
+
+/** Quote riportate a somma 100 (una cifra decimale, il resto sulla più grande). */
+export function normalizzaQuote(quote: readonly QuotaAppalto[]): QuotaAppalto[] {
+  const valide = quote.filter((q) => q.appalto.trim() && q.quota > 0);
+  const tot = valide.reduce((s, q) => s + q.quota, 0);
+  if (tot <= 0) return [];
+  const out = valide.map((q) => ({
+    appalto: q.appalto.trim(),
+    quota: Math.round((q.quota / tot) * 1000) / 10,
+  }));
+  const somma = out.reduce((s, q) => s + q.quota, 0);
+  if (Math.abs(somma - 100) > 0.001) {
+    const i = out.reduce((best, q, idx) => (q.quota > out[best].quota ? idx : best), 0);
+    out[i] = { ...out[i], quota: Math.round((out[i].quota + 100 - somma) * 10) / 10 };
+  }
+  return out;
+}
+
+const MEZZO_FUORI = /reso|dismesso|venduto|rottamato/i;
+
+/** Ripartizione calcolata dal modulo Mezzi (Simone 09/11/2026: "bilanciata
+ *  dal sistema in base ai mezzi"): se il fornitore ha contratti di noleggio
+ *  attivi, pesa ogni mezzo col suo canone (o 1) sull'appalto del mezzo;
+ *  altrimenti (carburante, pedaggi, multe, officine) il parco attivo per
+ *  appalto, un peso per mezzo. Mezzi senza appalto = "Altri". */
+export function ripartizioneDaMezzi(
+  nomeFornitore: string,
+  parco: ParcoPerRipartizione,
+  oggi = new Date().toISOString().slice(0, 10),
+): QuotaAppalto[] {
+  const k = chiaveFornitore(nomeFornitore);
+  const attivi = new Map(
+    parco.mezzi.filter((m) => !MEZZO_FUORI.test(m.stato ?? "")).map((m) => [m.id, m]),
+  );
+  const pesi = new Map<string, number>();
+  const aggiungi = (appalto: string | undefined, peso: number) => {
+    const a = (appalto ?? "").trim() || "Altri";
+    pesi.set(a, (pesi.get(a) ?? 0) + peso);
+  };
+  const contratti = parco.contratti.filter(
+    (c) =>
+      c.noleggiatore &&
+      chiaveFornitore(c.noleggiatore) === k &&
+      c.attivo !== false &&
+      (!c.dataFine || c.dataFine.slice(0, 10) >= oggi) &&
+      attivi.has(c.mezzoId),
+  );
+  if (contratti.length) {
+    for (const c of contratti)
+      aggiungi(
+        attivi.get(c.mezzoId)?.appalto,
+        c.canoneMensileEur && c.canoneMensileEur > 0 ? c.canoneMensileEur : 1,
+      );
+  } else {
+    for (const m of attivi.values()) aggiungi(m.appalto, 1);
+  }
+  return normalizzaQuote([...pesi.entries()].map(([appalto, quota]) => ({ appalto, quota })));
+}
+
+/** Le quote che VALGONO per un fornitore: dai mezzi se la scheda lo chiede
+ *  (e il parco c'è), altrimenti quelle scritte, altrimenti tutto sull'appalto. */
+export function quoteFornitore(
+  info: FornitoreInfo | undefined,
+  nomeFornitore: string,
+  parco?: ParcoPerRipartizione,
+): QuotaAppalto[] {
+  if (info?.ripartizioneAuto && parco) {
+    const q = ripartizioneDaMezzi(nomeFornitore, parco);
+    if (q.length) return q;
+  }
+  if (info?.ripartizione?.length) return normalizzaQuote(info.ripartizione);
+  const a = (info?.appalto ?? "").trim();
+  return a ? [{ appalto: a, quota: 100 }] : [];
+}
+
+/** "Zingali 60% · Univex 40%" */
+export function etichettaRipartizione(quote: readonly QuotaAppalto[]): string {
+  return quote.map((q) => `${q.appalto} ${q.quota}%`).join(" · ");
 }
 
 /** Modalità EFFETTIVA di una fattura: override del fornitore se c'è,
@@ -179,6 +321,10 @@ export interface RigaFornitore {
   compensa: boolean;
   /** Fatture ricorrenti: stima in Cassa ogni N giorni (0 = nessuna stima). */
   stimaGiorni: number;
+  /** Quote per appalto scritte sulla scheda (vuoto = tutto sull'appalto). */
+  ripartizione: QuotaAppalto[];
+  /** Quote calcolate dai mezzi invece che scritte. */
+  ripartizioneAuto: boolean;
   /** Proposte dalle fatture (tipologia di costo / cliente di riferimento). */
   macrovoceAuto: string;
   appaltoAuto: string;
@@ -309,6 +455,8 @@ export function riepilogoFornitori(
       promemoria: salvato?.promemoria ?? "",
       compensa: salvato?.compensa ?? false,
       stimaGiorni: salvato?.stimaGiorni ?? 0,
+      ripartizione: salvato?.ripartizione ?? [],
+      ripartizioneAuto: salvato?.ripartizioneAuto ?? false,
       macrovoceAuto: piuFrequente(a.macro),
       appaltoAuto: piuFrequente(a.appalti),
       scaduto: r2(a.scaduto),

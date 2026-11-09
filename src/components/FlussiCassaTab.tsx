@@ -36,7 +36,9 @@ import {
   piuVicinoAlFisso,
   proiezioneMeseCorrente,
   riepilogoFornitori,
+  ripartizioneDaMezzi,
   serializeFornitoreInfo,
+  serializeRipartizione,
   vocabolarioFornitori,
   type FornitoreInfo,
   type ModalitaPagamento,
@@ -58,6 +60,8 @@ import {
   spGetRegoleFinanza,
 } from "@/lib/sharepoint.functions";
 import { spStipendiFlussi, spStipendiGet } from "@/lib/stipendi.functions";
+import { spMezziGetDb } from "@/lib/mezzi.functions";
+import type { MezziDb } from "@/lib/mezzi-types";
 import { chiaveNome, type StipendiDb } from "@/lib/stipendi-logic";
 import {
   chiaveScadenzaFile,
@@ -128,6 +132,14 @@ export function FlussiCassaTab() {
   const [termini, setTermini] = useState<TerminePagamento[]>([]);
   const [prefatture, setPrefatture] = useState<Prefattura[] | null>(null);
   const [flussi, setFlussi] = useState<FlussoCassaRiga[] | null>(null);
+  // Modulo Mezzi: serve alla ripartizione automatica dei fornitori tra gli
+  // appalti (contratti di noleggio / parco per appalto) — Simone 09/11/2026.
+  const [mezziDb, setMezziDb] = useState<MezziDb | null>(null);
+  useEffect(() => {
+    spMezziGetDb()
+      .then((db) => setMezziDb(db as MezziDb))
+      .catch(() => setMezziDb(null));
+  }, []);
   const [flussiErr, setFlussiErr] = useState<string | null>(null);
   const [movimenti, setMovimenti] = useState<SpMovimento[] | null>(null);
 
@@ -438,6 +450,7 @@ export function FlussiCassaTab() {
           importo: 0,
           note: serializeFornitoreInfo(info),
           promemoria: info.promemoria ?? "",
+          ripartizione: serializeRipartizione(info.ripartizione ?? []),
         },
       });
       await ricaricaFlussi();
@@ -1944,12 +1957,14 @@ export function FlussiCassaTab() {
           fiscale={fiscale?.scadenze ?? []}
           fissi={costiFissi}
           movimenti={movimenti ?? []}
+          mezzi={mezziDb ?? undefined}
           onApriFornitore={(nome) => setFornitoreAperto(chiaveFornitore(nome))}
         />
         {rigaFornitoreAperta && (
           <SchedaFornitore
             riga={rigaFornitoreAperta}
             fatture={fattureFornitoreAperto}
+            quoteMezzi={mezziDb ? ripartizioneDaMezzi(rigaFornitoreAperta.nome, mezziDb) : []}
             vocab={vocabFornitori}
             busy={schedaBusy}
             onSalva={salvaScheda}
@@ -2988,6 +3003,7 @@ export function FlussiCassaTab() {
           <SchedaFornitore
             riga={rigaFornitoreAperta}
             fatture={fattureFornitoreAperto}
+            quoteMezzi={mezziDb ? ripartizioneDaMezzi(rigaFornitoreAperta.nome, mezziDb) : []}
             vocab={vocabFornitori}
             busy={schedaBusy}
             onSalva={salvaScheda}
