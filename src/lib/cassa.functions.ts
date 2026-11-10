@@ -54,6 +54,7 @@ function validaDb(input: unknown): CassaDb {
     if (s.n) st.n = testo(s.n, 200);
     if (s.c) st.c = true;
     if (s.s) st.s = true;
+    if (s.r) st.r = true;
     if (s.x) st.x = true;
     if (s.i != null) st.i = numero(s.i);
     if (s.d) {

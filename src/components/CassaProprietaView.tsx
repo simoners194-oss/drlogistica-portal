@@ -98,6 +98,8 @@ interface Cella {
   attesa: boolean;
   /** Entrata attesa messa in standby (blocco "Standby" delle entrate). */
   parcheggiata: boolean;
+  /** Entrata attesa da sollecitare (blocco "Da sollecitare"). */
+  daSollecitare: boolean;
   nota: string;
   data: string;
   certa: boolean;
@@ -200,6 +202,7 @@ const daRiga = (r: RigaCassa): Cella => ({
   entrata: r.entrata,
   attesa: r.standbyIncasso || r.parcheggiata,
   parcheggiata: r.parcheggiata,
+  daSollecitare: r.daSollecitare,
   nota: r.nota,
   data: r.scadenza,
   certa: r.certa,
@@ -237,47 +240,61 @@ function slotsEntrate(
     totali.acconti > 0
       ? `${t("cpr.entranti")} − ${t("cpr.acconti")} ${fmt(totali.acconti)}`
       : t("cpr.entranti");
-  // Entranti per cliente: le fatture dello stesso cliente (o gruppo) stanno
-  // sotto una riga padre col totale; il "+" le apre una per scadenza.
-  const attese = entrate.filter((c) => c.attesa && !c.parcheggiata);
-  const perCliente = new Map<string, Cella[]>();
-  for (const c of attese) {
-    const lista = perCliente.get(c.nome) ?? [];
-    lista.push(c);
-    perCliente.set(c.nome, lista);
-  }
-  const slotsAttese: SlotE[] = [];
-  for (const [nome, figli] of perCliente) {
-    if (figli.length === 1) {
-      slotsAttese.push({ kind: "riga", c: figli[0] });
-      continue;
+  // Per cliente: le fatture dello stesso cliente (o gruppo) stanno sotto una
+  // riga padre col totale; il "+" le apre una per scadenza. Vale per gli
+  // entranti, per le "da sollecitare" e per lo standby (Simone 10/11/2026).
+  const conPadri = (lista: readonly Cella[], prefisso: string): SlotE[] => {
+    const perCliente = new Map<string, Cella[]>();
+    for (const c of lista) {
+      const l = perCliente.get(c.nome) ?? [];
+      l.push(c);
+      perCliente.set(c.nome, l);
     }
-    const primo = figli[0];
-    const importo = Math.round(figli.reduce((s, c) => s + c.importo, 0) * 100) / 100;
-    const padre: Cella = {
-      ...primo,
-      chiave: `cli|${nome}`,
-      importo,
-      importoOrigine: importo,
-      data: figli.reduce((m, c) => (c.data < m ? c.data : m), primo.data),
-      documenti: figli.reduce((s, c) => s + c.documenti, 0),
-      dettaglio: figli.map((c) => `${ddmm(c.data)} ${fmt(c.importo)}`).join(" · "),
-      nota: "",
-      editabile: false,
-      dataScelta: false,
-      priorita: undefined,
-    };
-    const aperto = espansi.has("*") || espansi.has(nome);
-    slotsAttese.push({ kind: "padre", c: padre, figli, aperto });
-    if (aperto) for (const c of figli) slotsAttese.push({ kind: "riga", c, figlio: true });
-  }
+    const out: SlotE[] = [];
+    for (const [nome, figli] of perCliente) {
+      if (figli.length === 1) {
+        out.push({ kind: "riga", c: figli[0] });
+        continue;
+      }
+      const primo = figli[0];
+      const importo = Math.round(figli.reduce((s, c) => s + c.importo, 0) * 100) / 100;
+      const padre: Cella = {
+        ...primo,
+        chiave: `${prefisso}|${nome}`,
+        importo,
+        importoOrigine: importo,
+        data: figli.reduce((m, c) => (c.data < m ? c.data : m), primo.data),
+        documenti: figli.reduce((s, c) => s + c.documenti, 0),
+        dettaglio: figli.map((c) => `${ddmm(c.data)} ${fmt(c.importo)}`).join(" · "),
+        nota: "",
+        editabile: false,
+        dataScelta: false,
+        priorita: undefined,
+      };
+      const aperto = espansi.has("*") || espansi.has(`${prefisso}|${nome}`);
+      out.push({ kind: "padre", c: padre, figli, aperto });
+      if (aperto) for (const c of figli) out.push({ kind: "riga", c, figlio: true });
+    }
+    return out;
+  };
   return [
     { kind: "head", label: t("cpr.giaEntrate"), value: totali.entrateRicevute },
     ...entrate.filter((c) => !c.attesa).map((c): SlotE => ({ kind: "riga", c })),
     { kind: "head", label: entranti, value: totali.entrantiNette },
-    ...slotsAttese,
+    ...conPadri(
+      entrate.filter((c) => c.attesa && !c.parcheggiata && !c.daSollecitare),
+      "cli",
+    ),
+    { kind: "head", label: t("cpr.daSollecitare"), value: totali.entrateDaSollecitare },
+    ...conPadri(
+      entrate.filter((c) => c.attesa && !c.parcheggiata && c.daSollecitare),
+      "sol",
+    ),
     { kind: "head", label: t("cpr.colStandby"), value: totali.entrateParcheggiate },
-    ...entrate.filter((c) => c.parcheggiata).map((c): SlotE => ({ kind: "riga", c })),
+    ...conPadri(
+      entrate.filter((c) => c.parcheggiata),
+      "stb",
+    ),
   ];
 }
 
@@ -293,6 +310,7 @@ function daFoto(r: FotografiaCassa["righe"][number]): Cella {
     entrata: r.e,
     attesa: Boolean(r.si) || Boolean(r.sp),
     parcheggiata: Boolean(r.sp),
+    daSollecitare: Boolean(r.sr),
     nota: r.n ?? "",
     data: r.s,
     certa: false,
@@ -571,6 +589,8 @@ export function CassaProprietaView({
   // Entrata attesa in standby / di nuovo tra le entranti (flag `s`, vale
   // anche per le righe manuali: lo stato è per chiave).
   const parcheggia = (c: Cella, on: boolean) => setStato(c.chiave, { s: on || undefined });
+  // Da sollecitare (Simone 10/11/2026): resta tra le entranti, blocco a parte.
+  const sollecita = (c: Cella, on: boolean) => setStato(c.chiave, { r: on || undefined });
   // Acconti già incassati sugli entranti del mese (colonna Reale).
   const setAcconti = (importo: number) => {
     if (!db) return;
@@ -856,6 +876,7 @@ export function CassaProprietaView({
           onPriorita={setPriorita}
           onData={setData}
           onParcheggia={parcheggia}
+          onSollecita={sollecita}
           onAcconti={setAcconti}
           onRinomina={rinomina}
           onApriFornitore={onApriFornitore}
@@ -1203,6 +1224,7 @@ function Foglio({
   onPriorita,
   onData,
   onParcheggia,
+  onSollecita,
   onAcconti,
   onRinomina,
   onApriFornitore,
@@ -1227,6 +1249,8 @@ function Foglio({
   onData: (c: Cella, d: string) => void;
   /** Entrata attesa in standby (true) o di nuovo tra le entranti (false). */
   onParcheggia: (c: Cella, on: boolean) => void;
+  /** Entrata attesa da sollecitare (true) o di nuovo tra le entranti (false). */
+  onSollecita: (c: Cella, on: boolean) => void;
   /** Acconti già incassati sugli entranti del mese (colonna Reale). */
   onAcconti: (importo: number) => void;
   /** Nuovo nome per una riga scritta a mano. */
@@ -1458,7 +1482,15 @@ function Foglio({
                       className={`${celN} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.parcheggiata ? "italic text-slate-500 line-through decoration-slate-400" : e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
                     >
                       {e && (
-                        <span className={e.importo < 0 ? "text-rose-700 dark:text-rose-400" : ""}>
+                        <span
+                          className={
+                            e.importo < 0
+                              ? "text-rose-700 dark:text-rose-400"
+                              : e.daSollecitare
+                                ? "text-amber-700 dark:text-amber-400"
+                                : ""
+                          }
+                        >
                           <Importo c={e} readOnly={readOnly} onImporto={onImporto} t={t} />
                         </span>
                       )}
@@ -1471,7 +1503,7 @@ function Foglio({
                           {padre && (
                             <button
                               type="button"
-                              onClick={() => toggleCliente(e.nome)}
+                              onClick={() => toggleCliente(e.chiave)}
                               title={t(padre.aperto ? "cpr.chiudiCliente" : "cpr.espandiCliente")}
                               className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-[11px] leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
                             >
@@ -1532,6 +1564,9 @@ function Foglio({
                             <span className="shrink-0 text-[10.5px] text-muted-foreground">
                               {ddmm(e.data)}
                             </span>
+                          )}
+                          {!padre && e.attesa && !e.parcheggiata && !readOnly && (
+                            <ToggleSollecito c={e} onSollecita={onSollecita} t={t} />
                           )}
                           {!padre && e.attesa && !readOnly && (
                             <ToggleStandby c={e} onParcheggia={onParcheggia} t={t} />
@@ -1791,6 +1826,11 @@ function Foglio({
           <tr className="border-t-2 border-border bg-muted/50">
             <td className={`${celT} ${TINTA.entrate.num}`}>
               {fmt(totali.entrateStandby)}
+              {(totali.entrateDaSollecitare ?? 0) > 0 && (
+                <div className="text-[10px] font-normal text-amber-700 dark:text-amber-400">
+                  {t("cpr.diCuiSollecitare")} {fmt(totali.entrateDaSollecitare)}
+                </div>
+              )}
               {(totali.compensazioni ?? 0) !== 0 && (
                 <div className="text-[10px] font-normal text-rose-700 dark:text-rose-400">
                   {t("cpr.diCuiComp")} {fmt(totali.compensazioni)}
@@ -2163,6 +2203,29 @@ function NomeRiga({
       className={`${className} text-left underline decoration-dotted decoration-border underline-offset-4 hover:text-primary hover:decoration-primary`}
     >
       {c.nome}
+    </button>
+  );
+}
+
+/** Entrata attesa: da sollecitare (conta, ma sta nel suo blocco) o di nuovo
+ *  tra le entranti normali. */
+function ToggleSollecito({
+  c,
+  onSollecita,
+  t,
+}: {
+  c: Cella;
+  onSollecita: (c: Cella, on: boolean) => void;
+  t: TFn;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSollecita(c, !c.daSollecitare)}
+      title={c.daSollecitare ? t("cpr.tornaEntranti") : t("cpr.sollecitaTip")}
+      className={`shrink-0 rounded border px-1.5 text-[9px] font-bold uppercase ${c.daSollecitare ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300" : "border-amber-500 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"}`}
+    >
+      {c.daSollecitare ? `↩ ${t("cpr.entranti")}` : `📣 ${t("cpr.sollecita")}`}
     </button>
   );
 }

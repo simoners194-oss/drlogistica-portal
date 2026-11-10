@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.105.0",
+    date: "2026-11-10",
+    entries: [
+      {
+        title: 'Cassa proprietà: blocco "Da sollecitare" tra le entrate',
+        description:
+          'Tra Entranti e Standby c\'è il blocco "Da sollecitare": il pulsante "Sollecita" sulla fattura attesa la sposta lì (conta ancora tra gli entranti e nella cassa), "Entranti" la riporta indietro; sotto il totale entranti c\'è "di cui da sollecitare". Il "+" per cliente vale anche nello standby e nel nuovo blocco.',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.104.0",
     date: "2026-11-10",
     entries: [

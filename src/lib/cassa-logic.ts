@@ -79,6 +79,9 @@ export interface StatoRigaCassa {
   /** Entrata attesa messa in STANDBY (parcheggiata, Simone 02/11/2026): resta
    *  nel foglio nel blocco "Standby" ma non conta tra le entranti né nella cassa. */
   s?: boolean;
+  /** Entrata attesa DA SOLLECITARE (Simone 10/11/2026): conta tra le entranti
+   *  come le altre, ma sta nel blocco "Da sollecitare" per vedere chi chiamare. */
+  r?: boolean;
   /** Importo corretto a mano (stipendi, fiscale, costi fissi, attesi). */
   i?: number;
   /** Tolta dal foglio. */
@@ -130,6 +133,8 @@ export interface RigaFotografia {
   si?: boolean;
   /** Entrata attesa parcheggiata (standby entrate). */
   sp?: boolean;
+  /** Entrata attesa da sollecitare. */
+  sr?: boolean;
   /** Documenti raggruppati nella riga. */
   nd?: number;
   /** Priorità della nota. */
@@ -147,6 +152,8 @@ export interface TotaliCassa {
   entrateStandby: number;
   /** Entrate attese messe in standby (parcheggiate): fuori da tutto. */
   entrateParcheggiate: number;
+  /** Entrate attese da sollecitare: dentro entrateStandby, mostrate a parte. */
+  entrateDaSollecitare: number;
   /** Acconti già arrivati in banca sugli entranti del mese (scritti a mano
    *  nella colonna Reale): si tolgono dal totale entrante. */
   acconti: number;
@@ -241,6 +248,8 @@ export interface RigaCassa {
   standbyIncasso: boolean;
   /** Entrata attesa parcheggiata (blocco "Standby" delle entrate): non conta. */
   parcheggiata: boolean;
+  /** Entrata attesa da sollecitare (blocco "Da sollecitare"): conta come entrante. */
+  daSollecitare: boolean;
   nota: string;
   contestata: boolean;
   appalto?: string;
@@ -641,6 +650,7 @@ type Grezza = Omit<
   | "contestata"
   | "standbyIncasso"
   | "parcheggiata"
+  | "daSollecitare"
   | "importoOrigine"
   | "priorita"
   | "dataScelta"
@@ -960,6 +970,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
         secchioAuto: "ora",
         standbyIncasso: false,
         parcheggiata: false,
+        daSollecitare: false,
         nota: "",
         contestata: false,
         dataScelta: false,
@@ -1025,6 +1036,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
         secchioAuto: "ora",
         standbyIncasso: false,
         parcheggiata: false,
+        daSollecitare: false,
         nota: "",
         contestata: false,
         documenti: 1,
@@ -1166,6 +1178,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       secchioAuto: auto,
       standbyIncasso: attesa && !parcheggiata,
       parcheggiata,
+      daSollecitare: attesa && !parcheggiata && Boolean(st.r),
       nota: st.n ?? manuale?.nota ?? "",
       contestata: Boolean(st.c),
       priorita: st.p ?? manuale?.p,
@@ -1213,6 +1226,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   const entrateRicevute = somma(entrate.filter((r) => !r.standbyIncasso && !r.parcheggiata));
   const entrateStandby = somma(entrate.filter((r) => r.standbyIncasso));
   const entrateParcheggiate = somma(entrate.filter((r) => r.parcheggiata));
+  const entrateDaSollecitare = somma(entrate.filter((r) => r.daSollecitare));
   const acconti = r2(Math.max(0, db.acconti?.[meseCorr] ?? 0));
   const entrantiNette = r2(entrateStandby - acconti);
   const compensazioni = somma(
@@ -1230,6 +1244,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     entrateRicevute,
     entrateStandby,
     entrateParcheggiate,
+    entrateDaSollecitare,
     acconti,
     entrantiNette,
     compensazioni,
@@ -1275,6 +1290,7 @@ export function creaFotografia(
       n: r.nota || undefined,
       si: r.standbyIncasso || undefined,
       sp: r.parcheggiata || undefined,
+      sr: r.daSollecitare || undefined,
       nd: r.documenti > 1 ? r.documenti : undefined,
       p: r.priorita,
     })),
