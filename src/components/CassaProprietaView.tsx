@@ -50,6 +50,7 @@ import {
   etichettaProssimiBreve,
   limiteDefault,
   stipendiDaPagare,
+  tokenGruppi,
   type CassaDb,
   type FotografiaCassa,
   type PrioritaCassa,
@@ -117,6 +118,8 @@ interface Cella {
   voci?: VoceDettaglioCassa[];
   /** Quote per appalto del fornitore: "Uscite per cliente" divide la riga. */
   quote?: QuotaAppalto[];
+  /** Entrate unite per gruppo: le società dentro la riga. */
+  membriClienti?: string[];
 }
 
 /** Vista raggruppata delle uscite (Simone 02/11/2026: "raggruppare le spese
@@ -211,23 +214,68 @@ const daRiga = (r: RigaCassa): Cella => ({
   promemoria: r.promemoria,
   voci: r.voci,
   quote: r.quote,
+  membriClienti: r.membriClienti,
 });
 
 /** La colonna Entrate in tre blocchi col loro totale: "Già entrate" (in
  *  banca, dentro il saldo), "Entranti" (attese = standby incasso, al netto
  *  degli acconti) e "Standby" (attese parcheggiate, non contano) — Simone
  *  19/10 e 02/11/2026. */
-type SlotE = { kind: "head"; label: string; value: number } | { kind: "riga"; c: Cella };
-function slotsEntrate(entrate: readonly Cella[], totali: TotaliCassa, t: TFn): SlotE[] {
+type SlotE =
+  | { kind: "head"; label: string; value: number }
+  | { kind: "riga"; c: Cella; figlio?: boolean }
+  /** Cliente con più fatture attese: una riga sola col totale e il "+" che
+   *  apre le singole fatture (Simone 10/11/2026, "un + per cliente"). */
+  | { kind: "padre"; c: Cella; figli: Cella[]; aperto: boolean };
+function slotsEntrate(
+  entrate: readonly Cella[],
+  totali: TotaliCassa,
+  t: TFn,
+  espansi: ReadonlySet<string> = new Set(),
+): SlotE[] {
   const entranti =
     totali.acconti > 0
       ? `${t("cpr.entranti")} − ${t("cpr.acconti")} ${fmt(totali.acconti)}`
       : t("cpr.entranti");
+  // Entranti per cliente: le fatture dello stesso cliente (o gruppo) stanno
+  // sotto una riga padre col totale; il "+" le apre una per scadenza.
+  const attese = entrate.filter((c) => c.attesa && !c.parcheggiata);
+  const perCliente = new Map<string, Cella[]>();
+  for (const c of attese) {
+    const lista = perCliente.get(c.nome) ?? [];
+    lista.push(c);
+    perCliente.set(c.nome, lista);
+  }
+  const slotsAttese: SlotE[] = [];
+  for (const [nome, figli] of perCliente) {
+    if (figli.length === 1) {
+      slotsAttese.push({ kind: "riga", c: figli[0] });
+      continue;
+    }
+    const primo = figli[0];
+    const importo = Math.round(figli.reduce((s, c) => s + c.importo, 0) * 100) / 100;
+    const padre: Cella = {
+      ...primo,
+      chiave: `cli|${nome}`,
+      importo,
+      importoOrigine: importo,
+      data: figli.reduce((m, c) => (c.data < m ? c.data : m), primo.data),
+      documenti: figli.reduce((s, c) => s + c.documenti, 0),
+      dettaglio: figli.map((c) => `${ddmm(c.data)} ${fmt(c.importo)}`).join(" · "),
+      nota: "",
+      editabile: false,
+      dataScelta: false,
+      priorita: undefined,
+    };
+    const aperto = espansi.has("*") || espansi.has(nome);
+    slotsAttese.push({ kind: "padre", c: padre, figli, aperto });
+    if (aperto) for (const c of figli) slotsAttese.push({ kind: "riga", c, figlio: true });
+  }
   return [
     { kind: "head", label: t("cpr.giaEntrate"), value: totali.entrateRicevute },
     ...entrate.filter((c) => !c.attesa).map((c): SlotE => ({ kind: "riga", c })),
     { kind: "head", label: entranti, value: totali.entrantiNette },
-    ...entrate.filter((c) => c.attesa && !c.parcheggiata).map((c): SlotE => ({ kind: "riga", c })),
+    ...slotsAttese,
     { kind: "head", label: t("cpr.colStandby"), value: totali.entrateParcheggiate },
     ...entrate.filter((c) => c.parcheggiata).map((c): SlotE => ({ kind: "riga", c })),
   ];
@@ -265,6 +313,7 @@ export function CassaProprietaView({
   movimenti,
   onApriFornitore,
   mezzi,
+  gruppi,
 }: {
   attive: readonly FatturaConStato[];
   passive: readonly FatturaConStato[];
@@ -277,6 +326,8 @@ export function CassaProprietaView({
   onApriFornitore?: (nome: string) => void;
   /** Parco mezzi per la ripartizione automatica dei fornitori (facoltativo). */
   mezzi?: ParcoPerRipartizione;
+  /** Gruppi di controparti (Resoconto → Gruppi): per unire le entrate per gruppo. */
+  gruppi?: readonly { nome: string; membri: string }[];
 }) {
   const { t } = useLang();
   const [db, setDb] = useState<CassaDb | null>(null);
@@ -369,6 +420,8 @@ export function CassaProprietaView({
       })),
       stipendi,
       mezzi,
+      gruppiClienti: tokenGruppi(gruppi ?? []),
+      unisciClienti: Boolean(db.unisciClienti),
       db,
     });
   }, [
@@ -385,6 +438,7 @@ export function CassaProprietaView({
     movimenti,
     stipendi,
     mezzi,
+    gruppi,
   ]);
 
   // --- salvataggio: ogni modifica scrive subito il db (piccolo) -------------
@@ -470,6 +524,12 @@ export function CassaProprietaView({
       void salva({ ...db, giornoLimite: g });
   };
 
+  // Entrate per società o per gruppo di controparti (Simone 10/11/2026):
+  // scelta salvata nel db, così resta.
+  const unisci = (on: boolean) => {
+    if (!db) return;
+    void salva({ ...db, unisciClienti: on || undefined });
+  };
   // Spostare un'uscita in una colonna: se è la colonna automatica, si toglie
   // la forzatura; per le righe manuali si aggiorna la riga.
   const sposta = (c: Cella, col: SecchioCassa) => {
@@ -582,7 +642,7 @@ export function CassaProprietaView({
     out.push([totali.entrate, "", saldoVista, totali.reale, "", "", "", "", "", ""]);
     for (let i = 0; i < n; i++) {
       const s = sl[i];
-      const e = s?.kind === "riga" ? s.c : undefined;
+      const e = s?.kind === "riga" || s?.kind === "padre" ? s.c : undefined;
       const u = uscite[i];
       out.push([
         s?.kind === "head" ? s.value : e ? e.importo : "",
@@ -729,6 +789,27 @@ export function CassaProprietaView({
                 ))}
               </span>
             </span>
+            {/* Entrate per società / per gruppo di controparti (Simone 10/11/2026) */}
+            {gruppi && gruppi.length > 0 && (
+              <span className="flex items-center gap-2 text-muted-foreground">
+                {t("cpr.entratePer")}
+                <span
+                  className="flex overflow-hidden rounded-lg border border-border text-[12px]"
+                  title={t("cpr.perGruppoTip")}
+                >
+                  {([false, true] as const).map((v) => (
+                    <button
+                      key={String(v)}
+                      type="button"
+                      onClick={() => unisci(v)}
+                      className={`px-2.5 py-1 ${Boolean(db?.unisciClienti) === v ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                    >
+                      {t(v ? "cpr.perGruppo" : "cpr.perSocieta")}
+                    </button>
+                  ))}
+                </span>
+              </span>
+            )}
             {salvando && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
             <button
               type="button"
@@ -786,6 +867,7 @@ export function CassaProprietaView({
         {clienteAperto && (
           <SchedaClienteCassa
             nome={clienteAperto}
+            nomi={esito?.righe.find((r) => r.controparte === clienteAperto)?.membriClienti}
             attive={attive}
             oggi={oggi}
             onChiudi={() => setClienteAperto(null)}
@@ -1166,7 +1248,16 @@ function Foglio({
     amex: boolean;
     ricorrente: boolean;
   }>(null);
-  const slotsE = slotsEntrate(entrate, totali, t);
+  // Clienti aperti col "+" (singole fatture visibili); non si salva.
+  const [espansi, setEspansi] = useState<Set<string>>(new Set());
+  const toggleCliente = (nome: string) =>
+    setEspansi((prev) => {
+      const next = new Set(prev);
+      if (next.has(nome)) next.delete(nome);
+      else next.add(nome);
+      return next;
+    });
+  const slotsE = slotsEntrate(entrate, totali, t, espansi);
   const n = Math.max(slotsE.length, uscite.length);
   const righe = Array.from({ length: n }, (_, i) => i);
   const breve = etichettaProssimiBreve(limite);
@@ -1341,7 +1432,9 @@ function Foglio({
           </tr>
           {righe.map((i) => {
             const slot = slotsE[i];
-            const e = slot?.kind === "riga" ? slot.c : undefined;
+            const e = slot?.kind === "riga" || slot?.kind === "padre" ? slot.c : undefined;
+            const padre = slot?.kind === "padre" ? slot : undefined;
+            const figlio = slot?.kind === "riga" && slot.figlio === true;
             const u = uscite[i];
             return (
               <tr key={i} className="group/r odd:bg-background/40 hover:bg-primary/5">
@@ -1374,7 +1467,17 @@ function Foglio({
                       className={`${cel} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
                     >
                       {e && (
-                        <span className="flex items-center gap-1.5">
+                        <span className={`flex items-center gap-1.5 ${figlio ? "pl-5" : ""}`}>
+                          {padre && (
+                            <button
+                              type="button"
+                              onClick={() => toggleCliente(e.nome)}
+                              title={t(padre.aperto ? "cpr.chiudiCliente" : "cpr.espandiCliente")}
+                              className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-[11px] leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                            >
+                              {padre.aperto ? "−" : "+"}
+                            </button>
+                          )}
                           {e.tipo === "attiva" || e.tipo === "incasso" ? (
                             <button
                               type="button"
@@ -1418,17 +1521,22 @@ function Foglio({
                               {t("cpr.compensazione")}
                             </span>
                           )}
-                          {e.attesa ? (
+                          {padre ? (
+                            <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                              {t("cpr.dal")} {ddmmyy(e.data)} · {padre.figli.length}{" "}
+                              {t("cpr.fattureBreve")}
+                            </span>
+                          ) : e.attesa ? (
                             <DataAttesa c={e} readOnly={readOnly} onData={onData} t={t} />
                           ) : (
                             <span className="shrink-0 text-[10.5px] text-muted-foreground">
                               {ddmm(e.data)}
                             </span>
                           )}
-                          {e.attesa && !readOnly && (
+                          {!padre && e.attesa && !readOnly && (
                             <ToggleStandby c={e} onParcheggia={onParcheggia} t={t} />
                           )}
-                          {!readOnly && <Togli onClick={() => onTogli(e)} t={t} />}
+                          {!padre && !readOnly && <Togli onClick={() => onTogli(e)} t={t} />}
                         </span>
                       )}
                     </td>

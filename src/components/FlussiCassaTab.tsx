@@ -58,6 +58,7 @@ import {
   spGetMovimenti,
   spGetRegoleFatture,
   spGetRegoleFinanza,
+  spGetGruppiControparti,
 } from "@/lib/sharepoint.functions";
 import { spStipendiFlussi, spStipendiGet } from "@/lib/stipendi.functions";
 import { spMezziGetDb } from "@/lib/mezzi.functions";
@@ -72,7 +73,13 @@ import {
   type ScadenzaFiscale,
 } from "@/lib/fiscale-logic";
 import { spFiscaleGet, spFiscaleSalva } from "@/lib/fiscale.functions";
-import type { SpFattura, SpMovimento, Prefattura, FlussoCassaRiga } from "@/lib/sharepoint.server";
+import type {
+  SpFattura,
+  SpMovimento,
+  Prefattura,
+  FlussoCassaRiga,
+  GruppoControparti,
+} from "@/lib/sharepoint.server";
 
 function fmtImporto(n: number): string {
   return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -139,6 +146,14 @@ export function FlussiCassaTab() {
     spMezziGetDb()
       .then((db) => setMezziDb(db as MezziDb))
       .catch(() => setMezziDb(null));
+  }, []);
+  // Gruppi di controparti (Resoconto → Gruppi): per unire le entrate della
+  // Cassa proprietà per gruppo (Simone 10/11/2026).
+  const [gruppiCtrl, setGruppiCtrl] = useState<GruppoControparti[]>([]);
+  useEffect(() => {
+    spGetGruppiControparti()
+      .then((l) => setGruppiCtrl(l as GruppoControparti[]))
+      .catch(() => setGruppiCtrl([]));
   }, []);
   const [flussiErr, setFlussiErr] = useState<string | null>(null);
   const [movimenti, setMovimenti] = useState<SpMovimento[] | null>(null);
@@ -1958,6 +1973,7 @@ export function FlussiCassaTab() {
           fissi={costiFissi}
           movimenti={movimenti ?? []}
           mezzi={mezziDb ?? undefined}
+          gruppi={gruppiCtrl}
           onApriFornitore={(nome) => setFornitoreAperto(chiaveFornitore(nome))}
         />
         {rigaFornitoreAperta && (

@@ -68,11 +68,14 @@ function Finestra({
  *  giorni di ritardo. Stessi dati e stesse regole del foglio. */
 export function SchedaClienteCassa({
   nome,
+  nomi,
   attive,
   oggi,
   onChiudi,
 }: {
   nome: string;
+  /** Riga unita per gruppo: le società dentro (tutte le loro fatture). */
+  nomi?: readonly string[];
   attive: readonly FatturaConStato[];
   oggi: string;
   onChiudi: () => void;
@@ -80,10 +83,11 @@ export function SchedaClienteCassa({
   const { t } = useLang();
   // Stessa chiave del foglio (nome in fattura) e, in più, la chiave canonica:
   // gli incassi in banca portano un nome un po' diverso da quello in fattura.
-  const k1 = chiaveCliente(nome);
-  const k2 = chiaveFornitore(nome);
+  const tutti = nomi && nomi.length ? nomi : [nome];
+  const k1 = new Set(tutti.map(chiaveCliente));
+  const k2 = new Set(tutti.map(chiaveFornitore));
   const righe = attive
-    .filter((x) => chiaveCliente(x.f.cliente) === k1 || chiaveFornitore(x.f.cliente) === k2)
+    .filter((x) => k1.has(chiaveCliente(x.f.cliente)) || k2.has(chiaveFornitore(x.f.cliente)))
     .map((x) => ({
       x,
       residuo: residuoAperto(x),

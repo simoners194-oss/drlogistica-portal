@@ -105,6 +105,18 @@ function validaDb(input: unknown): CassaDb {
     fotografie,
     agenda,
     chiusure: Object.keys(chiusure).length ? chiusure : undefined,
+    // Acconti (colonna Reale, 1.97.0): il validatore li scartava e il
+    // numero spariva al ricaricamento — corretto il 10/11/2026.
+    acconti: (() => {
+      const out: Record<string, number> = {};
+      for (const [k, v] of Object.entries(o.acconti ?? {})) {
+        const n = Number(v);
+        if (/^\d{4}-\d{2}$/.test(k) && Number.isFinite(n) && n > 0)
+          out[k] = Math.round(n * 100) / 100;
+      }
+      return Object.keys(out).length ? out : undefined;
+    })(),
+    unisciClienti: o.unisciClienti ? true : undefined,
     saldoManuale:
       o.saldoManuale && Number.isFinite(Number(o.saldoManuale.importo))
         ? { importo: numero(o.saldoManuale.importo), data: dataIso(o.saldoManuale.data) }

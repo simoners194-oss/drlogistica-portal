@@ -943,6 +943,15 @@ const en = {
   "cpr.nonParcheggiabile":
     "Direct debit (RID/RiBa): it leaves on its own at the due date, it cannot be moved",
   "cpr.apriFornitore": "Open the supplier card",
+  "cpr.entratePer": "Incoming",
+  "cpr.espandiCliente": "Open the single invoices",
+  "cpr.chiudiCliente": "Collapse",
+  "cpr.dal": "from",
+  "cpr.fattureBreve": "inv.",
+  "cpr.perSocieta": "by company",
+  "cpr.perGruppo": "by group",
+  "cpr.perGruppoTip":
+    "By group: companies of the same counterparty group (Summary → Groups, e.g. Univex) share one row under the group name, still one row per due date; clicking the name opens all their invoices. The choice is saved.",
   "cpr.apriCliente": "Open the client's open invoices",
   "cpr.apriGruppo": "Open the suppliers in this group",
   "cpr.schedaCliente": "Open invoices",
@@ -3004,6 +3013,15 @@ const it: Record<DictKey, string> = {
   "cpr.nonParcheggiabile":
     "Addebito automatico (RID/RiBa): esce da solo alla scadenza, non si può spostare",
   "cpr.apriFornitore": "Apri la scheda fornitore",
+  "cpr.entratePer": "Entrate",
+  "cpr.espandiCliente": "Apri le singole fatture",
+  "cpr.chiudiCliente": "Richiudi",
+  "cpr.dal": "dal",
+  "cpr.fattureBreve": "fatt.",
+  "cpr.perSocieta": "per società",
+  "cpr.perGruppo": "per gruppo",
+  "cpr.perGruppoTip":
+    "Per gruppo: le società dello stesso gruppo di controparti (Resoconto → Gruppi, es. Univex) stanno su una riga sola col nome del gruppo, sempre una riga per scadenza; il clic sul nome apre le fatture di tutte. La scelta resta salvata.",
   "cpr.apriCliente": "Apri le fatture aperte del cliente",
   "cpr.apriGruppo": "Apri l'elenco dei fornitori del gruppo",
   "cpr.schedaCliente": "Fatture aperte",

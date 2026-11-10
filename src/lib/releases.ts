@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.104.0",
+    date: "2026-11-10",
+    entries: [
+      {
+        title: 'Cassa proprietà: un "+" per cliente e entrate per gruppo',
+        description:
+          'Tra gli entranti ogni cliente con più fatture sta su una riga sola (totale, prima scadenza, numero di fatture) con il "+" che apre le singole fatture. Accanto a "Uscite per" c\'è "Entrate: per società / per gruppo": le società dello stesso gruppo di controparti (Resoconto → Gruppi, es. le tre Univex) si uniscono sotto il nome del gruppo; il clic sul nome apre le fatture di tutte. La scelta resta salvata.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: gli acconti della colonna Reale ora restano salvati",
+        description:
+          "Il valore scritto nel campo acconti veniva scartato al salvataggio e spariva ricaricando la pagina. Corretto.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.103.0",
     date: "2026-11-09",
     entries: [

@@ -211,6 +211,9 @@ export interface CassaDb {
   /** Acconti già incassati sugli entranti, per mese (YYYY-MM → importo):
    *  si scrivono nella colonna Reale e si tolgono dal totale entrante. */
   acconti?: Record<string, number>;
+  /** Entrate unite per gruppo di controparti (Resoconto → Gruppi) invece che
+   *  per singola società — Simone 10/11/2026 ("unire i clienti"). */
+  unisciClienti?: boolean;
   aggiornatoIl?: string;
   aggiornatoDa?: string;
 }
@@ -268,6 +271,8 @@ export interface RigaCassa {
   /** Quote per appalto del fornitore (scheda o mezzi): "Uscite per cliente"
    *  divide la riga secondo queste percentuali — Simone 09/11/2026. */
   quote?: QuotaAppalto[];
+  /** Entrate unite per gruppo: le società dentro la riga (per la scheda). */
+  membriClienti?: string[];
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -427,9 +432,64 @@ export function stipendiDaPagare(
   );
 }
 
+/** Un gruppo di controparti ridotto ai suoi pezzi di nome (chiavi canoniche). */
+export interface GruppoClientiCassa {
+  nome: string;
+  token: string[];
+}
+
+/** Dai gruppi di controparti del Resoconto (membri: elenco separato da
+ *  virgole/righe, oppure la vista salvata JSON {"c":[chiavi]}) ai token con
+ *  cui riconoscere le società: una società sta nel gruppo se la sua chiave
+ *  canonica CONTIENE uno dei token (stessa regola del Resoconto). */
+export function tokenGruppi(
+  gruppi: readonly { nome: string; membri: string }[],
+): GruppoClientiCassa[] {
+  const out: GruppoClientiCassa[] = [];
+  for (const g of gruppi) {
+    const m = (g.membri ?? "").trim();
+    let token: string[] = [];
+    if (m.startsWith("{")) {
+      try {
+        const j = JSON.parse(m) as { c?: unknown };
+        if (Array.isArray(j.c)) token = j.c.map((x) => String(x).trim().toLowerCase());
+      } catch {
+        token = [];
+      }
+    } else {
+      token = m
+        .split(/[,;|\n]/)
+        .map((x) => chiaveFornitore(x) || x.trim().toLowerCase())
+        .filter(Boolean);
+    }
+    token = token.filter((tk) => tk && tk !== "__nessuno__");
+    if (token.length) out.push({ nome: g.nome.trim(), token });
+  }
+  return out;
+}
+
+/** Il gruppo di una società (per nome contenuto), o undefined. A parità vince
+ *  il token più lungo, così "healthcare univex" batte "univex". */
+export function gruppoDiCliente(
+  nome: string,
+  gruppi: readonly GruppoClientiCassa[],
+): GruppoClientiCassa | undefined {
+  const k = chiaveFornitore(nome);
+  if (!k) return undefined;
+  let best: { g: GruppoClientiCassa; len: number } | undefined;
+  for (const g of gruppi)
+    for (const tk of g.token)
+      if (k.includes(tk) && (!best || tk.length > best.len)) best = { g, len: tk.length };
+  return best?.g;
+}
+
 export interface InputCassa {
   /** Parco mezzi (modulo Mezzi) per la ripartizione automatica dei fornitori. */
   mezzi?: ParcoPerRipartizione;
+  /** Gruppi di controparti (Resoconto → Gruppi) e scelta di unire le entrate
+   *  per gruppo invece che per società (Simone 10/11/2026). */
+  gruppiClienti?: readonly GruppoClientiCassa[];
+  unisciClienti?: boolean;
   /** Data della fotografia (YYYY-MM-DD). */
   oggi: string;
   /** Fino a quando guardare (YYYY-MM-DD), oltre la fine del mese. */
@@ -704,12 +764,18 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     .map((m) => ({ ...m, d: m.dataContabile.slice(0, 10) }))
     .filter((m) => m.d >= inizioMese && m.d <= oggi)
     .sort((a, b) => a.d.localeCompare(b.d));
+  // Entrate unite per gruppo (Simone 10/11/2026): le società dello stesso
+  // gruppo di controparti stanno su una riga sola col nome del gruppo.
+  const grpDi = (nome: string) =>
+    input.unisciClienti ? gruppoDiCliente(nome, input.gruppiClienti ?? []) : undefined;
   for (const m of incassi) {
     const nome = (m.cliente || m.descrizione || "").trim();
+    const grp = grpDi(nome);
     grezze.push({
       chiave: `inc|${m.id ?? `${m.d}|${m.importo}|${chiaveCliente(nome)}`}`,
       tipo: "incasso",
-      controparte: nome,
+      controparte: grp?.nome ?? nome,
+      membriClienti: grp ? [nome] : undefined,
       descrizione: ddmm(m.d),
       importo: r2(m.importo),
       scadenza: m.d,
@@ -728,7 +794,16 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   // diverse.
   const gruppiAtt = new Map<
     string,
-    { nome: string; k: string; importo: number; n: number; scad: string; numeri: string[] }
+    {
+      nome: string;
+      k: string;
+      importo: number;
+      n: number;
+      scad: string;
+      numeri: string[];
+      membri: Set<string>;
+      unito: boolean;
+    }
   >();
   for (const x of input.attive) {
     const res = residuoAperto(x);
@@ -736,12 +811,23 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     const scad = scadenzaEffettiva(x.s.scadenza);
     if (scad > limite) continue;
     if (esclusaDaFlussi(input.esclusioni, x.f.cliente, scad.slice(0, 7))) continue;
-    const k = chiaveCliente(x.f.cliente);
+    const grp = grpDi(x.f.cliente);
+    const k = grp ? `g:${chiaveCliente(grp.nome)}` : chiaveCliente(x.f.cliente);
     const kd = `${k}|${scad}`;
-    const g = gruppiAtt.get(kd) ?? { nome: x.f.cliente, k, importo: 0, n: 0, scad, numeri: [] };
+    const g = gruppiAtt.get(kd) ?? {
+      nome: grp?.nome ?? x.f.cliente,
+      k,
+      importo: 0,
+      n: 0,
+      scad,
+      numeri: [],
+      membri: new Set<string>(),
+      unito: Boolean(grp),
+    };
     g.importo = r2(g.importo + res);
     g.n++;
     g.numeri.push(x.f.numero);
+    g.membri.add(x.f.cliente);
     gruppiAtt.set(kd, g);
   }
   for (const g of gruppiAtt.values())
@@ -749,10 +835,11 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       chiave: `attc|${meseCorr}|${g.k}|${g.scad}`,
       // Fino alla 1.97.x la riga era una per cliente: le decisioni prese
       // allora (standby, nota, data) si ereditano se la riga nuova non ne ha.
-      chiaveVecchia: `attc|${meseCorr}|${g.k}`,
+      chiaveVecchia: g.unito ? undefined : `attc|${meseCorr}|${g.k}`,
       tipo: "attiva",
       controparte: g.nome,
-      descrizione: `${g.n} fatt. ${elencoNumeri(g.numeri)} · scad. ${ddmm(g.scad)}`,
+      membriClienti: g.unito ? [...g.membri] : undefined,
+      descrizione: `${g.unito ? `${[...g.membri].join(", ")} · ` : ""}${g.n} fatt. ${elencoNumeri(g.numeri)} · scad. ${ddmm(g.scad)}`,
       importo: g.importo,
       scadenza: g.scad,
       certa: false,
