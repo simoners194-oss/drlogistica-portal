@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.106.0",
+    date: "2026-11-11",
+    entries: [
+      {
+        title: "Termini di pagamento: arrotonda la scadenza al giorno 1, 5, 10 o 15",
+        description:
+          'Nelle regole dei termini (Finanze → Regole), per clienti e fornitori, c\'è "Arrotonda la scadenza al" con i giorni 1, 5, 10 e 15: la scadenza si sposta in avanti al primo dei giorni accesi (con il 10: 23/11 diventa 10/12). Vale ovunque: Fatture, Flussi, Cassa proprietà, solleciti.',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.105.0",
     date: "2026-11-10",
     entries: [

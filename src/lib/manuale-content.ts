@@ -411,7 +411,7 @@ Il giro parte dal PC che ha le due attività pianificate di Windows ("DR Portal 
     id: "fat-termini-opzioni",
     sezione: "Fatture",
     titolo:
-      "Scadenza dal 1° del mese, competenza al mese prima, scadenza in fattura ignorata (accordi per controparte)",
+      "Scadenza dal 1° del mese, competenza al mese prima, scadenza in fattura ignorata, arrotondamento al giorno 1-5-10-15 (accordi per controparte)",
     testo: `Nei Termini di pagamento (Finanze → Regole, scheda Clienti) ogni cliente ha i suoi giorni. Dalla 1.81.0 ci sono due opzioni in più, pensate per l'accordo con Univex (24/09) ma valide per chiunque le abbia:
 
 "Scadenza dal 1° del mese della fattura": se la fattura NON dichiara una scadenza propria, i giorni partono dal primo del mese in cui è stata emessa, non dalla data fattura. Una fattura del 21/07 a 65 giorni scade il 4/09, non il 24/09. Se invece nell'XML c'è una scadenza vera (diversa dalla data fattura), vince quella. Per i clienti senza l'opzione resta la regola di sempre: termini dalla data fattura.
@@ -420,9 +420,11 @@ Il giro parte dal PC che ha le due attività pianificate di Windows ("DR Portal 
 
 Le opzioni si vedono come etichette accanto al cliente nell'elenco dei termini ("dal 1° del mese", "mese prec.") e si tolgono rientrando nel termine con la matita. Cambiano solo scadenze, ritardi e mese di competenza: importi e stati d'incasso non si toccano.
 
-Dalla 1.98.0 c'è una terza spunta, per clienti E fornitori: "Ignora la scadenza scritta in fattura". Con la spunta la data dichiarata nell'XML non conta mai e valgono solo i giorni della regola (dalla data fattura, oppure dal 1° del mese se c'è anche quell'opzione). Serve soprattutto ai fornitori, dove di norma vince la scadenza scritta in fattura, e ai clienti con "dal 1° del mese"; per gli altri clienti i termini contrattuali valgono già da soli. Nell'elenco si riconosce dall'etichetta "solo giorni regola". Le scadenze cambiano ovunque: Fatture, Flussi, Cassa proprietà, solleciti.`,
+Dalla 1.98.0 c'è una terza spunta, per clienti E fornitori: "Ignora la scadenza scritta in fattura". Con la spunta la data dichiarata nell'XML non conta mai e valgono solo i giorni della regola (dalla data fattura, oppure dal 1° del mese se c'è anche quell'opzione). Serve soprattutto ai fornitori, dove di norma vince la scadenza scritta in fattura, e ai clienti con "dal 1° del mese"; per gli altri clienti i termini contrattuali valgono già da soli. Nell'elenco si riconosce dall'etichetta "solo giorni regola". Le scadenze cambiano ovunque: Fatture, Flussi, Cassa proprietà, solleciti.
+
+Dalla 1.106.0 (Simone 11/11/2026) c'è "Arrotonda la scadenza al", con i quattro giorni 1, 5, 10 e 15 da accendere, per clienti E fornitori. Serve per chi paga in giorni fissi del mese: la scadenza, sia quella calcolata dai giorni della regola sia quella scritta in fattura, si sposta IN AVANTI al primo dei giorni accesi, uguale o successivo. Con il solo 10 acceso: una scadenza del 23/11 diventa 10/12, una dell'8/11 diventa 10/11, una del 10/11 resta 10/11. Con più giorni accesi vale il primo che capita: con 1, 5, 10 e 15 una scadenza del 12/11 diventa 15/11 e una del 20/11 diventa 1/12. Nessun giorno acceso = nessun arrotondamento. L'arrotondamento si applica per ultimo, dopo i giorni, il "dal 1° del mese" e la scadenza ignorata. Nell'elenco si riconosce dall'etichetta "arrotonda al 10" (o "arrotonda al 1-5-10-15"); si toglie rientrando nella regola con la matita e spegnendo i giorni. Attenzione in Cassa proprietà: quando una regola cambia le date, le righe degli entranti cambiano scadenza e le scelte fatte su quelle righe (standby, da sollecitare, note) vanno rimesse.`,
     chiavi:
-      "termini scadenza primo del mese decorrenza competenza mese precedente univex accordo ritardo sollecito ignora scadenza fattura solo giorni regola fornitori xml",
+      "termini scadenza primo del mese decorrenza competenza mese precedente univex accordo ritardo sollecito ignora scadenza fattura solo giorni regola fornitori xml arrotonda arrotondamento giorno fisso 1 5 10 15 al 10 del mese",
   },
   {
     id: "fat-colonne",

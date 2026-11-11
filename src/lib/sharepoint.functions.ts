@@ -18,7 +18,7 @@ import {
   type ArubaIncassiProbe,
 } from "./aruba.server";
 import { lunediDellaSettimana, ymd } from "./rendiconto-logic";
-import type { RegolaFattura } from "./fatture-logic";
+import { parseArrotondaGiorni, type RegolaFattura } from "./fatture-logic";
 import {
   setSessionCookie,
   readSessionUser,
@@ -1799,6 +1799,7 @@ export const spImportTermini = createServerFn({ method: "POST" })
         decorrenzaMese?: boolean;
         competenzaPrecedente?: boolean;
         ignoraScadenza?: boolean;
+        arrotondaGiorni?: number[];
       }[];
     }) => {
       if (!Array.isArray(input?.rows) || input.rows.length === 0)
@@ -1816,6 +1817,10 @@ export const spImportTermini = createServerFn({ method: "POST" })
             competenzaPrecedente:
               r?.competenzaPrecedente === undefined ? undefined : !!r.competenzaPrecedente,
             ignoraScadenza: r?.ignoraScadenza === undefined ? undefined : !!r.ignoraScadenza,
+            arrotondaGiorni:
+              r?.arrotondaGiorni === undefined
+                ? undefined
+                : parseArrotondaGiorni(r.arrotondaGiorni),
           }))
           // 0 giorni (a vista) e' ammesso solo per le regole con parola chiave.
           .filter(

@@ -47,6 +47,7 @@ import { FlussiCassaTab } from "@/components/FlussiCassaTab";
 import { StipendiTab } from "@/components/StipendiTab";
 import { FiscaleTab } from "@/components/FiscaleTab";
 import { useLang } from "@/lib/i18n";
+import { GIORNI_ARROTONDA } from "@/lib/fatture-logic";
 import { readSession, type SessionUser } from "@/lib/session";
 import { haVistaDirezione } from "@/lib/richieste-logic";
 import {
@@ -1818,6 +1819,7 @@ function FinanzaPage() {
     decorrenzaMese?: boolean;
     competenzaPrecedente?: boolean;
     ignoraScadenza?: boolean;
+    arrotondaGiorni?: number[];
   };
   const [termini, setTermini] = useState<TermineRiga[] | null>(null);
   const [tCliente, setTCliente] = useState("");
@@ -1831,6 +1833,9 @@ function FinanzaPage() {
   // "Ignora la scadenza scritta in fattura" (Simone 04/11/2026): contano
   // solo i giorni della regola, per clienti e fornitori.
   const [tIgnoraScad, setTIgnoraScad] = useState(false);
+  // "Arrotonda al 1-5-10-15" (Simone 11/11/2026): giorni fissi del mese in
+  // cui la controparte paga; la scadenza va al primo di quei giorni.
+  const [tArrotonda, setTArrotonda] = useState<number[]>([]);
   // Parole chiave sull'oggetto fattura: rendono il termine una REGOLA
   // (es. IMILE + "locazione, affitto" -> 0 giorni, a vista).
   const [tOggetto, setTOggetto] = useState("");
@@ -1862,6 +1867,7 @@ function FinanzaPage() {
               decorrenzaMese: tDecorrenza,
               competenzaPrecedente: tCompPrec,
               ignoraScadenza: tIgnoraScad,
+              arrotondaGiorni: tArrotonda,
             },
           ],
         },
@@ -1873,6 +1879,7 @@ function FinanzaPage() {
       setTDecorrenza(false);
       setTCompPrec(false);
       setTIgnoraScad(false);
+      setTArrotonda([]);
       loadRegole();
       toast.success(t("fin.termSalvato"));
     } catch (err) {
@@ -5376,6 +5383,27 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                   />
                   {t("fin.termIgnoraScad")}
                 </label>
+                <span className="flex items-center gap-1.5" title={t("fin.termArrotondaTip")}>
+                  {t("fin.termArrotonda")}
+                  {GIORNI_ARROTONDA.map((g) => {
+                    const on = tArrotonda.includes(g);
+                    return (
+                      <button
+                        key={g}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() =>
+                          setTArrotonda((prev) =>
+                            on ? prev.filter((x) => x !== g) : [...prev, g].sort((a, b) => a - b),
+                          )
+                        }
+                        className={`min-w-7 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${on ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:bg-muted"}`}
+                      >
+                        {g}
+                      </button>
+                    );
+                  })}
+                </span>
               </div>
               <button
                 type="button"
@@ -5434,6 +5462,14 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                             {t("fin.termIgnoraScadBadge")}
                           </span>
                         )}
+                        {x.arrotondaGiorni && x.arrotondaGiorni.length > 0 && (
+                          <span
+                            className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
+                            title={t("fin.termArrotondaTip")}
+                          >
+                            {t("fin.termArrotondaBadge")} {x.arrotondaGiorni.join("-")}
+                          </span>
+                        )}
                       </span>
                       <b className="tabular-nums">
                         {x.giorni} {t("fin.termGg")}
@@ -5448,6 +5484,7 @@ ${fmtData(m2.dataContabile)} · ${fmtImporto(m2.importo)} € · ${m2.descrizion
                           setTDecorrenza(!!x.decorrenzaMese);
                           setTCompPrec(!!x.competenzaPrecedente);
                           setTIgnoraScad(!!x.ignoraScadenza);
+                          setTArrotonda(x.arrotondaGiorni ?? []);
                           // Il modulo sta in cima alla card: con 50+ righe il
                           // click sembrava non fare NULLA (successo il 08/09).
                           // Si scorre al modulo e si mette il focus sul campo.

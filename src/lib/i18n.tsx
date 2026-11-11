@@ -1412,6 +1412,10 @@ const en = {
   "fin.termIgnoraScadTip":
     "The due date declared in the XML does not count: only the days of this rule apply (from the invoice date, or from the 1st of the month when that option is on). For suppliers, without this flag the due date written on the invoice wins.",
   "fin.termIgnoraScadBadge": "rule days only",
+  "fin.termArrotonda": "Round the due date to day",
+  "fin.termArrotondaTip":
+    "The counterparty pays on fixed days of the month: the due date (computed from the days or written on the invoice) moves forward to the first of the chosen days, same or later. With 10 only: a due date of 23/11 becomes 10/12, one of 8/11 becomes 10/11. With several days the first one that comes applies. No day chosen: no rounding.",
+  "fin.termArrotondaBadge": "round to",
   "fin.termEmailPh": "administration@client.com (optional)",
   "fin.termClientiTab": "Clients (they pay us)",
   "fin.termFornitoriTab": "Suppliers (we pay)",
@@ -3489,6 +3493,10 @@ const it: Record<DictKey, string> = {
   "fin.termIgnoraScadTip":
     "La scadenza dichiarata nell'XML non conta: valgono solo i giorni di questa regola (dalla data fattura, oppure dal 1° del mese se l'opzione è attiva). Per i fornitori, senza questa spunta vince la scadenza scritta in fattura.",
   "fin.termIgnoraScadBadge": "solo giorni regola",
+  "fin.termArrotonda": "Arrotonda la scadenza al",
+  "fin.termArrotondaTip":
+    "La controparte paga in giorni fissi del mese: la scadenza (calcolata dai giorni o scritta in fattura) si sposta in avanti al primo dei giorni scelti, uguale o successivo. Con il solo 10: una scadenza del 23/11 diventa 10/12, una dell'8/11 diventa 10/11. Con più giorni vale il primo che capita. Nessun giorno scelto: nessun arrotondamento.",
+  "fin.termArrotondaBadge": "arrotonda al",
   "fin.termEmailPh": "amministrazione@cliente.it (facoltativa)",
   "fin.termClientiTab": "Clienti (ci pagano)",
   "fin.termFornitoriTab": "Fornitori (paghiamo noi)",

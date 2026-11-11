@@ -138,6 +138,12 @@ export interface TerminePagamento {
    *  dell'XML) e ai clienti con "dal 1° del mese"; per gli altri clienti i
    *  termini contrattuali valgono gia' da soli. */
   ignoraScadenza?: boolean;
+  /** Simone 11/11/2026 ("arrotonda al 1-5-10-15"): giorni fissi del mese in
+   *  cui la controparte paga. La scadenza (calcolata dai giorni o scritta in
+   *  fattura) si sposta IN AVANTI al primo di questi giorni, uguale o
+   *  successivo. Un giorno solo = "al 10 del mese"; più giorni = il primo
+   *  che capita. Vuoto = nessun arrotondamento. */
+  arrotondaGiorni?: number[];
 }
 
 export interface AbbinamentoIncasso {
@@ -869,6 +875,37 @@ export function scadenzaFattura(dataDocumento: string, giorni: number): string {
   return `${y}-${m}-${g}`;
 }
 
+/** Giorni del mese ammessi per l'arrotondamento della scadenza. */
+export const GIORNI_ARROTONDA = [1, 5, 10, 15] as const;
+
+/** Legge i giorni di arrotondamento da testo ("1,5,10") o lista: solo i
+ *  giorni ammessi, senza doppioni, in ordine. */
+export function parseArrotondaGiorni(v: unknown): number[] {
+  const testo = Array.isArray(v) ? v.join(",") : String(v ?? "");
+  const out = new Set<number>();
+  for (const p of testo.split(/[^0-9]+/)) {
+    const n = Number(p);
+    if (p && (GIORNI_ARROTONDA as readonly number[]).includes(n)) out.add(n);
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+/** Sposta la scadenza in avanti al primo dei giorni indicati (uguale o
+ *  successivo): 23/11 con [10] = 10/12, 08/11 con [10] = 10/11, 12/11 con
+ *  [1,5,10,15] = 15/11. Senza giorni la data resta com'è. */
+export function arrotondaScadenza(iso: string, giorni: readonly number[] | undefined): string {
+  if (!giorni?.length || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const ordinati = [...giorni].sort((a, b) => a - b);
+  const g = Number(iso.slice(8, 10));
+  const stessoMese = ordinati.find((x) => x >= g);
+  if (stessoMese != null) return `${iso.slice(0, 8)}${String(stessoMese).padStart(2, "0")}`;
+  const y = Number(iso.slice(0, 4));
+  const m = Number(iso.slice(5, 7));
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  return `${ny}-${String(nm).padStart(2, "0")}-${String(ordinati[0]).padStart(2, "0")}`;
+}
+
 // --- Stato incasso -----------------------------------------------------------
 
 export type StatoIncasso = "Pagata" | "Parziale" | "Non incassata" | "NC";
@@ -950,7 +987,7 @@ export function computeStatoFattura(
     f.scadenza !== f.dataDocumento
       ? f.scadenza
       : "";
-  const scadenza =
+  const scadenzaBase =
     f.direzione === "Emessa"
       ? termineEm?.decorrenzaMese
         ? dichiarata || scadenzaFattura(`${f.dataDocumento.slice(0, 7)}-01`, termineEm.giorni)
@@ -961,6 +998,9 @@ export function computeStatoFattura(
             termine?.decorrenzaMese ? `${f.dataDocumento.slice(0, 7)}-01` : f.dataDocumento,
             termine?.giorni ?? TERMINI_DEFAULT_GIORNI,
           );
+  // "Arrotonda al 1-5-10-15" (Simone 11/11/2026): la controparte paga in
+  // giorni fissi del mese, la scadenza va al primo di quei giorni.
+  const scadenza = arrotondaScadenza(scadenzaBase, termine?.arrotondaGiorni);
   // Le note di credito non si "incassano" e le scartate/rifiutate dallo SdI
   // non sono crediti: entrambe fuori dal computo di residui e ritardi.
   if (isNotaCredito(f.tipoDocumento) || isEsclusaDalCredito(f) || f.totale <= 0) {

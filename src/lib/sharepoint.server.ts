@@ -68,6 +68,7 @@ import {
   incassiDaAzzerare,
   isEsclusaDalCredito,
   parseIncassoAruba,
+  parseArrotondaGiorni,
   type RegolaFattura,
   type FatturaRaw,
   type TerminePagamento,
@@ -440,6 +441,9 @@ export const SP_DISPLAY = {
     // Sì/No (04/11/2026): la scadenza scritta in fattura non conta, valgono
     // solo i giorni della regola. OPZIONALE.
     IgnoraScadenza: "IgnoraScadenza",
+    // Testo (11/11/2026): giorni fissi del mese a cui arrotondare la
+    // scadenza, es. "10" oppure "1,5,10,15". OPZIONALE.
+    ArrotondaGiorni: "ArrotondaGiorni",
   },
   // Abbinamenti fattura ↔ movimento bancario (n:n con importo allocato).
   // Chiavi NATURALI (nome file + chiave movimento): sopravvivono a
@@ -6522,6 +6526,8 @@ export async function importTermini(
     decorrenzaMese?: boolean;
     competenzaPrecedente?: boolean;
     ignoraScadenza?: boolean;
+    /** undefined = non toccare; lista vuota = togli l'arrotondamento. */
+    arrotondaGiorni?: number[];
   }[],
 ): Promise<{ nuovi: number; aggiornati: number; invariati: number }> {
   const cfg = await discoverSharePoint();
@@ -6546,11 +6552,18 @@ export async function importTermini(
       ? boolField((it.fields ?? {})[F.CompetenzaPrecedente])
       : false,
     ignoraScadenza: F.IgnoraScadenza ? boolField((it.fields ?? {})[F.IgnoraScadenza]) : false,
+    arrotondaGiorni: F.ArrotondaGiorni
+      ? parseArrotondaGiorni((it.fields ?? {})[F.ArrotondaGiorni]).join(",")
+      : "",
   }));
   // La spunta nuova non si perde in silenzio: senza la colonna si dice cosa manca.
   if (!F.IgnoraScadenza && rows.some((r) => r.ignoraScadenza))
     throw new Error(
       'Colonna "IgnoraScadenza" assente sulla lista TerminiPagamento: crearla (Sì/No) e fare Riscopri.',
+    );
+  if (!F.ArrotondaGiorni && rows.some((r) => r.arrotondaGiorni?.length))
+    throw new Error(
+      'Colonna "ArrotondaGiorni" assente sulla lista TerminiPagamento: crearla (testo) e fare Riscopri.',
     );
   const out = { nuovi: 0, aggiornati: 0, invariati: 0 };
   for (const r of rows) {
@@ -6589,6 +6602,11 @@ export async function importTermini(
         r.ignoraScadenza !== prev.ignoraScadenza
       )
         patch[F.IgnoraScadenza] = r.ignoraScadenza;
+      // Giorni di arrotondamento: testo "1,5,10,15"; lista vuota = si toglie.
+      if (F.ArrotondaGiorni && r.arrotondaGiorni !== undefined) {
+        const nuovo = parseArrotondaGiorni(r.arrotondaGiorni).join(",");
+        if (nuovo !== prev.arrotondaGiorni) patch[F.ArrotondaGiorni] = nuovo || null;
+      }
       if (!Object.keys(patch).length) {
         out.invariati++;
         continue;
@@ -6608,6 +6626,8 @@ export async function importTermini(
       if (F.DecorrenzaMese && r.decorrenzaMese) fields[F.DecorrenzaMese] = true;
       if (F.CompetenzaPrecedente && r.competenzaPrecedente) fields[F.CompetenzaPrecedente] = true;
       if (F.IgnoraScadenza && r.ignoraScadenza) fields[F.IgnoraScadenza] = true;
+      if (F.ArrotondaGiorni && r.arrotondaGiorni?.length)
+        fields[F.ArrotondaGiorni] = parseArrotondaGiorni(r.arrotondaGiorni).join(",");
       await gatewayJson(`/sites/${cfg.siteId}/lists/${cfg.listTermini}/items`, {
         method: "POST",
         body: JSON.stringify({ fields }),
@@ -7603,6 +7623,10 @@ export async function fetchTerminiPagamento(): Promise<TerminePagamento[]> {
           ignoraScadenza: F.IgnoraScadenza
             ? boolField(f[F.IgnoraScadenza]) || undefined
             : undefined,
+          arrotondaGiorni: (() => {
+            const g = F.ArrotondaGiorni ? parseArrotondaGiorni(f[F.ArrotondaGiorni]) : [];
+            return g.length ? g : undefined;
+          })(),
         };
       })
       // 0 giorni (a vista) e' valido solo con parole chiave sull'oggetto.
