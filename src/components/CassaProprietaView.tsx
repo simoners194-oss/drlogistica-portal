@@ -12,12 +12,14 @@ import { toast } from "sonner";
 import {
   CalendarDays,
   Camera,
+  Download,
   Filter,
   ListTodo,
   Loader2,
   Lock,
   Pencil,
   Plus,
+  Printer,
   Search,
   StickyNote,
   X,
@@ -56,6 +58,16 @@ import {
   tipologiaDi,
   type FiltriFoglio,
 } from "@/lib/cassa-filtri";
+import {
+  apriStampa,
+  csvSezioni,
+  htmlStampaSezioni,
+  sezioniCassa,
+  type EtichetteStampa,
+  type SezioneCassa,
+  type SezioneCassaId,
+} from "@/lib/cassa-stampa";
+import { esportaCsvFile } from "@/lib/csv";
 import type { StipendiDb } from "@/lib/stipendi-logic";
 import {
   agendaCassa,
@@ -681,7 +693,8 @@ export function CassaProprietaView({
     ? foto.righe.filter((r) => !r.e).map(daFoto)
     : esito.righe.filter((r) => !r.entrata).map(daRiga);
   const entrate = filtraEntrate(entrateTutte, filtri);
-  const uscite = raggruppaUscite(filtraUscite(usciteTutte, filtri), raggruppa, t);
+  const usciteFiltrate = filtraUscite(usciteTutte, filtri);
+  const uscite = raggruppaUscite(usciteFiltrate, raggruppa, t);
   const totali = foto ? foto.totali : esito.totali;
   const limiteVista = foto ? foto.limite : limite;
   const saldoVista = foto ? foto.saldo : saldo;
@@ -874,6 +887,14 @@ export function CassaProprietaView({
             >
               <Camera className="h-4 w-4" /> {t("cpr.salvaFoto")}
             </button>
+            <MenuVoci
+              t={t}
+              entrate={entrate}
+              uscite={usciteFiltrate}
+              limite={limiteVista}
+              data={dataVista}
+              filtrate={filtroEntrateAttivo(filtri) || filtroUsciteAttivo(filtri)}
+            />
             <EsportaStampa
               nomeFile={`cassa-proprieta-${dataVista}`}
               testata={[
@@ -2248,6 +2269,171 @@ function BarraFiltri({
         </div>
       )}
     </div>
+  );
+}
+
+/** Pallino colorato di ogni sezione, come le colonne del foglio. */
+const PUNTO_SEZIONE: Record<SezioneCassaId, string> = {
+  uscite_ora: "bg-rose-600",
+  uscite_prossimi: "bg-amber-500",
+  entrati: "bg-emerald-700",
+  entranti: "bg-emerald-500",
+  standby_entrate: "bg-slate-400",
+  standby_uscite: "bg-slate-500",
+  standby2_uscite: "bg-slate-700",
+};
+
+/** "Stampa / esporta voci" (Simone 11/11/2026): le sette sezioni del foglio,
+ *  ognuna col numero di voci e il totale, da esportare in CSV o da stampare
+ *  (dal riquadro di stampa si salva in PDF); in fondo, tutte insieme. Con i
+ *  filtri accesi escono solo le voci filtrate, e la stampa lo scrive. Le
+ *  uscite escono sempre fornitore per fornitore, anche con la vista
+ *  raggruppata per tipologia o cliente. */
+function MenuVoci({
+  t,
+  entrate,
+  uscite,
+  limite,
+  data,
+  filtrate,
+}: {
+  t: TFn;
+  entrate: readonly Cella[];
+  uscite: readonly Cella[];
+  limite: string;
+  data: string;
+  filtrate: boolean;
+}) {
+  const [aperto, setAperto] = useState(false);
+  const titoli: Record<SezioneCassaId, string> = {
+    uscite_ora: t("cpr.vUsciteOra"),
+    uscite_prossimi: `${t("cpr.colUscite")} ${etichettaProssimi(limite)}`,
+    entrati: t("cpr.vEntrati"),
+    entranti: t("cpr.entranti"),
+    standby_entrate: t("cpr.vStandbyEntrate"),
+    standby_uscite: t("cpr.vStandbyUscite"),
+    standby2_uscite: t("cpr.vStandby2Uscite"),
+  };
+  const etichette = (): EtichetteStampa => ({
+    titolo: t("cpr.vTitolo"),
+    sottotitolo: `DR Logistica · ${t("cpr.vSituazione")} ${fmtData(data)} · ${t("cpr.vStampato")} ${new Date().toLocaleString(
+      "it-IT",
+      { dateStyle: "short", timeStyle: "short" },
+    )}${filtrate ? ` · ${t("cpr.vFiltrate")}` : ""}`,
+    sezioni: titoli,
+    colSezione: t("cpr.vColSezione"),
+    colVoce: t("cpr.vColVoce"),
+    colDettaglio: t("cpr.vColDettaglio"),
+    colData: t("cpr.vColData"),
+    colImporto: t("cpr.vColImporto"),
+    colTipologia: t("cpr.vColTipologia"),
+    colCliente: t("cpr.vColCliente"),
+    colPriorita: t("cpr.fPriorita"),
+    colSollecitare: t("cpr.daSollecitare"),
+    colNota: t("cpr.vColNota"),
+    totale: t("cpr.vTotale"),
+    voci: t("cpr.fVoci"),
+    si: t("cpr.vSi"),
+    nessuna: t("cpr.vNessuna"),
+    priorita: { h: t("cpr.prioH"), m: t("cpr.prioM"), l: t("cpr.prioL") },
+    logo: `${window.location.origin}/favicon.png`,
+  });
+  const sezioni: SezioneCassa<Cella>[] = aperto ? sezioniCassa(entrate, uscite) : [];
+  const stampa = (lista: readonly SezioneCassa[]) => {
+    if (!apriStampa(htmlStampaSezioni(lista, etichette()))) toast.error(t("cpr.vPopup"));
+    setAperto(false);
+  };
+  const csv = (lista: readonly SezioneCassa[], nome: string) => {
+    const { testata, righe } = csvSezioni(lista, etichette());
+    esportaCsvFile(`cassa-proprieta-${nome}-${data}`, testata, righe);
+    setAperto(false);
+  };
+  const icona =
+    "inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:border-primary hover:bg-primary hover:text-primary-foreground disabled:pointer-events-none disabled:opacity-30";
+  const conVoci = sezioni.filter((s) => s.voci.length > 0);
+  return (
+    <span className="no-print relative">
+      <button
+        type="button"
+        onClick={() => setAperto((v) => !v)}
+        aria-expanded={aperto}
+        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors ${aperto ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-foreground hover:bg-secondary"}`}
+      >
+        <Printer className="h-4 w-4" /> {t("cpr.vBottone")}
+      </button>
+      {aperto && (
+        <>
+          {/* un clic fuori dal riquadro lo chiude */}
+          <div className="fixed inset-0 z-30" onClick={() => setAperto(false)} />
+          <div className="absolute right-0 top-full z-40 mt-1.5 w-[460px] max-w-[92vw] rounded-xl border border-border bg-card p-2 text-left shadow-xl">
+            <div className="px-2 pb-1.5 pt-1 text-[11px] text-muted-foreground">
+              {t("cpr.vIntro")}
+              {filtrate && (
+                <span className="ml-1 rounded bg-amber-500/15 px-1.5 py-0.5 font-semibold text-amber-800 dark:text-amber-300">
+                  {t("cpr.vFiltrate")}
+                </span>
+              )}
+            </div>
+            {sezioni.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/60"
+              >
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${PUNTO_SEZIONE[s.id]}`} />
+                <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+                  {titoli[s.id]}
+                </span>
+                <span className="shrink-0 text-[11.5px] tabular-nums text-muted-foreground">
+                  {s.voci.length} {t("cpr.fVoci")} ·{" "}
+                  <b className="text-foreground">{fmt(s.totale)}</b>
+                </span>
+                <button
+                  type="button"
+                  disabled={!s.voci.length}
+                  onClick={() => csv([s], s.id.replace(/_/g, "-"))}
+                  title={t("cpr.vCsvTip")}
+                  className={icona}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={!s.voci.length}
+                  onClick={() => stampa([s])}
+                  title={t("cpr.vStampaTip")}
+                  className={icona}
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+            <div className="mt-1 flex items-center gap-2 border-t border-border px-2 pb-0.5 pt-2">
+              <span className="flex-1 text-[13px] font-semibold text-foreground">
+                {t("cpr.vTutte")}
+              </span>
+              <button
+                type="button"
+                disabled={!conVoci.length}
+                onClick={() => csv(conVoci, "voci")}
+                title={t("cpr.vCsvTip")}
+                className={icona}
+              >
+                <Download className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={!conVoci.length}
+                onClick={() => stampa(conVoci)}
+                title={t("cpr.vStampaTip")}
+                className={icona}
+              >
+                <Printer className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </span>
   );
 }
 

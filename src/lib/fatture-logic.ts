@@ -967,22 +967,21 @@ export function computeStatoFattura(
   /** Importo delle note di credito collegate: il credito si calcola al netto. */
   notaCredito = 0,
 ): FatturaStato {
-  // ATTIVE: la scadenza si calcola SEMPRE dai termini contrattuali per
-  // cliente (foglio contratti del direttore): il conteggio del ritardo parte
-  // da li'. SENZA regola per la controparte (Simone 11/11/2026): la fattura
-  // "a vista" (scadenza scritta = data fattura) o senza scadenza scade alla
-  // DATA FATTURA; i 30 giorni di default restano solo per le attive senza
-  // regola che dichiarano una scadenza diversa dalla data fattura. Per le PASSIVE ("solo attive per
-  // ora") vale ancora la scadenza dichiarata nell'XML, quando c'e'.
-  // Termine con "decorrenza dal 1° del mese" (accordo Univex, 24/09): vale
-  // la scadenza dichiarata nell'XML quando c'e' davvero (diversa dalla data
-  // fattura: "a vista" non e' una scadenza), altrimenti giorni dal 1° del
-  // mese di emissione. Senza quell'opzione resta la regola del direttore:
-  // per le attive contano SEMPRE i termini contrattuali dalla data fattura.
-  // Con "ignora la scadenza in fattura" sulla regola (Simone 04/11/2026) la
-  // data dichiarata nell'XML non conta mai: solo i giorni della regola.
+  // COME SI DECIDE LA SCADENZA (Simone 11/11/2026: "quelle che hanno una
+  // scadenza scritta seguono la scadenza, a meno che non abbiano una regola
+  // che dica di non seguire la scadenza"), per attive e passive:
+  //  1. la regola della controparte ha "ignora la scadenza scritta in
+  //     fattura": solo i giorni della regola;
+  //  2. in fattura c'e' una scadenza scritta: vale quella. Per le ATTIVE
+  //     conta solo se e' diversa dalla data fattura (Aruba scrive la data
+  //     fattura quando non si indica nulla: "a vista" non e' una scadenza
+  //     scritta); per le PASSIVE vale anche se e' uguale alla data;
+  //  3. c'e' una regola: i suoi giorni, dalla data fattura oppure dal 1° del
+  //     mese di emissione ("decorrenza dal 1° del mese", accordo Univex 24/09);
+  //  4. nessuna regola: la data fattura (piu' sotto).
+  // Fino alla 1.108.0 per le attive con una regola senza "dal 1° del mese"
+  // vincevano sempre i giorni della regola, anche sopra una scadenza scritta.
   const termine = terminePerCliente(f.cliente, termini, f.direzione, f.oggetto);
-  const termineEm = f.direzione === "Emessa" ? termine : null;
   const dichiarata =
     !termine?.ignoraScadenza &&
     f.scadenza &&
@@ -990,17 +989,16 @@ export function computeStatoFattura(
     f.scadenza !== f.dataDocumento
       ? f.scadenza
       : "";
+  const daRegola = scadenzaFattura(
+    termine?.decorrenzaMese ? `${f.dataDocumento.slice(0, 7)}-01` : f.dataDocumento,
+    termine?.giorni ?? TERMINI_DEFAULT_GIORNI,
+  );
   const scadenzaRegola =
     f.direzione === "Emessa"
-      ? termineEm?.decorrenzaMese
-        ? dichiarata || scadenzaFattura(`${f.dataDocumento.slice(0, 7)}-01`, termineEm.giorni)
-        : scadenzaFattura(f.dataDocumento, termineEm?.giorni ?? TERMINI_DEFAULT_GIORNI)
+      ? dichiarata || daRegola
       : !termine?.ignoraScadenza && f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza)
         ? f.scadenza
-        : scadenzaFattura(
-            termine?.decorrenzaMese ? `${f.dataDocumento.slice(0, 7)}-01` : f.dataDocumento,
-            termine?.giorni ?? TERMINI_DEFAULT_GIORNI,
-          );
+        : daRegola;
   // Nessuna regola e nessuna scadenza vera in fattura: vale la data fattura
   // (Simone 11/11/2026: "per le fatture a vista, senza data scadenza o
   // regole venga presa la data fattura"). Vale per attive e passive.

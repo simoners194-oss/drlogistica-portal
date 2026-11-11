@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.109.0",
+    date: "2026-11-11",
+    entries: [
+      {
+        title: "Cassa proprietà: stampa ed export delle singole sezioni",
+        description:
+          'Il pulsante "Stampa / esporta voci" apre le sette sezioni del foglio (uscite imminenti, uscite 1-5 del mese dopo, entrati, entranti, standby entrate, standby uscite, standby 2 uscite), ognuna col suo totale: CSV per Excel oppure stampa pronta, anche in PDF. In fondo, tutte le sezioni insieme.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Scadenze: la data scritta in fattura vince, salvo regola contraria",
+        description:
+          'La scadenza scritta in fattura vale sempre, per clienti e fornitori, a meno che la regola della controparte abbia la spunta "Ignora la scadenza scritta in fattura". Per i clienti con una regola prima vincevano sempre i giorni della regola: per tenerli, mettere la spunta.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.108.0",
     date: "2026-11-11",
     entries: [
