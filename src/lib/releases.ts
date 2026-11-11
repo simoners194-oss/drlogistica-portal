@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.110.0",
+    date: "2026-11-11",
+    entries: [
+      {
+        title: "Cassa proprietà: lettura pulita, blocchi richiudibili e conto in fila",
+        description:
+          'Entrate e uscite sono in blocchi con la loro testata e il totale (già entrate, entranti, da sollecitare, standby; uscite imminenti in alto, poi 1-5 del mese dopo, standby e standby 2), ognuno richiudibile col "−" e riapribile col "+", più "apri tutti / chiudi tutti". Le somme sono le stesse ma dette una volta sola: in alto il conto in fila dal saldo al Reale alla Cassa; via le colonne e le righe di totali che le ripetevano.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.109.0",
     date: "2026-11-11",
     entries: [

@@ -56,6 +56,7 @@ import {
   filtroUsciteAttivo,
   sommaCelle,
   tipologiaDi,
+  type BloccoEntrate,
   type FiltriFoglio,
 } from "@/lib/cassa-filtri";
 import {
@@ -254,24 +255,28 @@ const daRiga = (r: RigaCassa): Cella => ({
  *  degli acconti) e "Standby" (attese parcheggiate, non contano) — Simone
  *  19/10 e 02/11/2026. */
 type SlotE =
-  | { kind: "head"; label: string; value: number }
+  /** Testata di un blocco: somma delle voci che ha sotto, quante sono, e se
+   *  è richiuso (Simone 11/11/2026: "chiudere anche entrate, entranti e
+   *  standby con un +"). */
+  | {
+      kind: "head";
+      id: BloccoEntrate;
+      label: string;
+      value: number;
+      n: number;
+      chiuso: boolean;
+    }
   | { kind: "riga"; c: Cella; figlio?: boolean }
   /** Cliente con più fatture attese: una riga sola col totale e il "+" che
    *  apre le singole fatture (Simone 10/11/2026, "un + per cliente"). */
   | { kind: "padre"; c: Cella; figli: Cella[]; aperto: boolean };
 function slotsEntrate(
   entrate: readonly Cella[],
-  totali: TotaliCassa,
   t: TFn,
   espansi: ReadonlySet<string> = new Set(),
-  /** Con un filtro acceso ogni blocco mostra la somma delle voci visibili
-   *  (non il totale del foglio) e i blocchi rimasti vuoti spariscono. */
-  filtrate = false,
+  /** Blocchi richiusi ("e:gia", "e:entranti"…): resta solo la testata. */
+  chiusi: ReadonlySet<string> = new Set(),
 ): SlotE[] {
-  const entranti =
-    totali.acconti > 0 && !filtrate
-      ? `${t("cpr.entranti")} − ${t("cpr.acconti")} ${fmt(totali.acconti)}`
-      : t("cpr.entranti");
   // Per cliente: le fatture dello stesso cliente (o gruppo) stanno sotto una
   // riga padre col totale; il "+" le apre una per scadenza. Vale per gli
   // entranti, per le "da sollecitare" e per lo standby (Simone 10/11/2026).
@@ -309,37 +314,82 @@ function slotsEntrate(
     }
     return out;
   };
-  const gia = entrate.filter((c) => bloccoEntrata(c) === "gia");
-  const ent = entrate.filter((c) => bloccoEntrata(c) === "entranti");
-  const sol = entrate.filter((c) => bloccoEntrata(c) === "sollecitare");
-  const stb = entrate.filter((c) => bloccoEntrata(c) === "standby");
-  const blocchi: { label: string; value: number; celle: Cella[]; slots: SlotE[] }[] = [
+  const blocco = (id: BloccoEntrate) => entrate.filter((c) => bloccoEntrata(c) === id);
+  const gia = blocco("gia");
+  const ent = blocco("entranti");
+  const sol = blocco("sollecitare");
+  const stb = blocco("standby");
+  const blocchi: { id: BloccoEntrate; label: string; celle: Cella[]; slots: () => SlotE[] }[] = [
     {
+      id: "gia",
       label: t("cpr.giaEntrate"),
-      value: totali.entrateRicevute,
       celle: gia,
-      slots: gia.map((c): SlotE => ({ kind: "riga", c })),
+      slots: () => gia.map((c): SlotE => ({ kind: "riga", c })),
     },
-    { label: entranti, value: totali.entrantiNette, celle: ent, slots: conPadri(ent, "cli") },
+    { id: "entranti", label: t("cpr.entranti"), celle: ent, slots: () => conPadri(ent, "cli") },
     {
+      id: "sollecitare",
       label: t("cpr.daSollecitare"),
-      value: totali.entrateDaSollecitare,
       celle: sol,
-      slots: conPadri(sol, "sol"),
+      slots: () => conPadri(sol, "sol"),
     },
-    {
-      label: t("cpr.colStandby"),
-      value: totali.entrateParcheggiate,
-      celle: stb,
-      slots: conPadri(stb, "stb"),
-    },
+    { id: "standby", label: t("cpr.colStandby"), celle: stb, slots: () => conPadri(stb, "stb") },
   ];
+  // Ogni testata porta la somma delle SUE voci (così i numeri tornano a
+  // colpo d'occhio); i blocchi senza voci non compaiono.
   return blocchi
-    .filter((b) => !filtrate || b.celle.length > 0)
-    .flatMap((b): SlotE[] => [
-      { kind: "head", label: b.label, value: filtrate ? sommaCelle(b.celle) : b.value },
-      ...b.slots,
-    ]);
+    .filter((b) => b.celle.length > 0)
+    .flatMap((b): SlotE[] => {
+      const chiuso = chiusi.has(`e:${b.id}`);
+      return [
+        {
+          kind: "head",
+          id: b.id,
+          label: b.label,
+          value: sommaCelle(b.celle),
+          n: b.celle.length,
+          chiuso,
+        },
+        ...(chiuso ? [] : b.slots()),
+      ];
+    });
+}
+
+/** Le uscite in blocchi come le entrate (Simone 11/11/2026: "le uscite
+ *  imminenti salgono in alto, poi le standby e poi le standby 2, tutto
+ *  chiudibile con il +"): imminenti, 1-5 del mese dopo, standby, standby 2.
+ *  Dentro ogni blocco resta l'ordine del foglio (scadenza e nome). */
+type SlotU =
+  | { kind: "head"; col: SecchioCassa; label: string; value: number; n: number; chiuso: boolean }
+  | { kind: "riga"; c: Cella };
+function slotsUscite(
+  uscite: readonly Cella[],
+  t: TFn,
+  limite: string,
+  chiusi: ReadonlySet<string> = new Set(),
+): SlotU[] {
+  const etichetta: Record<SecchioCassa, string> = {
+    ora: t("cpr.vUsciteOra"),
+    prossimi: `${t("cpr.colUscite")} ${etichettaProssimi(limite)}`,
+    standby: t("cpr.vStandbyUscite"),
+    standby2: t("cpr.vStandby2Uscite"),
+  };
+  return COLONNE_USCITE.flatMap((col): SlotU[] => {
+    const celle = uscite.filter((u) => u.secchio === col);
+    if (!celle.length) return [];
+    const chiuso = chiusi.has(`u:${col}`);
+    return [
+      {
+        kind: "head",
+        col,
+        label: etichetta[col],
+        value: sommaCelle(celle),
+        n: celle.length,
+        chiuso,
+      },
+      ...(chiuso ? [] : celle.map((c): SlotU => ({ kind: "riga", c }))),
+    ];
+  });
 }
 
 function daFoto(r: FotografiaCassa["righe"][number]): Cella {
@@ -704,29 +754,40 @@ export function CassaProprietaView({
 
   const righeCsv = () => {
     const out: (string | number)[][] = [];
-    // L'export è sempre il foglio INTERO: i filtri sono solo vista.
-    const sl = slotsEntrate(entrateTutte, totali, t);
-    const usc = raggruppaUscite(usciteTutte, raggruppa, t);
-    const n = Math.max(sl.length, usc.length);
-    out.push([totali.entrate, "", saldoVista, totali.reale, "", "", "", "", "", ""]);
+    const num = (v: number | undefined) => (v ?? 0).toFixed(2).replace(".", ",");
+    // L'export è sempre il foglio INTERO, con tutti i blocchi aperti: filtri
+    // e blocchi richiusi sono solo vista.
+    const sl = slotsEntrate(entrateTutte, t, new Set(["*"]));
+    const su = slotsUscite(raggruppaUscite(usciteTutte, raggruppa, t), t, limiteVista);
+    const n = Math.max(sl.length, su.length);
     for (let i = 0; i < n; i++) {
       const s = sl[i];
-      const e = s?.kind === "riga" || s?.kind === "padre" ? s.c : undefined;
-      const u = usc[i];
+      const e = s?.kind === "riga" ? s.c : undefined;
+      const x = su[i];
+      const u = x?.kind === "riga" ? x.c : undefined;
+      const colonna = (col: SecchioCassa) =>
+        x?.kind === "head"
+          ? x.col === col
+            ? num(x.value)
+            : ""
+          : u && u.secchio === col
+            ? num(u.importo)
+            : "";
+      // I "padri" (cliente con più fatture) non si esportano: escono le
+      // singole fatture, così i conti non raddoppiano.
+      if (s?.kind === "padre" && !x) continue;
       out.push([
-        s?.kind === "head" ? s.value : e ? e.importo : "",
+        s?.kind === "head" ? num(s.value) : e ? num(e.importo) : "",
         s?.kind === "head"
-          ? s.label
+          ? `${s.label.toUpperCase()} (${s.n})`
           : e
             ? `${e.nome}${e.attesa ? ` (${t("cpr.attesa")} ${ddmmyy(e.data)})` : ""}`
             : "",
-        "",
-        "",
-        u && u.secchio === "ora" ? u.importo : "",
-        u && u.secchio === "prossimi" ? u.importo : "",
-        u && u.secchio === "standby" ? u.importo : "",
-        u && u.secchio === "standby2" ? u.importo : "",
-        u ? u.nome : "",
+        colonna("ora"),
+        colonna("prossimi"),
+        colonna("standby"),
+        colonna("standby2"),
+        x?.kind === "head" ? `${x.label.toUpperCase()} (${x.n})` : u ? u.nome : "",
         u
           ? [
               u.dettaglio === "CDC" ? "CDC" : "",
@@ -738,32 +799,25 @@ export function CassaProprietaView({
           : "",
       ]);
     }
-    out.push([
-      totali.entrateStandby,
-      totali.entrateParcheggiate,
-      "",
-      totali.acconti,
-      totali.usciteOra,
-      totali.usciteProssimi,
-      totali.usciteStandby,
-      totali.usciteStandby2,
-      totali.totaleDaPagare,
-      totali.cassaConStandby,
-    ]);
-    out.push([
-      t("cpr.lblStandbyIncasso"),
-      t("cpr.lblEntrateStandby"),
-      "",
-      t("cpr.acconti"),
-      t("cpr.lblDaPagare"),
-      `${t("cpr.lblDaPagare")} ${etichettaProssimiBreve(limiteVista)}`,
-      t("cpr.lblStandbyDaPagare"),
-      t("cpr.lblStandby2"),
-      t("cpr.lblTotaleDaPagare"),
-      t("cpr.lblCassa"),
-    ]);
-    out.push(["", "", "", "", totali.saldoDopoOra, totali.saldoDopoProssimi, "", "", "", ""]);
-    out.push(["", "", "", "", t("cpr.lblSaldoDopo"), "", "", "", "", ""]);
+    // Il conto in fila, come nella banda in alto.
+    const breve = etichettaProssimiBreve(limiteVista);
+    const riga = (etichetta: string, v: number | undefined) =>
+      out.push(["", "", "", "", "", "", etichetta, num(v)]);
+    out.push(["", "", "", "", "", "", "", ""]);
+    riga(t("cpr.saldoBanca"), saldoVista);
+    riga(`- ${t("cpr.vUsciteOra")}`, totali.usciteOra);
+    riga(`= ${t("cpr.rDopoOra")}`, totali.saldoDopoOra);
+    riga(`- ${t("cpr.colUscite")} ${breve}`, totali.usciteProssimi);
+    riga(`= ${t("cpr.rDopoProssimi")} ${breve}`, totali.saldoDopoProssimi);
+    riga(
+      `+ ${t("cpr.entranti")} (${t("cpr.acconti")} ${num(totali.acconti)})`,
+      totali.entrantiNette,
+    );
+    riga(`= ${t("cpr.colReale")}`, totali.reale);
+    riga(`- ${t("cpr.vStandbyUscite")}`, totali.usciteStandby);
+    riga(`= ${t("cpr.rCassa")}`, totali.cassaConStandby);
+    riga(`${t("cpr.rFuori")}: ${t("cpr.vStandbyEntrate")}`, totali.entrateParcheggiate);
+    riga(`${t("cpr.rFuori")}: ${t("cpr.vStandby2Uscite")}`, totali.usciteStandby2);
     return out;
   };
 
@@ -807,9 +861,13 @@ export function CassaProprietaView({
             )}
             <div className="mt-1 text-[11px] text-muted-foreground">{saldoNota}</div>
           </div>
-          <Stat label={t("cpr.lblDaPagare")} value={totali.usciteOra} tono="rosso" />
-          <Stat label={t("cpr.lblSaldoDopo")} value={totali.saldoDopoOra} tono="blu" />
-          <Stat label={t("cpr.lblCassa")} value={totali.cassaConStandby} tono="segno" />
+          <RiepilogoCassa
+            t={t}
+            totali={totali}
+            limite={limiteVista}
+            readOnly={Boolean(foto)}
+            onAcconti={setAcconti}
+          />
           <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
             <label className="flex items-center gap-2 text-muted-foreground">
               {t("cpr.situazioneAl")}
@@ -900,8 +958,6 @@ export function CassaProprietaView({
               testata={[
                 t("cpr.colEntrate"),
                 t("cpr.colNote"),
-                t("cpr.colSaldo"),
-                t("cpr.colReale"),
                 t("cpr.colUscite"),
                 etichettaProssimi(limiteVista),
                 t("cpr.colStandby"),
@@ -912,6 +968,7 @@ export function CassaProprietaView({
               righe={righeCsv}
             />
           </div>
+          <FuoriConti t={t} totali={totali} />
         </div>
       </div>
 
@@ -925,8 +982,6 @@ export function CassaProprietaView({
           usciteTutte={usciteTutte}
           filtri={filtri}
           onFiltri={setFiltri}
-          totali={totali}
-          saldo={saldoVista}
           limite={limiteVista}
           readOnly={Boolean(foto)}
           onSposta={sposta}
@@ -938,7 +993,6 @@ export function CassaProprietaView({
           onData={setData}
           onParcheggia={parcheggia}
           onSollecita={sollecita}
-          onAcconti={setAcconti}
           onRinomina={rinomina}
           onApriFornitore={onApriFornitore}
           onApriCliente={setClienteAperto}
@@ -1193,32 +1247,179 @@ export function CassaProprietaView({
   );
 }
 
-function Stat({
-  label,
-  value,
-  tono,
+/** Un passo del conto: cosa si toglie o si aggiunge, e dove si arriva. */
+function Passo({
+  segno,
+  voce,
+  importo,
+  tinta,
+  titolo,
+  valore,
+  forte,
+  children,
 }: {
-  label: string;
-  value: number;
-  tono: "rosso" | "blu" | "segno";
+  segno: "−" | "+";
+  voce: string;
+  importo: number;
+  tinta: string;
+  titolo: string;
+  valore: number;
+  /** Risultato principale: verde se positivo. */
+  forte?: boolean;
+  /** Accanto alla prima riga (gli acconti, per gli entranti). */
+  children?: ReactNode;
 }) {
   const colore =
-    tono === "rosso"
+    valore < 0
       ? "text-rose-600 dark:text-rose-400"
-      : tono === "blu"
-        ? "text-primary"
-        : value < 0
-          ? "text-rose-600 dark:text-rose-400"
-          : "text-emerald-700 dark:text-emerald-400";
+      : forte
+        ? "text-emerald-700 dark:text-emerald-400"
+        : "text-primary";
   return (
-    <div>
-      <div className="max-w-[220px] text-[11px] uppercase tracking-wider text-muted-foreground">
-        {label}
+    <div className="border-l-2 border-border pl-4">
+      <div className="flex items-center gap-3 whitespace-nowrap">
+        <span className={`text-[12px] tabular-nums ${tinta}`}>
+          <b>{segno}</b> {voce} <b>{fmt(importo)}</b>
+        </span>
+        {children}
       </div>
-      <div className={`mt-0.5 text-xl font-semibold tabular-nums ${colore}`}>{fmt(value)} €</div>
+      <div className="mt-1 max-w-[230px] text-[11px] uppercase tracking-wider text-muted-foreground">
+        = {titolo}
+      </div>
+      <div className={`mt-0.5 whitespace-nowrap text-xl font-semibold tabular-nums ${colore}`}>
+        {fmt(valore)} €
+      </div>
     </div>
   );
 }
+
+/** Il conto della cassa letto in fila (Simone 11/11/2026: "rivalutiamo tutte
+ *  le somme, la lettura deve essere più pulita"). Dal saldo in banca si
+ *  tolgono le uscite imminenti, poi quelle dell'1-5 del mese dopo, si
+ *  aggiungono gli entranti (meno gli acconti) e si arriva al Reale; tolto
+ *  anche lo standby, alla Cassa. Sono gli stessi numeri e le stesse formule
+ *  di prima (colonne Saldo e Reale, riga dei totali in fondo): ora stanno
+ *  una volta sola, qui. */
+export function RiepilogoCassa({
+  t,
+  totali,
+  limite,
+  readOnly,
+  onAcconti,
+}: {
+  t: TFn;
+  totali: TotaliCassa;
+  limite: string;
+  readOnly: boolean;
+  onAcconti: (importo: number) => void;
+}) {
+  const breve = etichettaProssimiBreve(limite);
+  // Le fotografie più vecchie non hanno tutti i totali: mancanti = zero.
+  const n = (v: number | undefined) => v ?? 0;
+  return (
+    <>
+      <Passo
+        segno="−"
+        voce={t("cpr.vUsciteOra")}
+        importo={n(totali.usciteOra)}
+        tinta={TINTA.ora.num}
+        titolo={t("cpr.rDopoOra")}
+        valore={n(totali.saldoDopoOra)}
+      />
+      <Passo
+        segno="−"
+        voce={`${t("cpr.colUscite")} ${breve}`}
+        importo={n(totali.usciteProssimi)}
+        tinta={TINTA.prossimi.num}
+        titolo={`${t("cpr.rDopoProssimi")} ${breve}`}
+        valore={n(totali.saldoDopoProssimi)}
+      />
+      <Passo
+        segno="+"
+        voce={t("cpr.entranti")}
+        importo={n(totali.entrantiNette)}
+        tinta={TINTA.entrate.num}
+        titolo={t("cpr.colReale")}
+        valore={n(totali.reale)}
+        forte
+      >
+        <Acconti importo={n(totali.acconti)} readOnly={readOnly} onAcconti={onAcconti} t={t} />
+      </Passo>
+      <Passo
+        segno="−"
+        voce={t("cpr.vStandbyUscite")}
+        importo={n(totali.usciteStandby)}
+        tinta={TINTA.standby.num}
+        titolo={t("cpr.rCassa")}
+        valore={n(totali.cassaConStandby)}
+        forte
+      />
+    </>
+  );
+}
+
+/** Quello che NON entra nel conto, detto una volta sola sotto la banda. */
+export function FuoriConti({ t, totali }: { t: TFn; totali: TotaliCassa }) {
+  const voci: [string, number | undefined][] = [
+    [t("cpr.vStandbyEntrate"), totali.entrateParcheggiate],
+    [t("cpr.vStandby2Uscite"), totali.usciteStandby2],
+    [t("cpr.rGiaEntrate"), totali.entrateRicevute],
+  ];
+  const visibili = voci.filter(([, v]) => Math.abs(v ?? 0) > 0.005);
+  if (!visibili.length) return null;
+  return (
+    <div className="basis-full text-[11.5px] text-muted-foreground">
+      <span className="font-semibold uppercase tracking-wider">{t("cpr.rFuori")}</span>
+      {visibili.map(([nome, v]) => (
+        <span key={nome} className="ml-3 whitespace-nowrap">
+          {nome} <b className="tabular-nums text-foreground">{fmt(v ?? 0)}</b>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Il "+" e il "−" che aprono e richiudono un blocco del foglio. */
+function PiuMeno({ aperto, onClick, t }: { aperto: boolean; onClick: () => void; t: TFn }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={aperto}
+      title={t(aperto ? "cpr.bChiudi" : "cpr.bApri")}
+      className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border border-current bg-background/80 text-[13px] font-bold leading-none hover:bg-background"
+    >
+      {aperto ? "−" : "+"}
+    </button>
+  );
+}
+
+/** Tinta della testata di ogni blocco: entrate e uscite. */
+const TESTA_ENTRATE: Record<BloccoEntrate, string> = {
+  gia: "bg-emerald-200/70 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200",
+  entranti: "bg-emerald-100/80 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+  sollecitare: "bg-amber-100/90 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  standby: "bg-slate-200/80 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200",
+};
+const TESTA_USCITE: Record<SecchioCassa, string> = {
+  ora: "bg-rose-100/90 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
+  prossimi: "bg-amber-100/90 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  standby: "bg-slate-200/80 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200",
+  standby2: "bg-slate-300/80 text-slate-800 dark:bg-slate-600/70 dark:text-slate-100",
+};
+/** Tutti i blocchi del foglio, per "chiudi tutti". */
+const TUTTI_I_BLOCCHI = [
+  "e:gia",
+  "e:entranti",
+  "e:sollecitare",
+  "e:standby",
+  "u:ora",
+  "u:prossimi",
+  "u:standby",
+  "u:standby2",
+] as const;
+/** Dove il browser ricorda i blocchi richiusi (preferenza di chi guarda). */
+const CHIAVE_BLOCCHI = "dr.cassa.blocchiChiusi";
 
 // --- il foglio ---------------------------------------------------------------
 // Tinte delle colonne (chiare in body, piene in testa): entrate verde,
@@ -1252,8 +1453,6 @@ const TINTA = {
   },
   note: { testa: "bg-muted text-foreground", col: "", num: "" },
 } as const;
-/** Colonna "Reale" accanto al saldo: saldo + entranti − da pagare − prossimi. */
-const TINTA_REALE = "bg-sky-50/70 dark:bg-sky-950/30";
 /** Righe scritte a mano (non calcolate): tinta viola e pillola "manuale". */
 const TINTA_MAN = "bg-violet-50/80 dark:bg-violet-950/30";
 const PILL_MAN = "bg-violet-600 text-white";
@@ -1265,10 +1464,8 @@ const eManuale = (c: Cella) => c.tipo === "manuale" || c.tipo === "amex";
 const cel = "border-b border-r border-border/60 px-3 py-1.5 align-middle last:border-r-0";
 const celN = `${cel} text-right tabular-nums whitespace-nowrap text-[13.5px]`;
 const celH = "px-3 py-2 text-left text-[12px] font-semibold uppercase tracking-wide";
-const celT = `${celN} py-2.5 text-[15px] font-bold`;
-const celL = `${cel} py-1 text-[10.5px] uppercase tracking-wider text-muted-foreground`;
 
-function Foglio({
+export function Foglio({
   t,
   entrate,
   uscite,
@@ -1276,8 +1473,6 @@ function Foglio({
   usciteTutte,
   filtri,
   onFiltri,
-  totali,
-  saldo,
   limite,
   readOnly,
   oggi,
@@ -1290,7 +1485,6 @@ function Foglio({
   onData,
   onParcheggia,
   onSollecita,
-  onAcconti,
   onRinomina,
   onApriFornitore,
   onApriCliente,
@@ -1306,8 +1500,6 @@ function Foglio({
   usciteTutte: readonly Cella[];
   filtri: FiltriFoglio;
   onFiltri: (f: FiltriFoglio) => void;
-  totali: TotaliCassa;
-  saldo: number;
   limite: string;
   readOnly: boolean;
   oggi: string;
@@ -1322,8 +1514,6 @@ function Foglio({
   onParcheggia: (c: Cella, on: boolean) => void;
   /** Entrata attesa da sollecitare (true) o di nuovo tra le entranti (false). */
   onSollecita: (c: Cella, on: boolean) => void;
-  /** Acconti già incassati sugli entranti del mese (colonna Reale). */
-  onAcconti: (importo: number) => void;
   /** Nuovo nome per una riga scritta a mano. */
   onRinomina: (c: Cella, nome: string) => void;
   onApriFornitore?: (nome: string) => void;
@@ -1352,8 +1542,37 @@ function Foglio({
       else next.add(nome);
       return next;
     });
-  const slotsE = slotsEntrate(entrate, totali, t, espansi, filtroEntrateAttivo(filtri));
-  const n = Math.max(slotsE.length, uscite.length);
+  // Blocchi richiusi col "−" (Simone 11/11/2026): resta la testata col suo
+  // totale. È una preferenza di chi guarda, la ricorda il browser.
+  const [chiusi, setChiusi] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const v: unknown = JSON.parse(window.localStorage.getItem(CHIAVE_BLOCCHI) ?? "[]");
+      if (Array.isArray(v)) setChiusi(new Set(v.filter((x): x is string => typeof x === "string")));
+    } catch {
+      // preferenza illeggibile: tutto aperto
+    }
+  }, []);
+  const salvaChiusi = (next: Set<string>) => {
+    setChiusi(next);
+    try {
+      window.localStorage.setItem(CHIAVE_BLOCCHI, JSON.stringify([...next]));
+    } catch {
+      // senza memoria del browser vale solo per questa visita
+    }
+  };
+  const toggleBlocco = (id: string) => {
+    const next = new Set(chiusi);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    salvaChiusi(next);
+  };
+  // Con un filtro acceso i blocchi di quel lato si aprono: quello che si
+  // cerca non deve restare nascosto dentro un blocco richiuso.
+  const VUOTO: ReadonlySet<string> = new Set();
+  const slotsE = slotsEntrate(entrate, t, espansi, filtroEntrateAttivo(filtri) ? VUOTO : chiusi);
+  const slotsU = slotsUscite(uscite, t, limite, filtroUsciteAttivo(filtri) ? VUOTO : chiusi);
+  const n = Math.max(slotsE.length, slotsU.length);
   const righe = Array.from({ length: n }, (_, i) => i);
   const breve = etichettaProssimiBreve(limite);
   // Barra di scorrimento orizzontale anche SOPRA il foglio (Simone
@@ -1460,6 +1679,8 @@ function Foglio({
         entrateTutte={entrateTutte}
         usciteTutte={usciteTutte}
         limite={limite}
+        onApriTutti={() => salvaChiusi(new Set())}
+        onChiudiTutti={() => salvaChiusi(new Set(TUTTI_I_BLOCCHI))}
       />
       {largh.tot > largh.vis + 1 && (
         <div
@@ -1476,12 +1697,10 @@ function Foglio({
         onScroll={() => allinea(corniceRef.current, barraRef.current)}
         className="max-h-[78vh] overflow-auto"
       >
-        <table className="w-full min-w-[1400px] border-collapse text-[13px]">
+        <table className="w-full min-w-[1180px] border-collapse text-[13px]">
           <colgroup>
             <col className="w-[120px]" />
-            <col className="w-[215px]" />
-            <col className="w-[120px]" />
-            <col className="w-[135px]" />
+            <col className="w-[250px]" />
             <col className="w-[120px]" />
             <col className="w-[120px]" />
             <col className="w-[120px]" />
@@ -1492,7 +1711,7 @@ function Foglio({
           <thead className="sticky top-0 z-10 bg-card">
             <tr>
               <th
-                colSpan={4}
+                colSpan={2}
                 className={`${celH} ${TINTA.entrate.testa} border-r border-white/30 text-center text-[11px]`}
               >
                 {t("cpr.colEntrate")}
@@ -1514,17 +1733,6 @@ function Foglio({
                 className={`${celH} ${TINTA.entrate.col} border-r border-border/60 text-foreground`}
               >
                 {t("cpr.colNote")}
-              </th>
-              <th
-                className={`${celH} border-r border-border/60 bg-muted/60 text-right text-foreground`}
-              >
-                {t("cpr.colSaldo")}
-              </th>
-              <th
-                className={`${celH} ${TINTA_REALE} border-r border-border/60 text-right text-sky-800 dark:text-sky-300`}
-                title={t("cpr.lblReale")}
-              >
-                {t("cpr.colReale")}
               </th>
               <th
                 className={`${celH} ${TINTA.ora.col} ${TINTA.ora.num} border-r border-border/60 text-right`}
@@ -1554,48 +1762,31 @@ function Foglio({
             </tr>
           </thead>
           <tbody>
-            {/* riga 2: totale entrate, saldo e il "reale" (saldo + entranti −
-              da pagare − prossimi), con gli acconti già incassati da togliere */}
-            <tr className="bg-muted/30">
-              <td className={`${celT} ${TINTA.entrate.num}`}>{fmt(totali.entrate)}</td>
-              <td className={`${cel} text-[11px] uppercase tracking-wider text-muted-foreground`}>
-                {t("cpr.lblTotaleEntrate")}
-              </td>
-              <td className={`${celT} text-foreground`}>{fmt(saldo)}</td>
-              <td className={`${celN} ${TINTA_REALE} align-top`}>
-                <div
-                  className={`py-1 text-[15px] font-bold ${totali.reale < 0 ? "text-rose-600 dark:text-rose-400" : "text-sky-800 dark:text-sky-300"}`}
-                  title={t("cpr.lblReale")}
-                >
-                  {fmt(totali.reale)}
-                </div>
-                <Acconti importo={totali.acconti} readOnly={readOnly} onAcconti={onAcconti} t={t} />
-              </td>
-              <td className={`${cel} ${TINTA.ora.col}`} />
-              <td className={`${cel} ${TINTA.prossimi.col}`} />
-              <td className={`${cel} ${TINTA.standby.col}`} />
-              <td className={`${cel} ${TINTA.standby2.col}`} />
-              <td className={cel} />
-              <td className={cel} />
-            </tr>
             {righe.map((i) => {
               const slot = slotsE[i];
               const e = slot?.kind === "riga" || slot?.kind === "padre" ? slot.c : undefined;
               const padre = slot?.kind === "padre" ? slot : undefined;
               const figlio = slot?.kind === "riga" && slot.figlio === true;
-              const u = uscite[i];
+              const slotU = slotsU[i];
+              const testaU = slotU?.kind === "head" ? slotU : undefined;
+              const u = slotU?.kind === "riga" ? slotU.c : undefined;
               return (
                 <tr key={i} className="group/r odd:bg-background/40 hover:bg-primary/5">
                   {slot?.kind === "head" ? (
-                    <td
-                      colSpan={2}
-                      className={`${cel} bg-emerald-100/70 dark:bg-emerald-900/30 ${TINTA.entrate.num}`}
-                    >
-                      <span className="flex items-center justify-between gap-2">
+                    <td colSpan={2} className={`${cel} ${TESTA_ENTRATE[slot.id]}`}>
+                      <span className="flex items-center gap-2">
+                        <PiuMeno
+                          aperto={!slot.chiuso}
+                          onClick={() => toggleBlocco(`e:${slot.id}`)}
+                          t={t}
+                        />
                         <span className="text-[11px] font-semibold uppercase tracking-wider">
                           {slot.label}
                         </span>
-                        <span className="text-[13.5px] font-bold tabular-nums">
+                        <span className="text-[10.5px] font-normal opacity-70">
+                          {slot.n} {t("cpr.fVoci")}
+                        </span>
+                        <span className="ml-auto text-[13.5px] font-bold tabular-nums">
                           {fmt(slot.value)}
                         </span>
                       </span>
@@ -1701,119 +1892,149 @@ function Foglio({
                       </td>
                     </>
                   )}
-                  <td className={`${cel} bg-muted/20`} />
-                  <td className={`${cel} ${TINTA_REALE}`} />
-                  {cellaUscita(u, "ora")}
-                  {cellaUscita(u, "prossimi")}
-                  {cellaUscita(u, "standby")}
-                  {cellaUscita(u, "standby2")}
-                  <td className={`${cel} text-foreground ${u && eManuale(u) ? TINTA_MAN : ""}`}>
-                    {u && (
-                      <span className="flex items-center gap-1.5">
-                        {u.tipo === "fiscale" && u.voci?.length ? (
-                          <button
-                            type="button"
-                            onClick={() => onApriFiscale(u)}
-                            title={t("cpr.apriFiscale")}
-                            className={`truncate font-medium ${LINK_CLS}`}
-                          >
-                            {u.nome}
-                          </button>
-                        ) : u.tipo === "passiva" && onApriFornitore && !eGruppo(u) ? (
-                          <button
-                            type="button"
-                            onClick={() => onApriFornitore(u.nome)}
-                            title={t("cpr.apriFornitore")}
-                            className="truncate text-left font-medium underline decoration-dotted decoration-border underline-offset-4 hover:text-primary hover:decoration-primary"
-                          >
-                            {u.nome}
-                          </button>
-                        ) : eGruppo(u) ? (
-                          <button
-                            type="button"
-                            onClick={() => onApriGruppo(u)}
-                            title={t("cpr.apriGruppo")}
-                            className={`truncate font-medium ${LINK_CLS}`}
-                          >
-                            {u.nome}
-                          </button>
-                        ) : (
-                          <NomeRiga
-                            c={u}
-                            readOnly={readOnly}
-                            onRinomina={onRinomina}
+                  {testaU ? (
+                    <>
+                      {COLONNE_USCITE.map((col) => (
+                        <td
+                          key={col}
+                          className={`${celN} ${TESTA_USCITE[testaU.col]} text-[13.5px] font-bold`}
+                        >
+                          {col === testaU.col ? fmt(testaU.value) : ""}
+                        </td>
+                      ))}
+                      <td colSpan={2} className={`${cel} ${TESTA_USCITE[testaU.col]}`}>
+                        <span className="flex items-center gap-2">
+                          <PiuMeno
+                            aperto={!testaU.chiuso}
+                            onClick={() => toggleBlocco(`u:${testaU.col}`)}
                             t={t}
-                            className={`truncate font-medium ${eManuale(u) ? "italic" : ""}`}
                           />
-                        )}
-                        {u.promemoria && (
-                          <span
-                            className="shrink-0 cursor-help text-amber-600"
-                            title={u.promemoria}
-                          >
-                            <StickyNote className="h-3 w-3" />
+                          <span className="text-[11px] font-semibold uppercase tracking-wider">
+                            {testaU.label}
+                          </span>
+                          <span className="text-[10.5px] font-normal opacity-70">
+                            {testaU.n} {t("cpr.fVoci")}
+                          </span>
+                        </span>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      {cellaUscita(u, "ora")}
+                      {cellaUscita(u, "prossimi")}
+                      {cellaUscita(u, "standby")}
+                      {cellaUscita(u, "standby2")}
+                      <td className={`${cel} text-foreground ${u && eManuale(u) ? TINTA_MAN : ""}`}>
+                        {u && (
+                          <span className="flex items-center gap-1.5">
+                            {u.tipo === "fiscale" && u.voci?.length ? (
+                              <button
+                                type="button"
+                                onClick={() => onApriFiscale(u)}
+                                title={t("cpr.apriFiscale")}
+                                className={`truncate font-medium ${LINK_CLS}`}
+                              >
+                                {u.nome}
+                              </button>
+                            ) : u.tipo === "passiva" && onApriFornitore && !eGruppo(u) ? (
+                              <button
+                                type="button"
+                                onClick={() => onApriFornitore(u.nome)}
+                                title={t("cpr.apriFornitore")}
+                                className="truncate text-left font-medium underline decoration-dotted decoration-border underline-offset-4 hover:text-primary hover:decoration-primary"
+                              >
+                                {u.nome}
+                              </button>
+                            ) : eGruppo(u) ? (
+                              <button
+                                type="button"
+                                onClick={() => onApriGruppo(u)}
+                                title={t("cpr.apriGruppo")}
+                                className={`truncate font-medium ${LINK_CLS}`}
+                              >
+                                {u.nome}
+                              </button>
+                            ) : (
+                              <NomeRiga
+                                c={u}
+                                readOnly={readOnly}
+                                onRinomina={onRinomina}
+                                t={t}
+                                className={`truncate font-medium ${eManuale(u) ? "italic" : ""}`}
+                              />
+                            )}
+                            {u.promemoria && (
+                              <span
+                                className="shrink-0 cursor-help text-amber-600"
+                                title={u.promemoria}
+                              >
+                                <StickyNote className="h-3 w-3" />
+                              </span>
+                            )}
+                            {u.documenti > 1 && u.tipo !== "stipendi" && (
+                              <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                                ×{u.documenti}
+                              </span>
+                            )}
+                            {u.tipo === "passiva" && u.certa && (
+                              <span
+                                className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_AUTO}`}
+                                title={t("cpr.nonParcheggiabile")}
+                              >
+                                <Lock className="h-2.5 w-2.5" /> {u.modalita || "AUTO"}
+                              </span>
+                            )}
+                            {eManuale(u) && (
+                              <span
+                                className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
+                                title={t("cpr.legendaManuale")}
+                              >
+                                <Pencil className="h-2.5 w-2.5" /> {t("cpr.manuale")}
+                              </span>
+                            )}
+                            {u.dettaglio === "ogni mese" && (
+                              <span className="shrink-0 rounded border border-violet-400 px-1 text-[9px] uppercase text-violet-700 dark:text-violet-300">
+                                {t("cpr.ricorrente")}
+                              </span>
+                            )}
+                            {u.stima && (
+                              <span
+                                className={`shrink-0 rounded px-1 text-[9px] font-bold uppercase ${PILL_STIMA}`}
+                                title={t("cpr.legendaStima")}
+                              >
+                                {t("cpr.stima")}
+                              </span>
+                            )}
+                            {(u.tipo === "stipendi" ||
+                              u.tipo === "fisso" ||
+                              u.tipo === "fiscale") && (
+                              <span className="shrink-0 truncate text-[10.5px] text-muted-foreground">
+                                {u.dettaglio.replace(/^stima · /, "")}
+                              </span>
+                            )}
                           </span>
                         )}
-                        {u.documenti > 1 && u.tipo !== "stipendi" && (
-                          <span className="shrink-0 text-[10.5px] text-muted-foreground">
-                            ×{u.documenti}
+                      </td>
+                      <td className={`${cel} p-0 ${u && eManuale(u) ? TINTA_MAN : ""}`}>
+                        {u && !eGruppo(u) && (
+                          <span className="flex items-center">
+                            {u.dettaglio === "CDC" && (
+                              <span className="pl-3 text-[11px] font-semibold text-muted-foreground">
+                                CDC
+                              </span>
+                            )}
+                            <Nota c={u} readOnly={readOnly} onNota={onNota} />
+                            <Priorita c={u} readOnly={readOnly} onPriorita={onPriorita} t={t} />
+                            {!readOnly && (
+                              <span className="pr-2">
+                                <Togli onClick={() => onTogli(u)} t={t} />
+                              </span>
+                            )}
                           </span>
                         )}
-                        {u.tipo === "passiva" && u.certa && (
-                          <span
-                            className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_AUTO}`}
-                            title={t("cpr.nonParcheggiabile")}
-                          >
-                            <Lock className="h-2.5 w-2.5" /> {u.modalita || "AUTO"}
-                          </span>
-                        )}
-                        {eManuale(u) && (
-                          <span
-                            className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
-                            title={t("cpr.legendaManuale")}
-                          >
-                            <Pencil className="h-2.5 w-2.5" /> {t("cpr.manuale")}
-                          </span>
-                        )}
-                        {u.dettaglio === "ogni mese" && (
-                          <span className="shrink-0 rounded border border-violet-400 px-1 text-[9px] uppercase text-violet-700 dark:text-violet-300">
-                            {t("cpr.ricorrente")}
-                          </span>
-                        )}
-                        {u.stima && (
-                          <span
-                            className={`shrink-0 rounded px-1 text-[9px] font-bold uppercase ${PILL_STIMA}`}
-                            title={t("cpr.legendaStima")}
-                          >
-                            {t("cpr.stima")}
-                          </span>
-                        )}
-                        {(u.tipo === "stipendi" || u.tipo === "fisso" || u.tipo === "fiscale") && (
-                          <span className="shrink-0 truncate text-[10.5px] text-muted-foreground">
-                            {u.dettaglio.replace(/^stima · /, "")}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </td>
-                  <td className={`${cel} p-0 ${u && eManuale(u) ? TINTA_MAN : ""}`}>
-                    {u && !eGruppo(u) && (
-                      <span className="flex items-center">
-                        {u.dettaglio === "CDC" && (
-                          <span className="pl-3 text-[11px] font-semibold text-muted-foreground">
-                            CDC
-                          </span>
-                        )}
-                        <Nota c={u} readOnly={readOnly} onNota={onNota} />
-                        <Priorita c={u} readOnly={readOnly} onPriorita={onPriorita} t={t} />
-                        {!readOnly && (
-                          <span className="pr-2">
-                            <Togli onClick={() => onTogli(u)} t={t} />
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </td>
+                      </td>
+                    </>
+                  )}
                 </tr>
               );
             })}
@@ -1868,8 +2089,6 @@ function Foglio({
                     </td>
                   </>
                 )}
-                <td className={`${cel} bg-muted/20`} />
-                <td className={`${cel} ${TINTA_REALE}`} />
                 {nuova && !nuova.entrata ? (
                   <>
                     <td className={`${celN} p-1`} colSpan={4}>
@@ -1948,91 +2167,6 @@ function Foglio({
               </tr>
             )}
           </tbody>
-          <tfoot>
-            {/* totali come nel foglio: valori e sotto le sue etichette */}
-            <tr className="border-t-2 border-border bg-muted/50">
-              <td className={`${celT} ${TINTA.entrate.num}`}>
-                {fmt(totali.entrateStandby)}
-                {(totali.entrateDaSollecitare ?? 0) > 0 && (
-                  <div className="text-[10px] font-normal text-amber-700 dark:text-amber-400">
-                    {t("cpr.diCuiSollecitare")} {fmt(totali.entrateDaSollecitare)}
-                  </div>
-                )}
-                {(totali.compensazioni ?? 0) !== 0 && (
-                  <div className="text-[10px] font-normal text-rose-700 dark:text-rose-400">
-                    {t("cpr.diCuiComp")} {fmt(totali.compensazioni)}
-                  </div>
-                )}
-              </td>
-              <td className={`${celT} ${TINTA.standby.num} text-left`}>
-                {fmt(totali.entrateParcheggiate)}
-              </td>
-              <td className={cel} />
-              <td className={`${celT} text-sky-800 dark:text-sky-300`}>
-                {totali.acconti > 0 ? `−${fmt(totali.acconti)}` : ""}
-              </td>
-              <td className={`${celT} ${TINTA.ora.num}`}>{fmt(totali.usciteOra)}</td>
-              <td className={`${celT} ${TINTA.prossimi.num}`}>{fmt(totali.usciteProssimi)}</td>
-              <td className={`${celT} ${TINTA.standby.num}`}>{fmt(totali.usciteStandby)}</td>
-              <td className={`${celT} ${TINTA.standby2.num}`}>{fmt(totali.usciteStandby2)}</td>
-              <td className={`${celT} text-foreground`}>{fmt(totali.totaleDaPagare)}</td>
-              <td
-                className={`${celT} ${totali.cassaConStandby < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}`}
-              >
-                {fmt(totali.cassaConStandby)}
-              </td>
-            </tr>
-            <tr className="bg-muted/50">
-              <td className={`${celL} text-right`}>{t("cpr.lblStandbyIncasso")}</td>
-              <td className={celL}>{t("cpr.lblEntrateStandby")}</td>
-              <td className={cel} />
-              <td className={`${celL} text-right`}>{totali.acconti > 0 ? t("cpr.acconti") : ""}</td>
-              <td className={`${celL} text-right`}>{t("cpr.lblDaPagare")}</td>
-              <td className={`${celL} text-right`}>
-                {t("cpr.lblDaPagare")} {breve}
-              </td>
-              <td className={`${celL} text-right`}>{t("cpr.lblStandbyDaPagare")}</td>
-              <td className={`${celL} text-right`}>{t("cpr.lblStandby2")}</td>
-              <td className={`${celL} text-right`}>{t("cpr.lblTotaleDaPagare")}</td>
-              <td className={`${celL} text-right`}>{t("cpr.lblCassa")}</td>
-            </tr>
-            <tr>
-              <td className={`${cel} py-1.5`} colSpan={10} />
-            </tr>
-            <tr className="bg-primary/5">
-              <td className={cel} />
-              <td className={cel} />
-              <td className={cel} />
-              <td className={cel} />
-              <td
-                className={`${celT} ${totali.saldoDopoOra < 0 ? "text-rose-600 dark:text-rose-400" : "text-primary"}`}
-              >
-                {fmt(totali.saldoDopoOra)}
-              </td>
-              <td
-                className={`${celT} ${totali.saldoDopoProssimi < 0 ? "text-rose-600 dark:text-rose-400" : "text-primary"}`}
-              >
-                {fmt(totali.saldoDopoProssimi)}
-              </td>
-              <td className={cel} />
-              <td className={cel} />
-              <td className={cel} />
-              <td className={cel} />
-            </tr>
-            <tr className="bg-primary/5">
-              <td className={`${cel} border-b-0`} />
-              <td className={`${cel} border-b-0`} />
-              <td className={`${cel} border-b-0`} />
-              <td className={`${cel} border-b-0`} />
-              <td className={`${celL} border-b-0 text-right`} colSpan={2}>
-                {t("cpr.lblSaldoDopo")} · {t("cpr.lblDopoProssimi")} {breve}
-              </td>
-              <td className={`${cel} border-b-0`} />
-              <td className={`${cel} border-b-0`} />
-              <td className={`${cel} border-b-0`} />
-              <td className={`${cel} border-b-0`} />
-            </tr>
-          </tfoot>
         </table>
       </div>
     </div>
@@ -2090,6 +2224,8 @@ function BarraFiltri({
   entrateTutte,
   usciteTutte,
   limite,
+  onApriTutti,
+  onChiudiTutti,
 }: {
   t: TFn;
   filtri: FiltriFoglio;
@@ -2097,6 +2233,9 @@ function BarraFiltri({
   entrateTutte: readonly Cella[];
   usciteTutte: readonly Cella[];
   limite: string;
+  /** Apre / richiude tutti i blocchi del foglio in un colpo. */
+  onApriTutti: () => void;
+  onChiudiTutti: () => void;
 }) {
   const set = (p: Partial<FiltriFoglio>) => onFiltri({ ...filtri, ...p });
   const fE = filtroEntrateAttivo(filtri);
@@ -2236,6 +2375,25 @@ function BarraFiltri({
             <X className="h-3 w-3" /> {t("cpr.fTogli")}
           </button>
         )}
+        <span className="ml-auto flex items-center gap-1.5 text-[12px] text-muted-foreground">
+          {t("cpr.bBlocchi")}
+          <button
+            type="button"
+            onClick={onApriTutti}
+            title={t("cpr.bApriTuttiTip")}
+            className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2 font-semibold text-foreground hover:bg-muted"
+          >
+            + {t("cpr.bApriTutti")}
+          </button>
+          <button
+            type="button"
+            onClick={onChiudiTutti}
+            title={t("cpr.bChiudiTuttiTip")}
+            className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2 font-semibold text-foreground hover:bg-muted"
+          >
+            − {t("cpr.bChiudiTutti")}
+          </button>
+        </span>
       </div>
       {(fE || fU) && (
         <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-1.5 text-[12px] text-foreground dark:border-amber-700/50 dark:bg-amber-950/30">
