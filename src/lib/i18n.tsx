@@ -1855,6 +1855,7 @@ const en = {
   "ft.arNota":
     "Active connection (Premium plan, read-only delegation): nothing is ever sent to SdI and no data is ever modified on Aruba; the password is stored encrypted.",
   "ft.terminiGg": "payment terms",
+  "ft.aVista": "at sight",
   "ft.reconcile": "Reconcile with bank",
   "ft.reconcileTip":
     "Automatically matches collections from the bank account to invoices (same client + invoice number cited, or exact amount).",
@@ -2079,7 +2080,7 @@ const en = {
   "ft.terminiUguali": "unchanged",
   "ft.ggTermine": "Terms (days)",
   "ft.ggTermineTip":
-    "Contractual payment days for this client (from the contracts sheet; 30 by default). Due dates and overdue counting start from here.",
+    "Contractual payment days for this client (from the contracts sheet). Due dates and overdue counting start from here. Without a rule, 30 is only the benchmark for the average: invoices at sight or with no due date are due on the invoice date.",
   "ft.mediaGg": "Avg days to pay",
   "ft.mediaGgTip":
     "Average days between invoice date and recorded collection date, over collected invoices. Red when the client pays later than the contractual terms.",
@@ -3957,6 +3958,7 @@ const it: Record<DictKey, string> = {
   "ft.arNota":
     "Collegamento attivo (piano Premium, delega in sola lettura): nulla viene mai inviato allo SdI e nessun dato viene mai modificato su Aruba; la password è salvata cifrata.",
   "ft.terminiGg": "termini di pagamento",
+  "ft.aVista": "a vista",
   "ft.reconcile": "Riconcilia con banca",
   "ft.reconcileTip":
     "Abbina automaticamente gli incassi del conto corrente alle fatture (stesso cliente + numero fattura citato, oppure importo identico).",
@@ -4182,7 +4184,7 @@ const it: Record<DictKey, string> = {
   "ft.terminiUguali": "invariati",
   "ft.ggTermine": "Termine gg",
   "ft.ggTermineTip":
-    "Giorni di pagamento contrattuali del cliente (dal foglio contratti; 30 di default). Scadenze e conteggio del ritardo partono da qui.",
+    "Giorni di pagamento contrattuali del cliente (dal foglio contratti). Scadenze e conteggio del ritardo partono da qui. Senza una regola il 30 è solo il riferimento per la media: le fatture a vista o senza scadenza scadono alla data fattura.",
   "ft.mediaGg": "Media gg incasso",
   "ft.mediaGgTip":
     "Giorni medi tra data fattura e data incasso registrata, sulle fatture incassate. Rossa quando il cliente paga oltre il termine contrattuale.",

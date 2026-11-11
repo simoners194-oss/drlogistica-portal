@@ -968,8 +968,11 @@ export function computeStatoFattura(
   notaCredito = 0,
 ): FatturaStato {
   // ATTIVE: la scadenza si calcola SEMPRE dai termini contrattuali per
-  // cliente (foglio contratti del direttore; senza termine = 30 giorni): il
-  // conteggio del ritardo parte da li'. Per le PASSIVE ("solo attive per
+  // cliente (foglio contratti del direttore): il conteggio del ritardo parte
+  // da li'. SENZA regola per la controparte (Simone 11/11/2026): la fattura
+  // "a vista" (scadenza scritta = data fattura) o senza scadenza scade alla
+  // DATA FATTURA; i 30 giorni di default restano solo per le attive senza
+  // regola che dichiarano una scadenza diversa dalla data fattura. Per le PASSIVE ("solo attive per
   // ora") vale ancora la scadenza dichiarata nell'XML, quando c'e'.
   // Termine con "decorrenza dal 1° del mese" (accordo Univex, 24/09): vale
   // la scadenza dichiarata nell'XML quando c'e' davvero (diversa dalla data
@@ -987,7 +990,7 @@ export function computeStatoFattura(
     f.scadenza !== f.dataDocumento
       ? f.scadenza
       : "";
-  const scadenzaBase =
+  const scadenzaRegola =
     f.direzione === "Emessa"
       ? termineEm?.decorrenzaMese
         ? dichiarata || scadenzaFattura(`${f.dataDocumento.slice(0, 7)}-01`, termineEm.giorni)
@@ -998,6 +1001,15 @@ export function computeStatoFattura(
             termine?.decorrenzaMese ? `${f.dataDocumento.slice(0, 7)}-01` : f.dataDocumento,
             termine?.giorni ?? TERMINI_DEFAULT_GIORNI,
           );
+  // Nessuna regola e nessuna scadenza vera in fattura: vale la data fattura
+  // (Simone 11/11/2026: "per le fatture a vista, senza data scadenza o
+  // regole venga presa la data fattura"). Vale per attive e passive.
+  const scadXml = f.scadenza && /^\d{4}-\d{2}-\d{2}$/.test(f.scadenza) ? f.scadenza : "";
+  const aVistaSenzaRegola =
+    !termine &&
+    /^\d{4}-\d{2}-\d{2}$/.test(f.dataDocumento) &&
+    (!scadXml || scadXml === f.dataDocumento);
+  const scadenzaBase = aVistaSenzaRegola ? f.dataDocumento : scadenzaRegola;
   // "Arrotonda al 1-5-10-15" (Simone 11/11/2026): la controparte paga in
   // giorni fissi del mese, la scadenza va al primo di quei giorni.
   const scadenza = arrotondaScadenza(scadenzaBase, termine?.arrotondaGiorni);

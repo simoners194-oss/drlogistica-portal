@@ -53,7 +53,6 @@ import {
   type RegolaFattura,
   aggregaIncassiAruba,
   type MovimentoAruba,
-  TERMINI_DEFAULT_GIORNI,
   TOLLERANZA_SALDO,
   SPIEGA_TOLLERANZA,
   spiegaBonifici,
@@ -915,14 +914,26 @@ export function FattureTab({
   const fallbackMeseDi = useMemo(() => fallbackMesePerCliente(termini ?? []), [termini]);
   const classMap = useMemo(
     () =>
-      risolviClassificazioneTutte(fattureRic ?? [], regoleFatture, classAuto, meseRegola, fallbackMeseDi),
+      risolviClassificazioneTutte(
+        fattureRic ?? [],
+        regoleFatture,
+        classAuto,
+        meseRegola,
+        fallbackMeseDi,
+      ),
     [fattureRic, regoleFatture, classAuto, meseRegola, fallbackMeseDi],
   );
   // Le ATTIVE hanno la loro mappa: niente regole-fornitore ne' proposte
   // dallo storico passivo — vale il dichiarato (o la regola del giorno 15).
   const classMapEm = useMemo(
     () =>
-      risolviClassificazioneTutte(fattureEm ?? [], regoleFatture, new Map(), meseRegola, fallbackMeseDi),
+      risolviClassificazioneTutte(
+        fattureEm ?? [],
+        regoleFatture,
+        new Map(),
+        meseRegola,
+        fallbackMeseDi,
+      ),
     [fattureEm, regoleFatture, meseRegola, fallbackMeseDi],
   );
   const classificaDi = (f: FatturaRaw) =>
@@ -4542,9 +4553,17 @@ export function FattureTab({
                           <td colSpan={ricevute ? 29 : 25} className="py-3 px-3 bg-muted/20">
                             <div className="text-xs text-muted-foreground mb-2">
                               {x.f.tipoDocumento} · SdI {x.f.statoSdI || "—"} · {t("ft.terminiGg")}{" "}
-                              {termini.length
-                                ? `${(x.s.scadenza && x.f.dataDocumento && Math.round((new Date(x.s.scadenza).getTime() - new Date(x.f.dataDocumento).getTime()) / 86400000)) || TERMINI_DEFAULT_GIORNI}gg`
-                                : `${TERMINI_DEFAULT_GIORNI}gg (default)`}
+                              {(() => {
+                                const gg =
+                                  x.s.scadenza && x.f.dataDocumento
+                                    ? Math.round(
+                                        (new Date(x.s.scadenza).getTime() -
+                                          new Date(x.f.dataDocumento).getTime()) /
+                                          86400000,
+                                      )
+                                    : null;
+                                return gg == null ? "\u2014" : gg <= 0 ? t("ft.aVista") : `${gg}gg`;
+                              })()}
                             </div>
                             {/* Correzione manuale dello stato d'incasso: per la
                               fattura che si SA incassata, senza aspettare il

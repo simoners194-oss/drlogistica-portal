@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.108.0",
+    date: "2026-11-11",
+    entries: [
+      {
+        title: "Fatture a vista senza regola: scadono alla data fattura",
+        description:
+          "Quando la controparte non ha una regola nei termini di pagamento, la fattura a vista (scadenza uguale alla data) o senza scadenza scade alla data fattura, non più a 30 giorni. Vale per attive e passive. Chi ha una regola non cambia; per chi paga più tardi basta dare una regola con i suoi giorni.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.107.0",
     date: "2026-11-11",
     entries: [
