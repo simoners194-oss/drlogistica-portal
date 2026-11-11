@@ -7,16 +7,18 @@
 // spostare un'uscita, clic sull'importo per correggerlo (stipendi, fiscale,
 // fissi, attesi), Note2 è una cella scrivibile, la × a bordo riga toglie la
 // riga. Logica in lib/cassa-logic; dati in FinanzaData/cassa.json.
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   CalendarDays,
   Camera,
+  Filter,
   ListTodo,
   Loader2,
   Lock,
   Pencil,
   Plus,
+  Search,
   StickyNote,
   X,
 } from "lucide-react";
@@ -39,6 +41,21 @@ import type { SpMovimento } from "@/lib/sharepoint.server";
 import { spEbSaldoCache } from "@/lib/sharepoint.functions";
 import { spStipendiGet } from "@/lib/stipendi.functions";
 import { spCassaGet, spCassaSalva } from "@/lib/cassa.functions";
+import {
+  COLONNE_USCITE,
+  FILTRI_VUOTI,
+  SENZA,
+  bloccoEntrata,
+  clientiDi,
+  distinti,
+  filtraEntrate,
+  filtraUscite,
+  filtroEntrateAttivo,
+  filtroUsciteAttivo,
+  sommaCelle,
+  tipologiaDi,
+  type FiltriFoglio,
+} from "@/lib/cassa-filtri";
 import type { StipendiDb } from "@/lib/stipendi-logic";
 import {
   agendaCassa,
@@ -235,9 +252,12 @@ function slotsEntrate(
   totali: TotaliCassa,
   t: TFn,
   espansi: ReadonlySet<string> = new Set(),
+  /** Con un filtro acceso ogni blocco mostra la somma delle voci visibili
+   *  (non il totale del foglio) e i blocchi rimasti vuoti spariscono. */
+  filtrate = false,
 ): SlotE[] {
   const entranti =
-    totali.acconti > 0
+    totali.acconti > 0 && !filtrate
       ? `${t("cpr.entranti")} − ${t("cpr.acconti")} ${fmt(totali.acconti)}`
       : t("cpr.entranti");
   // Per cliente: le fatture dello stesso cliente (o gruppo) stanno sotto una
@@ -277,25 +297,37 @@ function slotsEntrate(
     }
     return out;
   };
-  return [
-    { kind: "head", label: t("cpr.giaEntrate"), value: totali.entrateRicevute },
-    ...entrate.filter((c) => !c.attesa).map((c): SlotE => ({ kind: "riga", c })),
-    { kind: "head", label: entranti, value: totali.entrantiNette },
-    ...conPadri(
-      entrate.filter((c) => c.attesa && !c.parcheggiata && !c.daSollecitare),
-      "cli",
-    ),
-    { kind: "head", label: t("cpr.daSollecitare"), value: totali.entrateDaSollecitare },
-    ...conPadri(
-      entrate.filter((c) => c.attesa && !c.parcheggiata && c.daSollecitare),
-      "sol",
-    ),
-    { kind: "head", label: t("cpr.colStandby"), value: totali.entrateParcheggiate },
-    ...conPadri(
-      entrate.filter((c) => c.parcheggiata),
-      "stb",
-    ),
+  const gia = entrate.filter((c) => bloccoEntrata(c) === "gia");
+  const ent = entrate.filter((c) => bloccoEntrata(c) === "entranti");
+  const sol = entrate.filter((c) => bloccoEntrata(c) === "sollecitare");
+  const stb = entrate.filter((c) => bloccoEntrata(c) === "standby");
+  const blocchi: { label: string; value: number; celle: Cella[]; slots: SlotE[] }[] = [
+    {
+      label: t("cpr.giaEntrate"),
+      value: totali.entrateRicevute,
+      celle: gia,
+      slots: gia.map((c): SlotE => ({ kind: "riga", c })),
+    },
+    { label: entranti, value: totali.entrantiNette, celle: ent, slots: conPadri(ent, "cli") },
+    {
+      label: t("cpr.daSollecitare"),
+      value: totali.entrateDaSollecitare,
+      celle: sol,
+      slots: conPadri(sol, "sol"),
+    },
+    {
+      label: t("cpr.colStandby"),
+      value: totali.entrateParcheggiate,
+      celle: stb,
+      slots: conPadri(stb, "stb"),
+    },
   ];
+  return blocchi
+    .filter((b) => !filtrate || b.celle.length > 0)
+    .flatMap((b): SlotE[] => [
+      { kind: "head", label: b.label, value: filtrate ? sommaCelle(b.celle) : b.value },
+      ...b.slots,
+    ]);
 }
 
 function daFoto(r: FotografiaCassa["righe"][number]): Cella {
@@ -360,6 +392,8 @@ export function CassaProprietaView({
   const [fotoId, setFotoId] = useState<string | null>(null);
   // Uscite per fornitore (il foglio) oppure raggruppate per tipologia o cliente.
   const [raggruppa, setRaggruppa] = useState<Raggruppa>("fornitore");
+  // Filtri del foglio: solo vista, non si salvano.
+  const [filtri, setFiltri] = useState<FiltriFoglio>(FILTRI_VUOTI);
   // Schede che si aprono dai nomi del foglio (Simone 04/11/2026): cliente
   // (le sue fatture aperte) e gruppo (i fornitori dentro); i fornitori
   // aprono la scheda dei Flussi tramite onApriFornitore.
@@ -638,16 +672,16 @@ export function CassaProprietaView({
   }
 
   const foto = fotoId ? (db.fotografie.find((f) => f.id === fotoId) ?? null) : null;
-  const entrate = foto
+  // Tutte le voci del foglio; i filtri (solo vista) restringono quelle
+  // mostrate, le uscite prima del raggruppamento per tipologia/cliente.
+  const entrateTutte = foto
     ? foto.righe.filter((r) => r.e).map(daFoto)
     : esito.righe.filter((r) => r.entrata).map(daRiga);
-  const uscite = raggruppaUscite(
-    foto
-      ? foto.righe.filter((r) => !r.e).map(daFoto)
-      : esito.righe.filter((r) => !r.entrata).map(daRiga),
-    raggruppa,
-    t,
-  );
+  const usciteTutte = foto
+    ? foto.righe.filter((r) => !r.e).map(daFoto)
+    : esito.righe.filter((r) => !r.entrata).map(daRiga);
+  const entrate = filtraEntrate(entrateTutte, filtri);
+  const uscite = raggruppaUscite(filtraUscite(usciteTutte, filtri), raggruppa, t);
   const totali = foto ? foto.totali : esito.totali;
   const limiteVista = foto ? foto.limite : limite;
   const saldoVista = foto ? foto.saldo : saldo;
@@ -657,13 +691,15 @@ export function CassaProprietaView({
 
   const righeCsv = () => {
     const out: (string | number)[][] = [];
-    const sl = slotsEntrate(entrate, totali, t);
-    const n = Math.max(sl.length, uscite.length);
+    // L'export è sempre il foglio INTERO: i filtri sono solo vista.
+    const sl = slotsEntrate(entrateTutte, totali, t);
+    const usc = raggruppaUscite(usciteTutte, raggruppa, t);
+    const n = Math.max(sl.length, usc.length);
     out.push([totali.entrate, "", saldoVista, totali.reale, "", "", "", "", "", ""]);
     for (let i = 0; i < n; i++) {
       const s = sl[i];
       const e = s?.kind === "riga" || s?.kind === "padre" ? s.c : undefined;
-      const u = uscite[i];
+      const u = usc[i];
       out.push([
         s?.kind === "head" ? s.value : e ? e.importo : "",
         s?.kind === "head"
@@ -864,6 +900,10 @@ export function CassaProprietaView({
           t={t}
           entrate={entrate}
           uscite={uscite}
+          entrateTutte={entrateTutte}
+          usciteTutte={usciteTutte}
+          filtri={filtri}
+          onFiltri={setFiltri}
           totali={totali}
           saldo={saldoVista}
           limite={limiteVista}
@@ -1211,6 +1251,10 @@ function Foglio({
   t,
   entrate,
   uscite,
+  entrateTutte,
+  usciteTutte,
+  filtri,
+  onFiltri,
   totali,
   saldo,
   limite,
@@ -1233,8 +1277,14 @@ function Foglio({
   onApriFiscale,
 }: {
   t: TFn;
+  /** Voci mostrate (già filtrate; le uscite anche raggruppate). */
   entrate: readonly Cella[];
   uscite: readonly Cella[];
+  /** Tutte le voci, senza filtri né raggruppamento: per la barra dei filtri. */
+  entrateTutte: readonly Cella[];
+  usciteTutte: readonly Cella[];
+  filtri: FiltriFoglio;
+  onFiltri: (f: FiltriFoglio) => void;
   totali: TotaliCassa;
   saldo: number;
   limite: string;
@@ -1281,10 +1331,40 @@ function Foglio({
       else next.add(nome);
       return next;
     });
-  const slotsE = slotsEntrate(entrate, totali, t, espansi);
+  const slotsE = slotsEntrate(entrate, totali, t, espansi, filtroEntrateAttivo(filtri));
   const n = Math.max(slotsE.length, uscite.length);
   const righe = Array.from({ length: n }, (_, i) => i);
   const breve = etichettaProssimiBreve(limite);
+  // Barra di scorrimento orizzontale anche SOPRA il foglio (Simone
+  // 11/11/2026, "barra sopra per spostarsi a destra"): segue quella in basso
+  // e viceversa. Compare solo se il foglio è più largo della cornice.
+  const corniceRef = useRef<HTMLDivElement>(null);
+  const barraRef = useRef<HTMLDivElement>(null);
+  const [largh, setLargh] = useState({ tot: 0, vis: 0, sb: 0 });
+  useEffect(() => {
+    const el = corniceRef.current;
+    const misura = () => {
+      if (!el) return;
+      const nuova = {
+        tot: el.scrollWidth,
+        vis: el.clientWidth,
+        sb: el.offsetWidth - el.clientWidth,
+      };
+      setLargh((p) =>
+        p.tot === nuova.tot && p.vis === nuova.vis && p.sb === nuova.sb ? p : nuova,
+      );
+    };
+    misura();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(misura) : null;
+    if (el && ro) {
+      ro.observe(el);
+      if (el.firstElementChild) ro.observe(el.firstElementChild);
+    }
+    return () => ro?.disconnect();
+  }, []);
+  const allinea = (da: HTMLDivElement | null, a: HTMLDivElement | null) => {
+    if (da && a && Math.abs(a.scrollLeft - da.scrollLeft) > 1) a.scrollLeft = da.scrollLeft;
+  };
 
   const conferma = () => {
     if (!nuova) return;
@@ -1351,362 +1431,457 @@ function Foglio({
   return (
     // Il foglio scorre dentro la sua cornice (barra di scorrimento sua, come
     // Excel), con le testate fisse in alto — Simone 02/11/2026.
-    <div className="max-h-[78vh] overflow-auto">
-      <table className="w-full min-w-[1400px] border-collapse text-[13px]">
-        <colgroup>
-          <col className="w-[120px]" />
-          <col className="w-[215px]" />
-          <col className="w-[120px]" />
-          <col className="w-[135px]" />
-          <col className="w-[120px]" />
-          <col className="w-[120px]" />
-          <col className="w-[120px]" />
-          <col className="w-[120px]" />
-          <col className="w-[280px]" />
-          <col />
-        </colgroup>
-        <thead className="sticky top-0 z-10 bg-card">
-          <tr>
-            <th
-              colSpan={4}
-              className={`${celH} ${TINTA.entrate.testa} border-r border-white/30 text-center text-[11px]`}
-            >
-              {t("cpr.colEntrate")}
-            </th>
-            <th
-              colSpan={6}
-              className={`${celH} bg-primary text-center text-[11px] text-primary-foreground`}
-            >
-              {t("cpr.colUscite")}
-            </th>
-          </tr>
-          <tr className="border-b border-border">
-            <th
-              className={`${celH} ${TINTA.entrate.col} ${TINTA.entrate.num} border-r border-border/60 text-right`}
-            >
-              {t("cpr.colEntrate")}
-            </th>
-            <th
-              className={`${celH} ${TINTA.entrate.col} border-r border-border/60 text-foreground`}
-            >
-              {t("cpr.colNote")}
-            </th>
-            <th
-              className={`${celH} border-r border-border/60 bg-muted/60 text-right text-foreground`}
-            >
-              {t("cpr.colSaldo")}
-            </th>
-            <th
-              className={`${celH} ${TINTA_REALE} border-r border-border/60 text-right text-sky-800 dark:text-sky-300`}
-              title={t("cpr.lblReale")}
-            >
-              {t("cpr.colReale")}
-            </th>
-            <th
-              className={`${celH} ${TINTA.ora.col} ${TINTA.ora.num} border-r border-border/60 text-right`}
-            >
-              {t("cpr.colUscite")}
-            </th>
-            <th
-              className={`${celH} ${TINTA.prossimi.col} ${TINTA.prossimi.num} border-r border-border/60 text-right normal-case`}
-            >
-              {etichettaProssimi(limite)}
-            </th>
-            <th
-              className={`${celH} ${TINTA.standby.col} ${TINTA.standby.num} border-r border-border/60 text-right`}
-            >
-              {t("cpr.colStandby")}
-            </th>
-            <th
-              className={`${celH} ${TINTA.standby2.col} ${TINTA.standby2.num} border-r border-border/60 text-right`}
-              title={t("cpr.lblStandby2")}
-            >
-              {t("cpr.colStandby2")}
-            </th>
-            <th className={`${celH} border-r border-border/60 bg-muted/60 text-foreground`}>
-              {t("cpr.colNote")}
-            </th>
-            <th className={`${celH} bg-muted/60 text-foreground`}>{t("cpr.colNote2")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {/* riga 2: totale entrate, saldo e il "reale" (saldo + entranti −
-              da pagare − prossimi), con gli acconti già incassati da togliere */}
-          <tr className="bg-muted/30">
-            <td className={`${celT} ${TINTA.entrate.num}`}>{fmt(totali.entrate)}</td>
-            <td className={`${cel} text-[11px] uppercase tracking-wider text-muted-foreground`}>
-              {t("cpr.lblTotaleEntrate")}
-            </td>
-            <td className={`${celT} text-foreground`}>{fmt(saldo)}</td>
-            <td className={`${celN} ${TINTA_REALE} align-top`}>
-              <div
-                className={`py-1 text-[15px] font-bold ${totali.reale < 0 ? "text-rose-600 dark:text-rose-400" : "text-sky-800 dark:text-sky-300"}`}
+    <div>
+      <BarraFiltri
+        t={t}
+        filtri={filtri}
+        onFiltri={onFiltri}
+        entrateTutte={entrateTutte}
+        usciteTutte={usciteTutte}
+        limite={limite}
+      />
+      {largh.tot > largh.vis + 1 && (
+        <div
+          ref={barraRef}
+          onScroll={() => allinea(barraRef.current, corniceRef.current)}
+          title={t("cpr.barraSopra")}
+          className="overflow-x-scroll overflow-y-hidden border-b border-border/60 bg-muted/40 [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-primary/60 [&::-webkit-scrollbar-thumb:hover]:bg-primary [&::-webkit-scrollbar-track]:bg-transparent"
+        >
+          <div style={{ width: largh.tot + largh.sb, height: 1 }} />
+        </div>
+      )}
+      <div
+        ref={corniceRef}
+        onScroll={() => allinea(corniceRef.current, barraRef.current)}
+        className="max-h-[78vh] overflow-auto"
+      >
+        <table className="w-full min-w-[1400px] border-collapse text-[13px]">
+          <colgroup>
+            <col className="w-[120px]" />
+            <col className="w-[215px]" />
+            <col className="w-[120px]" />
+            <col className="w-[135px]" />
+            <col className="w-[120px]" />
+            <col className="w-[120px]" />
+            <col className="w-[120px]" />
+            <col className="w-[120px]" />
+            <col className="w-[280px]" />
+            <col />
+          </colgroup>
+          <thead className="sticky top-0 z-10 bg-card">
+            <tr>
+              <th
+                colSpan={4}
+                className={`${celH} ${TINTA.entrate.testa} border-r border-white/30 text-center text-[11px]`}
+              >
+                {t("cpr.colEntrate")}
+              </th>
+              <th
+                colSpan={6}
+                className={`${celH} bg-primary text-center text-[11px] text-primary-foreground`}
+              >
+                {t("cpr.colUscite")}
+              </th>
+            </tr>
+            <tr className="border-b border-border">
+              <th
+                className={`${celH} ${TINTA.entrate.col} ${TINTA.entrate.num} border-r border-border/60 text-right`}
+              >
+                {t("cpr.colEntrate")}
+              </th>
+              <th
+                className={`${celH} ${TINTA.entrate.col} border-r border-border/60 text-foreground`}
+              >
+                {t("cpr.colNote")}
+              </th>
+              <th
+                className={`${celH} border-r border-border/60 bg-muted/60 text-right text-foreground`}
+              >
+                {t("cpr.colSaldo")}
+              </th>
+              <th
+                className={`${celH} ${TINTA_REALE} border-r border-border/60 text-right text-sky-800 dark:text-sky-300`}
                 title={t("cpr.lblReale")}
               >
-                {fmt(totali.reale)}
-              </div>
-              <Acconti importo={totali.acconti} readOnly={readOnly} onAcconti={onAcconti} t={t} />
-            </td>
-            <td className={`${cel} ${TINTA.ora.col}`} />
-            <td className={`${cel} ${TINTA.prossimi.col}`} />
-            <td className={`${cel} ${TINTA.standby.col}`} />
-            <td className={`${cel} ${TINTA.standby2.col}`} />
-            <td className={cel} />
-            <td className={cel} />
-          </tr>
-          {righe.map((i) => {
-            const slot = slotsE[i];
-            const e = slot?.kind === "riga" || slot?.kind === "padre" ? slot.c : undefined;
-            const padre = slot?.kind === "padre" ? slot : undefined;
-            const figlio = slot?.kind === "riga" && slot.figlio === true;
-            const u = uscite[i];
-            return (
-              <tr key={i} className="group/r odd:bg-background/40 hover:bg-primary/5">
-                {slot?.kind === "head" ? (
-                  <td
-                    colSpan={2}
-                    className={`${cel} bg-emerald-100/70 dark:bg-emerald-900/30 ${TINTA.entrate.num}`}
-                  >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider">
-                        {slot.label}
+                {t("cpr.colReale")}
+              </th>
+              <th
+                className={`${celH} ${TINTA.ora.col} ${TINTA.ora.num} border-r border-border/60 text-right`}
+              >
+                {t("cpr.colUscite")}
+              </th>
+              <th
+                className={`${celH} ${TINTA.prossimi.col} ${TINTA.prossimi.num} border-r border-border/60 text-right normal-case`}
+              >
+                {etichettaProssimi(limite)}
+              </th>
+              <th
+                className={`${celH} ${TINTA.standby.col} ${TINTA.standby.num} border-r border-border/60 text-right`}
+              >
+                {t("cpr.colStandby")}
+              </th>
+              <th
+                className={`${celH} ${TINTA.standby2.col} ${TINTA.standby2.num} border-r border-border/60 text-right`}
+                title={t("cpr.lblStandby2")}
+              >
+                {t("cpr.colStandby2")}
+              </th>
+              <th className={`${celH} border-r border-border/60 bg-muted/60 text-foreground`}>
+                {t("cpr.colNote")}
+              </th>
+              <th className={`${celH} bg-muted/60 text-foreground`}>{t("cpr.colNote2")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* riga 2: totale entrate, saldo e il "reale" (saldo + entranti −
+              da pagare − prossimi), con gli acconti già incassati da togliere */}
+            <tr className="bg-muted/30">
+              <td className={`${celT} ${TINTA.entrate.num}`}>{fmt(totali.entrate)}</td>
+              <td className={`${cel} text-[11px] uppercase tracking-wider text-muted-foreground`}>
+                {t("cpr.lblTotaleEntrate")}
+              </td>
+              <td className={`${celT} text-foreground`}>{fmt(saldo)}</td>
+              <td className={`${celN} ${TINTA_REALE} align-top`}>
+                <div
+                  className={`py-1 text-[15px] font-bold ${totali.reale < 0 ? "text-rose-600 dark:text-rose-400" : "text-sky-800 dark:text-sky-300"}`}
+                  title={t("cpr.lblReale")}
+                >
+                  {fmt(totali.reale)}
+                </div>
+                <Acconti importo={totali.acconti} readOnly={readOnly} onAcconti={onAcconti} t={t} />
+              </td>
+              <td className={`${cel} ${TINTA.ora.col}`} />
+              <td className={`${cel} ${TINTA.prossimi.col}`} />
+              <td className={`${cel} ${TINTA.standby.col}`} />
+              <td className={`${cel} ${TINTA.standby2.col}`} />
+              <td className={cel} />
+              <td className={cel} />
+            </tr>
+            {righe.map((i) => {
+              const slot = slotsE[i];
+              const e = slot?.kind === "riga" || slot?.kind === "padre" ? slot.c : undefined;
+              const padre = slot?.kind === "padre" ? slot : undefined;
+              const figlio = slot?.kind === "riga" && slot.figlio === true;
+              const u = uscite[i];
+              return (
+                <tr key={i} className="group/r odd:bg-background/40 hover:bg-primary/5">
+                  {slot?.kind === "head" ? (
+                    <td
+                      colSpan={2}
+                      className={`${cel} bg-emerald-100/70 dark:bg-emerald-900/30 ${TINTA.entrate.num}`}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider">
+                          {slot.label}
+                        </span>
+                        <span className="text-[13.5px] font-bold tabular-nums">
+                          {fmt(slot.value)}
+                        </span>
                       </span>
-                      <span className="text-[13.5px] font-bold tabular-nums">
-                        {fmt(slot.value)}
+                    </td>
+                  ) : (
+                    <>
+                      <td
+                        className={`${celN} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.parcheggiata ? "italic text-slate-500 line-through decoration-slate-400" : e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
+                      >
+                        {e && (
+                          <span
+                            className={
+                              e.importo < 0
+                                ? "text-rose-700 dark:text-rose-400"
+                                : e.daSollecitare
+                                  ? "text-amber-700 dark:text-amber-400"
+                                  : ""
+                            }
+                          >
+                            <Importo c={e} readOnly={readOnly} onImporto={onImporto} t={t} />
+                          </span>
+                        )}
+                      </td>
+                      <td
+                        className={`${cel} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
+                      >
+                        {e && (
+                          <span className={`flex items-center gap-1.5 ${figlio ? "pl-5" : ""}`}>
+                            {padre && (
+                              <button
+                                type="button"
+                                onClick={() => toggleCliente(e.chiave)}
+                                title={t(padre.aperto ? "cpr.chiudiCliente" : "cpr.espandiCliente")}
+                                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-[11px] leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                              >
+                                {padre.aperto ? "−" : "+"}
+                              </button>
+                            )}
+                            {e.tipo === "attiva" || e.tipo === "incasso" ? (
+                              <button
+                                type="button"
+                                onClick={() => onApriCliente(e.nome)}
+                                title={t("cpr.apriCliente")}
+                                className={`max-w-[200px] truncate ${LINK_CLS}`}
+                              >
+                                {e.nome}
+                              </button>
+                            ) : e.tipo === "compensazione" && onApriFornitore ? (
+                              <button
+                                type="button"
+                                onClick={() => onApriFornitore(e.nome)}
+                                title={t("cpr.apriFornitore")}
+                                className={`max-w-[200px] truncate ${LINK_CLS}`}
+                              >
+                                {e.nome}
+                              </button>
+                            ) : (
+                              <NomeRiga
+                                c={e}
+                                readOnly={readOnly}
+                                onRinomina={onRinomina}
+                                t={t}
+                                className={`max-w-[200px] truncate ${eManuale(e) ? "italic" : ""}`}
+                              />
+                            )}
+                            {eManuale(e) && (
+                              <span
+                                className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
+                                title={t("cpr.legendaManuale")}
+                              >
+                                <Pencil className="h-2.5 w-2.5" /> {t("cpr.manuale")}
+                              </span>
+                            )}
+                            {e.tipo === "compensazione" && (
+                              <span
+                                className={`inline-flex shrink-0 items-center rounded px-1 text-[9px] font-bold uppercase ${PILL_COMP}`}
+                                title={e.dettaglio}
+                              >
+                                {t("cpr.compensazione")}
+                              </span>
+                            )}
+                            {padre ? (
+                              <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                                {t("cpr.dal")} {ddmmyy(e.data)} · {padre.figli.length}{" "}
+                                {t("cpr.fattureBreve")}
+                              </span>
+                            ) : e.attesa ? (
+                              <DataAttesa c={e} readOnly={readOnly} onData={onData} t={t} />
+                            ) : (
+                              <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                                {ddmm(e.data)}
+                              </span>
+                            )}
+                            {!padre && e.attesa && !e.parcheggiata && !readOnly && (
+                              <ToggleSollecito c={e} onSollecita={onSollecita} t={t} />
+                            )}
+                            {!padre && e.attesa && !readOnly && (
+                              <ToggleStandby c={e} onParcheggia={onParcheggia} t={t} />
+                            )}
+                            {!padre && !readOnly && <Togli onClick={() => onTogli(e)} t={t} />}
+                          </span>
+                        )}
+                      </td>
+                    </>
+                  )}
+                  <td className={`${cel} bg-muted/20`} />
+                  <td className={`${cel} ${TINTA_REALE}`} />
+                  {cellaUscita(u, "ora")}
+                  {cellaUscita(u, "prossimi")}
+                  {cellaUscita(u, "standby")}
+                  {cellaUscita(u, "standby2")}
+                  <td className={`${cel} text-foreground ${u && eManuale(u) ? TINTA_MAN : ""}`}>
+                    {u && (
+                      <span className="flex items-center gap-1.5">
+                        {u.tipo === "fiscale" && u.voci?.length ? (
+                          <button
+                            type="button"
+                            onClick={() => onApriFiscale(u)}
+                            title={t("cpr.apriFiscale")}
+                            className={`truncate font-medium ${LINK_CLS}`}
+                          >
+                            {u.nome}
+                          </button>
+                        ) : u.tipo === "passiva" && onApriFornitore && !eGruppo(u) ? (
+                          <button
+                            type="button"
+                            onClick={() => onApriFornitore(u.nome)}
+                            title={t("cpr.apriFornitore")}
+                            className="truncate text-left font-medium underline decoration-dotted decoration-border underline-offset-4 hover:text-primary hover:decoration-primary"
+                          >
+                            {u.nome}
+                          </button>
+                        ) : eGruppo(u) ? (
+                          <button
+                            type="button"
+                            onClick={() => onApriGruppo(u)}
+                            title={t("cpr.apriGruppo")}
+                            className={`truncate font-medium ${LINK_CLS}`}
+                          >
+                            {u.nome}
+                          </button>
+                        ) : (
+                          <NomeRiga
+                            c={u}
+                            readOnly={readOnly}
+                            onRinomina={onRinomina}
+                            t={t}
+                            className={`truncate font-medium ${eManuale(u) ? "italic" : ""}`}
+                          />
+                        )}
+                        {u.promemoria && (
+                          <span
+                            className="shrink-0 cursor-help text-amber-600"
+                            title={u.promemoria}
+                          >
+                            <StickyNote className="h-3 w-3" />
+                          </span>
+                        )}
+                        {u.documenti > 1 && u.tipo !== "stipendi" && (
+                          <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                            ×{u.documenti}
+                          </span>
+                        )}
+                        {u.tipo === "passiva" && u.certa && (
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_AUTO}`}
+                            title={t("cpr.nonParcheggiabile")}
+                          >
+                            <Lock className="h-2.5 w-2.5" /> {u.modalita || "AUTO"}
+                          </span>
+                        )}
+                        {eManuale(u) && (
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
+                            title={t("cpr.legendaManuale")}
+                          >
+                            <Pencil className="h-2.5 w-2.5" /> {t("cpr.manuale")}
+                          </span>
+                        )}
+                        {u.dettaglio === "ogni mese" && (
+                          <span className="shrink-0 rounded border border-violet-400 px-1 text-[9px] uppercase text-violet-700 dark:text-violet-300">
+                            {t("cpr.ricorrente")}
+                          </span>
+                        )}
+                        {u.stima && (
+                          <span
+                            className={`shrink-0 rounded px-1 text-[9px] font-bold uppercase ${PILL_STIMA}`}
+                            title={t("cpr.legendaStima")}
+                          >
+                            {t("cpr.stima")}
+                          </span>
+                        )}
+                        {(u.tipo === "stipendi" || u.tipo === "fisso" || u.tipo === "fiscale") && (
+                          <span className="shrink-0 truncate text-[10.5px] text-muted-foreground">
+                            {u.dettaglio.replace(/^stima · /, "")}
+                          </span>
+                        )}
                       </span>
-                    </span>
+                    )}
                   </td>
+                  <td className={`${cel} p-0 ${u && eManuale(u) ? TINTA_MAN : ""}`}>
+                    {u && !eGruppo(u) && (
+                      <span className="flex items-center">
+                        {u.dettaglio === "CDC" && (
+                          <span className="pl-3 text-[11px] font-semibold text-muted-foreground">
+                            CDC
+                          </span>
+                        )}
+                        <Nota c={u} readOnly={readOnly} onNota={onNota} />
+                        <Priorita c={u} readOnly={readOnly} onPriorita={onPriorita} t={t} />
+                        {!readOnly && (
+                          <span className="pr-2">
+                            <Togli onClick={() => onTogli(u)} t={t} />
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {/* riga per aggiungere */}
+            {!readOnly && (
+              <tr className="bg-muted/10">
+                {nuova?.entrata ? (
+                  <>
+                    <td className={`${celN} ${TINTA.entrate.col} p-1`}>
+                      <input
+                        autoFocus
+                        value={nuova.importo}
+                        onChange={(e) => setNuova({ ...nuova, importo: e.target.value })}
+                        onKeyDown={(e) => e.key === "Enter" && conferma()}
+                        placeholder={t("cpr.importo")}
+                        className={`${inputCls} w-full text-right`}
+                      />
+                    </td>
+                    <td className={`${cel} ${TINTA.entrate.col} p-1`}>
+                      <span className="flex items-center gap-1">
+                        <input
+                          value={nuova.descrizione}
+                          onChange={(e) => setNuova({ ...nuova, descrizione: e.target.value })}
+                          onKeyDown={(e) => e.key === "Enter" && conferma()}
+                          placeholder={t("cpr.descrizione")}
+                          className={`${inputCls} w-full`}
+                        />
+                        <input
+                          type="date"
+                          value={nuova.data}
+                          onChange={(e) => setNuova({ ...nuova, data: e.target.value })}
+                          title={t("cpr.dataAttesa")}
+                          className={inputCls}
+                        />
+                        <label className="flex shrink-0 items-center gap-1 text-[12px] text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={nuova.ricorrente}
+                            onChange={(e) => setNuova({ ...nuova, ricorrente: e.target.checked })}
+                          />
+                          {t("cpr.ricorrente")}
+                        </label>
+                        <Ok onOk={conferma} onNo={() => setNuova(null)} t={t} />
+                      </span>
+                    </td>
+                  </>
                 ) : (
                   <>
-                    <td
-                      className={`${celN} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.parcheggiata ? "italic text-slate-500 line-through decoration-slate-400" : e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
-                    >
-                      {e && (
-                        <span
-                          className={
-                            e.importo < 0
-                              ? "text-rose-700 dark:text-rose-400"
-                              : e.daSollecitare
-                                ? "text-amber-700 dark:text-amber-400"
-                                : ""
-                          }
-                        >
-                          <Importo c={e} readOnly={readOnly} onImporto={onImporto} t={t} />
-                        </span>
-                      )}
-                    </td>
-                    <td
-                      className={`${cel} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
-                    >
-                      {e && (
-                        <span className={`flex items-center gap-1.5 ${figlio ? "pl-5" : ""}`}>
-                          {padre && (
-                            <button
-                              type="button"
-                              onClick={() => toggleCliente(e.chiave)}
-                              title={t(padre.aperto ? "cpr.chiudiCliente" : "cpr.espandiCliente")}
-                              className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-[11px] leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
-                            >
-                              {padre.aperto ? "−" : "+"}
-                            </button>
-                          )}
-                          {e.tipo === "attiva" || e.tipo === "incasso" ? (
-                            <button
-                              type="button"
-                              onClick={() => onApriCliente(e.nome)}
-                              title={t("cpr.apriCliente")}
-                              className={`max-w-[200px] truncate ${LINK_CLS}`}
-                            >
-                              {e.nome}
-                            </button>
-                          ) : e.tipo === "compensazione" && onApriFornitore ? (
-                            <button
-                              type="button"
-                              onClick={() => onApriFornitore(e.nome)}
-                              title={t("cpr.apriFornitore")}
-                              className={`max-w-[200px] truncate ${LINK_CLS}`}
-                            >
-                              {e.nome}
-                            </button>
-                          ) : (
-                            <NomeRiga
-                              c={e}
-                              readOnly={readOnly}
-                              onRinomina={onRinomina}
-                              t={t}
-                              className={`max-w-[200px] truncate ${eManuale(e) ? "italic" : ""}`}
-                            />
-                          )}
-                          {eManuale(e) && (
-                            <span
-                              className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
-                              title={t("cpr.legendaManuale")}
-                            >
-                              <Pencil className="h-2.5 w-2.5" /> {t("cpr.manuale")}
-                            </span>
-                          )}
-                          {e.tipo === "compensazione" && (
-                            <span
-                              className={`inline-flex shrink-0 items-center rounded px-1 text-[9px] font-bold uppercase ${PILL_COMP}`}
-                              title={e.dettaglio}
-                            >
-                              {t("cpr.compensazione")}
-                            </span>
-                          )}
-                          {padre ? (
-                            <span className="shrink-0 text-[10.5px] text-muted-foreground">
-                              {t("cpr.dal")} {ddmmyy(e.data)} · {padre.figli.length}{" "}
-                              {t("cpr.fattureBreve")}
-                            </span>
-                          ) : e.attesa ? (
-                            <DataAttesa c={e} readOnly={readOnly} onData={onData} t={t} />
-                          ) : (
-                            <span className="shrink-0 text-[10.5px] text-muted-foreground">
-                              {ddmm(e.data)}
-                            </span>
-                          )}
-                          {!padre && e.attesa && !e.parcheggiata && !readOnly && (
-                            <ToggleSollecito c={e} onSollecita={onSollecita} t={t} />
-                          )}
-                          {!padre && e.attesa && !readOnly && (
-                            <ToggleStandby c={e} onParcheggia={onParcheggia} t={t} />
-                          )}
-                          {!padre && !readOnly && <Togli onClick={() => onTogli(e)} t={t} />}
-                        </span>
-                      )}
+                    <td className={`${cel} ${TINTA.entrate.col}`} />
+                    <td className={`${cel} ${TINTA.entrate.col} py-1`}>
+                      <Aggiungi onClick={() => apri(true)} t={t} />
                     </td>
                   </>
                 )}
                 <td className={`${cel} bg-muted/20`} />
                 <td className={`${cel} ${TINTA_REALE}`} />
-                {cellaUscita(u, "ora")}
-                {cellaUscita(u, "prossimi")}
-                {cellaUscita(u, "standby")}
-                {cellaUscita(u, "standby2")}
-                <td className={`${cel} text-foreground ${u && eManuale(u) ? TINTA_MAN : ""}`}>
-                  {u && (
-                    <span className="flex items-center gap-1.5">
-                      {u.tipo === "fiscale" && u.voci?.length ? (
-                        <button
-                          type="button"
-                          onClick={() => onApriFiscale(u)}
-                          title={t("cpr.apriFiscale")}
-                          className={`truncate font-medium ${LINK_CLS}`}
-                        >
-                          {u.nome}
-                        </button>
-                      ) : u.tipo === "passiva" && onApriFornitore && !eGruppo(u) ? (
-                        <button
-                          type="button"
-                          onClick={() => onApriFornitore(u.nome)}
-                          title={t("cpr.apriFornitore")}
-                          className="truncate text-left font-medium underline decoration-dotted decoration-border underline-offset-4 hover:text-primary hover:decoration-primary"
-                        >
-                          {u.nome}
-                        </button>
-                      ) : eGruppo(u) ? (
-                        <button
-                          type="button"
-                          onClick={() => onApriGruppo(u)}
-                          title={t("cpr.apriGruppo")}
-                          className={`truncate font-medium ${LINK_CLS}`}
-                        >
-                          {u.nome}
-                        </button>
-                      ) : (
-                        <NomeRiga
-                          c={u}
-                          readOnly={readOnly}
-                          onRinomina={onRinomina}
-                          t={t}
-                          className={`truncate font-medium ${eManuale(u) ? "italic" : ""}`}
+                {nuova && !nuova.entrata ? (
+                  <>
+                    <td className={`${celN} p-1`} colSpan={4}>
+                      <span className="flex items-center gap-1">
+                        <input
+                          autoFocus
+                          value={nuova.importo}
+                          onChange={(e) => setNuova({ ...nuova, importo: e.target.value })}
+                          onKeyDown={(e) => e.key === "Enter" && conferma()}
+                          placeholder={t("cpr.importo")}
+                          className={`${inputCls} w-28 text-right`}
                         />
-                      )}
-                      {u.promemoria && (
-                        <span className="shrink-0 cursor-help text-amber-600" title={u.promemoria}>
-                          <StickyNote className="h-3 w-3" />
-                        </span>
-                      )}
-                      {u.documenti > 1 && u.tipo !== "stipendi" && (
-                        <span className="shrink-0 text-[10.5px] text-muted-foreground">
-                          ×{u.documenti}
-                        </span>
-                      )}
-                      {u.tipo === "passiva" && u.certa && (
-                        <span
-                          className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_AUTO}`}
-                          title={t("cpr.nonParcheggiabile")}
+                        <select
+                          value={nuova.secchio}
+                          onChange={(e) =>
+                            setNuova({ ...nuova, secchio: e.target.value as SecchioCassa })
+                          }
+                          className={inputCls}
                         >
-                          <Lock className="h-2.5 w-2.5" /> {u.modalita || "AUTO"}
-                        </span>
-                      )}
-                      {eManuale(u) && (
-                        <span
-                          className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
-                          title={t("cpr.legendaManuale")}
-                        >
-                          <Pencil className="h-2.5 w-2.5" /> {t("cpr.manuale")}
-                        </span>
-                      )}
-                      {u.dettaglio === "ogni mese" && (
-                        <span className="shrink-0 rounded border border-violet-400 px-1 text-[9px] uppercase text-violet-700 dark:text-violet-300">
-                          {t("cpr.ricorrente")}
-                        </span>
-                      )}
-                      {u.stima && (
-                        <span
-                          className={`shrink-0 rounded px-1 text-[9px] font-bold uppercase ${PILL_STIMA}`}
-                          title={t("cpr.legendaStima")}
-                        >
-                          {t("cpr.stima")}
-                        </span>
-                      )}
-                      {(u.tipo === "stipendi" || u.tipo === "fisso" || u.tipo === "fiscale") && (
-                        <span className="shrink-0 truncate text-[10.5px] text-muted-foreground">
-                          {u.dettaglio.replace(/^stima · /, "")}
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </td>
-                <td className={`${cel} p-0 ${u && eManuale(u) ? TINTA_MAN : ""}`}>
-                  {u && !eGruppo(u) && (
-                    <span className="flex items-center">
-                      {u.dettaglio === "CDC" && (
-                        <span className="pl-3 text-[11px] font-semibold text-muted-foreground">
-                          CDC
-                        </span>
-                      )}
-                      <Nota c={u} readOnly={readOnly} onNota={onNota} />
-                      <Priorita c={u} readOnly={readOnly} onPriorita={onPriorita} t={t} />
-                      {!readOnly && (
-                        <span className="pr-2">
-                          <Togli onClick={() => onTogli(u)} t={t} />
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-          {/* riga per aggiungere */}
-          {!readOnly && (
-            <tr className="bg-muted/10">
-              {nuova?.entrata ? (
-                <>
-                  <td className={`${celN} ${TINTA.entrate.col} p-1`}>
-                    <input
-                      autoFocus
-                      value={nuova.importo}
-                      onChange={(e) => setNuova({ ...nuova, importo: e.target.value })}
-                      onKeyDown={(e) => e.key === "Enter" && conferma()}
-                      placeholder={t("cpr.importo")}
-                      className={`${inputCls} w-full text-right`}
-                    />
-                  </td>
-                  <td className={`${cel} ${TINTA.entrate.col} p-1`}>
-                    <span className="flex items-center gap-1">
+                          <option value="ora">{t("cpr.colUscite")}</option>
+                          <option value="prossimi">{breve}</option>
+                          <option value="standby">{t("cpr.colStandby")}</option>
+                          <option value="standby2">{t("cpr.colStandby2")}</option>
+                        </select>
+                        <input
+                          type="date"
+                          value={nuova.data}
+                          onChange={(e) => setNuova({ ...nuova, data: e.target.value })}
+                          className={inputCls}
+                        />
+                      </span>
+                    </td>
+                    <td className={`${cel} p-1`}>
                       <input
                         value={nuova.descrizione}
                         onChange={(e) => setNuova({ ...nuova, descrizione: e.target.value })}
@@ -1714,199 +1889,364 @@ function Foglio({
                         placeholder={t("cpr.descrizione")}
                         className={`${inputCls} w-full`}
                       />
-                      <input
-                        type="date"
-                        value={nuova.data}
-                        onChange={(e) => setNuova({ ...nuova, data: e.target.value })}
-                        title={t("cpr.dataAttesa")}
-                        className={inputCls}
-                      />
-                      <label className="flex shrink-0 items-center gap-1 text-[12px] text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          checked={nuova.ricorrente}
-                          onChange={(e) => setNuova({ ...nuova, ricorrente: e.target.checked })}
-                        />
-                        {t("cpr.ricorrente")}
-                      </label>
-                      <Ok onOk={conferma} onNo={() => setNuova(null)} t={t} />
-                    </span>
-                  </td>
-                </>
-              ) : (
-                <>
-                  <td className={`${cel} ${TINTA.entrate.col}`} />
-                  <td className={`${cel} ${TINTA.entrate.col} py-1`}>
-                    <Aggiungi onClick={() => apri(true)} t={t} />
-                  </td>
-                </>
-              )}
-              <td className={`${cel} bg-muted/20`} />
-              <td className={`${cel} ${TINTA_REALE}`} />
-              {nuova && !nuova.entrata ? (
-                <>
-                  <td className={`${celN} p-1`} colSpan={4}>
-                    <span className="flex items-center gap-1">
-                      <input
-                        autoFocus
-                        value={nuova.importo}
-                        onChange={(e) => setNuova({ ...nuova, importo: e.target.value })}
-                        onKeyDown={(e) => e.key === "Enter" && conferma()}
-                        placeholder={t("cpr.importo")}
-                        className={`${inputCls} w-28 text-right`}
-                      />
-                      <select
-                        value={nuova.secchio}
-                        onChange={(e) =>
-                          setNuova({ ...nuova, secchio: e.target.value as SecchioCassa })
-                        }
-                        className={inputCls}
-                      >
-                        <option value="ora">{t("cpr.colUscite")}</option>
-                        <option value="prossimi">{breve}</option>
-                        <option value="standby">{t("cpr.colStandby")}</option>
-                        <option value="standby2">{t("cpr.colStandby2")}</option>
-                      </select>
-                      <input
-                        type="date"
-                        value={nuova.data}
-                        onChange={(e) => setNuova({ ...nuova, data: e.target.value })}
-                        className={inputCls}
-                      />
-                    </span>
-                  </td>
-                  <td className={`${cel} p-1`}>
-                    <input
-                      value={nuova.descrizione}
-                      onChange={(e) => setNuova({ ...nuova, descrizione: e.target.value })}
-                      onKeyDown={(e) => e.key === "Enter" && conferma()}
-                      placeholder={t("cpr.descrizione")}
-                      className={`${inputCls} w-full`}
-                    />
-                  </td>
-                  <td className={`${cel} p-1`}>
-                    <span className="flex items-center gap-2">
-                      <label className="flex items-center gap-1 text-[12px] text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          checked={nuova.amex}
-                          onChange={(e) => setNuova({ ...nuova, amex: e.target.checked })}
-                        />
-                        CDC
-                      </label>
-                      <label className="flex items-center gap-1 text-[12px] text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          checked={nuova.ricorrente}
-                          onChange={(e) => setNuova({ ...nuova, ricorrente: e.target.checked })}
-                        />
-                        {t("cpr.ricorrente")}
-                      </label>
-                      <Ok onOk={conferma} onNo={() => setNuova(null)} t={t} />
-                    </span>
-                  </td>
-                </>
-              ) : (
-                <>
-                  <td className={`${cel} ${TINTA.ora.col}`} />
-                  <td className={`${cel} ${TINTA.prossimi.col}`} />
-                  <td className={`${cel} ${TINTA.standby.col}`} />
-                  <td className={`${cel} ${TINTA.standby2.col}`} />
-                  <td className={`${cel} py-1`}>
-                    <Aggiungi onClick={() => apri(false)} t={t} />
-                  </td>
-                  <td className={cel} />
-                </>
-              )}
+                    </td>
+                    <td className={`${cel} p-1`}>
+                      <span className="flex items-center gap-2">
+                        <label className="flex items-center gap-1 text-[12px] text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={nuova.amex}
+                            onChange={(e) => setNuova({ ...nuova, amex: e.target.checked })}
+                          />
+                          CDC
+                        </label>
+                        <label className="flex items-center gap-1 text-[12px] text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={nuova.ricorrente}
+                            onChange={(e) => setNuova({ ...nuova, ricorrente: e.target.checked })}
+                          />
+                          {t("cpr.ricorrente")}
+                        </label>
+                        <Ok onOk={conferma} onNo={() => setNuova(null)} t={t} />
+                      </span>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className={`${cel} ${TINTA.ora.col}`} />
+                    <td className={`${cel} ${TINTA.prossimi.col}`} />
+                    <td className={`${cel} ${TINTA.standby.col}`} />
+                    <td className={`${cel} ${TINTA.standby2.col}`} />
+                    <td className={`${cel} py-1`}>
+                      <Aggiungi onClick={() => apri(false)} t={t} />
+                    </td>
+                    <td className={cel} />
+                  </>
+                )}
+              </tr>
+            )}
+          </tbody>
+          <tfoot>
+            {/* totali come nel foglio: valori e sotto le sue etichette */}
+            <tr className="border-t-2 border-border bg-muted/50">
+              <td className={`${celT} ${TINTA.entrate.num}`}>
+                {fmt(totali.entrateStandby)}
+                {(totali.entrateDaSollecitare ?? 0) > 0 && (
+                  <div className="text-[10px] font-normal text-amber-700 dark:text-amber-400">
+                    {t("cpr.diCuiSollecitare")} {fmt(totali.entrateDaSollecitare)}
+                  </div>
+                )}
+                {(totali.compensazioni ?? 0) !== 0 && (
+                  <div className="text-[10px] font-normal text-rose-700 dark:text-rose-400">
+                    {t("cpr.diCuiComp")} {fmt(totali.compensazioni)}
+                  </div>
+                )}
+              </td>
+              <td className={`${celT} ${TINTA.standby.num} text-left`}>
+                {fmt(totali.entrateParcheggiate)}
+              </td>
+              <td className={cel} />
+              <td className={`${celT} text-sky-800 dark:text-sky-300`}>
+                {totali.acconti > 0 ? `−${fmt(totali.acconti)}` : ""}
+              </td>
+              <td className={`${celT} ${TINTA.ora.num}`}>{fmt(totali.usciteOra)}</td>
+              <td className={`${celT} ${TINTA.prossimi.num}`}>{fmt(totali.usciteProssimi)}</td>
+              <td className={`${celT} ${TINTA.standby.num}`}>{fmt(totali.usciteStandby)}</td>
+              <td className={`${celT} ${TINTA.standby2.num}`}>{fmt(totali.usciteStandby2)}</td>
+              <td className={`${celT} text-foreground`}>{fmt(totali.totaleDaPagare)}</td>
+              <td
+                className={`${celT} ${totali.cassaConStandby < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}`}
+              >
+                {fmt(totali.cassaConStandby)}
+              </td>
             </tr>
+            <tr className="bg-muted/50">
+              <td className={`${celL} text-right`}>{t("cpr.lblStandbyIncasso")}</td>
+              <td className={celL}>{t("cpr.lblEntrateStandby")}</td>
+              <td className={cel} />
+              <td className={`${celL} text-right`}>{totali.acconti > 0 ? t("cpr.acconti") : ""}</td>
+              <td className={`${celL} text-right`}>{t("cpr.lblDaPagare")}</td>
+              <td className={`${celL} text-right`}>
+                {t("cpr.lblDaPagare")} {breve}
+              </td>
+              <td className={`${celL} text-right`}>{t("cpr.lblStandbyDaPagare")}</td>
+              <td className={`${celL} text-right`}>{t("cpr.lblStandby2")}</td>
+              <td className={`${celL} text-right`}>{t("cpr.lblTotaleDaPagare")}</td>
+              <td className={`${celL} text-right`}>{t("cpr.lblCassa")}</td>
+            </tr>
+            <tr>
+              <td className={`${cel} py-1.5`} colSpan={10} />
+            </tr>
+            <tr className="bg-primary/5">
+              <td className={cel} />
+              <td className={cel} />
+              <td className={cel} />
+              <td className={cel} />
+              <td
+                className={`${celT} ${totali.saldoDopoOra < 0 ? "text-rose-600 dark:text-rose-400" : "text-primary"}`}
+              >
+                {fmt(totali.saldoDopoOra)}
+              </td>
+              <td
+                className={`${celT} ${totali.saldoDopoProssimi < 0 ? "text-rose-600 dark:text-rose-400" : "text-primary"}`}
+              >
+                {fmt(totali.saldoDopoProssimi)}
+              </td>
+              <td className={cel} />
+              <td className={cel} />
+              <td className={cel} />
+              <td className={cel} />
+            </tr>
+            <tr className="bg-primary/5">
+              <td className={`${cel} border-b-0`} />
+              <td className={`${cel} border-b-0`} />
+              <td className={`${cel} border-b-0`} />
+              <td className={`${cel} border-b-0`} />
+              <td className={`${celL} border-b-0 text-right`} colSpan={2}>
+                {t("cpr.lblSaldoDopo")} · {t("cpr.lblDopoProssimi")} {breve}
+              </td>
+              <td className={`${cel} border-b-0`} />
+              <td className={`${cel} border-b-0`} />
+              <td className={`${cel} border-b-0`} />
+              <td className={`${cel} border-b-0`} />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const filtroCls =
+  "h-7 rounded-md border bg-background px-2 text-[12px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
+const filtroOn = "border-primary ring-1 ring-primary/40";
+const filtroOff = "border-border";
+
+/** Campo di ricerca della barra dei filtri, con la × per svuotarlo. */
+function CercaVoce({
+  value,
+  onChange,
+  placeholder,
+  t,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  t: TFn;
+}) {
+  return (
+    <span className="relative inline-flex items-center">
+      <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-muted-foreground" />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={`${filtroCls} w-56 pl-7 pr-6 ${value ? filtroOn : filtroOff}`}
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          title={t("cpr.fSvuota")}
+          className="absolute right-1.5 text-muted-foreground hover:text-foreground"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </span>
+  );
+}
+
+/** Barra dei filtri sopra il foglio (Simone 11/11/2026): entrate per testo e
+ *  blocco; uscite per testo, colonna, tipologia, cliente/appalto, priorità e
+ *  nota. Con un filtro acceso, la riga sotto dice quante voci restano e
+ *  quanto sommano; i totali in fondo al foglio restano quelli di tutto. */
+function BarraFiltri({
+  t,
+  filtri,
+  onFiltri,
+  entrateTutte,
+  usciteTutte,
+  limite,
+}: {
+  t: TFn;
+  filtri: FiltriFoglio;
+  onFiltri: (f: FiltriFoglio) => void;
+  entrateTutte: readonly Cella[];
+  usciteTutte: readonly Cella[];
+  limite: string;
+}) {
+  const set = (p: Partial<FiltriFoglio>) => onFiltri({ ...filtri, ...p });
+  const fE = filtroEntrateAttivo(filtri);
+  const fU = filtroUsciteAttivo(filtri);
+  const tipologie = distinti(usciteTutte.map(tipologiaDi));
+  const clienti = distinti(usciteTutte.flatMap(clientiDi));
+  const eFil = fE ? filtraEntrate(entrateTutte, filtri) : [];
+  const uFil = fU ? filtraUscite(usciteTutte, filtri) : [];
+  const nomeColonna: Record<SecchioCassa, string> = {
+    ora: t("cpr.colUscite"),
+    prossimi: etichettaProssimiBreve(limite),
+    standby: t("cpr.colStandby"),
+    standby2: t("cpr.colStandby2"),
+  };
+  const etichetta =
+    "inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-semibold uppercase tracking-wide";
+  return (
+    <div className="border-b border-border bg-muted/20 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        {/* Entrate */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className={`${etichetta} ${TINTA.entrate.testa}`}>
+            <Filter className="h-3 w-3" /> {t("cpr.colEntrate")}
+          </span>
+          <CercaVoce
+            value={filtri.eTesto}
+            onChange={(v) => set({ eTesto: v })}
+            placeholder={t("cpr.fCercaEntrate")}
+            t={t}
+          />
+          <select
+            value={filtri.eBlocco}
+            onChange={(e) => set({ eBlocco: e.target.value as FiltriFoglio["eBlocco"] })}
+            className={`${filtroCls} ${filtri.eBlocco ? filtroOn : filtroOff}`}
+          >
+            <option value="">{t("cpr.fBlocchiTutti")}</option>
+            <option value="gia">{t("cpr.giaEntrate")}</option>
+            <option value="entranti">{t("cpr.entranti")}</option>
+            <option value="sollecitare">{t("cpr.daSollecitare")}</option>
+            <option value="standby">{t("cpr.colStandby")}</option>
+          </select>
+        </div>
+        {/* Uscite */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className={`${etichetta} bg-primary text-primary-foreground`}>
+            <Filter className="h-3 w-3" /> {t("cpr.colUscite")}
+          </span>
+          <CercaVoce
+            value={filtri.uTesto}
+            onChange={(v) => set({ uTesto: v })}
+            placeholder={t("cpr.fCercaUscite")}
+            t={t}
+          />
+          {COLONNE_USCITE.map((col) => {
+            const on = filtri.uColonne.includes(col);
+            return (
+              <button
+                key={col}
+                type="button"
+                aria-pressed={on}
+                title={t("cpr.fColonnaTip")}
+                onClick={() =>
+                  set({
+                    uColonne: on
+                      ? filtri.uColonne.filter((x) => x !== col)
+                      : [...filtri.uColonne, col],
+                  })
+                }
+                className={`h-7 rounded-md border px-2 text-[11px] font-semibold ${on ? `${TINTA[col].testa} border-transparent` : "border-border bg-background text-muted-foreground hover:bg-muted"}`}
+              >
+                {nomeColonna[col]}
+              </button>
+            );
+          })}
+          {tipologie.length > 1 && (
+            <select
+              value={filtri.uTipologia}
+              onChange={(e) => set({ uTipologia: e.target.value })}
+              className={`${filtroCls} max-w-44 ${filtri.uTipologia ? filtroOn : filtroOff}`}
+            >
+              <option value="">{t("cpr.fTipologieTutte")}</option>
+              {tipologie.map((x) => (
+                <option key={x} value={x}>
+                  {x === SENZA ? t("cpr.senzaTipologia") : x}
+                </option>
+              ))}
+            </select>
           )}
-        </tbody>
-        <tfoot>
-          {/* totali come nel foglio: valori e sotto le sue etichette */}
-          <tr className="border-t-2 border-border bg-muted/50">
-            <td className={`${celT} ${TINTA.entrate.num}`}>
-              {fmt(totali.entrateStandby)}
-              {(totali.entrateDaSollecitare ?? 0) > 0 && (
-                <div className="text-[10px] font-normal text-amber-700 dark:text-amber-400">
-                  {t("cpr.diCuiSollecitare")} {fmt(totali.entrateDaSollecitare)}
-                </div>
-              )}
-              {(totali.compensazioni ?? 0) !== 0 && (
-                <div className="text-[10px] font-normal text-rose-700 dark:text-rose-400">
-                  {t("cpr.diCuiComp")} {fmt(totali.compensazioni)}
-                </div>
-              )}
-            </td>
-            <td className={`${celT} ${TINTA.standby.num} text-left`}>
-              {fmt(totali.entrateParcheggiate)}
-            </td>
-            <td className={cel} />
-            <td className={`${celT} text-sky-800 dark:text-sky-300`}>
-              {totali.acconti > 0 ? `−${fmt(totali.acconti)}` : ""}
-            </td>
-            <td className={`${celT} ${TINTA.ora.num}`}>{fmt(totali.usciteOra)}</td>
-            <td className={`${celT} ${TINTA.prossimi.num}`}>{fmt(totali.usciteProssimi)}</td>
-            <td className={`${celT} ${TINTA.standby.num}`}>{fmt(totali.usciteStandby)}</td>
-            <td className={`${celT} ${TINTA.standby2.num}`}>{fmt(totali.usciteStandby2)}</td>
-            <td className={`${celT} text-foreground`}>{fmt(totali.totaleDaPagare)}</td>
-            <td
-              className={`${celT} ${totali.cassaConStandby < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}`}
+          {clienti.length > 1 && (
+            <select
+              value={filtri.uCliente}
+              onChange={(e) => set({ uCliente: e.target.value })}
+              className={`${filtroCls} max-w-44 ${filtri.uCliente ? filtroOn : filtroOff}`}
             >
-              {fmt(totali.cassaConStandby)}
-            </td>
-          </tr>
-          <tr className="bg-muted/50">
-            <td className={`${celL} text-right`}>{t("cpr.lblStandbyIncasso")}</td>
-            <td className={celL}>{t("cpr.lblEntrateStandby")}</td>
-            <td className={cel} />
-            <td className={`${celL} text-right`}>{totali.acconti > 0 ? t("cpr.acconti") : ""}</td>
-            <td className={`${celL} text-right`}>{t("cpr.lblDaPagare")}</td>
-            <td className={`${celL} text-right`}>
-              {t("cpr.lblDaPagare")} {breve}
-            </td>
-            <td className={`${celL} text-right`}>{t("cpr.lblStandbyDaPagare")}</td>
-            <td className={`${celL} text-right`}>{t("cpr.lblStandby2")}</td>
-            <td className={`${celL} text-right`}>{t("cpr.lblTotaleDaPagare")}</td>
-            <td className={`${celL} text-right`}>{t("cpr.lblCassa")}</td>
-          </tr>
-          <tr>
-            <td className={`${cel} py-1.5`} colSpan={10} />
-          </tr>
-          <tr className="bg-primary/5">
-            <td className={cel} />
-            <td className={cel} />
-            <td className={cel} />
-            <td className={cel} />
-            <td
-              className={`${celT} ${totali.saldoDopoOra < 0 ? "text-rose-600 dark:text-rose-400" : "text-primary"}`}
-            >
-              {fmt(totali.saldoDopoOra)}
-            </td>
-            <td
-              className={`${celT} ${totali.saldoDopoProssimi < 0 ? "text-rose-600 dark:text-rose-400" : "text-primary"}`}
-            >
-              {fmt(totali.saldoDopoProssimi)}
-            </td>
-            <td className={cel} />
-            <td className={cel} />
-            <td className={cel} />
-            <td className={cel} />
-          </tr>
-          <tr className="bg-primary/5">
-            <td className={`${cel} border-b-0`} />
-            <td className={`${cel} border-b-0`} />
-            <td className={`${cel} border-b-0`} />
-            <td className={`${cel} border-b-0`} />
-            <td className={`${celL} border-b-0 text-right`} colSpan={2}>
-              {t("cpr.lblSaldoDopo")} · {t("cpr.lblDopoProssimi")} {breve}
-            </td>
-            <td className={`${cel} border-b-0`} />
-            <td className={`${cel} border-b-0`} />
-            <td className={`${cel} border-b-0`} />
-            <td className={`${cel} border-b-0`} />
-          </tr>
-        </tfoot>
-      </table>
+              <option value="">{t("cpr.fClientiTutti")}</option>
+              {clienti.map((x) => (
+                <option key={x} value={x}>
+                  {x === SENZA ? t("cpr.senzaCliente") : x}
+                </option>
+              ))}
+            </select>
+          )}
+          <select
+            value={filtri.uPriorita}
+            onChange={(e) => set({ uPriorita: e.target.value as FiltriFoglio["uPriorita"] })}
+            className={`${filtroCls} ${filtri.uPriorita ? filtroOn : filtroOff}`}
+          >
+            <option value="">{t("cpr.fPrioritaTutte")}</option>
+            <option value="con">{t("cpr.fPrioritaCon")}</option>
+            <option value="h">
+              {t("cpr.fPriorita")} {t("cpr.prioH")}
+            </option>
+            <option value="m">
+              {t("cpr.fPriorita")} {t("cpr.prioM")}
+            </option>
+            <option value="l">
+              {t("cpr.fPriorita")} {t("cpr.prioL")}
+            </option>
+          </select>
+          <label
+            className={`inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2 text-[12px] ${filtri.uNota ? `${filtroOn} text-foreground` : `${filtroOff} text-muted-foreground`}`}
+          >
+            <input
+              type="checkbox"
+              checked={filtri.uNota}
+              onChange={(e) => set({ uNota: e.target.checked })}
+            />
+            {t("cpr.fConNota")}
+          </label>
+        </div>
+        {(fE || fU) && (
+          <button
+            type="button"
+            onClick={() => onFiltri(FILTRI_VUOTI)}
+            className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-500 bg-amber-500/10 px-2 text-[12px] font-semibold text-amber-800 hover:bg-amber-500/20 dark:text-amber-300"
+          >
+            <X className="h-3 w-3" /> {t("cpr.fTogli")}
+          </button>
+        )}
+      </div>
+      {(fE || fU) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-1.5 text-[12px] text-foreground dark:border-amber-700/50 dark:bg-amber-950/30">
+          {fE && (
+            <span>
+              <span className={`font-semibold ${TINTA.entrate.num}`}>
+                {t("cpr.fEntrateFiltrate")}
+              </span>{" "}
+              <b className="tabular-nums">{eFil.length}</b> {t("cpr.fVociDi")} {entrateTutte.length}{" "}
+              · <b className="tabular-nums">{fmt(sommaCelle(eFil))}</b>
+            </span>
+          )}
+          {fU && (
+            <span className="flex flex-wrap items-center gap-x-3">
+              <span>
+                <span className="font-semibold text-primary">{t("cpr.fUsciteFiltrate")}</span>{" "}
+                <b className="tabular-nums">{uFil.length}</b> {t("cpr.fVociDi")}{" "}
+                {usciteTutte.length} · <b className="tabular-nums">{fmt(sommaCelle(uFil))}</b>
+              </span>
+              {COLONNE_USCITE.map((col) => {
+                const s = sommaCelle(uFil.filter((u) => u.secchio === col));
+                return s !== 0 ? (
+                  <span key={col} className={`tabular-nums ${TINTA[col].num}`}>
+                    {nomeColonna[col]} {fmt(s)}
+                  </span>
+                ) : null;
+              })}
+            </span>
+          )}
+          <span className="text-[11px] text-muted-foreground">{t("cpr.fNota")}</span>
+        </div>
+      )}
     </div>
   );
 }

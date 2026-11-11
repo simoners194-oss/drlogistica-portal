@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.107.0",
+    date: "2026-11-11",
+    entries: [
+      {
+        title: "Cassa proprietà: filtri su tutte le voci e barra di scorrimento in alto",
+        description:
+          "Sopra il foglio c'è la barra dei filtri: entrate per testo e blocco; uscite per testo, colonna, tipologia, cliente/appalto, priorità e nota. Una riga gialla dice quante voci restano e quanto sommano; i totali del foglio non cambiano. In alto c'è anche la barra per scorrere il foglio a destra senza scendere in fondo.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.106.0",
     date: "2026-11-11",
     entries: [
