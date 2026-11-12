@@ -93,6 +93,7 @@ import {
   type VoceAgenda,
   type VoceAgendaVista,
   type VoceDettaglioCassa,
+  type AltreSpeseCassa,
 } from "@/lib/cassa-logic";
 
 type TFn = ReturnType<typeof useLang>["t"];
@@ -361,12 +362,17 @@ function slotsEntrate(
  *  Dentro ogni blocco resta l'ordine del foglio (scadenza e nome). */
 type SlotU =
   | { kind: "head"; col: SecchioCassa; label: string; value: number; n: number; chiuso: boolean }
-  | { kind: "riga"; c: Cella };
+  | { kind: "riga"; c: Cella; aperta?: boolean }
+  /** Una voce dentro la riga aperta col "+" (le tipologie delle Altre spese). */
+  | { kind: "voce"; padre: Cella; v: VoceDettaglioCassa };
+/** Le righe che si aprono col "+" per vedere da cosa sono composte. */
+const haVoci = (c: Cella) => c.tipo === "altre" && (c.voci?.length ?? 0) > 0;
 function slotsUscite(
   uscite: readonly Cella[],
   t: TFn,
   limite: string,
   chiusi: ReadonlySet<string> = new Set(),
+  espansi: ReadonlySet<string> = new Set(),
 ): SlotU[] {
   const etichetta: Record<SecchioCassa, string> = {
     ora: t("cpr.vUsciteOra"),
@@ -387,7 +393,15 @@ function slotsUscite(
         n: celle.length,
         chiuso,
       },
-      ...(chiuso ? [] : celle.map((c): SlotU => ({ kind: "riga", c }))),
+      ...(chiuso
+        ? []
+        : celle.flatMap((c): SlotU[] => {
+            const aperta = haVoci(c) && espansi.has(c.chiave);
+            return [
+              { kind: "riga", c, aperta },
+              ...(aperta ? (c.voci ?? []).map((v): SlotU => ({ kind: "voce", padre: c, v })) : []),
+            ];
+          })),
     ];
   });
 }
@@ -422,6 +436,7 @@ export function CassaProprietaView({
   infoFornitori,
   fiscale,
   fissi,
+  altreSpese,
   movimenti,
   onApriFornitore,
   mezzi,
@@ -433,6 +448,8 @@ export function CassaProprietaView({
   infoFornitori: ReadonlyMap<string, FornitoreInfo>;
   fiscale: readonly ScadenzaFiscale[];
   fissi: readonly CostoFisso[];
+  /** "Altre spese" stimate della vista classica (facoltative). */
+  altreSpese?: AltreSpeseCassa;
   movimenti: readonly SpMovimento[];
   /** Clic sul nome di un fornitore: apre la scheda come nei Flussi. */
   onApriFornitore?: (nome: string) => void;
@@ -525,6 +542,7 @@ export function CassaProprietaView({
       infoFornitori,
       fiscale,
       fissi,
+      altreSpese,
       movimenti: movimenti.map((m) => ({
         id: m.id,
         cliente: m.cliente,
@@ -549,6 +567,7 @@ export function CassaProprietaView({
     infoFornitori,
     fiscale,
     fissi,
+    altreSpese,
     movimenti,
     stipendi,
     mezzi,
@@ -1571,7 +1590,13 @@ export function Foglio({
   // cerca non deve restare nascosto dentro un blocco richiuso.
   const VUOTO: ReadonlySet<string> = new Set();
   const slotsE = slotsEntrate(entrate, t, espansi, filtroEntrateAttivo(filtri) ? VUOTO : chiusi);
-  const slotsU = slotsUscite(uscite, t, limite, filtroUsciteAttivo(filtri) ? VUOTO : chiusi);
+  const slotsU = slotsUscite(
+    uscite,
+    t,
+    limite,
+    filtroUsciteAttivo(filtri) ? VUOTO : chiusi,
+    espansi,
+  );
   const n = Math.max(slotsE.length, slotsU.length);
   const righe = Array.from({ length: n }, (_, i) => i);
   const breve = etichettaProssimiBreve(limite);
@@ -1770,6 +1795,8 @@ export function Foglio({
               const slotU = slotsU[i];
               const testaU = slotU?.kind === "head" ? slotU : undefined;
               const u = slotU?.kind === "riga" ? slotU.c : undefined;
+              const voceU = slotU?.kind === "voce" ? slotU : undefined;
+              const uAperta = slotU?.kind === "riga" && slotU.aperta === true;
               return (
                 <tr key={i} className="group/r odd:bg-background/40 hover:bg-primary/5">
                   {slot?.kind === "head" ? (
@@ -1918,6 +1945,23 @@ export function Foglio({
                         </span>
                       </td>
                     </>
+                  ) : voceU ? (
+                    <>
+                      {COLONNE_USCITE.map((col) => (
+                        <td
+                          key={col}
+                          className={`${celN} ${TINTA[col].col} text-[12.5px] italic text-muted-foreground`}
+                        >
+                          {col === voceU.padre.secchio ? fmt(voceU.v.importo) : ""}
+                        </td>
+                      ))}
+                      <td className={`${cel} py-1 pl-9 text-[12.5px] text-muted-foreground`}>
+                        {voceU.v.nome}
+                      </td>
+                      <td className={`${cel} py-1 text-[11px] text-muted-foreground`}>
+                        {voceU.v.extra ?? ""}
+                      </td>
+                    </>
                   ) : (
                     <>
                       {cellaUscita(u, "ora")}
@@ -1927,6 +1971,17 @@ export function Foglio({
                       <td className={`${cel} text-foreground ${u && eManuale(u) ? TINTA_MAN : ""}`}>
                         {u && (
                           <span className="flex items-center gap-1.5">
+                            {haVoci(u) && (
+                              <button
+                                type="button"
+                                onClick={() => toggleCliente(u.chiave)}
+                                title={t(uAperta ? "cpr.chiudiCliente" : "cpr.apriVoci")}
+                                aria-expanded={uAperta}
+                                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-[11px] leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                              >
+                                {uAperta ? "−" : "+"}
+                              </button>
+                            )}
                             {u.tipo === "fiscale" && u.voci?.length ? (
                               <button
                                 type="button"
@@ -2007,6 +2062,7 @@ export function Foglio({
                             )}
                             {(u.tipo === "stipendi" ||
                               u.tipo === "fisso" ||
+                              u.tipo === "altre" ||
                               u.tipo === "fiscale") && (
                               <span className="shrink-0 truncate text-[10.5px] text-muted-foreground">
                                 {u.dettaglio.replace(/^stima · /, "")}

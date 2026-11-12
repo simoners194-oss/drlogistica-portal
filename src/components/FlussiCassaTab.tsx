@@ -1016,6 +1016,25 @@ export function FlussiCassaTab() {
     overrideAnomalie,
   ]);
 
+  // Le stesse "Altre spese" per la Cassa proprietà (Simone 12/11/2026): solo
+  // le tipologie incluse, con la media mensile e quanto è già uscito nel mese.
+  const altreSpeseCassa = useMemo(
+    () =>
+      autoAltreSpese
+        ? {
+            mesi: autoAltreSpese.mesi,
+            voci: autoAltreSpese.righe
+              .filter((r) => r.inclusa)
+              .map((r) => ({
+                tip: r.tip,
+                media: Math.round((r.m1 + r.m2) * 50) / 100,
+                corrente: r.corrente,
+              })),
+          }
+        : undefined,
+    [autoAltreSpese],
+  );
+
   // CONSULENZE (v1.86.0): pagamenti con tipologia Consulenze non fatturati.
   // Mese corrente = reale (anomalie comprese) + media per i giorni che
   // mancano; mesi futuri = media dei due mesi pieni SENZA anomalie.
@@ -1971,6 +1990,7 @@ export function FlussiCassaTab() {
           infoFornitori={infoFornitori}
           fiscale={fiscale?.scadenze ?? []}
           fissi={costiFissi}
+          altreSpese={altreSpeseCassa}
           movimenti={movimenti ?? []}
           mezzi={mezziDb ?? undefined}
           gruppi={gruppiCtrl}

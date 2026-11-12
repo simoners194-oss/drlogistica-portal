@@ -938,7 +938,7 @@ const en = {
   "cpr.stima": "estimate",
   "cpr.legendaManuale": "typed by hand, not computed",
   "cpr.legendaStima":
-    "payroll estimated on the latest net pay; recurring invoices (fuel) estimated on the average of the last six",
+    "payroll estimated on the latest net pay; recurring invoices (fuel) estimated on the average of the last six; other expenses estimated on the average of the last two months",
   "cpr.legendaAuto": "direct debit (RID/RiBa): leaves on its own, cannot be put on hold",
   "cpr.nonParcheggiabile":
     "Direct debit (RID/RiBa): it leaves on its own at the due date, it cannot be moved",
@@ -996,6 +996,7 @@ const en = {
   "cpr.vNessuna": "No items",
   "cpr.vCsvTip": "Export as CSV (opens in Excel)",
   "cpr.vStampaTip": "Print or save as PDF",
+  "cpr.apriVoci": "Open: what it is made of",
   "cpr.bBlocchi": "Blocks",
   "cpr.bApriTutti": "open all",
   "cpr.bChiudiTutti": "close all",
@@ -3076,7 +3077,7 @@ const it: Record<DictKey, string> = {
   "cpr.stima": "stima",
   "cpr.legendaManuale": "scritta a mano, non calcolata",
   "cpr.legendaStima":
-    "stipendi stimati sugli ultimi netti caricati; fatture ricorrenti (carburanti) stimate sulla media delle ultime sei",
+    "stipendi stimati sugli ultimi netti caricati; fatture ricorrenti (carburanti) stimate sulla media delle ultime sei; altre spese stimate sulla media degli ultimi due mesi",
   "cpr.legendaAuto": "addebito automatico (RID/RiBa): esce da solo, non si parcheggia",
   "cpr.nonParcheggiabile":
     "Addebito automatico (RID/RiBa): esce da solo alla scadenza, non si può spostare",
@@ -3136,6 +3137,7 @@ const it: Record<DictKey, string> = {
   "cpr.vNessuna": "Nessuna voce",
   "cpr.vCsvTip": "Esporta in CSV (si apre in Excel)",
   "cpr.vStampaTip": "Stampa o salva in PDF",
+  "cpr.apriVoci": "Apri: da cosa è composta",
   "cpr.bBlocchi": "Blocchi",
   "cpr.bApriTutti": "apri tutti",
   "cpr.bChiudiTutti": "chiudi tutti",

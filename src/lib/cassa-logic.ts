@@ -58,7 +58,10 @@ export type TipoRigaCassa =
   | "amex"
   /** Fatture di un fornitore che PAGA IN COMPENSAZIONE: riga negativa tra
    *  gli entranti (Simone 04/11/2026), mai tra le uscite. */
-  | "compensazione";
+  | "compensazione"
+  /** "Altre spese" della vista classica (Simone 12/11/2026): le spese che non
+   *  passano dalle fatture, stimate sulla media degli ultimi due mesi. */
+  | "altre";
 
 /** Una scadenza dentro una riga del foglio (righe fiscali): per il popup. */
 export interface VoceDettaglioCassa {
@@ -492,7 +495,25 @@ export function gruppoDiCliente(
   return best?.g;
 }
 
+/** Le "Altre spese" VARIABILI dei Flussi classici, tipologia per tipologia
+ *  (già senza salari, consulenze, fisco e senza i costi fissi, che nel foglio
+ *  hanno le loro righe). */
+export interface AltreSpeseCassa {
+  /** I due mesi pieni della media (YYYY-MM). */
+  mesi: readonly string[];
+  voci: readonly {
+    tip: string;
+    /** Media mensile dei due mesi. */
+    media: number;
+    /** Già uscito nel mese in corso (è già dentro il saldo). */
+    corrente: number;
+  }[];
+}
+
 export interface InputCassa {
+  /** Altre spese stimate (facoltative): una riga per i giorni che restano
+   *  del mese e una per i primi giorni del mese dopo, fino al limite. */
+  altreSpese?: AltreSpeseCassa;
   /** Parco mezzi (modulo Mezzi) per la ripartizione automatica dei fornitori. */
   mezzi?: ParcoPerRipartizione;
   /** Gruppi di controparti (Resoconto → Gruppi) e scelta di unire le entrate
@@ -1093,6 +1114,78 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       editabile: true,
       tipologia: "Costi fissi",
     });
+  }
+  // ALTRE SPESE (Simone 12/11/2026: "sposta altre spese anche su cassa
+  // proprietà, con il + per vedere da cosa è composto"). È la stessa stima
+  // della vista classica (media degli ultimi due mesi delle spese senza
+  // fattura), ma solo per quello che deve ANCORA uscire: quanto è già uscito
+  // nel mese è già dentro il saldo. Due righe: i giorni che restano del mese
+  // (colonna Uscite) e i primi giorni del mese dopo, fino al limite (seconda
+  // colonna). Ogni riga porta le sue voci, una per tipologia, per il "+".
+  if (input.altreSpese?.voci.length) {
+    const altre = input.altreSpese;
+    const eur = (n: number) =>
+      n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const giorno = (iso: string) => Number(iso.slice(8, 10)) || 1;
+    const giorniMese = giorno(fm);
+    const restanti = Math.max(0, giorniMese - Math.min(giorniMese, giorno(oggi)));
+    const giorniTra = (a: string, b: string) =>
+      Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+    const dopo = limite > fm ? giorniTra(fm, limite) : 0;
+    const giorniMeseDopo = giorno(fineMese(limite));
+    const mesiMedia = altre.mesi.map(etichettaMeseCassa).join(" + ");
+    const riga = (
+      chiave: string,
+      frazione: number,
+      scadenza: string,
+      periodo: string,
+      conCorrente: boolean,
+    ) => {
+      const voci: VoceDettaglioCassa[] = altre.voci
+        .map((v) => ({
+          nome: v.tip,
+          importo: r2(v.media * frazione),
+          data: scadenza,
+          extra: `media ${eur(v.media)} al mese${
+            conCorrente && v.corrente > 0.005 ? ` · già usciti ${eur(v.corrente)}` : ""
+          }`,
+        }))
+        .filter((v) => v.importo > 0.005)
+        .sort((a, b) => b.importo - a.importo || a.nome.localeCompare(b.nome, "it"));
+      const importo = r2(voci.reduce((s, v) => s + v.importo, 0));
+      if (importo <= 0.005) return;
+      grezze.push({
+        chiave,
+        tipo: "altre",
+        controparte: "Altre spese",
+        descrizione: `stima · ${periodo} · media ${mesiMedia}`,
+        importo,
+        scadenza,
+        certa: false,
+        entrata: false,
+        documenti: voci.length,
+        editabile: true,
+        stima: true,
+        tipologia: "Altre spese",
+        voci,
+      });
+    };
+    if (restanti > 0)
+      riga(
+        `altre|${meseCorr}|mese`,
+        restanti / giorniMese,
+        fm,
+        `${restanti} giorni che restano di ${etichettaMeseCassa(meseCorr)}`,
+        true,
+      );
+    if (dopo > 0)
+      riga(
+        `altre|${meseCorr}|dopo`,
+        dopo / giorniMeseDopo,
+        limite,
+        `primi ${dopo} giorni di ${etichettaMeseCassa(limite.slice(0, 7))}`,
+        false,
+      );
   }
   // Righe manuali (proprietà) e carta Amex ("CDC"). Una riga RICORRENTE
   // si ripresenta ogni mese allo stesso giorno (dal mese della sua data in

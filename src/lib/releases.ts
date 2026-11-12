@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.111.0",
+    date: "2026-11-12",
+    entries: [
+      {
+        title: "Cassa proprietà: la riga Altre spese, col + per vedere da cosa è composta",
+        description:
+          'Tra le uscite c\'è la stima delle "Altre spese" della vista classica (le spese senza fattura, sulla media degli ultimi due mesi), solo per quello che deve ancora uscire: i giorni che restano del mese e i primi giorni del mese dopo. Il "+" apre le tipologie che la compongono. I costi fissi restano nelle loro righe.',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.110.0",
     date: "2026-11-11",
     entries: [
