@@ -7,7 +7,7 @@
 // spostare un'uscita, clic sull'importo per correggerlo (stipendi, fiscale,
 // fissi, attesi), Note2 è una cella scrivibile, la × a bordo riga toglie la
 // riga. Logica in lib/cassa-logic; dati in FinanzaData/cassa.json.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   CalendarDays,
@@ -17,11 +17,13 @@ import {
   ListTodo,
   Loader2,
   Lock,
+  Minimize2,
   Pencil,
   Plus,
   Printer,
   Search,
   StickyNote,
+  Tv,
   X,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n";
@@ -473,6 +475,53 @@ export function CassaProprietaView({
   const [raggruppa, setRaggruppa] = useState<Raggruppa>("fornitore");
   // Filtri del foglio: solo vista, non si salvano.
   const [filtri, setFiltri] = useState<FiltriFoglio>(FILTRI_VUOTI);
+  // SCHERMO TV (Simone 12/11/2026: "ottimizza la vista per la tv, me la
+  // taglia sempre a destra"): la cassa a tutto schermo, senza menù né
+  // testata, in sola lettura (senza i pulsanti di lavoro, che allargano il
+  // foglio), disegnata sempre alla stessa larghezza e poi ingrandita o
+  // rimpicciolita per riempire lo schermo: non resta mai tagliata.
+  const [tv, setTv] = useState(false);
+  const [tvModifica, setTvModifica] = useState(false);
+  const [finestra, setFinestra] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const misura = () => setFinestra({ w: window.innerWidth, h: window.innerHeight });
+    const tasto = (e: KeyboardEvent) => {
+      const dentroUnCampo = (e.target as HTMLElement | null)?.closest?.("input,textarea,select");
+      if (e.key === "Escape" && !dentroUnCampo) setTv(false);
+    };
+    // Uscendo dallo schermo intero del browser si esce anche dalla vista TV.
+    const schermo = () => {
+      if (!document.fullscreenElement) setTv(false);
+    };
+    const scorrimento = document.body.style.overflow;
+    if (tv) {
+      misura();
+      document.body.style.overflow = "hidden";
+      window.addEventListener("resize", misura);
+      window.addEventListener("keydown", tasto);
+      document.addEventListener("fullscreenchange", schermo);
+    }
+    return () => {
+      document.body.style.overflow = scorrimento;
+      window.removeEventListener("resize", misura);
+      window.removeEventListener("keydown", tasto);
+      document.removeEventListener("fullscreenchange", schermo);
+    };
+  }, [tv]);
+  const entraTv = () => {
+    setTvModifica(false);
+    setTv(true);
+    // Schermo intero del browser, se lo concede (sulla TV toglie le barre).
+    try {
+      void document.documentElement.requestFullscreen?.().catch(() => undefined);
+    } catch {
+      // senza schermo intero resta comunque la vista TV
+    }
+  };
+  const esciTv = () => {
+    setTv(false);
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  };
   // Schede che si aprono dai nomi del foglio (Simone 04/11/2026): cliente
   // (le sue fatture aperte) e gruppo (i fornitori dentro); i fornitori
   // aprono la scheda dei Flussi tramite onApriFornitore.
@@ -851,8 +900,16 @@ export function CassaProprietaView({
         ? t("cpr.saldoNonDisponibile")
         : "";
 
+  // Vista TV: tutto disegnato a LARGHEZZA_TV e poi portato alla larghezza
+  // dello schermo (più grande su una TV grande, più piccolo se serve).
+  const zoomTv = tv && finestra.w > 0 ? Math.round((finestra.w / LARGHEZZA_TV) * 1000) / 1000 : 1;
+  const soloLettura = Boolean(foto) || (tv && !tvModifica);
+
   return (
-    <div className="space-y-4">
+    <div
+      className={tv ? "fixed inset-0 z-40 space-y-4 overflow-auto bg-background p-4" : "space-y-4"}
+      style={tv && zoomTv !== 1 ? { zoom: zoomTv } : undefined}
+    >
       {/* Banda in alto: saldo grande, i tre numeri del foglio, data e limite */}
       <div className="rounded-2xl border border-border bg-card px-5 py-4 shadow-[var(--shadow-card)]">
         <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
@@ -884,7 +941,7 @@ export function CassaProprietaView({
             t={t}
             totali={totali}
             limite={limiteVista}
-            readOnly={Boolean(foto)}
+            readOnly={soloLettura}
             onAcconti={setAcconti}
           />
           <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
@@ -964,6 +1021,37 @@ export function CassaProprietaView({
             >
               <Camera className="h-4 w-4" /> {t("cpr.salvaFoto")}
             </button>
+            {tv ? (
+              <>
+                <label
+                  className="flex cursor-pointer items-center gap-1.5 text-muted-foreground"
+                  title={t("cpr.tvModificaTip")}
+                >
+                  <input
+                    type="checkbox"
+                    checked={tvModifica}
+                    onChange={(e) => setTvModifica(e.target.checked)}
+                  />
+                  {t("cpr.tvModifica")}
+                </label>
+                <button
+                  type="button"
+                  onClick={esciTv}
+                  className="inline-flex items-center gap-2 rounded-lg border border-primary bg-primary px-3 py-1.5 text-sm text-primary-foreground shadow-sm hover:opacity-90"
+                >
+                  <Minimize2 className="h-4 w-4" /> {t("cpr.tvEsci")}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={entraTv}
+                title={t("cpr.tvEntraTip")}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-secondary"
+              >
+                <Tv className="h-4 w-4" /> {t("cpr.tvEntra")}
+              </button>
+            )}
             <MenuVoci
               t={t}
               entrate={entrate}
@@ -1001,8 +1089,13 @@ export function CassaProprietaView({
           usciteTutte={usciteTutte}
           filtri={filtri}
           onFiltri={setFiltri}
+          altezzaMax={
+            tv && finestra.h > 0
+              ? Math.max(320, Math.round((finestra.h / zoomTv) * 0.88))
+              : undefined
+          }
           limite={limiteVista}
-          readOnly={Boolean(foto)}
+          readOnly={soloLettura}
           onSposta={sposta}
           onImporto={correggi}
           onNota={annota}
@@ -1437,6 +1530,12 @@ const TUTTI_I_BLOCCHI = [
   "u:standby",
   "u:standby2",
 ] as const;
+/** Vista TV: larghezza a cui si disegna la cassa prima di portarla a
+ *  quella dello schermo. */
+const LARGHEZZA_TV = 1400;
+/** Sotto questa scala il foglio non si rimpicciolisce più (non si
+ *  leggerebbe): torna la barra di scorrimento. */
+const ZOOM_MINIMO = 0.75;
 /** Dove il browser ricorda i blocchi richiusi (preferenza di chi guarda). */
 const CHIAVE_BLOCCHI = "dr.cassa.blocchiChiusi";
 
@@ -1494,6 +1593,7 @@ export function Foglio({
   onFiltri,
   limite,
   readOnly,
+  altezzaMax,
   oggi,
   onSposta,
   onImporto,
@@ -1521,6 +1621,8 @@ export function Foglio({
   onFiltri: (f: FiltriFoglio) => void;
   limite: string;
   readOnly: boolean;
+  /** Altezza massima della cornice in px (vista TV); senza, il 78% dello schermo. */
+  altezzaMax?: number;
   oggi: string;
   onSposta: (c: Cella, col: SecchioCassa) => void;
   onImporto: (c: Cella, importo: number) => void;
@@ -1627,6 +1729,33 @@ export function Foglio({
     }
     return () => ro?.disconnect();
   }, []);
+  // ADATTA ALLA LARGHEZZA (Simone 12/11/2026: "me la taglia sempre a
+  // destra"). Se il foglio è più largo della sua cornice lo si rimpicciolisce
+  // quanto basta per farcelo stare tutto; sotto il 75% non si leggerebbe più
+  // e allora resta la barra di scorrimento. Si misura a grandezza naturale a
+  // ogni disegno e quando cambia la larghezza della cornice.
+  const tabellaRef = useRef<HTMLTableElement>(null);
+  const adatta = () => {
+    const el = corniceRef.current;
+    const tb = tabellaRef.current;
+    if (!el || !tb) return;
+    tb.style.removeProperty("zoom");
+    const spazio =
+      el.getBoundingClientRect().width * (el.offsetWidth ? el.clientWidth / el.offsetWidth : 1);
+    const naturale = tb.getBoundingClientRect().width;
+    if (naturale > spazio + 1)
+      tb.style.setProperty(
+        "zoom",
+        String(Math.max(ZOOM_MINIMO, Math.floor((spazio / naturale) * 1000) / 1000)),
+      );
+  };
+  useLayoutEffect(adatta);
+  useEffect(() => {
+    const el = corniceRef.current;
+    const ro = el && typeof ResizeObserver !== "undefined" ? new ResizeObserver(adatta) : null;
+    if (el && ro) ro.observe(el);
+    return () => ro?.disconnect();
+  }, []);
   const allinea = (da: HTMLDivElement | null, a: HTMLDivElement | null) => {
     if (da && a && Math.abs(a.scrollLeft - da.scrollLeft) > 1) a.scrollLeft = da.scrollLeft;
   };
@@ -1720,9 +1849,10 @@ export function Foglio({
       <div
         ref={corniceRef}
         onScroll={() => allinea(corniceRef.current, barraRef.current)}
-        className="max-h-[78vh] overflow-auto"
+        className={altezzaMax ? "overflow-auto" : "max-h-[78vh] overflow-auto"}
+        style={altezzaMax ? { maxHeight: altezzaMax } : undefined}
       >
-        <table className="w-full min-w-[1180px] border-collapse text-[13px]">
+        <table ref={tabellaRef} className="w-full min-w-[1180px] border-collapse text-[13px]">
           <colgroup>
             <col className="w-[120px]" />
             <col className="w-[250px]" />

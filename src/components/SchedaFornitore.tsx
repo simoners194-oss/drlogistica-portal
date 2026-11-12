@@ -201,7 +201,7 @@ export function SchedaFornitore({
       onClick={onChiudi}
     >
       <div
-        className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-xl"
+        className="max-h-[88vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -455,7 +455,7 @@ export function SchedaFornitore({
         <p className="mb-1 text-xs font-medium">
           {t("for.fattureAperte")} ({fatture.length})
         </p>
-        <div className="max-h-64 overflow-y-auto rounded-lg border border-border/60">
+        <div className="max-h-96 overflow-y-auto rounded-lg border border-border/60">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border text-left text-[11px] uppercase text-muted-foreground">
@@ -479,10 +479,9 @@ export function SchedaFornitore({
                   >
                     {dataIt(f.scadenza)}
                   </td>
-                  <td
-                    className="max-w-64 truncate px-2 py-0.5 text-muted-foreground"
-                    title={f.oggetto ?? ""}
-                  >
+                  {/* La causale si legge TUTTA, andando a capo (Simone
+                      12/11/2026: "viene tagliata, la voglio vedere tutta"). */}
+                  <td className="min-w-64 whitespace-normal break-words px-2 py-0.5 text-muted-foreground">
                     {f.oggetto ?? ""}
                   </td>
                   <td className="whitespace-nowrap px-2 py-0.5 text-right tabular-nums">

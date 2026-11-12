@@ -997,6 +997,13 @@ const en = {
   "cpr.vCsvTip": "Export as CSV (opens in Excel)",
   "cpr.vStampaTip": "Print or save as PDF",
   "cpr.apriVoci": "Open: what it is made of",
+  "cpr.tvEntra": "TV screen",
+  "cpr.tvEntraTip":
+    "The cash sheet full screen, without menus, read-only and scaled to the screen width: for the meeting-room TV. Leave with Esc or the button",
+  "cpr.tvEsci": "Leave TV",
+  "cpr.tvModifica": "edit",
+  "cpr.tvModificaTip":
+    "Turns the working buttons back on (move, standby, chase, amounts) in the TV view too",
   "cpr.bBlocchi": "Blocks",
   "cpr.bApriTutti": "open all",
   "cpr.bChiudiTutti": "close all",
@@ -3138,6 +3145,13 @@ const it: Record<DictKey, string> = {
   "cpr.vCsvTip": "Esporta in CSV (si apre in Excel)",
   "cpr.vStampaTip": "Stampa o salva in PDF",
   "cpr.apriVoci": "Apri: da cosa è composta",
+  "cpr.tvEntra": "Schermo TV",
+  "cpr.tvEntraTip":
+    "La cassa a tutto schermo, senza menù, in sola lettura e in scala sulla larghezza dello schermo: per la TV della sala riunioni. Si esce con Esc o col pulsante",
+  "cpr.tvEsci": "Esci dalla TV",
+  "cpr.tvModifica": "modifica",
+  "cpr.tvModificaTip":
+    "Riaccende i pulsanti di lavoro (sposta, standby, sollecita, importi) anche nella vista TV",
   "cpr.bBlocchi": "Blocchi",
   "cpr.bApriTutti": "apri tutti",
   "cpr.bChiudiTutti": "chiudi tutti",

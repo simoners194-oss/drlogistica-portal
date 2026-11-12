@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.112.0",
+    date: "2026-11-12",
+    entries: [
+      {
+        title: "Cassa proprietà: Schermo TV e foglio che non si taglia a destra",
+        description:
+          'Il foglio si adatta da solo alla larghezza dello schermo (si rimpicciolisce quanto basta, invece di nascondere la parte destra). Il nuovo pulsante "Schermo TV" apre la cassa a tutto schermo, senza menù, in sola lettura e in scala sulla larghezza dello schermo: più grande sulla TV, mai tagliata. Si esce con Esc.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Scheda fornitore: la causale delle fatture si legge tutta",
+        description:
+          'Nella scheda fornitore la colonna "Causale in fattura" non è più tagliata: il testo va a capo e si legge intero. La scheda è più larga e l\'elenco delle fatture più alto.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.111.0",
     date: "2026-11-12",
     entries: [
