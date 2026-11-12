@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.114.1",
+    date: "2026-11-12",
+    entries: [
+      {
+        title: 'Cassa proprietà: casella "Entra ora" più grande',
+        description:
+          "La colonna degli accordi sugli entranti è più larga e la casella più alta, con i numeri più grandi: l'importo si scrive e si legge per intero.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.114.0",
     date: "2026-11-12",
     entries: [

@@ -1915,10 +1915,10 @@ export function Foglio({
         className={altezzaMax ? "overflow-auto" : "max-h-[78vh] overflow-auto"}
         style={altezzaMax ? { maxHeight: altezzaMax } : undefined}
       >
-        <table ref={tabellaRef} className="w-full min-w-[1290px] border-collapse text-[13px]">
+        <table ref={tabellaRef} className="w-full min-w-[1332px] border-collapse text-[13px]">
           <colgroup>
             <col className="w-[120px]" />
-            <col className="w-[108px]" />
+            <col className="w-[150px]" />
             <col className="w-[250px]" />
             <col className="w-[120px]" />
             <col className="w-[120px]" />
@@ -3220,7 +3220,7 @@ function CampoAccordo({
       }}
       placeholder={t("cpr.accordoTutto")}
       title={t("cpr.accordoTip")}
-      className={`w-full rounded-md border bg-background px-1.5 py-0.5 text-right text-[12px] tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40 ${valore != null ? "border-sky-500 font-semibold text-sky-700 dark:text-sky-300" : "border-border/70 text-foreground placeholder:text-muted-foreground/50"}`}
+      className={`h-8 w-full min-w-[124px] rounded-md border bg-background px-2 text-right text-[14px] tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40 ${valore != null ? "border-sky-500 font-semibold text-sky-700 dark:text-sky-300" : "border-border/70 text-foreground placeholder:text-muted-foreground/50"}`}
     />
   );
 }
