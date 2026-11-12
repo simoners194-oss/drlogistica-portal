@@ -1043,11 +1043,11 @@ const en = {
     "on Aruba they are still unpaid: the full list is in Finance → To fix on Aruba",
   "cpr.tvEntra": "TV screen",
   "cpr.tvEntraTip":
-    "The cash sheet full screen, without menus, read-only and scaled to the screen width: for the meeting-room TV. Leave with Esc or the button",
+    'The cash sheet full screen, without menus, scaled to the screen width: for the meeting-room TV. You work as usual; untick "edit" for read-only. Leave with Esc or the button',
   "cpr.tvEsci": "Leave TV",
   "cpr.tvModifica": "edit",
   "cpr.tvModificaTip":
-    "Turns the working buttons back on (move, standby, chase, amounts) in the TV view too",
+    "Ticked: you work as usual (move, standby, chase, amounts). Unticked: the TV view is read-only, without buttons, for a cleaner sheet",
   "cpr.bBlocchi": "Blocks",
   "cpr.bApriTutti": "open all",
   "cpr.bChiudiTutti": "close all",
@@ -3240,11 +3240,11 @@ const it: Record<DictKey, string> = {
     "su Aruba sono ancora da pagare: l'elenco completo è in Finanze → Da correggere su Aruba",
   "cpr.tvEntra": "Schermo TV",
   "cpr.tvEntraTip":
-    "La cassa a tutto schermo, senza menù, in sola lettura e in scala sulla larghezza dello schermo: per la TV della sala riunioni. Si esce con Esc o col pulsante",
+    'La cassa a tutto schermo, senza menù, in scala sulla larghezza dello schermo: per la TV della sala riunioni. Si lavora come sempre; togliendo la spunta "modifica" resta in sola lettura. Si esce con Esc o col pulsante',
   "cpr.tvEsci": "Esci dalla TV",
   "cpr.tvModifica": "modifica",
   "cpr.tvModificaTip":
-    "Riaccende i pulsanti di lavoro (sposta, standby, sollecita, importi) anche nella vista TV",
+    "Con la spunta si lavora come sempre (sposta, standby, sollecita, importi). Senza, la vista TV è in sola lettura: spariscono i pulsanti e il foglio è più pulito",
   "cpr.bBlocchi": "Blocchi",
   "cpr.bApriTutti": "apri tutti",
   "cpr.bChiudiTutti": "chiudi tutti",

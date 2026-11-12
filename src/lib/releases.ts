@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.113.1",
+    date: "2026-11-12",
+    entries: [
+      {
+        title: "Schermo TV: si lavora come sempre",
+        description:
+          'Nella vista TV della Cassa proprietà ora si possono spostare le voci e correggere gli importi senza fare nulla: prima partiva in sola lettura e sembrava bloccata. La spunta "modifica" resta, per chi vuole la sola lettura.',
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.113.0",
     date: "2026-11-12",
     entries: [

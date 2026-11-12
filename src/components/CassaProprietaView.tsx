@@ -481,7 +481,11 @@ export function CassaProprietaView({
   // foglio), disegnata sempre alla stessa larghezza e poi ingrandita o
   // rimpicciolita per riempire lo schermo: non resta mai tagliata.
   const [tv, setTv] = useState(false);
-  const [tvModifica, setTvModifica] = useState(false);
+  // Dalla 1.113.1 la vista TV parte CON i pulsanti di lavoro: in riunione si
+  // spostano le voci e si correggono gli importi dalla TV (Simone 12/11/2026:
+  // "non mi fa spostare le voci, non mi fa cambiare le cifre"). Togliendo la
+  // spunta "modifica" si ha la sola lettura.
+  const [tvModifica, setTvModifica] = useState(true);
   const [finestra, setFinestra] = useState({ w: 0, h: 0 });
   useEffect(() => {
     const misura = () => setFinestra({ w: window.innerWidth, h: window.innerHeight });
@@ -509,7 +513,7 @@ export function CassaProprietaView({
     };
   }, [tv]);
   const entraTv = () => {
-    setTvModifica(false);
+    setTvModifica(true);
     setTv(true);
     // Schermo intero del browser, se lo concede (sulla TV toglie le barre).
     try {
