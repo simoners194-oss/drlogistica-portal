@@ -39,6 +39,7 @@ import {
   type QuotaAppalto,
 } from "./flussi-logic";
 import type { ScadenzaFiscale } from "./fiscale-logic";
+import { agganciaPagamenti } from "./pagamenti-banca";
 import { chiaveNome, type StipendiDb } from "./stipendi-logic";
 
 /** Colonne delle uscite: da pagare ora, primi giorni del mese dopo, standby,
@@ -187,6 +188,10 @@ export interface TotaliCassa {
    *  stanno più tra le uscite (informativi). */
   usciteAddebitate: number;
   nAddebitate: number;
+  /** Fatture passive aperte su Aruba ma già pagate in banca: fuori dalle
+   *  uscite (il saldo le ha già dentro), solo informative. */
+  usciteGiaPagate: number;
+  nGiaPagate: number;
   /** Righe fuori orizzonte (scadenza oltre il limite), solo informative. */
   nOltre: number;
   usciteOltre: number;
@@ -544,7 +549,21 @@ export interface InputCassa {
   db: CassaDb;
 }
 
+/** Fattura passiva ancora aperta su Aruba ma con il pagamento già in banca. */
+export interface PagataInBanca {
+  nomeFile: string;
+  fornitore: string;
+  numero: string;
+  importo: number;
+  /** Data del pagamento in banca (YYYY-MM-DD). */
+  data: string;
+  modo: "singolo" | "somma" | "rate";
+}
+
 export interface EsitoCassa {
+  /** Già pagate in banca, da chiudere su Aruba (Simone 12/11/2026): non
+   *  stanno tra le uscite, altrimenti conterebbero due volte. */
+  pagateInBanca: PagataInBanca[];
   righe: RigaCassa[];
   /** Fuori orizzonte: scadenza oltre il limite e nessuna scelta a mano. */
   oltre: RigaCassa[];
@@ -908,11 +927,31 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     string,
     { nome: string; importo: number; n: number; scad: string; numeri: string[] }
   >();
+  // GIÀ PAGATE IN BANCA (Simone 12/11/2026: "Bin Consulenze è stato pagato,
+  // perché lo trovo ancora in cassa?"). Una passiva aperta su Aruba ma con il
+  // bonifico già uscito (stesso fornitore, stesso importo, dopo la data
+  // fattura) non è più un'uscita: il saldo è già sceso. Esce dal foglio e va
+  // nell'elenco "già pagate in banca", finché Aruba non la chiude. Lo stato
+  // "pagb|file" con la × rifiuta l'aggancio (non era quel pagamento).
+  const agganci = agganciaPagamenti(input.passive, input.movimenti, "Ricevuta");
+  const pagateInBanca: PagataInBanca[] = [];
   for (const x of input.passive) {
     const res = residuoAperto(x);
     if (res <= 1 || !x.s.scadenza) continue;
     const scad = scadenzaEffettiva(x.s.scadenza);
     if (esclusaDaFlussi(input.esclusioni, x.f.cliente, scad.slice(0, 7))) continue;
+    const aggancio = agganci.get(x.f.nomeFile);
+    if (aggancio && !db.stati[`pagb|${x.f.nomeFile}`]?.x) {
+      pagateInBanca.push({
+        nomeFile: x.f.nomeFile,
+        fornitore: x.f.cliente,
+        numero: x.f.numero,
+        importo: r2(res),
+        data: aggancio.data,
+        modo: aggancio.modo,
+      });
+      continue;
+    }
     const info = input.infoFornitori.get(chiaveFornitore(x.f.cliente));
     if (info?.compensa) {
       if (scad > limite) continue;
@@ -1352,10 +1391,15 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     reale: r2(saldoDopoProssimi + entrantiNette),
     usciteAddebitate: somma(addebitate),
     nAddebitate: addebitate.length,
+    usciteGiaPagate: r2(pagateInBanca.reduce((s, p) => s + p.importo, 0)),
+    nGiaPagate: pagateInBanca.length,
     nOltre: oltre.length,
     usciteOltre: somma(oltre.filter((r) => !r.entrata)),
   };
-  return { righe, oltre, addebitate, totali };
+  pagateInBanca.sort(
+    (a, b) => b.data.localeCompare(a.data) || a.fornitore.localeCompare(b.fornitore, "it"),
+  );
+  return { righe, oltre, addebitate, pagateInBanca, totali };
 }
 
 export function creaFotografia(

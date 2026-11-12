@@ -12,6 +12,7 @@ import {
   Table2,
   TrendingUp,
   AlertTriangle,
+  BellRing,
   Loader2,
   Download,
   CheckCircle2,
@@ -44,6 +45,7 @@ import { PivotClassificazione, type RigaPivot } from "@/components/PivotClassifi
 import { ResocontoTab } from "@/components/ResocontoTab";
 import { EstrattoContoTab } from "@/components/EstrattoContoTab";
 import { FlussiCassaTab } from "@/components/FlussiCassaTab";
+import { ArubaAlertTab } from "@/components/ArubaAlertTab";
 import { StipendiTab } from "@/components/StipendiTab";
 import { FiscaleTab } from "@/components/FiscaleTab";
 import { useLang } from "@/lib/i18n";
@@ -270,6 +272,7 @@ type Tab =
   | "attive"
   | "passive"
   | "anomalie"
+  | "aruba"
   | "storico"
   | "regole";
 
@@ -3034,6 +3037,7 @@ function FinanzaPage() {
             t("fin.tabAnomalie"),
             anomalie?.length ?? 0,
           )}
+          {tabBtn("aruba", <BellRing className="h-4 w-4" />, t("fin.tabAruba"))}
           {tabBtn("storico", <History className="h-4 w-4" />, t("fin.tabStorico"))}
           {tabBtn("regole", <GraduationCap className="h-4 w-4" />, t("fin.tabRegole"))}
         </div>
@@ -3060,6 +3064,9 @@ function FinanzaPage() {
       {/* ------------------------------- Flussi di cassa ------------------- */}
       {tab === "flussi" && <FlussiCassaTab />}
       {tab === "fornitori" && <FornitoriFlussoTab />}
+
+      {/* --- Da correggere su Aruba (Simone 12/11/2026) ----------------------- */}
+      {tab === "aruba" && <ArubaAlertTab />}
 
       {/* --- Stipendi (file paghe COSTI mese, richiesta Simone 14/09) --------- */}
       {tab === "stipendi" && <StipendiTab />}

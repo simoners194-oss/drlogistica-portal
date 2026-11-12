@@ -125,6 +125,7 @@ import {
   setIncassiAruba,
   setRettificaNumero,
   setIncassoManuale,
+  setPagataCdc,
   trovaFattureSenzaCliente,
   importTermini,
   deleteTermine,
@@ -1758,6 +1759,22 @@ export const spSetIncassoManuale = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     await assertDirettore(await currentUser());
     await setIncassoManuale(data.nomeFile, data.stato, data.direzione, data.dataIncasso);
+    return { ok: true };
+  });
+
+// Flag "pagata con carta" su una fattura passiva (scheda fornitore): chiude
+// la fattura nel portale in attesa di Aruba. Data vuota = toglie il flag.
+export const spSetPagataCdc = createServerFn({ method: "POST" })
+  .inputValidator((input: { nomeFile: string; data?: string }) => {
+    const nomeFile = String(input?.nomeFile ?? "").trim();
+    if (!nomeFile) throw new Error("Fattura non indicata");
+    const data = String(input?.data ?? "").trim();
+    if (data && !/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new Error("Data non valida");
+    return { nomeFile, data };
+  })
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await assertDirettore(await currentUser());
+    await setPagataCdc(data.nomeFile, data.data);
     return { ok: true };
   });
 

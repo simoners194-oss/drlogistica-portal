@@ -36,6 +36,33 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.113.0",
+    date: "2026-11-12",
+    entries: [
+      {
+        title: "Nuova scheda: Da correggere su Aruba",
+        description:
+          "In Finanze c'è l'elenco delle fatture in cui banca e Aruba non tornano: pagate in banca ma ancora da pagare su Aruba, incassate in banca ma ancora da incassare, pagate con carta, date nel futuro. Per ognuna c'è cosa fare su Aruba e perché; si esporta in CSV per l'amministrazione.",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: le fatture già pagate in banca escono da sole dalle uscite",
+        description:
+          'Una fattura passiva ancora aperta su Aruba ma col bonifico già uscito (stesso fornitore, stesso importo) non conta più due volte: esce dalle uscite e sta nella riga "Già pagate in banca" sotto il foglio, finché Aruba non la chiude. La × rimette a posto un aggancio sbagliato.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+      {
+        title: 'Scheda fornitore: flag "pagata con carta"',
+        description:
+          "Nell'elenco delle fatture aperte del fornitore c'è la colonna Carta: la spunta chiude la fattura nel portale in attesa che venga chiusa su Aruba. Resta nella pagina \"Da correggere su Aruba\" finché Aruba non la dà per pagata.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.112.0",
     date: "2026-11-12",
     entries: [

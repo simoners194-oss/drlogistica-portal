@@ -45,6 +45,12 @@ export interface FatturaRaw {
   incassoAruba?: string;
   /** Data incasso registrata su Aruba (YYYY-MM-DD). */
   dataIncasso?: string;
+  /** PAGATA CON CARTA (Simone 12/11/2026): data in cui la fattura passiva è
+   *  stata pagata con la carta di credito (YYYY-MM-DD). Si mette dalla scheda
+   *  fornitore: la fattura è CHIUSA nel portale (fuori da cassa e flussi) in
+   *  attesa che venga chiusa su Aruba; sta nella pagina "Da correggere su
+   *  Aruba" finché Aruba non la dà per pagata. */
+  pagataCdc?: string;
   /** Incassato REGISTRATO SU ARUBA (somma delle rate del report movimenti):
    *  è l'unico dato che quantifica gli incassi PARZIALI. undefined se il
    *  report movimenti non è stato caricato per quell'anno. */
@@ -1932,6 +1938,9 @@ export function residuoAperto(x: FatturaConStato): number {
   // Aruba — richiesta direzione 17/08. Le NC collegate abbattono il
   // residuo anche quando coprono solo una parte.
   if (x.s.annullataDaNC) return 0;
+  // Pagata con la carta di credito (flag della scheda fornitore): chiusa nel
+  // portale anche se Aruba non lo sa ancora — Simone 12/11/2026.
+  if (x.f.pagataCdc) return 0;
   // RITENUTA D'ACCONTO: se su Aruba lo stato registrato dice pagata, la
   // fattura e' saldata anche se le rate sommano meno del totale (il
   // bonifico e' il netto, la ritenuta va con l'F24) — direzione 24/08.

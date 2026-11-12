@@ -50,6 +50,7 @@ import { CassaProprietaView } from "@/components/CassaProprietaView";
 import { esportaCsvFile } from "@/lib/csv";
 import {
   spGetFatture,
+  spSetPagataCdc,
   spGetTerminiPagamento,
   spGetPrefatture,
   spGetFlussiCassa,
@@ -440,20 +441,48 @@ export function FlussiCassaTab() {
     : null;
   const fattureFornitoreAperto = useMemo((): FatturaScheda[] => {
     if (!fornitoreAperto) return [];
+    // Restano in elenco anche le fatture chiuse col flag "pagata con carta"
+    // e non ancora chiuse su Aruba: col residuo che avevano, e la spunta
+    // accesa, così il flag si può togliere.
+    const senzaCarta = (x: FatturaConStato) =>
+      x.f.pagataCdc ? residuoAperto({ ...x, f: { ...x.f, pagataCdc: undefined } }) : 0;
     return passive
-      .filter((x) => inFlusso(x) && chiaveFornitore(x.f.cliente) === fornitoreAperto)
+      .filter(
+        (x) =>
+          chiaveFornitore(x.f.cliente) === fornitoreAperto && (inFlusso(x) || senzaCarta(x) > 1),
+      )
       .map((x) => ({
         numero: x.f.numero,
         data: x.f.dataDocumento,
         scadenza: x.s.scadenza.slice(0, 10),
-        residuo: residuoAperto(x),
-        inRitardo: x.s.inRitardo,
+        residuo: x.f.pagataCdc ? senzaCarta(x) : residuoAperto(x),
+        inRitardo: x.s.inRitardo && !x.f.pagataCdc,
         modalita: modDi(x.f),
         oggetto: x.f.oggetto,
+        nomeFile: x.f.nomeFile,
+        pagataCdc: x.f.pagataCdc,
       }))
       .sort((a, b) => a.scadenza.localeCompare(b.scadenza));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fornitoreAperto, passive, esclusioni, infoFornitori]);
+  // Flag "pagata con carta" dalla scheda fornitore (Simone 12/11/2026): la
+  // fattura si chiude nel portale in attesa di Aruba; togliendo la spunta
+  // torna aperta.
+  const [cdcBusy, setCdcBusy] = useState(false);
+  const segnaPagataCdc = async (nomeFile: string, on: boolean) => {
+    setCdcBusy(true);
+    try {
+      await spSetPagataCdc({ data: { nomeFile, data: on ? oggiISO : "" } });
+      setFattureRic((await spGetFatture({ data: { direzione: "Ricevuta" } })) as SpFattura[]);
+      toast.success(t(on ? "for.cdcOk" : "for.cdcTolto"));
+    } catch (err) {
+      toast.error(t("common.error"), {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setCdcBusy(false);
+    }
+  };
   const salvaScheda = async (info: FornitoreInfo) => {
     if (!rigaFornitoreAperta) return;
     setSchedaBusy(true);
@@ -2005,6 +2034,8 @@ export function FlussiCassaTab() {
             busy={schedaBusy}
             onSalva={salvaScheda}
             onChiudi={() => setFornitoreAperto(null)}
+            onPagataCdc={(nomeFile, on) => void segnaPagataCdc(nomeFile, on)}
+            cdcBusy={cdcBusy}
           />
         )}
       </div>
@@ -3044,6 +3075,8 @@ export function FlussiCassaTab() {
             busy={schedaBusy}
             onSalva={salvaScheda}
             onChiudi={() => setFornitoreAperto(null)}
+            onPagataCdc={(nomeFile, on) => void segnaPagataCdc(nomeFile, on)}
+            cdcBusy={cdcBusy}
           />
         )}
         {drill &&

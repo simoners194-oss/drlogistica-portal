@@ -417,6 +417,10 @@ export const SP_DISPLAY = {
     // Somma delle rate incassate registrate su Aruba (report movimenti):
     // è il dato che quantifica gli incassi parziali. OPZIONALE.
     IncassatoAruba: "IncassatoAruba",
+    // Testo (12/11/2026): data YYYY-MM-DD in cui una fattura PASSIVA è stata
+    // pagata con la carta; chiude la fattura nel portale in attesa di Aruba.
+    // OPZIONALE (solo su FattureRicevute).
+    PagataCdc: "PagataCdc",
     // Oggetto della fattura (descrizioni righe XML, concatenate): serve alle
     // regole sui termini per parola chiave. OPZIONALE (più righe di testo).
     Oggetto: "Oggetto",
@@ -5501,6 +5505,30 @@ export async function setIncassoManuale(
   logSp("info", "fatture.incassoManuale", `${doc.numero}: stato incasso → ${stato} (manuale)`);
 }
 
+/** Flag "PAGATA CON CARTA" su una fattura passiva (Simone 12/11/2026): la
+ *  data chiude la fattura nel portale in attesa che venga chiusa su Aruba;
+ *  data vuota = si toglie il flag. Non tocca lo stato di Aruba. */
+export async function setPagataCdc(nomeFile: string, data: string): Promise<void> {
+  const cfg = await discoverSharePoint();
+  const listId = requireFattureList(cfg, "Ricevuta");
+  const F = fattureListPer(cfg, "Ricevuta").fields;
+  if (!F.PagataCdc)
+    throw new Error(
+      'Colonna "PagataCdc" assente sulla lista FattureRicevute: crearla (testo) e fare Riscopri.',
+    );
+  const doc = (await fetchFatture("Ricevuta")).find((f) => f.nomeFile === nomeFile);
+  if (!doc) throw new Error(`Documento non trovato in archivio: ${nomeFile}`);
+  await gatewayJson(`/sites/${cfg.siteId}/lists/${listId}/items/${doc.id}/fields`, {
+    method: "PATCH",
+    body: JSON.stringify({ [F.PagataCdc]: data || null }),
+  });
+  logSp(
+    "info",
+    "fatture.pagataCdc",
+    data ? `${doc.numero}: pagata con carta il ${data}` : `${doc.numero}: tolto "pagata con carta"`,
+  );
+}
+
 export interface UpdateMovimentoInput {
   movimentoId: string;
   tipologia?: string;
@@ -6413,6 +6441,10 @@ function mapFattura(
     oggetto: F.Oggetto ? String(f[F.Oggetto] ?? "") || undefined : undefined,
     causaleDoc: F.Causale ? String(f[F.Causale] ?? "") || undefined : undefined,
     incassatoAruba: F.IncassatoAruba ? numOrUndef(f[F.IncassatoAruba]) : undefined,
+    pagataCdc: (() => {
+      const d = F.PagataCdc ? String(f[F.PagataCdc] ?? "").slice(0, 10) : "";
+      return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined;
+    })(),
     dataIncasso: (() => {
       const d = F.DataIncasso ? iso(f[F.DataIncasso]) : "";
       return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined;

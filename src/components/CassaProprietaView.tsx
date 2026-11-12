@@ -1136,6 +1136,39 @@ export function CassaProprietaView({
             onChiudi={() => setFiscaleAperto(null)}
           />
         )}
+        {/* Già pagate in banca ma ancora aperte su Aruba: fuori dalle uscite
+            (il saldo è già sceso), in attesa che Aruba le chiuda. La × dice
+            "non era quel pagamento" e rimette la fattura tra le uscite. */}
+        {!foto && esito.pagateInBanca.length > 0 && (
+          <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
+            <span className="mr-1 font-bold text-emerald-700 dark:text-emerald-400">✓</span>
+            {t("cpr.pagateBanca")}{" "}
+            <span className="font-semibold text-foreground">
+              {esito.pagateInBanca.length} · {fmt(totali.usciteGiaPagate ?? 0)} €
+            </span>{" "}
+            (
+            {esito.pagateInBanca.slice(0, 10).map((r, i) => (
+              <span key={r.nomeFile} className="whitespace-nowrap">
+                {i > 0 && ", "}
+                {r.fornitore} {r.numero}{" "}
+                <span className="tabular-nums">
+                  {fmt(r.importo)} · {ddmm(r.data)}
+                </span>
+                {!soloLettura && (
+                  <button
+                    type="button"
+                    onClick={() => setStato(`pagb|${r.nomeFile}`, { x: true })}
+                    title={t("cpr.pagateBancaNoTip")}
+                    className="ml-0.5 rounded px-1 text-muted-foreground hover:bg-muted hover:text-rose-600"
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            ))}
+            {esito.pagateInBanca.length > 10 ? ", …" : ""}) · {t("cpr.pagateBancaNota")}
+          </div>
+        )}
         {/* RID/RiBa già scaduti: la banca li ha già presi, fuori dal foglio */}
         {!foto && esito.addebitate.length > 0 && (
           <div

@@ -118,6 +118,10 @@ export interface FatturaScheda {
   modalita: ModalitaPagamento;
   /** Causale scritta in fattura (Simone 04/11/2026). */
   oggetto?: string;
+  /** Chiave della fattura (nome file SdI): serve al flag della carta. */
+  nomeFile?: string;
+  /** Data in cui è stata pagata con la carta (flag acceso). */
+  pagataCdc?: string;
 }
 
 export function SchedaFornitore({
@@ -128,6 +132,8 @@ export function SchedaFornitore({
   onSalva,
   onChiudi,
   quoteMezzi,
+  onPagataCdc,
+  cdcBusy,
 }: {
   riga: RigaFornitore;
   fatture: FatturaScheda[];
@@ -137,6 +143,10 @@ export function SchedaFornitore({
   onChiudi: () => void;
   /** Quote proposte dal modulo Mezzi (contratti di noleggio / parco), se ci sono. */
   quoteMezzi?: QuotaAppalto[];
+  /** Flag "pagata con carta" su una fattura aperta (Simone 12/11/2026): la
+   *  chiude nel portale in attesa che venga chiusa su Aruba. */
+  onPagataCdc?: (nomeFile: string, on: boolean) => void;
+  cdcBusy?: boolean;
 }) {
   const { t } = useLang();
   const [modalita, setModalita] = useState<ModalitaPagamento | "">(riga.override ?? "");
@@ -465,11 +475,19 @@ export function SchedaFornitore({
                 <th className="px-2 py-1">{t("for.colCausale")}</th>
                 <th className="px-2 py-1 text-right">{t("for.colResiduo")}</th>
                 <th className="px-2 py-1 text-center">{t("for.colModalita")}</th>
+                {onPagataCdc && (
+                  <th className="px-2 py-1 text-center" title={t("for.cdcTip")}>
+                    {t("for.colCdc")}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
               {fatture.map((f, i) => (
-                <tr key={`${f.numero}|${i}`} className="border-b border-border/30">
+                <tr
+                  key={`${f.numero}|${i}`}
+                  className={`border-b border-border/30 ${f.pagataCdc ? "bg-violet-50/70 dark:bg-violet-950/20" : ""}`}
+                >
                   <td className="whitespace-nowrap px-2 py-0.5">{f.numero}</td>
                   <td className="whitespace-nowrap px-2 py-0.5 text-muted-foreground">
                     {dataIt(f.data)}
@@ -484,7 +502,9 @@ export function SchedaFornitore({
                   <td className="min-w-64 whitespace-normal break-words px-2 py-0.5 text-muted-foreground">
                     {f.oggetto ?? ""}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-0.5 text-right tabular-nums">
+                  <td
+                    className={`whitespace-nowrap px-2 py-0.5 text-right tabular-nums ${f.pagataCdc ? "text-muted-foreground line-through" : ""}`}
+                  >
                     {fmtImporto(f.residuo)}
                   </td>
                   <td className="px-2 py-0.5 text-center">
@@ -492,11 +512,36 @@ export function SchedaFornitore({
                       {BADGE[f.modalita]}
                     </span>
                   </td>
+                  {onPagataCdc && (
+                    <td className="whitespace-nowrap px-2 py-0.5 text-center">
+                      {f.nomeFile && (
+                        <label
+                          className="inline-flex cursor-pointer items-center gap-1 text-[11px]"
+                          title={t("for.cdcTip")}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={Boolean(f.pagataCdc)}
+                            disabled={cdcBusy}
+                            onChange={(e) => onPagataCdc(f.nomeFile!, e.target.checked)}
+                          />
+                          {f.pagataCdc && (
+                            <span className="font-semibold text-violet-700 dark:text-violet-300">
+                              {dataIt(f.pagataCdc)}
+                            </span>
+                          )}
+                        </label>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
               {fatture.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-3 text-center text-muted-foreground">
+                  <td
+                    colSpan={onPagataCdc ? 7 : 6}
+                    className="py-3 text-center text-muted-foreground"
+                  >
                     {t("for.nessunaFattura")}
                   </td>
                 </tr>
