@@ -7,9 +7,9 @@
 // il DELTA SALDO. Le uscite viaggiano col segno meno: la griglia si incolla
 // in Excel e si somma da sola. Esclusioni per controparte (anche a finestra
 // di mesi) per tenere fuori chi non paga e le casse esterne.
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { FlaskConical, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, FlaskConical, Loader2, Trash2 } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import {
   computeStatoFattura,
@@ -143,19 +143,18 @@ export function FlussiCassaTab() {
   // Modulo Mezzi: serve alla ripartizione automatica dei fornitori tra gli
   // appalti (contratti di noleggio / parco per appalto) — Simone 09/11/2026.
   const [mezziDb, setMezziDb] = useState<MezziDb | null>(null);
-  useEffect(() => {
-    spMezziGetDb()
-      .then((db) => setMezziDb(db as MezziDb))
-      .catch(() => setMezziDb(null));
-  }, []);
   // Gruppi di controparti (Resoconto → Gruppi): per unire le entrate della
   // Cassa proprietà per gruppo (Simone 10/11/2026).
   const [gruppiCtrl, setGruppiCtrl] = useState<GruppoControparti[]>([]);
-  useEffect(() => {
-    spGetGruppiControparti()
-      .then((l) => setGruppiCtrl(l as GruppoControparti[]))
-      .catch(() => setGruppiCtrl([]));
-  }, []);
+  // LETTURE FALLITE (1.115.0, incidente del 12/11/2026). Quando Microsoft 365
+  // rifiuta le letture per troppe richieste, le liste tornavano vuote in
+  // silenzio e il foglio sembrava svuotato ("sono sparite le voci"). Ora chi
+  // non si carica finisce qui e la pagina lo scrive in rosso, col pulsante
+  // "Riprova"; una rilettura fallita NON cancella quello che era già a
+  // schermo; due nuovi tentativi partono da soli, solo per quello che manca.
+  const [nonCaricati, setNonCaricati] = useState<string[]>([]);
+  const [rileggendo, setRileggendo] = useState(false);
+  const tentativi = useRef(0);
   const [flussiErr, setFlussiErr] = useState<string | null>(null);
   const [movimenti, setMovimenti] = useState<SpMovimento[] | null>(null);
 
@@ -258,48 +257,100 @@ export function FlussiCassaTab() {
         setFlussiErr(null);
       })
       .catch((err) => {
-        setFlussi([]);
+        // Una rilettura fallita non cancella quello che c'era.
+        setFlussi((prima) => prima ?? []);
         setFlussiErr(err instanceof Error ? err.message : String(err));
       });
+  // Tutte le letture della pagina, per nome: così si può rileggere solo
+  // quello che non è arrivato. Nell'effetto, non nel corpo: nel corpo partiva
+  // una fetch a OGNI render.
+  const leggiDati = (solo?: readonly string[]) => {
+    const letture: [string, () => Promise<unknown>][] = [
+      // Stima stipendi per i mesi futuri (media netto dovuto ultimi 2 mesi).
+      [
+        "stipendi",
+        () =>
+          spStipendiFlussi().then((r) => {
+            setAutoStipendi(r.stima);
+            setStipendiMesi(r.perMese);
+          }),
+      ],
+      // Scadenziario fiscale per le due voci "Costo fiscale".
+      ["fiscale", () => spFiscaleGet().then((f) => setFiscale(f))],
+      [
+        "attive",
+        () =>
+          spGetFatture({ data: { direzione: "Emessa" } }).then((l) =>
+            setFattureEm(l as SpFattura[]),
+          ),
+      ],
+      [
+        "passive",
+        () =>
+          spGetFatture({ data: { direzione: "Ricevuta" } }).then((l) =>
+            setFattureRic(l as SpFattura[]),
+          ),
+      ],
+      ["termini", () => spGetTerminiPagamento().then((l) => setTermini(l as TerminePagamento[]))],
+      ["prefatture", () => spGetPrefatture().then((l) => setPrefatture(l as Prefattura[]))],
+      ["movimenti", () => spGetMovimenti().then((l) => setMovimenti(l as SpMovimento[]))],
+      ["regoleMov", () => spGetRegoleFinanza().then((l) => setRegoleMov(l as RegolaFinanza[]))],
+      ["regoleFat", () => spGetRegoleFatture().then((l) => setRegoleFat(l as RegolaFattura[]))],
+      ["mezzi", () => spMezziGetDb().then((db) => setMezziDb(db as MezziDb))],
+      [
+        "gruppi",
+        () => spGetGruppiControparti().then((l) => setGruppiCtrl(l as GruppoControparti[])),
+      ],
+    ];
+    const daFare = solo ? letture.filter(([nome]) => solo.includes(nome)) : letture;
+    setRileggendo(true);
+    return Promise.all(
+      daFare.map(([nome, leggi]) =>
+        leggi().then(
+          () => null,
+          () => nome,
+        ),
+      ),
+    ).then((esiti) => {
+      const falliti = esiti.filter((x): x is string => x !== null);
+      // Prima lettura fallita: la lista parte vuota, così la pagina si apre
+      // (con l'avviso). Se c'era già qualcosa a schermo, resta.
+      if (falliti.includes("attive")) setFattureEm((prima) => prima ?? []);
+      if (falliti.includes("passive")) setFattureRic((prima) => prima ?? []);
+      if (falliti.includes("prefatture")) setPrefatture((prima) => prima ?? []);
+      if (falliti.includes("movimenti")) setMovimenti((prima) => prima ?? []);
+      setNonCaricati(falliti);
+      setRileggendo(false);
+    });
+  };
+  const riprovaLetture = () => {
+    if (nonCaricati.length) void leggiDati(nonCaricati);
+    if (flussiErr) void ricaricaFlussi();
+  };
   useEffect(() => {
-    // Stima stipendi per i mesi futuri (media netto dovuto ultimi 2 mesi).
-    // Nell'effetto, non nel corpo: nel corpo partiva una fetch a OGNI render.
-    spStipendiFlussi()
-      .then((r) => {
-        setAutoStipendi(r.stima);
-        setStipendiMesi(r.perMese);
-      })
-      .catch(() => {
-        setAutoStipendi(null);
-        setStipendiMesi(null);
-      });
-    // Scadenziario fiscale per le due voci "Costo fiscale".
-    spFiscaleGet()
-      .then((f) => setFiscale(f))
-      .catch(() => setFiscale(null));
-    spGetFatture({ data: { direzione: "Emessa" } })
-      .then((l) => setFattureEm(l as SpFattura[]))
-      .catch(() => setFattureEm([]));
-    spGetFatture({ data: { direzione: "Ricevuta" } })
-      .then((l) => setFattureRic(l as SpFattura[]))
-      .catch(() => setFattureRic([]));
-    spGetTerminiPagamento()
-      .then((l) => setTermini(l as TerminePagamento[]))
-      .catch(() => setTermini([]));
-    spGetPrefatture()
-      .then((l) => setPrefatture(l as Prefattura[]))
-      .catch(() => setPrefatture([]));
-    spGetMovimenti()
-      .then((l) => setMovimenti(l as SpMovimento[]))
-      .catch(() => setMovimenti([]));
-    spGetRegoleFinanza()
-      .then((l) => setRegoleMov(l as RegolaFinanza[]))
-      .catch(() => setRegoleMov([]));
-    spGetRegoleFatture()
-      .then((l) => setRegoleFat(l as RegolaFattura[]))
-      .catch(() => setRegoleFat([]));
+    void leggiDati();
     void ricaricaFlussi();
+    // Una volta sola, all'apertura.
   }, []);
+  // Se qualcosa non è arrivato si riprova da soli due volte (dopo 30 secondi
+  // e poi dopo un minuto), senza insistere: con Microsoft 365 che frena,
+  // martellare peggiora. Poi resta il pulsante.
+  useEffect(() => {
+    if (!nonCaricati.length && !flussiErr) {
+      tentativi.current = 0;
+      return;
+    }
+    if (tentativi.current >= 2) return;
+    const id = window.setTimeout(
+      () => {
+        tentativi.current += 1;
+        riprovaLetture();
+      },
+      tentativi.current === 0 ? 30_000 : 60_000,
+    );
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonCaricati, flussiErr]);
 
   const oggiISO = new Date().toISOString().slice(0, 10);
 
@@ -1987,6 +2038,51 @@ export function FlussiCassaTab() {
       ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
       : "";
 
+  // Avviso "dati non caricati", in testa alle due viste: dice COSA manca e
+  // che non è stato cancellato nulla (incidente del 12/11/2026).
+  const NOMI_DATI: Record<string, string> = {
+    attive: t("fc.datoAttive"),
+    passive: t("fc.datoPassive"),
+    movimenti: t("fc.datoMovimenti"),
+    termini: t("fc.datoTermini"),
+    prefatture: t("fc.datoPrefatture"),
+    fiscale: t("fc.datoFiscale"),
+    stipendi: t("fc.datoStipendi"),
+    regoleMov: t("fc.datoRegoleMov"),
+    regoleFat: t("fc.datoRegoleFat"),
+    mezzi: t("fc.datoMezzi"),
+    gruppi: t("fc.datoGruppi"),
+    flussi: t("fc.datoFlussi"),
+  };
+  const mancanti = [...nonCaricati, ...(flussiErr ? ["flussi"] : [])];
+  const avvisoLetture =
+    mancanti.length > 0 ? (
+      <div
+        role="alert"
+        className="rounded-xl border-2 border-rose-400 bg-rose-50 px-4 py-3 text-rose-900 shadow-sm dark:border-rose-700 dark:bg-rose-950/50 dark:text-rose-100"
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          <span className="text-sm font-bold uppercase tracking-wide">
+            {t("fc.nonCaricatiTitolo")}
+          </span>
+          <button
+            type="button"
+            onClick={riprovaLetture}
+            disabled={rileggendo}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-rose-500 bg-white px-3 py-1 text-[13px] font-semibold text-rose-800 hover:bg-rose-100 disabled:opacity-60 dark:bg-rose-900 dark:text-rose-50"
+          >
+            {rileggendo && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {t(rileggendo ? "fc.rileggendo" : "fc.riprova")}
+          </button>
+        </div>
+        <p className="mt-1.5 text-[13px]">
+          {t("fc.nonCaricatiElenco")} <b>{mancanti.map((n) => NOMI_DATI[n] ?? n).join(", ")}</b>.{" "}
+          {t("fc.nonCaricatiTesto")}
+        </p>
+      </div>
+    ) : null;
+
   const switchVista = (
     <div className="flex rounded-lg border border-border overflow-hidden text-[12px]">
       {(["classica", "proprieta"] as const).map((v) => (
@@ -2013,6 +2109,7 @@ export function FlussiCassaTab() {
           {switchVista}
         </div>
         <CassaProprietaView
+          avviso={avvisoLetture}
           attive={attive}
           passive={passive}
           esclusioni={esclusioni}
@@ -2043,6 +2140,7 @@ export function FlussiCassaTab() {
 
   return (
     <div className="space-y-4">
+      {avvisoLetture}
       <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
         <div className="mb-1 flex flex-wrap items-center gap-3">
           <span className="text-sm font-semibold text-foreground">{t("fc.titolo")}</span>

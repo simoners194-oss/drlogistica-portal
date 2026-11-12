@@ -1041,8 +1041,35 @@ const en = {
   "cpr.accordo": "agreement",
   "cpr.accordoTutto": "all",
   "cpr.accordoTip":
-    "Agreement with the customer: type what really comes in (a down payment, the monthly instalment). Only that counts among the incoming; the rest of their expected invoices goes to standby by itself. 0 = nothing for now. Empty = everything. It applies every month until removed.",
-  "cpr.daAccordoTip": "On standby because of the agreement: the part the agreement does not cover",
+    "Agreement with the customer: type what really comes in (a down payment, the monthly instalment). Only that counts among the incoming; the rest of their expected invoices goes by itself to Standby, that is what we will collect later (not to Standby 2). 0 = nothing for now. Empty = everything. It applies every month until removed.",
+  "cpr.daAccordoTip":
+    "On Standby because of the agreement: the part that does not come in now and will be collected later",
+  "cpr.compAccordoTip":
+    "Offset of a customer with an agreement: the amount typed in Coming in is already net, so it is not taken off the incoming a second time. It sits in Standby, with the rest still to collect.",
+  "cpr.eStandby": "Standby · to collect later",
+  "cpr.eStandby2": "Standby 2 · will not be collected",
+  "cpr.vStandby2Entrate": "Standby 2 incoming",
+  "cpr.errLetturaTitolo": "Cash sheet not loaded",
+  "cpr.errLetturaTesto":
+    "The portal could not read the saved cash sheet. Nothing was deleted: the data is there, the read failed (usually too many requests to Microsoft 365 at once). Wait a minute and press Retry.",
+  "fc.nonCaricatiTitolo": "Data not loaded",
+  "fc.nonCaricatiElenco": "The portal could not read:",
+  "fc.nonCaricatiTesto":
+    "What you see below is incomplete. Nothing was deleted: the data is there, the read failed (usually too many requests to Microsoft 365 at once). The portal retries by itself shortly; otherwise press Retry.",
+  "fc.riprova": "Retry",
+  "fc.rileggendo": "Reading again…",
+  "fc.datoAttive": "issued invoices",
+  "fc.datoPassive": "received invoices",
+  "fc.datoMovimenti": "bank movements",
+  "fc.datoTermini": "payment rules",
+  "fc.datoPrefatture": "pro-forma invoices",
+  "fc.datoFiscale": "tax schedule",
+  "fc.datoStipendi": "salaries",
+  "fc.datoRegoleMov": "movement rules",
+  "fc.datoRegoleFat": "invoice rules",
+  "fc.datoMezzi": "vehicles",
+  "fc.datoGruppi": "customer groups",
+  "fc.datoFlussi": "cash-flow items and fixed costs",
   "cpr.pagateBanca": "Already paid in bank, off the outgoing:",
   "cpr.pagateBancaNoTip": "It was not this payment: put the invoice back among the outgoing",
   "cpr.pagateBancaNota":
@@ -1115,7 +1142,8 @@ const en = {
   "cpr.colStandby2": "Standby 2",
   "cpr.lblStandby2": "extended standby",
   "cpr.lblEntrateStandby": "receipts on standby",
-  "cpr.parcheggiaEntrata": "Put on standby: stays on the sheet but does not count as incoming",
+  "cpr.parcheggiaEntrata":
+    "Put on Standby 2 (will not be collected): stays on the sheet but does not count as incoming",
   "cpr.riattivaEntrata": "Back among the incoming",
   "cpr.rinomina": "click the name to rename",
   "cpr.addebitati":
@@ -3244,8 +3272,35 @@ const it: Record<DictKey, string> = {
   "cpr.accordo": "accordo",
   "cpr.accordoTutto": "tutto",
   "cpr.accordoTip":
-    "Accordo col cliente: scrivi quanto entra davvero (un acconto, la rata del mese). Tra gli entranti conta solo quello; il resto delle sue fatture attese va in standby da solo. 0 = non entra nulla per ora. Vuoto = entra tutto. Vale ogni mese, finché non lo togli.",
-  "cpr.daAccordoTip": "In standby per l'accordo: è la parte che l'accordo non copre",
+    "Accordo col cliente: scrivi quanto entra davvero (un acconto, la rata del mese). Tra gli entranti conta solo quello; il resto delle sue fatture attese va da solo nello Standby, cioè tra quello che incasseremo più avanti (non nello Standby 2). 0 = non entra nulla per ora. Vuoto = entra tutto. Vale ogni mese, finché non lo togli.",
+  "cpr.daAccordoTip":
+    "In Standby per l'accordo: è la parte che non entra adesso e che incasseremo più avanti",
+  "cpr.compAccordoTip":
+    "Compensazione di un cliente con l'accordo: l'importo scritto in Entra ora è già al netto, quindi non si toglie un'altra volta dagli entranti. Sta nello Standby, col resto ancora da incassare.",
+  "cpr.eStandby": "Standby · da incassare più avanti",
+  "cpr.eStandby2": "Standby 2 · non li incasseremo",
+  "cpr.vStandby2Entrate": "Standby 2 entrate",
+  "cpr.errLetturaTitolo": "Foglio della cassa non caricato",
+  "cpr.errLetturaTesto":
+    "Il portale non è riuscito a leggere il foglio salvato della Cassa. Non è stato cancellato nulla: i dati ci sono, è la lettura che è fallita (di solito troppe richieste insieme a Microsoft 365). Aspetta un minuto e premi Riprova.",
+  "fc.nonCaricatiTitolo": "Dati non caricati",
+  "fc.nonCaricatiElenco": "Il portale non è riuscito a leggere:",
+  "fc.nonCaricatiTesto":
+    "Quello che vedi qui sotto è incompleto. Non è stato cancellato nulla: i dati ci sono, è la lettura che è fallita (di solito troppe richieste insieme a Microsoft 365). Il portale riprova da solo tra poco; altrimenti premi Riprova.",
+  "fc.riprova": "Riprova",
+  "fc.rileggendo": "Sto rileggendo…",
+  "fc.datoAttive": "fatture emesse",
+  "fc.datoPassive": "fatture ricevute",
+  "fc.datoMovimenti": "movimenti di banca",
+  "fc.datoTermini": "regole di pagamento",
+  "fc.datoPrefatture": "prefatture",
+  "fc.datoFiscale": "scadenziario fiscale",
+  "fc.datoStipendi": "stipendi",
+  "fc.datoRegoleMov": "regole dei movimenti",
+  "fc.datoRegoleFat": "regole delle fatture",
+  "fc.datoMezzi": "mezzi",
+  "fc.datoGruppi": "gruppi di clienti",
+  "fc.datoFlussi": "voci dei flussi e costi fissi",
   "cpr.pagateBanca": "Già pagate in banca, fuori dalle uscite:",
   "cpr.pagateBancaNoTip": "Non era questo pagamento: rimetti la fattura tra le uscite",
   "cpr.pagateBancaNota":
@@ -3319,7 +3374,8 @@ const it: Record<DictKey, string> = {
   "cpr.colStandby2": "Standby 2",
   "cpr.lblStandby2": "standby prolungato",
   "cpr.lblEntrateStandby": "entrate in standby",
-  "cpr.parcheggiaEntrata": "Metti in standby: resta nel foglio ma non conta tra le entranti",
+  "cpr.parcheggiaEntrata":
+    "Metti in Standby 2 (non lo incasseremo): resta nel foglio ma non conta tra le entranti",
   "cpr.riattivaEntrata": "Rimetti tra le entranti",
   "cpr.rinomina": "clic sul nome per rinominare",
   "cpr.addebitati":

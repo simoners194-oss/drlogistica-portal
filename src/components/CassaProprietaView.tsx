@@ -77,7 +77,6 @@ import {
   calendarioEntrate,
   costruisciCassa,
   creaFotografia,
-  emptyCassaDb,
   etichettaProssimi,
   etichettaProssimiBreve,
   limiteDefault,
@@ -129,7 +128,8 @@ interface Cella {
   secchio: SecchioCassa;
   entrata: boolean;
   attesa: boolean;
-  /** Entrata attesa messa in standby (blocco "Standby" delle entrate). */
+  /** Entrata attesa messa in standby: a mano = blocco "Standby 2" (non la
+   *  incasseremo); dall'accordo (`daAccordo`) = blocco "Standby". */
   parcheggiata: boolean;
   /** Entrata attesa da sollecitare (blocco "Da sollecitare"). */
   daSollecitare: boolean;
@@ -305,7 +305,9 @@ function slotsEntrate(
         out.push({ kind: "riga", c: figli[0] });
         continue;
       }
-      const primo = figli[0];
+      // La riga del cliente prende l'aspetto di una sua fattura, non della
+      // compensazione: così resta la casella "Entra ora" anche nello Standby.
+      const primo = figli.find((c) => c.tipo !== "compensazione") ?? figli[0];
       const importo = Math.round(figli.reduce((s, c) => s + c.importo, 0) * 100) / 100;
       const padre: Cella = {
         ...primo,
@@ -331,6 +333,7 @@ function slotsEntrate(
   const ent = blocco("entranti");
   const sol = blocco("sollecitare");
   const stb = blocco("standby");
+  const stb2 = blocco("standby2");
   const blocchi: { id: BloccoEntrate; label: string; celle: Cella[]; slots: () => SlotE[] }[] = [
     {
       id: "gia",
@@ -345,7 +348,16 @@ function slotsEntrate(
       celle: sol,
       slots: () => conPadri(sol, "sol"),
     },
-    { id: "standby", label: t("cpr.colStandby"), celle: stb, slots: () => conPadri(stb, "stb") },
+    // Due standby, come per le uscite (Simone 12/11/2026): "Standby" è il
+    // resto degli accordi, quello che incasseremo più avanti; "Standby 2"
+    // sono le attese messe da parte a mano, quelle che non incasseremo.
+    { id: "standby", label: t("cpr.eStandby"), celle: stb, slots: () => conPadri(stb, "stb") },
+    {
+      id: "standby2",
+      label: t("cpr.eStandby2"),
+      celle: stb2,
+      slots: () => conPadri(stb2, "stb2"),
+    },
   ];
   // Ogni testata porta la somma delle SUE voci (così i numeri tornano a
   // colpo d'occhio); i blocchi senza voci non compaiono.
@@ -429,6 +441,7 @@ function daFoto(r: FotografiaCassa["righe"][number]): Cella {
     entrata: r.e,
     attesa: Boolean(r.si) || Boolean(r.sp),
     parcheggiata: Boolean(r.sp),
+    daAccordo: r.sa ? true : undefined,
     daSollecitare: Boolean(r.sr),
     nota: r.n ?? "",
     data: r.s,
@@ -452,7 +465,11 @@ export function CassaProprietaView({
   onApriFornitore,
   mezzi,
   gruppi,
+  avviso,
 }: {
+  /** Avviso da mostrare in testa (dati non caricati): sta dentro la vista
+   *  perché si veda anche nella modalità TV. */
+  avviso?: ReactNode;
   attive: readonly FatturaConStato[];
   passive: readonly FatturaConStato[];
   esclusioni: readonly { nome: string; mese?: string; meseFine?: string }[];
@@ -542,31 +559,42 @@ export function CassaProprietaView({
   const [gruppoAperto, setGruppoAperto] = useState<Cella | null>(null);
   const [fiscaleAperto, setFiscaleAperto] = useState<Cella | null>(null);
 
-  useEffect(() => {
+  // LETTURA FALLITA (1.115.0, incidente del 12/11/2026: Microsoft 365 ha
+  // rifiutato le letture per qualche minuto e il foglio è uscito vuoto, col
+  // saldo a zero, senza dire niente). Se il foglio salvato non si legge NON
+  // si parte da un foglio vuoto (sembrava "sparito tutto"): resta l'avviso
+  // col pulsante per riprovare. Il saldo non letto si scrive in rosso.
+  const [dbErr, setDbErr] = useState<string | null>(null);
+  const caricaDb = () => {
+    setDbErr(null);
     spCassaGet()
       .then((d) => {
         setDb(d);
         setLimite(limiteDefault(oggiISO(), d.giornoLimite));
       })
-      .catch((e) => {
-        setDb(emptyCassaDb());
-        setLimite(limiteDefault(oggiISO(), 5));
-        toast.error(t("common.error"), { description: e instanceof Error ? e.message : String(e) });
-      });
-    spStipendiGet()
-      .then((d) => setStipendiDb(d))
-      .catch(() => setStipendiDb(null));
-    // Saldo dalla cache del server (una riga SharePoint, niente banca e
-    // niente rilettura dei movimenti): arriva subito.
+      .catch((e) => setDbErr(e instanceof Error ? e.message : String(e)));
+  };
+  // Saldo dalla cache del server (una riga SharePoint, niente banca e
+  // niente rilettura dei movimenti): arriva subito.
+  const caricaSaldo = () => {
     spEbSaldoCache()
       .then((s) => {
         if (s) {
           saldoMemo = { saldo: s.saldo, al: s.aggiornatoAl };
           setSaldoBanca(saldoMemo);
+          setSaldoErr(false);
         } else setSaldoErr(true);
       })
       .catch(() => setSaldoErr(true));
-  }, [t]);
+  };
+  useEffect(() => {
+    caricaDb();
+    spStipendiGet()
+      .then((d) => setStipendiDb(d))
+      .catch(() => setStipendiDb(null));
+    caricaSaldo();
+    // Una volta sola, all'apertura.
+  }, []);
 
   // Saldo: scritto a mano (vince), altrimenti dalla banca, altrimenti
   // l'ultimo scritto a mano e salvato.
@@ -817,8 +845,31 @@ export function CassaProprietaView({
 
   if (!db || !esito) {
     return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> {t("common.loading")}
+      <div className="space-y-4">
+        {avviso}
+        {dbErr ? (
+          <div
+            role="alert"
+            className="rounded-xl border-2 border-rose-400 bg-rose-50 px-4 py-3 text-rose-900 shadow-sm dark:border-rose-700 dark:bg-rose-950/50 dark:text-rose-100"
+          >
+            <div className="text-sm font-bold uppercase tracking-wide">
+              {t("cpr.errLetturaTitolo")}
+            </div>
+            <p className="mt-1.5 text-[13px]">{t("cpr.errLetturaTesto")}</p>
+            <p className="mt-1 text-[11px] opacity-70">{dbErr}</p>
+            <button
+              type="button"
+              onClick={caricaDb}
+              className="mt-2 rounded-lg border border-rose-500 bg-white px-3 py-1 text-[13px] font-semibold text-rose-800 hover:bg-rose-100 dark:bg-rose-900 dark:text-rose-50"
+            >
+              {t("fc.riprova")}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> {t("common.loading")}
+          </div>
+        )}
       </div>
     );
   }
@@ -906,7 +957,8 @@ export function CassaProprietaView({
     riga(`= ${t("cpr.colReale")}`, totali.reale);
     riga(`- ${t("cpr.vStandbyUscite")}`, totali.usciteStandby);
     riga(`= ${t("cpr.rCassa")}`, totali.cassaConStandby);
-    riga(`${t("cpr.rFuori")}: ${t("cpr.vStandbyEntrate")}`, totali.entrateParcheggiate);
+    riga(`${t("cpr.rFuori")}: ${t("cpr.vStandbyEntrate")}`, totali.entrateFuture);
+    riga(`${t("cpr.rFuori")}: ${t("cpr.vStandby2Entrate")}`, totali.entrateParcheggiate);
     riga(`${t("cpr.rFuori")}: ${t("cpr.vStandby2Uscite")}`, totali.usciteStandby2);
     return out;
   };
@@ -932,6 +984,9 @@ export function CassaProprietaView({
       className={tv ? "fixed inset-0 z-40 space-y-4 overflow-auto bg-background p-4" : "space-y-4"}
       style={tv && zoomTv !== 1 ? { zoom: zoomTv } : undefined}
     >
+      {/* Dati non caricati: l'avviso sta QUI dentro, così si vede anche
+          nella vista TV, che copre il resto della pagina. */}
+      {avviso}
       {/* Banda in alto: saldo grande, i tre numeri del foglio, data e limite */}
       <div className="rounded-2xl border border-border bg-card px-5 py-4 shadow-[var(--shadow-card)]">
         <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
@@ -957,7 +1012,20 @@ export function CassaProprietaView({
                 <span className="text-xl font-semibold text-muted-foreground">€</span>
               </div>
             )}
-            <div className="mt-1 text-[11px] text-muted-foreground">{saldoNota}</div>
+            <div
+              className={`mt-1 text-[11px] ${saldoErr && !saldoBanca && !foto ? "font-semibold text-rose-600 dark:text-rose-400" : "text-muted-foreground"}`}
+            >
+              {saldoNota}
+              {saldoErr && !saldoBanca && !foto && (
+                <button
+                  type="button"
+                  onClick={caricaSaldo}
+                  className="ml-2 underline underline-offset-2 hover:opacity-80"
+                >
+                  {t("fc.riprova")}
+                </button>
+              )}
+            </div>
           </div>
           <RiepilogoCassa
             t={t}
@@ -1530,7 +1598,8 @@ export function RiepilogoCassa({
 /** Quello che NON entra nel conto, detto una volta sola sotto la banda. */
 export function FuoriConti({ t, totali }: { t: TFn; totali: TotaliCassa }) {
   const voci: [string, number | undefined][] = [
-    [t("cpr.vStandbyEntrate"), totali.entrateParcheggiate],
+    [t("cpr.vStandbyEntrate"), totali.entrateFuture],
+    [t("cpr.vStandby2Entrate"), totali.entrateParcheggiate],
     [t("cpr.vStandby2Uscite"), totali.usciteStandby2],
     [t("cpr.rGiaEntrate"), totali.entrateRicevute],
   ];
@@ -1569,6 +1638,7 @@ const TESTA_ENTRATE: Record<BloccoEntrate, string> = {
   entranti: "bg-emerald-100/80 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
   sollecitare: "bg-amber-100/90 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
   standby: "bg-slate-200/80 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200",
+  standby2: "bg-slate-300/80 text-slate-800 dark:bg-slate-600/70 dark:text-slate-100",
 };
 const TESTA_USCITE: Record<SecchioCassa, string> = {
   ora: "bg-rose-100/90 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
@@ -1582,6 +1652,7 @@ const TUTTI_I_BLOCCHI = [
   "e:entranti",
   "e:sollecitare",
   "e:standby",
+  "e:standby2",
   "u:ora",
   "u:prossimi",
   "u:standby",
@@ -1595,6 +1666,7 @@ const LARGHEZZA_TV = 1400;
 const ZOOM_MINIMO = 0.75;
 /** Dove il browser ricorda i blocchi richiusi (preferenza di chi guarda). */
 const CHIAVE_BLOCCHI = "dr.cassa.blocchiChiusi";
+const CHIAVE_BLOCCHI_V = "dr.cassa.blocchiChiusi.v";
 
 // --- il foglio ---------------------------------------------------------------
 // Tinte delle colonne (chiare in body, piene in testa): entrate verde,
@@ -1636,6 +1708,11 @@ const PILL_STIMA = "bg-amber-500 text-white";
 const PILL_AUTO =
   "border border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300";
 const eManuale = (c: Cella) => c.tipo === "manuale" || c.tipo === "amex";
+/** Tinta di una riga delle entrate: verde; ardesia per lo Standby (il resto
+ *  degli accordi, lo incasseremo più avanti); ardesia più scura per lo
+ *  Standby 2 (messe da parte a mano, non le incasseremo). */
+const tintaEntrata = (e?: Cella) =>
+  !e?.parcheggiata ? TINTA.entrate.col : e.daAccordo ? TINTA.standby.col : TINTA.standby2.col;
 const cel = "border-b border-r border-border/60 px-3 py-1.5 align-middle last:border-r-0";
 const celN = `${cel} text-right tabular-nums whitespace-nowrap text-[13.5px]`;
 const celH = "px-3 py-2 text-left text-[12px] font-semibold uppercase tracking-wide";
@@ -1732,7 +1809,17 @@ export function Foglio({
   useEffect(() => {
     try {
       const v: unknown = JSON.parse(window.localStorage.getItem(CHIAVE_BLOCCHI) ?? "[]");
-      if (Array.isArray(v)) setChiusi(new Set(v.filter((x): x is string => typeof x === "string")));
+      if (Array.isArray(v)) {
+        let lista = v.filter((x): x is string => typeof x === "string");
+        // 1.115.0: lo standby delle entrate di prima ora si chiama Standby 2.
+        // Chi lo teneva chiuso lo ritrova chiuso (una volta sola).
+        if (window.localStorage.getItem(CHIAVE_BLOCCHI_V) !== "2") {
+          lista = lista.map((x) => (x === "e:standby" ? "e:standby2" : x));
+          window.localStorage.setItem(CHIAVE_BLOCCHI, JSON.stringify(lista));
+          window.localStorage.setItem(CHIAVE_BLOCCHI_V, "2");
+        }
+        setChiusi(new Set(lista));
+      }
     } catch {
       // preferenza illeggibile: tutto aperto
     }
@@ -2021,7 +2108,7 @@ export function Foglio({
                   ) : (
                     <>
                       <td
-                        className={`${celN} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.parcheggiata ? "italic text-slate-500 line-through decoration-slate-400" : e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
+                        className={`${celN} ${tintaEntrata(e)} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.parcheggiata && !e.daAccordo ? "italic text-slate-500 line-through decoration-slate-400" : e?.parcheggiata ? "italic text-slate-600 dark:text-slate-300" : e?.attesa ? "italic text-muted-foreground" : `${TINTA.entrate.num} font-medium`}`}
                       >
                         {e && (
                           <span
@@ -2038,9 +2125,7 @@ export function Foglio({
                         )}
                       </td>
                       {/* "Entra ora": l'accordo sugli entranti, per cliente */}
-                      <td
-                        className={`${celN} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} px-1.5 py-1`}
-                      >
+                      <td className={`${celN} ${tintaEntrata(e)} px-1.5 py-1`}>
                         {e &&
                           !figlio &&
                           e.tipo === "attiva" &&
@@ -2056,7 +2141,7 @@ export function Foglio({
                           )}
                       </td>
                       <td
-                        className={`${cel} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
+                        className={`${cel} ${tintaEntrata(e)} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
                       >
                         {e && (
                           <span className={`flex items-center gap-1.5 ${figlio ? "pl-5" : ""}`}>
@@ -2116,7 +2201,13 @@ export function Foglio({
                             {(e.accordo || e.daAccordo) && (
                               <span
                                 className={`inline-flex shrink-0 items-center rounded px-1 text-[9px] font-bold uppercase ${e.accordo ? "bg-sky-600 text-white" : "border border-sky-500 text-sky-700 dark:text-sky-300"}`}
-                                title={e.accordo ? e.dettaglio : t("cpr.daAccordoTip")}
+                                title={
+                                  e.accordo
+                                    ? e.dettaglio
+                                    : e.tipo === "compensazione"
+                                      ? t("cpr.compAccordoTip")
+                                      : t("cpr.daAccordoTip")
+                                }
                               >
                                 {t("cpr.accordo")}
                               </span>
@@ -2136,7 +2227,7 @@ export function Foglio({
                             {!padre && e.attesa && !e.parcheggiata && !readOnly && (
                               <ToggleSollecito c={e} onSollecita={onSollecita} t={t} />
                             )}
-                            {!padre && e.attesa && !e.accordo && !e.daAccordo && !readOnly && (
+                            {!padre && e.attesa && !e.accordo && !readOnly && (
                               <ToggleStandby c={e} onParcheggia={onParcheggia} t={t} />
                             )}
                             {!padre && !e.accordo && !readOnly && (
@@ -2562,6 +2653,7 @@ function BarraFiltri({
             <option value="entranti">{t("cpr.entranti")}</option>
             <option value="sollecitare">{t("cpr.daSollecitare")}</option>
             <option value="standby">{t("cpr.colStandby")}</option>
+            <option value="standby2">{t("cpr.colStandby2")}</option>
           </select>
         </div>
         {/* Uscite */}
@@ -2723,6 +2815,7 @@ const PUNTO_SEZIONE: Record<SezioneCassaId, string> = {
   entrati: "bg-emerald-700",
   entranti: "bg-emerald-500",
   standby_entrate: "bg-slate-400",
+  standby2_entrate: "bg-slate-600",
   standby_uscite: "bg-slate-500",
   standby2_uscite: "bg-slate-700",
 };
@@ -2755,6 +2848,7 @@ function MenuVoci({
     entrati: t("cpr.vEntrati"),
     entranti: t("cpr.entranti"),
     standby_entrate: t("cpr.vStandbyEntrate"),
+    standby2_entrate: t("cpr.vStandby2Entrate"),
     standby_uscite: t("cpr.vStandbyUscite"),
     standby2_uscite: t("cpr.vStandby2Uscite"),
   };
@@ -3248,7 +3342,9 @@ function ToggleSollecito({
   );
 }
 
-/** Entrata attesa: in standby (non conta) o di nuovo tra le entranti. */
+/** Entrata attesa: in "Standby 2" (messa da parte a mano: non la
+ *  incasseremo, non conta) o di nuovo tra le entranti. Sulle righe dello
+ *  Standby (il resto di un accordo) il pulsante manda nello Standby 2. */
 function ToggleStandby({
   c,
   onParcheggia,
@@ -3258,14 +3354,15 @@ function ToggleStandby({
   onParcheggia: (c: Cella, on: boolean) => void;
   t: TFn;
 }) {
+  const inStandby2 = c.parcheggiata && !c.daAccordo;
   return (
     <button
       type="button"
-      onClick={() => onParcheggia(c, !c.parcheggiata)}
-      title={c.parcheggiata ? t("cpr.riattivaEntrata") : t("cpr.parcheggiaEntrata")}
-      className={`shrink-0 rounded border px-1.5 text-[9px] font-bold uppercase ${c.parcheggiata ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300" : "border-slate-400 bg-slate-500/10 text-slate-700 hover:bg-slate-500/20 dark:text-slate-200"}`}
+      onClick={() => onParcheggia(c, !inStandby2)}
+      title={inStandby2 ? t("cpr.riattivaEntrata") : t("cpr.parcheggiaEntrata")}
+      className={`shrink-0 rounded border px-1.5 text-[9px] font-bold uppercase ${inStandby2 ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300" : "border-slate-400 bg-slate-500/10 text-slate-700 hover:bg-slate-500/20 dark:text-slate-200"}`}
     >
-      {c.parcheggiata ? `↩ ${t("cpr.entranti")}` : `⏸ ${t("cpr.colStandby")}`}
+      {inStandby2 ? `↩ ${t("cpr.entranti")}` : `⏸ ${t("cpr.colStandby2")}`}
     </button>
   );
 }

@@ -7,7 +7,10 @@
 // Logica pura (niente React): la vista la usa su entrate e uscite.
 import type { PrioritaCassa, SecchioCassa } from "./cassa-logic";
 
-export type BloccoEntrate = "gia" | "entranti" | "sollecitare" | "standby";
+/** I blocchi delle entrate. Dalla 1.115.0 (Simone 12/11/2026) gli standby
+ *  sono due, come per le uscite: "standby" = lo incasseremo più avanti (il
+ *  resto degli accordi), "standby2" = non lo incasseremo (messo a mano). */
+export type BloccoEntrate = "gia" | "entranti" | "sollecitare" | "standby" | "standby2";
 
 export interface FiltriFoglio {
   /** Entrate: testo cercato (cliente, fattura, importo, nota). */
@@ -51,6 +54,8 @@ export interface VoceFiltrabile {
   attesa: boolean;
   parcheggiata: boolean;
   daSollecitare: boolean;
+  /** In standby per l'accordo: la incasseremo più avanti (blocco "Standby"). */
+  daAccordo?: boolean;
   priorita?: PrioritaCassa;
   tipologia?: string;
   cliente?: string;
@@ -93,9 +98,10 @@ export function bloccoEntrata(c: {
   attesa: boolean;
   parcheggiata: boolean;
   daSollecitare: boolean;
+  daAccordo?: boolean;
 }): BloccoEntrate {
   if (!c.attesa) return "gia";
-  if (c.parcheggiata) return "standby";
+  if (c.parcheggiata) return c.daAccordo ? "standby" : "standby2";
   return c.daSollecitare ? "sollecitare" : "entranti";
 }
 

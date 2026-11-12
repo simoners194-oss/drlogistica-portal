@@ -36,6 +36,33 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.115.0",
+    date: "2026-11-12",
+    entries: [
+      {
+        title: "Cassa proprietà: due standby anche per le entrate",
+        description:
+          'Lo standby delle entrate che c\'era diventa "Standby 2": quello che non incasseremo. Sopra nasce il nuovo "Standby": quello che incasseremo più avanti. Il resto degli accordi della colonna "Entra ora" va nel nuovo Standby. Esempio: Posta Doc deve 500.000 e ne dà 20.000 al mese: 20.000 negli entranti, 480.000 nello Standby, non più insieme agli importi persi.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: 'Cassa proprietà: "Entra ora" è già al netto delle compensazioni',
+        description:
+          'Quando un cliente ha un importo in "Entra ora", la sua compensazione non si toglie più una seconda volta dagli entranti: va nello Standby insieme al resto, dove si legge il netto ancora da incassare. Tra gli entranti resta esattamente l\'importo scritto.',
+        tag: "fix",
+        audience: "direzione",
+      },
+      {
+        title: "Flussi e Cassa: avviso rosso quando i dati non si caricano",
+        description:
+          'Se il portale non riesce a leggere fatture, movimenti o altri dati, non mostra più un foglio vuoto in silenzio: compare un avviso rosso che dice cosa manca e che non è stato cancellato nulla, col pulsante "Riprova". Il portale riprova anche da solo, e una rilettura fallita non toglie quello che era già a schermo.',
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.114.1",
     date: "2026-11-12",
     entries: [

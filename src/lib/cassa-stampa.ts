@@ -4,6 +4,8 @@
 //   1) uscite imminenti   2) uscite della seconda colonna (1-5 del mese dopo)
 //   3) entrati            4) entranti (dentro anche le "da sollecitare")
 //   5) standby entrate    6) standby uscite    7) standby 2 uscite
+// Dalla 1.115.0 le sezioni sono otto: lo standby delle entrate si è diviso in
+// "Standby entrate" (lo incasseremo più avanti) e "Standby 2 entrate" (no).
 //
 // Logica pura (le sezioni, le righe del CSV, l'HTML della stampa) più una
 // sola funzione che tocca il browser: apriStampa, che apre il documento in
@@ -17,6 +19,7 @@ export type SezioneCassaId =
   | "entrati"
   | "entranti"
   | "standby_entrate"
+  | "standby2_entrate"
   | "standby_uscite"
   | "standby2_uscite";
 
@@ -33,7 +36,7 @@ export interface SezioneCassa<T extends VoceStampa = VoceStampa> {
   totale: number;
 }
 
-/** Le sette sezioni, nell'ordine chiesto, ognuna ordinata per data (poi per
+/** Le otto sezioni, nell'ordine chiesto, ognuna ordinata per data (poi per
  *  importo, dal più grande) e col suo totale. */
 export function sezioniCassa<T extends VoceStampa>(
   entrate: readonly T[],
@@ -59,6 +62,7 @@ export function sezioniCassa<T extends VoceStampa>(
     sez("entrati", true, e(["gia"])),
     sez("entranti", true, e(["entranti", "sollecitare"])),
     sez("standby_entrate", true, e(["standby"])),
+    sez("standby2_entrate", true, e(["standby2"])),
     sez("standby_uscite", false, u("standby")),
     sez("standby2_uscite", false, u("standby2")),
   ];
@@ -160,6 +164,7 @@ const COLORE: Record<SezioneCassaId, string> = {
   entrati: "#047857",
   entranti: "#059669",
   standby_entrate: "#64748b",
+  standby2_entrate: "#334155",
   standby_uscite: "#64748b",
   standby2_uscite: "#334155",
 };

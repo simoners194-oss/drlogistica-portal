@@ -137,6 +137,9 @@ export interface RigaFotografia {
   si?: boolean;
   /** Entrata attesa parcheggiata (standby entrate). */
   sp?: boolean;
+  /** Parcheggiata dall'accordo: la incasseremo più avanti (blocco "Standby"
+   *  delle entrate, dalla 1.115.0). Senza, la parcheggiata è "Standby 2". */
+  sa?: boolean;
   /** Entrata attesa da sollecitare. */
   sr?: boolean;
   /** Documenti raggruppati nella riga. */
@@ -154,8 +157,13 @@ export interface TotaliCassa {
   /** B55 "standby incasso": entrate attese, non ancora in banca (senza le
    *  parcheggiate), al lordo degli acconti. */
   entrateStandby: number;
-  /** Entrate attese messe in standby (parcheggiate): fuori da tutto. */
+  /** "Standby 2" delle entrate: attese messe in standby a mano, quelle che
+   *  non incasseremo. Fuori da tutto. */
   entrateParcheggiate: number;
+  /** "Standby" delle entrate (1.115.0, Simone 12/11/2026): il resto degli
+   *  accordi, cioè quello che incasseremo più avanti. Fuori dal conto del
+   *  mese. Nelle fotografie più vecchie manca. */
+  entrateFuture: number;
   /** Entrate attese da sollecitare: dentro entrateStandby, mostrate a parte. */
   entrateDaSollecitare: number;
   /** Acconti già arrivati in banca sugli entranti del mese (scritti a mano
@@ -260,7 +268,9 @@ export interface RigaCassa {
   secchioAuto: SecchioCassa | "oltre";
   /** Entrata attesa (non in banca): conta in "standby incasso". */
   standbyIncasso: boolean;
-  /** Entrata attesa parcheggiata (blocco "Standby" delle entrate): non conta. */
+  /** Entrata attesa parcheggiata: non conta tra gli entranti. Messa a mano
+   *  sta nel blocco "Standby 2" (non la incasseremo); messa dall'accordo
+   *  (`daAccordo`) sta nel blocco "Standby" (la incasseremo più avanti). */
   parcheggiata: boolean;
   /** Entrata attesa da sollecitare (blocco "Da sollecitare"): conta come entrante. */
   daSollecitare: boolean;
@@ -303,13 +313,41 @@ export interface RigaCassa {
    *  avrebbe dovuto entrare (il resto è in standby). */
   accordo?: { totale: number };
   /** Fattura attesa messa in standby DALL'ACCORDO (non a mano), col residuo
-   *  che l'accordo non copre. */
+   *  che l'accordo non copre: è quello che incasseremo più avanti, e sta nel
+   *  blocco "Standby" delle entrate, separato dallo "Standby 2". */
   daAccordo?: boolean;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 export const chiaveCliente = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+const FORME_SOCIETARIE = new Set([
+  "srl",
+  "srls",
+  "spa",
+  "snc",
+  "sas",
+  "sa",
+  "scarl",
+  "scpa",
+  "unipersonale",
+]);
+/** Il nome ridotto all'osso, per riconoscere la stessa società scritta in
+ *  due modi tra fatture emesse e ricevute ("NUMBER1 LOGISTICS GROUP SPA" e
+ *  "Number 1 Logistics Group S.p.A."): senza accenti, punti, forma
+ *  societaria e spazi. Due società diverse restano diverse ("Univex" non è
+ *  "Univex Freight"). */
+export const nomeStretto = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\./g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\bitaly\b/g, "italia")
+    .split(" ")
+    .filter((w) => w && !FORME_SOCIETARIE.has(w))
+    .join("");
 
 export function fineMese(iso: string): string {
   const [y, m] = iso.slice(0, 7).split("-").map(Number);
@@ -1343,6 +1381,9 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   // vecchie: quelle coperte per intero spariscono, sono dentro la riga
   // dell'accordo). Le fatture già messe in standby a mano non c'entrano.
   // Se l'accordo copre tutto, non cambia nulla.
+  // Dalla 1.115.0 il resto NON finisce con le parcheggiate a mano: quelle
+  // sono lo "Standby 2" (non le incasseremo), il resto degli accordi è lo
+  // "Standby" (lo incasseremo più avanti). Le distingue `daAccordo`.
   const soldi = (n: number) =>
     n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   for (const [k, valore] of Object.entries(db.accordi ?? {})) {
@@ -1362,6 +1403,27 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       }
       r.importo = r2(r.importo - resto);
       resto = 0;
+      r.standbyIncasso = false;
+      r.parcheggiata = true;
+      r.daSollecitare = false;
+      r.daAccordo = true;
+    }
+    // "ENTRA ORA" È GIÀ AL NETTO DELLE COMPENSAZIONI (Simone 12/11/2026: "su
+    // entranti lo metto già al netto della compensazione"). La compensazione
+    // di questo cliente (stessa società, o stesso gruppo con "Entrate per
+    // gruppo") non si toglie un'altra volta dagli entranti: segue il resto
+    // nello Standby, dove si legge il netto ancora da incassare. Quelle già
+    // messe da parte a mano restano dove sono.
+    const stretti = new Set(
+      attese.flatMap((r) => r.membriClienti ?? [r.controparte]).map(nomeStretto),
+    );
+    for (const r of righe) {
+      if (r.tipo !== "compensazione" || !r.standbyIncasso) continue;
+      const grp = grpDi(r.controparte);
+      const stessa =
+        stretti.has(nomeStretto(r.controparte)) ||
+        (grp ? `g:${chiaveCliente(grp.nome)}` === k : false);
+      if (!stessa) continue;
       r.standbyIncasso = false;
       r.parcheggiata = true;
       r.daSollecitare = false;
@@ -1401,7 +1463,15 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   // prescindere dalla colonna (così una riga spostata non cambia posto).
   // Le compensazioni stanno in coda agli entranti (prima delle parcheggiate).
   const tipoOrd = (r: RigaCassa) =>
-    r.tipo === "incasso" ? 0 : r.parcheggiata ? 3 : r.tipo === "compensazione" ? 2 : 1;
+    r.tipo === "incasso"
+      ? 0
+      : r.daAccordo
+        ? 3
+        : r.parcheggiata
+          ? 4
+          : r.tipo === "compensazione"
+            ? 2
+            : 1;
   // Le tre righe fiscali (Fiscale, IVA, Banca) stanno vicine, alla data della
   // prima scadenza fiscale e in quest'ordine, anche se in colonne diverse
   // (Simone 03/11/2026: "avvicina IVA, Fiscale e Banca").
@@ -1434,7 +1504,8 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   const uscite = righe.filter((r) => !r.entrata);
   const entrateRicevute = somma(entrate.filter((r) => !r.standbyIncasso && !r.parcheggiata));
   const entrateStandby = somma(entrate.filter((r) => r.standbyIncasso));
-  const entrateParcheggiate = somma(entrate.filter((r) => r.parcheggiata));
+  const entrateParcheggiate = somma(entrate.filter((r) => r.parcheggiata && !r.daAccordo));
+  const entrateFuture = somma(entrate.filter((r) => r.parcheggiata && r.daAccordo));
   const entrateDaSollecitare = somma(entrate.filter((r) => r.daSollecitare));
   const acconti = r2(Math.max(0, db.acconti?.[meseCorr] ?? 0));
   const entrantiNette = r2(entrateStandby - acconti);
@@ -1453,6 +1524,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     entrateRicevute,
     entrateStandby,
     entrateParcheggiate,
+    entrateFuture,
     entrateDaSollecitare,
     acconti,
     entrantiNette,
@@ -1504,6 +1576,7 @@ export function creaFotografia(
       n: r.nota || undefined,
       si: r.standbyIncasso || undefined,
       sp: r.parcheggiata || undefined,
+      sa: (r.parcheggiata && r.daAccordo) || undefined,
       sr: r.daSollecitare || undefined,
       nd: r.documenti > 1 ? r.documenti : undefined,
       p: r.priorita,
