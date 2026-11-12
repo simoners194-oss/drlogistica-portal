@@ -1037,6 +1037,12 @@ const en = {
   "cpr.vCsvTip": "Export as CSV (opens in Excel)",
   "cpr.vStampaTip": "Print or save as PDF",
   "cpr.apriVoci": "Open: what it is made of",
+  "cpr.colAccordo": "Coming in",
+  "cpr.accordo": "agreement",
+  "cpr.accordoTutto": "all",
+  "cpr.accordoTip":
+    "Agreement with the customer: type what really comes in (a down payment, the monthly instalment). Only that counts among the incoming; the rest of their expected invoices goes to standby by itself. 0 = nothing for now. Empty = everything. It applies every month until removed.",
+  "cpr.daAccordoTip": "On standby because of the agreement: the part the agreement does not cover",
   "cpr.pagateBanca": "Already paid in bank, off the outgoing:",
   "cpr.pagateBancaNoTip": "It was not this payment: put the invoice back among the outgoing",
   "cpr.pagateBancaNota":
@@ -3234,6 +3240,12 @@ const it: Record<DictKey, string> = {
   "cpr.vCsvTip": "Esporta in CSV (si apre in Excel)",
   "cpr.vStampaTip": "Stampa o salva in PDF",
   "cpr.apriVoci": "Apri: da cosa è composta",
+  "cpr.colAccordo": "Entra ora",
+  "cpr.accordo": "accordo",
+  "cpr.accordoTutto": "tutto",
+  "cpr.accordoTip":
+    "Accordo col cliente: scrivi quanto entra davvero (un acconto, la rata del mese). Tra gli entranti conta solo quello; il resto delle sue fatture attese va in standby da solo. 0 = non entra nulla per ora. Vuoto = entra tutto. Vale ogni mese, finché non lo togli.",
+  "cpr.daAccordoTip": "In standby per l'accordo: è la parte che l'accordo non copre",
   "cpr.pagateBanca": "Già pagate in banca, fuori dalle uscite:",
   "cpr.pagateBancaNoTip": "Non era questo pagamento: rimetti la fattura tra le uscite",
   "cpr.pagateBancaNota":

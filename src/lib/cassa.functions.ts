@@ -118,6 +118,16 @@ function validaDb(input: unknown): CassaDb {
       return Object.keys(out).length ? out : undefined;
     })(),
     unisciClienti: o.unisciClienti ? true : undefined,
+    // Accordi sugli entranti (1.114.0): controparte → importo che entra.
+    accordi: (() => {
+      const out: Record<string, number> = {};
+      for (const [k, v] of Object.entries(o.accordi ?? {}).slice(0, 300)) {
+        const n = Number(v);
+        if (k && k.length <= 200 && Number.isFinite(n) && n >= 0 && n <= 1e10)
+          out[k] = Math.round(n * 100) / 100;
+      }
+      return Object.keys(out).length ? out : undefined;
+    })(),
     saldoManuale:
       o.saldoManuale && Number.isFinite(Number(o.saldoManuale.importo))
         ? { importo: numero(o.saldoManuale.importo), data: dataIso(o.saldoManuale.data) }

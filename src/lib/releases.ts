@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.114.0",
+    date: "2026-11-12",
+    entries: [
+      {
+        title: 'Cassa proprietà: colonna "Entra ora" per gli accordi sugli entranti',
+        description:
+          "Per i clienti con cui c'è un accordo (acconti, rate, pagamenti rimandati) si scrive quanto entra davvero: tra gli entranti conta solo quello e il resto delle sue fatture attese va in standby da solo. Esempio: Posta Doc deve 500.000 e ne dà 20.000 al mese: 20.000 negli entranti, 480.000 in standby. Vale ogni mese, finché non si toglie.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.113.1",
     date: "2026-11-12",
     entries: [

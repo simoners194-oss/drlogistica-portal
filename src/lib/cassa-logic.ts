@@ -229,6 +229,12 @@ export interface CassaDb {
   /** Entrate unite per gruppo di controparti (Resoconto → Gruppi) invece che
    *  per singola società — Simone 10/11/2026 ("unire i clienti"). */
   unisciClienti?: boolean;
+  /** ACCORDI SUGLI ENTRANTI (Simone 12/11/2026: "abbiamo accordi per avere
+   *  solo acconti, o pagamenti futuri"): per controparte (chiave del cliente
+   *  o "g:gruppo"), quanto ENTRA nel periodo. Il resto delle sue fatture
+   *  attese va in standby da solo. 0 = non entra nulla, tutto in standby.
+   *  Vale ogni mese, finché non si toglie. */
+  accordi?: Record<string, number>;
   aggiornatoIl?: string;
   aggiornatoDa?: string;
 }
@@ -290,6 +296,15 @@ export interface RigaCassa {
   quote?: QuotaAppalto[];
   /** Entrate unite per gruppo: le società dentro la riga (per la scheda). */
   membriClienti?: string[];
+  /** Entrate attese: la chiave della controparte (cliente o "g:gruppo"), con
+   *  cui si salva l'accordo sugli entranti. */
+  chiaveControparte?: string;
+  /** Riga dell'ACCORDO: quanto entra di questo cliente; `totale` = quanto
+   *  avrebbe dovuto entrare (il resto è in standby). */
+  accordo?: { totale: number };
+  /** Fattura attesa messa in standby DALL'ACCORDO (non a mano), col residuo
+   *  che l'accordo non copre. */
+  daAccordo?: boolean;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -889,6 +904,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       tipo: "attiva",
       controparte: g.nome,
       membriClienti: g.unito ? [...g.membri] : undefined,
+      chiaveControparte: g.k,
       descrizione: `${g.unito ? `${[...g.membri].join(", ")} · ` : ""}${g.n} fatt. ${elencoNumeri(g.numeri)} · scad. ${ddmm(g.scad)}`,
       importo: g.importo,
       scadenza: g.scad,
@@ -1318,6 +1334,67 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     };
     if (auto === "oltre" && !st.b && !manuale) oltre.push(riga);
     else righe.push(riga);
+  }
+  // ACCORDI SUGLI ENTRANTI (Simone 12/11/2026). Con Posta Doc che deve
+  // 500.000 ma ne dà 20.000 al mese, tra gli entranti contano i 20.000: il
+  // resto è in standby. Per ogni controparte con un accordo: una riga
+  // "accordo" tra gli entranti con l'importo concordato; le sue fatture
+  // attese vanno in standby col residuo (l'accordo si scala dalle più
+  // vecchie: quelle coperte per intero spariscono, sono dentro la riga
+  // dell'accordo). Le fatture già messe in standby a mano non c'entrano.
+  // Se l'accordo copre tutto, non cambia nulla.
+  const soldi = (n: number) =>
+    n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  for (const [k, valore] of Object.entries(db.accordi ?? {})) {
+    const concordato = r2(Math.max(0, Number(valore) || 0));
+    const attese = righe
+      .filter((r) => r.tipo === "attiva" && r.standbyIncasso && r.chiaveControparte === k)
+      .sort((a, b) => a.scadenza.localeCompare(b.scadenza) || a.chiave.localeCompare(b.chiave));
+    if (!attese.length) continue;
+    const totale = r2(attese.reduce((s, r) => s + r.importo, 0));
+    if (concordato >= totale - 0.005) continue;
+    let resto = concordato;
+    for (const r of attese) {
+      if (resto >= r.importo - 0.005) {
+        resto = r2(resto - r.importo);
+        righe.splice(righe.indexOf(r), 1);
+        continue;
+      }
+      r.importo = r2(r.importo - resto);
+      resto = 0;
+      r.standbyIncasso = false;
+      r.parcheggiata = true;
+      r.daSollecitare = false;
+      r.daAccordo = true;
+    }
+    if (concordato <= 0.005) continue;
+    const chiave = `acc|${meseCorr}|${k}`;
+    const st = stato(chiave);
+    righe.push({
+      chiave,
+      tipo: "attiva",
+      controparte: attese[0].controparte,
+      membriClienti: attese[0].membriClienti,
+      chiaveControparte: k,
+      descrizione: `accordo: entrano ${soldi(concordato)} su ${soldi(totale)} · il resto in standby`,
+      importo: concordato,
+      importoOrigine: concordato,
+      scadenza: st.d ?? fm,
+      certa: false,
+      entrata: true,
+      documenti: attese.reduce((s, r) => s + r.documenti, 0),
+      editabile: false,
+      secchio: "ora",
+      secchioAuto: "ora",
+      standbyIncasso: true,
+      parcheggiata: false,
+      daSollecitare: Boolean(st.r),
+      nota: st.n ?? "",
+      contestata: false,
+      priorita: st.p,
+      dataScelta: Boolean(st.d),
+      accordo: { totale },
+    });
   }
   // Ordine del foglio: a sinistra gli incassi per data, poi gli attesi, in
   // fondo gli attesi parcheggiati; a destra per scadenza e nome, a

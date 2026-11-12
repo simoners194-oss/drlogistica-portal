@@ -155,6 +155,12 @@ interface Cella {
   quote?: QuotaAppalto[];
   /** Entrate unite per gruppo: le società dentro la riga. */
   membriClienti?: string[];
+  /** Entrate attese: chiave della controparte, per l'accordo sugli entranti. */
+  chiaveControparte?: string;
+  /** Riga dell'accordo (quanto entra); totale = quanto era atteso. */
+  accordo?: { totale: number };
+  /** In standby per via dell'accordo, col residuo non coperto. */
+  daAccordo?: boolean;
 }
 
 /** Vista raggruppata delle uscite (Simone 02/11/2026: "raggruppare le spese
@@ -251,6 +257,9 @@ const daRiga = (r: RigaCassa): Cella => ({
   voci: r.voci,
   quote: r.quote,
   membriClienti: r.membriClienti,
+  chiaveControparte: r.chiaveControparte,
+  accordo: r.accordo,
+  daAccordo: r.daAccordo,
 });
 
 /** La colonna Entrate in tre blocchi col loro totale: "Già entrate" (in
@@ -759,6 +768,15 @@ export function CassaProprietaView({
   const parcheggia = (c: Cella, on: boolean) => setStato(c.chiave, { s: on || undefined });
   // Da sollecitare (Simone 10/11/2026): resta tra le entranti, blocco a parte.
   const sollecita = (c: Cella, on: boolean) => setStato(c.chiave, { r: on || undefined });
+  // Accordo sugli entranti (Simone 12/11/2026): quanto entra di quel cliente;
+  // null = nessun accordo (entra tutto), 0 = non entra nulla (tutto in standby).
+  const setAccordo = (c: Cella, importo: number | null) => {
+    if (!db || !c.chiaveControparte) return;
+    const accordi = { ...(db.accordi ?? {}) };
+    if (importo == null) delete accordi[c.chiaveControparte];
+    else accordi[c.chiaveControparte] = Math.round(Math.abs(importo) * 100) / 100;
+    void salva({ ...db, accordi: Object.keys(accordi).length ? accordi : undefined });
+  };
   // Acconti già incassati sugli entranti del mese (colonna Reale).
   const setAcconti = (importo: number) => {
     if (!db) return;
@@ -1109,6 +1127,8 @@ export function CassaProprietaView({
           onData={setData}
           onParcheggia={parcheggia}
           onSollecita={sollecita}
+          onAccordo={setAccordo}
+          accordi={foto ? undefined : db.accordi}
           onRinomina={rinomina}
           onApriFornitore={onApriFornitore}
           onApriCliente={setClienteAperto}
@@ -1641,6 +1661,8 @@ export function Foglio({
   onData,
   onParcheggia,
   onSollecita,
+  onAccordo,
+  accordi,
   onRinomina,
   onApriFornitore,
   onApriCliente,
@@ -1672,6 +1694,10 @@ export function Foglio({
   onParcheggia: (c: Cella, on: boolean) => void;
   /** Entrata attesa da sollecitare (true) o di nuovo tra le entranti (false). */
   onSollecita: (c: Cella, on: boolean) => void;
+  /** Accordo sugli entranti: quanto entra di quel cliente (null = lo toglie). */
+  onAccordo: (c: Cella, importo: number | null) => void;
+  /** Gli accordi salvati, per controparte. */
+  accordi?: Readonly<Record<string, number>>;
   /** Nuovo nome per una riga scritta a mano. */
   onRinomina: (c: Cella, nome: string) => void;
   onApriFornitore?: (nome: string) => void;
@@ -1889,9 +1915,10 @@ export function Foglio({
         className={altezzaMax ? "overflow-auto" : "max-h-[78vh] overflow-auto"}
         style={altezzaMax ? { maxHeight: altezzaMax } : undefined}
       >
-        <table ref={tabellaRef} className="w-full min-w-[1180px] border-collapse text-[13px]">
+        <table ref={tabellaRef} className="w-full min-w-[1290px] border-collapse text-[13px]">
           <colgroup>
             <col className="w-[120px]" />
+            <col className="w-[108px]" />
             <col className="w-[250px]" />
             <col className="w-[120px]" />
             <col className="w-[120px]" />
@@ -1903,7 +1930,7 @@ export function Foglio({
           <thead className="sticky top-0 z-10 bg-card">
             <tr>
               <th
-                colSpan={2}
+                colSpan={3}
                 className={`${celH} ${TINTA.entrate.testa} border-r border-white/30 text-center text-[11px]`}
               >
                 {t("cpr.colEntrate")}
@@ -1920,6 +1947,12 @@ export function Foglio({
                 className={`${celH} ${TINTA.entrate.col} ${TINTA.entrate.num} border-r border-border/60 text-right`}
               >
                 {t("cpr.colEntrate")}
+              </th>
+              <th
+                className={`${celH} ${TINTA.entrate.col} border-r border-border/60 text-right text-foreground`}
+                title={t("cpr.accordoTip")}
+              >
+                {t("cpr.colAccordo")}
               </th>
               <th
                 className={`${celH} ${TINTA.entrate.col} border-r border-border/60 text-foreground`}
@@ -1967,7 +2000,7 @@ export function Foglio({
               return (
                 <tr key={i} className="group/r odd:bg-background/40 hover:bg-primary/5">
                   {slot?.kind === "head" ? (
-                    <td colSpan={2} className={`${cel} ${TESTA_ENTRATE[slot.id]}`}>
+                    <td colSpan={3} className={`${cel} ${TESTA_ENTRATE[slot.id]}`}>
                       <span className="flex items-center gap-2">
                         <PiuMeno
                           aperto={!slot.chiuso}
@@ -2003,6 +2036,24 @@ export function Foglio({
                             <Importo c={e} readOnly={readOnly} onImporto={onImporto} t={t} />
                           </span>
                         )}
+                      </td>
+                      {/* "Entra ora": l'accordo sugli entranti, per cliente */}
+                      <td
+                        className={`${celN} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} px-1.5 py-1`}
+                      >
+                        {e &&
+                          !figlio &&
+                          e.tipo === "attiva" &&
+                          e.chiaveControparte &&
+                          (e.accordo || e.daAccordo || (e.attesa && !e.parcheggiata)) && (
+                            <CampoAccordo
+                              c={e}
+                              valore={accordi?.[e.chiaveControparte]}
+                              readOnly={readOnly}
+                              onAccordo={onAccordo}
+                              t={t}
+                            />
+                          )}
                       </td>
                       <td
                         className={`${cel} ${e?.parcheggiata ? TINTA.standby.col : TINTA.entrate.col} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
@@ -2062,6 +2113,14 @@ export function Foglio({
                                 {t("cpr.compensazione")}
                               </span>
                             )}
+                            {(e.accordo || e.daAccordo) && (
+                              <span
+                                className={`inline-flex shrink-0 items-center rounded px-1 text-[9px] font-bold uppercase ${e.accordo ? "bg-sky-600 text-white" : "border border-sky-500 text-sky-700 dark:text-sky-300"}`}
+                                title={e.accordo ? e.dettaglio : t("cpr.daAccordoTip")}
+                              >
+                                {t("cpr.accordo")}
+                              </span>
+                            )}
                             {padre ? (
                               <span className="shrink-0 text-[10.5px] text-muted-foreground">
                                 {t("cpr.dal")} {ddmmyy(e.data)} · {padre.figli.length}{" "}
@@ -2077,10 +2136,12 @@ export function Foglio({
                             {!padre && e.attesa && !e.parcheggiata && !readOnly && (
                               <ToggleSollecito c={e} onSollecita={onSollecita} t={t} />
                             )}
-                            {!padre && e.attesa && !readOnly && (
+                            {!padre && e.attesa && !e.accordo && !e.daAccordo && !readOnly && (
                               <ToggleStandby c={e} onParcheggia={onParcheggia} t={t} />
                             )}
-                            {!padre && !readOnly && <Togli onClick={() => onTogli(e)} t={t} />}
+                            {!padre && !e.accordo && !readOnly && (
+                              <Togli onClick={() => onTogli(e)} t={t} />
+                            )}
                           </span>
                         )}
                       </td>
@@ -2276,6 +2337,7 @@ export function Foglio({
                         className={`${inputCls} w-full text-right`}
                       />
                     </td>
+                    <td className={`${cel} ${TINTA.entrate.col}`} />
                     <td className={`${cel} ${TINTA.entrate.col} p-1`}>
                       <span className="flex items-center gap-1">
                         <input
@@ -2306,6 +2368,7 @@ export function Foglio({
                   </>
                 ) : (
                   <>
+                    <td className={`${cel} ${TINTA.entrate.col}`} />
                     <td className={`${cel} ${TINTA.entrate.col}`} />
                     <td className={`${cel} ${TINTA.entrate.col} py-1`}>
                       <Aggiungi onClick={() => apri(true)} t={t} />
@@ -3111,6 +3174,54 @@ function NomeRiga({
     >
       {c.nome}
     </button>
+  );
+}
+
+/** "Entra ora": l'accordo sugli entranti di un cliente (Simone 12/11/2026).
+ *  Vuoto = entra tutto; un importo = entra quello e il resto delle sue
+ *  fatture attese va in standby; 0 = non entra nulla, tutto in standby. */
+function CampoAccordo({
+  c,
+  valore,
+  readOnly,
+  onAccordo,
+  t,
+}: {
+  c: Cella;
+  valore: number | undefined;
+  readOnly: boolean;
+  onAccordo: (c: Cella, importo: number | null) => void;
+  t: TFn;
+}) {
+  const [testo, setTesto] = useState<string | null>(null);
+  if (readOnly)
+    return valore != null ? (
+      <span className="text-[12px] tabular-nums text-sky-700 dark:text-sky-300">{fmt(valore)}</span>
+    ) : null;
+  return (
+    <input
+      value={testo ?? (valore != null ? fmt(valore) : "")}
+      onChange={(e) => setTesto(e.target.value)}
+      onBlur={() => {
+        if (testo == null) return;
+        const pulito = testo.trim();
+        setTesto(null);
+        if (!pulito) {
+          if (valore != null) onAccordo(c, null);
+          return;
+        }
+        const n = parseNum(pulito);
+        if (n != null && n >= 0 && (valore == null || Math.abs(n - valore) > 0.005))
+          onAccordo(c, n);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key === "Escape") setTesto(null);
+      }}
+      placeholder={t("cpr.accordoTutto")}
+      title={t("cpr.accordoTip")}
+      className={`w-full rounded-md border bg-background px-1.5 py-0.5 text-right text-[12px] tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40 ${valore != null ? "border-sky-500 font-semibold text-sky-700 dark:text-sky-300" : "border-border/70 text-foreground placeholder:text-muted-foreground/50"}`}
+    />
   );
 }
 
