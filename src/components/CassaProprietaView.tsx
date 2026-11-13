@@ -388,18 +388,48 @@ function slotsEntrate(
  *  Dentro ogni blocco resta l'ordine del foglio (scadenza e nome). */
 type SlotU =
   | { kind: "head"; col: SecchioCassa; label: string; value: number; n: number; chiuso: boolean }
+  /** Ordine del foglio (una lista sola): la riga coi totali delle quattro colonne. */
+  | { kind: "totali"; valori: Record<SecchioCassa, number>; n: number; chiuso: boolean }
   | { kind: "riga"; c: Cella; aperta?: boolean }
   /** Una voce dentro la riga aperta col "+" (le tipologie delle Altre spese). */
   | { kind: "voce"; padre: Cella; v: VoceDettaglioCassa };
 /** Le righe che si aprono col "+" per vedere da cosa sono composte. */
 const haVoci = (c: Cella) => c.tipo === "altre" && (c.voci?.length ?? 0) > 0;
+/** Come si elencano le uscite. "foglio" (Simone 13/11/2026: "non ordinare
+ *  più per uscite, data, standby, standby 2… quando sposta i movimenti non si
+ *  devono riordinare"): UNA lista nell'ordine del foglio, per scadenza e
+ *  nome, qualunque sia la colonna; spostando una voce da una colonna
+ *  all'altra la riga resta dov'è. "colonne": i quattro blocchi della 1.110.0
+ *  (imminenti, 1-5 del mese dopo, standby, standby 2), a richiesta. */
+export type OrdineUscite = "foglio" | "colonne";
+
 function slotsUscite(
   uscite: readonly Cella[],
   t: TFn,
   limite: string,
   chiusi: ReadonlySet<string> = new Set(),
   espansi: ReadonlySet<string> = new Set(),
+  ordine: OrdineUscite = "foglio",
 ): SlotU[] {
+  const righeDi = (celle: readonly Cella[]): SlotU[] =>
+    celle.flatMap((c): SlotU[] => {
+      const aperta = haVoci(c) && espansi.has(c.chiave);
+      return [
+        { kind: "riga", c, aperta },
+        ...(aperta ? (c.voci ?? []).map((v): SlotU => ({ kind: "voce", padre: c, v })) : []),
+      ];
+    });
+  if (ordine === "foglio") {
+    if (!uscite.length) return [];
+    const chiuso = chiusi.has("u:foglio");
+    const valori = Object.fromEntries(
+      COLONNE_USCITE.map((col) => [col, sommaCelle(uscite.filter((u) => u.secchio === col))]),
+    ) as Record<SecchioCassa, number>;
+    return [
+      { kind: "totali", valori, n: uscite.length, chiuso },
+      ...(chiuso ? [] : righeDi(uscite)),
+    ];
+  }
   const etichetta: Record<SecchioCassa, string> = {
     ora: t("cpr.vUsciteOra"),
     prossimi: `${t("cpr.colUscite")} ${etichettaProssimi(limite)}`,
@@ -419,15 +449,7 @@ function slotsUscite(
         n: celle.length,
         chiuso,
       },
-      ...(chiuso
-        ? []
-        : celle.flatMap((c): SlotU[] => {
-            const aperta = haVoci(c) && espansi.has(c.chiave);
-            return [
-              { kind: "riga", c, aperta },
-              ...(aperta ? (c.voci ?? []).map((v): SlotU => ({ kind: "voce", padre: c, v })) : []),
-            ];
-          })),
+      ...(chiuso ? [] : righeDi(celle)),
     ];
   });
 }
@@ -502,6 +524,10 @@ export function CassaProprietaView({
   const [fotoId, setFotoId] = useState<string | null>(null);
   // Uscite per fornitore (il foglio) oppure raggruppate per tipologia o cliente.
   const [raggruppa, setRaggruppa] = useState<Raggruppa>("fornitore");
+  // Ordine delle uscite: parte SEMPRE dall'ordine del foglio (non si ricorda:
+  // chi apre la cassa la trova come l'ha sempre vista); "per colonna" è una
+  // scelta del momento.
+  const [ordineUscite, setOrdineUscite] = useState<OrdineUscite>("foglio");
   // Filtri del foglio: solo vista, non si salvano.
   const [filtri, setFiltri] = useState<FiltriFoglio>(FILTRI_VUOTI);
   // SCHERMO TV (Simone 12/11/2026: "ottimizza la vista per la tv, me la
@@ -902,7 +928,14 @@ export function CassaProprietaView({
     // L'export è sempre il foglio INTERO, con tutti i blocchi aperti: filtri
     // e blocchi richiusi sono solo vista.
     const sl = slotsEntrate(entrateTutte, t, new Set(["*"]));
-    const su = slotsUscite(raggruppaUscite(usciteTutte, raggruppa, t), t, limiteVista);
+    const su = slotsUscite(
+      raggruppaUscite(usciteTutte, raggruppa, t),
+      t,
+      limiteVista,
+      undefined,
+      undefined,
+      ordineUscite,
+    );
     const n = Math.max(sl.length, su.length);
     for (let i = 0; i < n; i++) {
       const s = sl[i];
@@ -910,13 +943,15 @@ export function CassaProprietaView({
       const x = su[i];
       const u = x?.kind === "riga" ? x.c : undefined;
       const colonna = (col: SecchioCassa) =>
-        x?.kind === "head"
-          ? x.col === col
-            ? num(x.value)
-            : ""
-          : u && u.secchio === col
-            ? num(u.importo)
-            : "";
+        x?.kind === "totali"
+          ? num(x.valori[col])
+          : x?.kind === "head"
+            ? x.col === col
+              ? num(x.value)
+              : ""
+            : u && u.secchio === col
+              ? num(u.importo)
+              : "";
       // I "padri" (cliente con più fatture) non si esportano: escono le
       // singole fatture, così i conti non raddoppiano.
       if (s?.kind === "padre" && !x) continue;
@@ -931,7 +966,13 @@ export function CassaProprietaView({
         colonna("prossimi"),
         colonna("standby"),
         colonna("standby2"),
-        x?.kind === "head" ? `${x.label.toUpperCase()} (${x.n})` : u ? u.nome : "",
+        x?.kind === "totali"
+          ? `${t("cpr.colUscite").toUpperCase()} (${x.n})`
+          : x?.kind === "head"
+            ? `${x.label.toUpperCase()} (${x.n})`
+            : u
+              ? u.nome
+              : "",
         u
           ? [
               u.dettaglio === "CDC" ? "CDC" : "",
@@ -1085,6 +1126,25 @@ export function CassaProprietaView({
                 ))}
               </span>
             </span>
+            {/* Ordine delle uscite: come il foglio (per scadenza) o per colonna */}
+            <span className="flex items-center gap-2 text-muted-foreground">
+              {t("cpr.ordine")}
+              <span
+                className="flex overflow-hidden rounded-lg border border-border text-[12px]"
+                title={t("cpr.ordineTip")}
+              >
+                {(["foglio", "colonne"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setOrdineUscite(v)}
+                    className={`px-2.5 py-1 ${ordineUscite === v ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                  >
+                    {t(v === "foglio" ? "cpr.ordineFoglio" : "cpr.ordineColonne")}
+                  </button>
+                ))}
+              </span>
+            </span>
             {/* Entrate per società / per gruppo di controparti (Simone 10/11/2026) */}
             {gruppi && gruppi.length > 0 && (
               <span className="flex items-center gap-2 text-muted-foreground">
@@ -1182,6 +1242,7 @@ export function CassaProprietaView({
           usciteTutte={usciteTutte}
           filtri={filtri}
           onFiltri={setFiltri}
+          ordineUscite={ordineUscite}
           altezzaMax={
             tv && finestra.h > 0
               ? Math.max(320, Math.round((finestra.h / zoomTv) * 0.88))
@@ -1740,6 +1801,7 @@ const TUTTI_I_BLOCCHI = [
   "e:sollecitare",
   "e:standby",
   "e:standby2",
+  "u:foglio",
   "u:ora",
   "u:prossimi",
   "u:standby",
@@ -1812,6 +1874,7 @@ export function Foglio({
   usciteTutte,
   filtri,
   onFiltri,
+  ordineUscite = "foglio",
   limite,
   readOnly,
   altezzaMax,
@@ -1842,6 +1905,8 @@ export function Foglio({
   usciteTutte: readonly Cella[];
   filtri: FiltriFoglio;
   onFiltri: (f: FiltriFoglio) => void;
+  /** Uscite in una lista sola (ordine del foglio) o nei quattro blocchi. */
+  ordineUscite?: OrdineUscite;
   limite: string;
   readOnly: boolean;
   /** Altezza massima della cornice in px (vista TV); senza, il 78% dello schermo. */
@@ -1935,6 +2000,7 @@ export function Foglio({
     limite,
     filtroUsciteAttivo(filtri) ? VUOTO : chiusi,
     espansi,
+    ordineUscite,
   );
   const n = Math.max(slotsE.length, slotsU.length);
   const righe = Array.from({ length: n }, (_, i) => i);
@@ -2168,6 +2234,7 @@ export function Foglio({
               const figlio = slot?.kind === "riga" && slot.figlio === true;
               const slotU = slotsU[i];
               const testaU = slotU?.kind === "head" ? slotU : undefined;
+              const totaliU = slotU?.kind === "totali" ? slotU : undefined;
               const u = slotU?.kind === "riga" ? slotU.c : undefined;
               const voceU = slotU?.kind === "voce" ? slotU : undefined;
               const uAperta = slotU?.kind === "riga" && slotU.aperta === true;
@@ -2333,7 +2400,35 @@ export function Foglio({
                       </td>
                     </>
                   )}
-                  {testaU ? (
+                  {totaliU ? (
+                    <>
+                      {/* Ordine del foglio: i totali delle quattro colonne in
+                          una riga, poi le uscite tutte di seguito */}
+                      {COLONNE_USCITE.map((col) => (
+                        <td
+                          key={col}
+                          className={`${celN} ${TESTA_USCITE[col]} text-[13.5px] font-bold`}
+                        >
+                          {Math.abs(totaliU.valori[col]) > 0.005 ? fmt(totaliU.valori[col]) : ""}
+                        </td>
+                      ))}
+                      <td colSpan={2} className={`${cel} bg-muted/70 text-foreground`}>
+                        <span className="flex items-center gap-2">
+                          <PiuMeno
+                            aperto={!totaliU.chiuso}
+                            onClick={() => toggleBlocco("u:foglio")}
+                            t={t}
+                          />
+                          <span className="text-[11px] font-semibold uppercase tracking-wider">
+                            {t("cpr.colUscite")}
+                          </span>
+                          <span className="text-[10.5px] font-normal opacity-70">
+                            {totaliU.n} {t("cpr.fVoci")} · {t("cpr.ordineFoglioNota")}
+                          </span>
+                        </span>
+                      </td>
+                    </>
+                  ) : testaU ? (
                     <>
                       {COLONNE_USCITE.map((col) => (
                         <td

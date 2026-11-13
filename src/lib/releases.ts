@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.118.0",
+    date: "2026-11-13",
+    entries: [
+      {
+        title: "Cassa proprietà: le uscite tornano in una lista sola",
+        description:
+          "Le uscite non sono più divise in blocchi per colonna: stanno di nuovo in una lista sola in ordine di scadenza, come prima. Spostando una voce da una colonna all'altra la riga resta al suo posto. In cima c'è una riga coi totali delle quattro colonne. I blocchi per colonna restano a richiesta, col pulsante \"Ordine uscite: per colonna\"; riaprendo la Cassa si riparte sempre dalla lista.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.117.0",
     date: "2026-11-13",
     entries: [
