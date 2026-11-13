@@ -4,17 +4,26 @@
 // Il browser manda UNA settimana (o chiede di toglierne una); il server
 // rilegge il file, la unisce e salva: così due persone che caricano settimane
 // diverse non si pestano i piedi.
+import * as XLSX from "xlsx";
 import {
   discoverSharePoint,
   gatewayJson,
   withDiscoveryRetry,
   logSp,
   SpHttpError,
+  TARGET_HOST,
 } from "./sharepoint.server";
 import {
   emptyCostiAppaltiDb,
+  fileCostiSettimana,
+  leggiFoglioCosti,
+  leggiPeriodo,
+  righeDaCelle,
   unisciSettimana,
+  validaSettimana,
+  type AppaltoCosti,
   type CostiAppaltiDb,
+  type LetturaCartellaCosti,
   type SettimanaCosti,
 } from "./costi-appalti-logic";
 
@@ -97,5 +106,104 @@ export async function eliminaSettimanaCosti(id: string, utente: string): Promise
     { ...attuale, settimane: attuale.settimane.filter((s) => s.id !== id) },
     utente,
     `tolta la settimana ${id}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LETTURA AUTOMATICA DALLA CARTELLA (1.117.0, Simone 13/11/2026: "non si può
+// automatizzare? … sono tutti qui: Documenti Condivisi - Documenti\Operativo\
+// Analisi"). I file settimanali ("Costi WK45.xlsx") stanno sul sito SharePoint
+// "DocumentiCondivisi", lo stesso da cui si leggono già le paghe: il portale
+// guarda la cartella, scarica SOLO i file nuovi o cambiati (dalla data di
+// modifica) e li passa allo stesso lettore del caricamento a mano. Una
+// settimana corretta nel portale non viene rimpiazzata dal file.
+// ---------------------------------------------------------------------------
+const SITO_DOCUMENTI = "DocumentiCondivisi";
+export const CARTELLA_COSTI = "Operativo/Analisi";
+
+interface FiglioCartella {
+  id: string;
+  name: string;
+  file?: unknown;
+  lastModifiedDateTime?: string;
+  ["@microsoft.graph.downloadUrl"]?: string;
+}
+const encPath = (p: string) => p.split("/").map(encodeURIComponent).join("/");
+
+export async function leggiCartellaCosti(utente: string): Promise<CostiAppaltiDb> {
+  const ora = new Date().toISOString();
+  const sito = await withDiscoveryRetry(() =>
+    gatewayJson<{ id: string }>(`/sites/${TARGET_HOST}:/sites/${SITO_DOCUMENTI}`),
+  );
+  const figli = await withDiscoveryRetry(() =>
+    gatewayJson<{ value: FiglioCartella[] }>(
+      `/sites/${sito.id}/drive/root:/${encPath(CARTELLA_COSTI)}:/children?$select=id,name,file,lastModifiedDateTime&$top=200`,
+    ),
+  );
+  const file = (figli.value ?? [])
+    .filter((f) => f.file && fileCostiSettimana(f.name))
+    .sort((a, b) => a.name.localeCompare(b.name, "it", { numeric: true }));
+  let db = await loadCostiAppaltiDb();
+  const esito: LetturaCartellaCosti = {
+    il: ora,
+    da: utente,
+    trovati: file.length,
+    letti: [],
+    saltati: [],
+    errori: [],
+  };
+  for (const f of file) {
+    const modificato = f.lastModifiedDateTime ?? "";
+    const gia = db.settimane.find((s) => s.file === f.name);
+    if (gia?.origine === "portale") {
+      esito.saltati.push(f.name);
+      continue;
+    }
+    if (gia && gia.fileModificato === modificato) continue;
+    try {
+      const pieno = await withDiscoveryRetry(() =>
+        gatewayJson<FiglioCartella>(`/sites/${sito.id}/drive/items/${f.id}`),
+      );
+      const url = pieno["@microsoft.graph.downloadUrl"];
+      if (!url) throw new Error("downloadUrl non disponibile da Graph");
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`download fallito (${res.status})`);
+      const wb = XLSX.read(await res.arrayBuffer());
+      const appalti: AppaltoCosti[] = [];
+      let etichetta = "";
+      for (const nome of wb.SheetNames) {
+        const letto = leggiFoglioCosti(
+          nome,
+          righeDaCelle(wb.Sheets[nome] as unknown as Record<string, unknown>),
+        );
+        if (!letto) continue;
+        appalti.push(letto.appalto);
+        etichetta ||= letto.etichetta;
+      }
+      if (!appalti.length) throw new Error("nessun foglio di appalto");
+      const periodo = leggiPeriodo(etichetta, f.name, ora.slice(0, 10));
+      if (!periodo) throw new Error("non capisco di quale settimana è");
+      const s: SettimanaCosti = {
+        ...validaSettimana({ ...periodo, etichetta, file: f.name, appalti }),
+        caricataIl: ora,
+        caricataDa: `cartella ${CARTELLA_COSTI}`,
+        fileModificato: modificato,
+      };
+      if (db.settimane.find((x) => x.id === s.id)?.origine === "portale") {
+        esito.saltati.push(f.name);
+        continue;
+      }
+      // Un file rinominato: la sua settimana di prima non resta doppia.
+      db = { ...db, settimane: db.settimane.filter((x) => x.file !== f.name) };
+      db = unisciSettimana(db, s);
+      esito.letti.push(f.name);
+    } catch (e) {
+      esito.errori.push(`${f.name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return scrivi(
+    { ...db, ultimaLettura: esito },
+    utente,
+    `letta la cartella ${CARTELLA_COSTI} (${esito.trovati} file, ${esito.letti.length} nuovi o cambiati, ${esito.errori.length} errori)`,
   );
 }

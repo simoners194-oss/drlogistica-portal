@@ -6,6 +6,7 @@ import { readSessionUser, type ServerSessionUser } from "./auth.server";
 import { haVistaDirezione } from "./richieste-logic";
 import {
   eliminaSettimanaCosti,
+  leggiCartellaCosti,
   loadCostiAppaltiDb,
   salvaSettimanaCosti,
 } from "./costi-appalti.server";
@@ -47,3 +48,12 @@ export const spCostiAppaltiElimina = createServerFn({ method: "POST" })
     const me = await utenteCosti();
     return eliminaSettimanaCosti(data.id, `${me.nome} ${me.cognome}`.trim() || me.id);
   });
+
+/** Guarda la cartella condivisa dei file settimanali e legge quelli nuovi o
+ *  cambiati. */
+export const spCostiAppaltiLeggiCartella = createServerFn({ method: "POST" }).handler(
+  async (): Promise<CostiAppaltiDb> => {
+    const me = await utenteCosti();
+    return leggiCartellaCosti(`${me.nome} ${me.cognome}`.trim() || me.id);
+  },
+);

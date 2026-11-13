@@ -11,7 +11,7 @@
 // controllo al caricamento.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Calculator, Loader2, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, Calculator, FolderSync, Loader2, Trash2, Upload } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { EsportaStampa } from "@/components/EsportaStampa";
 import {
@@ -33,6 +33,7 @@ import {
 import {
   spCostiAppaltiElimina,
   spCostiAppaltiGet,
+  spCostiAppaltiLeggiCartella,
   spCostiAppaltiSalva,
 } from "@/lib/costi-appalti.functions";
 
@@ -95,10 +96,44 @@ export function CostiAppaltiTab({
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // LA CARTELLA (Simone 13/11/2026: "non si può automatizzare? sono tutti
+  // qui"). I file settimanali stanno nella cartella condivisa Operativo/
+  // Analisi: il portale la legge da solo e prende solo i file nuovi o
+  // cambiati. Parte da sola aprendo la scheda, se l'ultima lettura ha più di
+  // sei ore; il pulsante la rifà subito.
+  const [leggendo, setLeggendo] = useState(false);
+  const leggiCartella = (aMano: boolean) => {
+    setLeggendo(true);
+    spCostiAppaltiLeggiCartella()
+      .then((d) => {
+        setDb(d);
+        const u = d.ultimaLettura;
+        if (!u) return;
+        if (u.errori.length)
+          toast.error(t("ca.cartellaErrori"), { description: u.errori.join(" · ") });
+        else if (u.letti.length)
+          toast.success(`${t("ca.cartellaLetti")} ${u.letti.length}`, {
+            description: u.letti.join(", "),
+          });
+        else if (aMano) toast.info(t("ca.cartellaNiente"));
+      })
+      .catch((e) => {
+        // All'apertura un errore non deve coprire i dati già salvati.
+        if (aMano)
+          toast.error(t("ca.cartellaNonLetta"), {
+            description: e instanceof Error ? e.message : String(e),
+          });
+      })
+      .finally(() => setLeggendo(false));
+  };
   const carica = () => {
     setErrore(null);
     spCostiAppaltiGet()
-      .then((d) => setDb(d))
+      .then((d) => {
+        setDb(d);
+        const ultima = Date.parse(d.ultimaLettura?.il ?? "");
+        if (!Number.isFinite(ultima) || Date.now() - ultima > 6 * 3600_000) leggiCartella(false);
+      })
       .catch((e) => setErrore(e instanceof Error ? e.message : String(e)));
   };
   useEffect(() => {
@@ -326,17 +361,44 @@ export function CostiAppaltiTab({
           if (f) void leggiFile(f);
         }}
       />
+      {!prova && (
+        <button
+          type="button"
+          disabled={leggendo || busy}
+          onClick={() => leggiCartella(true)}
+          title={t("ca.cartellaTip")}
+          className="no-print inline-flex items-center gap-2 rounded-lg border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-50"
+        >
+          {leggendo ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <FolderSync className="h-4 w-4" />
+          )}
+          {t(leggendo ? "ca.cartellaLeggendo" : "ca.cartellaLeggi")}
+        </button>
+      )}
       <button
         type="button"
         disabled={busy}
         onClick={() => fileRef.current?.click()}
-        className="no-print inline-flex items-center gap-2 rounded-lg border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-50"
+        title={t("ca.caricaFileTip")}
+        className="no-print inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-secondary disabled:opacity-50"
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
         {t("ca.caricaFile")}
       </button>
     </>
   );
+  const ultima = db?.ultimaLettura;
+  const ultimaQuando = ultima?.il
+    ? new Date(ultima.il).toLocaleString("it-IT", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
 
   if (errore && !db)
     return (
@@ -373,6 +435,44 @@ export function CostiAppaltiTab({
               <Calculator className="h-4 w-4 text-primary" /> {t("ca.titolo")}
             </div>
             <p className="mt-1 max-w-3xl text-xs text-muted-foreground">{t("ca.intro")}</p>
+            {/* La cartella da cui arrivano i file, e com'è andata l'ultima lettura */}
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted-foreground">
+              <FolderSync className="h-3.5 w-3.5 text-primary" />
+              <span>
+                {t("ca.cartella")} <b className="text-foreground">Operativo / Analisi</b>
+              </span>
+              {leggendo ? (
+                <span>· {t("ca.cartellaLeggendo")}</span>
+              ) : ultima ? (
+                <span>
+                  · {t("ca.cartellaUltima")} {ultimaQuando} · {ultima.trovati}{" "}
+                  {t("ca.cartellaFile")}
+                  {ultima.letti.length > 0 && (
+                    <>
+                      {" "}
+                      · {t("ca.cartellaNuovi")}{" "}
+                      <b className="text-foreground">{ultima.letti.join(", ")}</b>
+                    </>
+                  )}
+                  {ultima.saltati.length > 0 && (
+                    <>
+                      {" "}
+                      · {t("ca.cartellaSaltati")} {ultima.saltati.join(", ")}
+                    </>
+                  )}
+                </span>
+              ) : (
+                <span>· {t("ca.cartellaMai")}</span>
+              )}
+            </p>
+            {ultima && ultima.errori.length > 0 && !leggendo && (
+              <p className="mt-1 flex items-start gap-1.5 text-[11.5px] font-medium text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {t("ca.cartellaErrori")}: {ultima.errori.join(" · ")}
+                </span>
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {settimane.length > 0 && (

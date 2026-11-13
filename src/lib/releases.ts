@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.117.0",
+    date: "2026-11-13",
+    entries: [
+      {
+        title: "Costi appalti: i file si leggono da soli dalla cartella",
+        description:
+          'I file settimanali dei costi non si caricano più a mano. Il portale guarda la cartella condivisa Operativo / Analisi, dove i file "Costi WK" vengono già salvati, e legge da solo quelli nuovi o cambiati: all\'apertura della scheda e col pulsante "Leggi dalla cartella". Si leggono anche i file col tracciato più vecchio.',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.116.0",
     date: "2026-11-13",
     entries: [
