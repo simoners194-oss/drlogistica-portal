@@ -161,6 +161,8 @@ interface Cella {
   accordo?: { totale: number };
   /** In standby per via dell'accordo, col residuo non coperto. */
   daAccordo?: boolean;
+  /** Quanto è stato tolto per compensazione: la riga mostra già il netto. */
+  compensato?: number;
 }
 
 /** Vista raggruppata delle uscite (Simone 02/11/2026: "raggruppare le spese
@@ -260,6 +262,7 @@ const daRiga = (r: RigaCassa): Cella => ({
   chiaveControparte: r.chiaveControparte,
   accordo: r.accordo,
   daAccordo: r.daAccordo,
+  compensato: r.compensato,
 });
 
 /** La colonna Entrate in tre blocchi col loro totale: "Già entrate" (in
@@ -1261,6 +1264,76 @@ export function CassaProprietaView({
             {esito.pagateInBanca.length > 10 ? ", …" : ""}) · {t("cpr.pagateBancaNota")}
           </div>
         )}
+        {/* Compensazioni (1.116.0): non sono più righe negative tra le
+            entrate. Quello che dobbiamo a un cliente si toglie dalle sue
+            fatture attese; qui si legge cosa è stato scalato e cosa è rimasto
+            fuori dal foglio. La × la esclude, la freccia la rimette. */}
+        {!foto && esito.compensazioni.length > 0 && (
+          <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
+            <span className={`mr-1 rounded px-1 text-[9px] font-bold uppercase ${PILL_COMP}`}>
+              {t("cpr.compensazione")}
+            </span>
+            {t("cpr.compRiga")}{" "}
+            {esito.compensazioni.map((c, i) => {
+              const fuori = Math.round((c.importo - c.scalato) * 100) / 100;
+              return (
+                <span
+                  key={c.chiave}
+                  className="whitespace-nowrap"
+                  title={`${c.documenti} ${t("cpr.fattureBreve")} ${c.numeri}`}
+                >
+                  {i > 0 && " · "}
+                  <span className={c.esclusa ? "line-through" : ""}>
+                    {onApriFornitore ? (
+                      <button
+                        type="button"
+                        onClick={() => onApriFornitore(c.fornitore)}
+                        className={LINK_CLS}
+                      >
+                        {c.fornitore}
+                      </button>
+                    ) : (
+                      c.fornitore
+                    )}{" "}
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {fmt(c.importo)}
+                    </span>
+                  </span>{" "}
+                  {c.esclusa ? (
+                    t("cpr.compEsclusa")
+                  ) : (
+                    <>
+                      {c.scalato > 0.005 && (
+                        <span className="text-emerald-700 dark:text-emerald-400">
+                          {t("cpr.compScalata")}
+                          {fuori > 0.005 ? ` ${fmt(c.scalato)}` : ""}
+                        </span>
+                      )}
+                      {fuori > 0.005 && (
+                        <span>
+                          {c.scalato > 0.005 ? ", " : ""}
+                          {t("cpr.compFuori")}
+                          {c.scalato > 0.005 ? ` ${fmt(fuori)}` : ""}
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {!soloLettura && (
+                    <button
+                      type="button"
+                      onClick={() => setStato(c.chiave, { x: c.esclusa ? undefined : true })}
+                      title={t(c.esclusa ? "cpr.compRimettiTip" : "cpr.compEscludiTip")}
+                      className="ml-0.5 rounded px-1 text-muted-foreground hover:bg-muted hover:text-rose-600"
+                    >
+                      {c.esclusa ? "↩" : "×"}
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+            . {t("cpr.compNota")}
+          </div>
+        )}
         {/* RID/RiBa già scaduti: la banca li ha già presi, fuori dal foglio */}
         {!foto && esito.addebitate.length > 0 && (
           <div
@@ -1591,6 +1664,20 @@ export function RiepilogoCassa({
         valore={n(totali.cassaConStandby)}
         forte
       />
+      {/* Totale a parte, non sommato a niente (Simone 13/11/2026): lo
+          Standby delle entrate, cioè quello che incasseremo più avanti. Sta
+          fuori dal conto, come lo Standby 2. */}
+      {Math.abs(n(totali.entrateFuture)) > 0.005 && (
+        <div className="rounded-lg border border-dashed border-slate-400 bg-slate-100/70 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800/50">
+          <div className="max-w-[230px] text-[11px] uppercase tracking-wider text-slate-600 dark:text-slate-300">
+            {t("cpr.eStandby")}
+          </div>
+          <div className="mt-0.5 whitespace-nowrap text-xl font-semibold tabular-nums text-slate-700 dark:text-slate-100">
+            {fmt(n(totali.entrateFuture))} €
+          </div>
+          <div className="text-[10.5px] text-muted-foreground">{t("cpr.aParte")}</div>
+        </div>
+      )}
     </>
   );
 }
@@ -1598,7 +1685,7 @@ export function RiepilogoCassa({
 /** Quello che NON entra nel conto, detto una volta sola sotto la banda. */
 export function FuoriConti({ t, totali }: { t: TFn; totali: TotaliCassa }) {
   const voci: [string, number | undefined][] = [
-    [t("cpr.vStandbyEntrate"), totali.entrateFuture],
+    // Lo Standby delle entrate ha il suo totale a parte, nella banda.
     [t("cpr.vStandby2Entrate"), totali.entrateParcheggiate],
     [t("cpr.vStandby2Uscite"), totali.usciteStandby2],
     [t("cpr.rGiaEntrate"), totali.entrateRicevute],
@@ -2196,6 +2283,14 @@ export function Foglio({
                                 title={e.dettaglio}
                               >
                                 {t("cpr.compensazione")}
+                              </span>
+                            )}
+                            {!padre && (e.compensato ?? 0) > 0.005 && (
+                              <span
+                                className="inline-flex shrink-0 items-center rounded border border-rose-400 px-1 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-300"
+                                title={`${t("cpr.alNettoTip")} ${fmt(e.compensato ?? 0)} €`}
+                              >
+                                {t("cpr.alNetto")}
                               </span>
                             )}
                             {(e.accordo || e.daAccordo) && (

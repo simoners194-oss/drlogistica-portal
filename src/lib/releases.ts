@@ -36,6 +36,33 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.116.0",
+    date: "2026-11-13",
+    entries: [
+      {
+        title: 'Finanze: nuova scheda "Costi appalti"',
+        description:
+          "Il file settimanale dei costi (un foglio di Excel per appalto) si carica nel portale e diventa una pagina: ricavi, costi voce per voce, MOL 1 e margine. I clienti si accendono e si spengono per vedere solo i loro costi; con un cliente solo si leggono anche le descrizioni scritte nel file. Caricando più settimane si forma l'andamento.",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: niente più numeri negativi tra le entrate",
+        description:
+          'Le compensazioni non sono più righe negative tra gli entranti. Quello che dobbiamo a un cliente si toglie dalle sue fatture attese, così tra le entrate si legge già il netto, e "Entra ora" ragiona sul netto. Sotto il foglio una riga dice quali compensazioni sono state scalate e quali sono rimaste fuori.',
+        tag: "fix",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: totale Standby a parte",
+        description:
+          "Lo Standby delle entrate (quello che incasseremo più avanti) resta fuori dal conto come lo Standby 2, e ha il suo totale a parte in alto, non sommato a niente.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.115.0",
     date: "2026-11-12",
     entries: [

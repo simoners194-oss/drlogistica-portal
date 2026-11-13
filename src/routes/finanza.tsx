@@ -13,6 +13,7 @@ import {
   TrendingUp,
   AlertTriangle,
   BellRing,
+  Calculator,
   Loader2,
   Download,
   CheckCircle2,
@@ -46,6 +47,7 @@ import { ResocontoTab } from "@/components/ResocontoTab";
 import { EstrattoContoTab } from "@/components/EstrattoContoTab";
 import { FlussiCassaTab } from "@/components/FlussiCassaTab";
 import { ArubaAlertTab } from "@/components/ArubaAlertTab";
+import { CostiAppaltiTab } from "@/components/CostiAppaltiTab";
 import { StipendiTab } from "@/components/StipendiTab";
 import { FiscaleTab } from "@/components/FiscaleTab";
 import { useLang } from "@/lib/i18n";
@@ -273,6 +275,7 @@ type Tab =
   | "passive"
   | "anomalie"
   | "aruba"
+  | "costi"
   | "storico"
   | "regole";
 
@@ -3026,6 +3029,7 @@ function FinanzaPage() {
           {tabBtn("estratto", <Building2 className="h-4 w-4" />, t("fin.tabEstratto"))}
           {tabBtn("flussi", <Banknote className="h-4 w-4" />, t("fin.tabFlussi"))}
           {tabBtn("fornitori", <Building2 className="h-4 w-4" />, t("fin.tabFornitori"))}
+          {tabBtn("costi", <Calculator className="h-4 w-4" />, t("fin.tabCosti"))}
           {tabBtn("stipendi", <Users className="h-4 w-4" />, t("fin.tabStipendi"))}
           {tabBtn("fiscale", <Landmark className="h-4 w-4" />, t("fin.tabFiscale"))}
           {tabBtn("pivot", <TrendingUp className="h-4 w-4" />, t("fin.tabPivot"))}
@@ -3067,6 +3071,9 @@ function FinanzaPage() {
 
       {/* --- Da correggere su Aruba (Simone 12/11/2026) ----------------------- */}
       {tab === "aruba" && <ArubaAlertTab />}
+
+      {/* --- Costi appalti: il file settimanale dei costi (Simone 13/11/2026) -- */}
+      {tab === "costi" && <CostiAppaltiTab />}
 
       {/* --- Stipendi (file paghe COSTI mese, richiesta Simone 14/09) --------- */}
       {tab === "stipendi" && <StipendiTab />}

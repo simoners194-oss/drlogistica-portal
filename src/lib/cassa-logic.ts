@@ -312,6 +312,9 @@ export interface RigaCassa {
   /** Riga dell'ACCORDO: quanto entra di questo cliente; `totale` = quanto
    *  avrebbe dovuto entrare (il resto è in standby). */
   accordo?: { totale: number };
+  /** Quanto è stato tolto da questa riga per compensazione (1.116.0): la riga
+   *  mostra già il netto. */
+  compensato?: number;
   /** Fattura attesa messa in standby DALL'ACCORDO (non a mano), col residuo
    *  che l'accordo non copre: è quello che incasseremo più avanti, e sta nel
    *  blocco "Standby" delle entrate, separato dallo "Standby 2". */
@@ -613,7 +616,28 @@ export interface PagataInBanca {
   modo: "singolo" | "somma" | "rate";
 }
 
+/** Un fornitore che paga in compensazione (1.116.0): quello che gli dobbiamo
+ *  non è un'uscita e non è più una riga negativa tra gli entranti: si toglie
+ *  dalle fatture attese dello stesso cliente. */
+export interface CompensazioneCassa {
+  /** "comp|mese|fornitore": lo stato `x` su questa chiave la esclude. */
+  chiave: string;
+  fornitore: string;
+  /** Quanto gli dobbiamo (positivo): le sue fatture aperte entro il limite. */
+  importo: number;
+  /** Quanto è stato tolto dalle fatture attese del cliente. */
+  scalato: number;
+  /** Il cliente da cui è stato scalato (se ha trovato fatture attese). */
+  cliente?: string;
+  /** Esclusa a mano: non si scala. */
+  esclusa: boolean;
+  documenti: number;
+  numeri: string;
+}
+
 export interface EsitoCassa {
+  /** Compensazioni del mese: per la riga informativa sotto il foglio. */
+  compensazioni: CompensazioneCassa[];
   /** Già pagate in banca, da chiudere su Aruba (Simone 12/11/2026): non
    *  stanno tra le uscite, altrimenti conterebbero due volte. */
   pagateInBanca: PagataInBanca[];
@@ -1315,22 +1339,8 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     input.mezzi,
   ))
     grezze.push(g);
-  // Compensazioni: una riga NEGATIVA tra gli entranti per ogni fornitore che
-  // paga in compensazione (le sue fatture aperte entro il limite).
-  for (const [kc, c] of gruppiComp)
-    grezze.push({
-      chiave: `comp|${meseCorr}|${kc}`,
-      tipo: "compensazione",
-      controparte: c.nome,
-      descrizione: `compensazione · ${c.n} fatt. ${elencoNumeri(c.numeri)} · scad. ${ddmm(c.scad)}`,
-      importo: r2(-c.importo),
-      scadenza: c.scad,
-      certa: false,
-      entrata: true,
-      documenti: c.n,
-      editabile: false,
-      promemoria: input.infoFornitori.get(kc)?.promemoria || undefined,
-    });
+  // Le compensazioni NON sono più righe del foglio (dalla 1.116.0): si
+  // scalano dalle fatture attese del cliente, più sotto.
 
   const righe: RigaCassa[] = [];
   const oltre: RigaCassa[] = [];
@@ -1373,6 +1383,76 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     if (auto === "oltre" && !st.b && !manuale) oltre.push(riga);
     else righe.push(riga);
   }
+  // COMPENSAZIONI DENTRO LE FATTURE DEL CLIENTE (1.116.0, Simone 13/11/2026:
+  // "le compensazioni devono sparire dalla parte degli incassi, non ci devono
+  // essere numeri negativi"). Fino alla 1.115.0 ogni fornitore che paga in
+  // compensazione era una riga NEGATIVA tra gli entranti. Ora quello che gli
+  // dobbiamo si toglie direttamente dalle fatture attese dello stesso cliente
+  // (stessa società, o stesso gruppo con "Entrate per gruppo"), dalla più
+  // vecchia: tra le entrate si legge già il netto. Viene PRIMA degli accordi,
+  // così "Entra ora" e il resto nello Standby ragionano sul netto.
+  //  - una fattura coperta per intero esce dal foglio (è compensata: non
+  //    porterà soldi); quella coperta in parte resta col netto;
+  //  - non si toccano gli importi corretti a mano (sono già quello che ha
+  //    detto il cliente) né le attese messe nello Standby 2;
+  //  - quello che non trova fatture attese da cui scalarsi resta fuori dal
+  //    foglio: non diventa mai un numero negativo. L'elenco completo esce in
+  //    `compensazioni`, per la riga informativa sotto il foglio;
+  //  - lo stato `x` sulla chiave "comp|mese|fornitore" (la × di prima) la
+  //    esclude: non si scala.
+  const compensazioni: CompensazioneCassa[] = [];
+  for (const [kc, c] of gruppiComp) {
+    const chiave = `comp|${meseCorr}|${kc}`;
+    const esclusa = Boolean(db.stati[chiave]?.x);
+    const stretto = nomeStretto(c.nome);
+    const grp = grpDi(c.nome);
+    const kGruppo = grp ? `g:${chiaveCliente(grp.nome)}` : "";
+    let daScalare = esclusa ? 0 : c.importo;
+    let scalato = 0;
+    let cliente: string | undefined;
+    if (daScalare > 0.005) {
+      const attese = righe
+        .filter(
+          (r) =>
+            r.tipo === "attiva" &&
+            r.standbyIncasso &&
+            r.importo === r.importoOrigine &&
+            ((kGruppo !== "" && r.chiaveControparte === kGruppo) ||
+              (r.membriClienti ?? [r.controparte]).some((n) => nomeStretto(n) === stretto)),
+        )
+        .sort((a, b) => a.scadenza.localeCompare(b.scadenza) || a.chiave.localeCompare(b.chiave));
+      for (const r of attese) {
+        if (daScalare <= 0.005) break;
+        const tolto = r2(Math.min(r.importo, daScalare));
+        if (tolto <= 0.005) continue;
+        cliente = r.controparte;
+        daScalare = r2(daScalare - tolto);
+        scalato = r2(scalato + tolto);
+        if (tolto >= r.importo - 0.005) {
+          righe.splice(righe.indexOf(r), 1);
+          continue;
+        }
+        r.importo = r2(r.importo - tolto);
+        // Il netto è il nuovo importo "di partenza" della riga: non è una
+        // correzione a mano.
+        r.importoOrigine = r.importo;
+        r.compensato = r2((r.compensato ?? 0) + tolto);
+      }
+    }
+    compensazioni.push({
+      chiave,
+      fornitore: c.nome,
+      importo: c.importo,
+      scalato,
+      cliente,
+      esclusa,
+      documenti: c.n,
+      numeri: elencoNumeri(c.numeri),
+    });
+  }
+  compensazioni.sort(
+    (a, b) => b.importo - a.importo || a.fornitore.localeCompare(b.fornitore, "it"),
+  );
   // ACCORDI SUGLI ENTRANTI (Simone 12/11/2026). Con Posta Doc che deve
   // 500.000 ma ne dà 20.000 al mese, tra gli entranti contano i 20.000: il
   // resto è in standby. Per ogni controparte con un accordo: una riga
@@ -1408,27 +1488,9 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       r.daSollecitare = false;
       r.daAccordo = true;
     }
-    // "ENTRA ORA" È GIÀ AL NETTO DELLE COMPENSAZIONI (Simone 12/11/2026: "su
-    // entranti lo metto già al netto della compensazione"). La compensazione
-    // di questo cliente (stessa società, o stesso gruppo con "Entrate per
-    // gruppo") non si toglie un'altra volta dagli entranti: segue il resto
-    // nello Standby, dove si legge il netto ancora da incassare. Quelle già
-    // messe da parte a mano restano dove sono.
-    const stretti = new Set(
-      attese.flatMap((r) => r.membriClienti ?? [r.controparte]).map(nomeStretto),
-    );
-    for (const r of righe) {
-      if (r.tipo !== "compensazione" || !r.standbyIncasso) continue;
-      const grp = grpDi(r.controparte);
-      const stessa =
-        stretti.has(nomeStretto(r.controparte)) ||
-        (grp ? `g:${chiaveCliente(grp.nome)}` === k : false);
-      if (!stessa) continue;
-      r.standbyIncasso = false;
-      r.parcheggiata = true;
-      r.daSollecitare = false;
-      r.daAccordo = true;
-    }
+    // "Entra ora" è già al netto delle compensazioni (Simone 12/11/2026): le
+    // fatture attese arrivano qui già scalate (vedi sopra), quindi l'importo
+    // scritto e il resto nello Standby sono entrambi al netto.
     if (concordato <= 0.005) continue;
     const chiave = `acc|${meseCorr}|${k}`;
     const st = stato(chiave);
@@ -1509,9 +1571,9 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   const entrateDaSollecitare = somma(entrate.filter((r) => r.daSollecitare));
   const acconti = r2(Math.max(0, db.acconti?.[meseCorr] ?? 0));
   const entrantiNette = r2(entrateStandby - acconti);
-  const compensazioni = somma(
-    entrate.filter((r) => r.tipo === "compensazione" && r.standbyIncasso),
-  );
+  // Quanto è stato scalato dalle fatture attese (negativo, come prima: è già
+  // dentro gli importi delle entrate).
+  const compensazioniScalate = r2(0 - compensazioni.reduce((s, c) => s + c.scalato, 0));
   const usciteOra = somma(uscite.filter((r) => r.secchio === "ora"));
   const usciteProssimi = somma(uscite.filter((r) => r.secchio === "prossimi"));
   const usciteStandby = somma(uscite.filter((r) => r.secchio === "standby"));
@@ -1528,7 +1590,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     entrateDaSollecitare,
     acconti,
     entrantiNette,
-    compensazioni,
+    compensazioni: compensazioniScalate,
     usciteOra,
     usciteProssimi,
     usciteStandby,
@@ -1548,7 +1610,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   pagateInBanca.sort(
     (a, b) => b.data.localeCompare(a.data) || a.fornitore.localeCompare(b.fornitore, "it"),
   );
-  return { righe, oltre, addebitate, pagateInBanca, totali };
+  return { righe, oltre, addebitate, pagateInBanca, compensazioni, totali };
 }
 
 export function creaFotografia(
