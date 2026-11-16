@@ -627,17 +627,55 @@ export interface CompensazioneCassa {
   importo: number;
   /** Quanto è stato tolto dalle fatture attese del cliente. */
   scalato: number;
-  /** Il cliente da cui è stato scalato (se ha trovato fatture attese). */
+  /** Il cliente a cui appartiene (quello delle fatture da cui si scala). */
   cliente?: string;
+  /** La chiave di quel cliente (o gruppo): il suo conto in `posizioni`. */
+  chiaveCliente?: string;
   /** Esclusa a mano: non si scala. */
   esclusa: boolean;
   documenti: number;
   numeri: string;
 }
 
-export interface EsitoCassa {
-  /** Compensazioni del mese: per la riga informativa sotto il foglio. */
+/** IL CONTO DI UNA SOCIETÀ nel foglio (1.119.0, Simone 16/11/2026: "quando
+ *  metto un accordo deve ragionare sul movimento delle compensazioni e del
+ *  debito residuo"). Per ogni società che ha un accordo o una compensazione,
+ *  la catena completa dei numeri, nell'ordine in cui il foglio li lavora:
+ *  fatture attese − compensazione = debito residuo; di quello, quanto entra
+ *  ora (l'accordo) e quanto resta da incassare più avanti (Standby). */
+export interface PosizioneCassa {
+  /** Chiave della controparte (cliente o "g:gruppo"): la stessa con cui si
+   *  salva l'accordo. Per una compensazione che non trova il suo cliente tra
+   *  le entrate: "comp:" + fornitore. */
+  chiave: string;
+  nome: string;
+  /** Fatture attese entro il limite, al lordo: prima della compensazione.
+   *  Senza quelle messe a mano nello Standby 2. */
+  fatture: number;
+  documenti: number;
+  /** Tolto dalle fatture per compensazione (quello che le dobbiamo noi). */
+  compensazione: number;
+  /** Debito residuo della società = fatture − compensazione. */
+  residuo: number;
+  /** L'importo scritto in "Entra ora" (assente = nessun accordo: entra tutto). */
+  accordo?: number;
+  /** Quanto entra nel conto del mese. */
+  entra: number;
+  /** Quanto resta da incassare più avanti (blocco "Standby" delle entrate). */
+  resta: number;
+  /** Compensazione che non ha trovato fatture da cui scalarsi: è quello che
+   *  dobbiamo ancora noi a questa società, e sta fuori dal foglio. */
+  daDare: number;
+  /** Le compensazioni che la riguardano (con la × che le esclude). */
   compensazioni: CompensazioneCassa[];
+}
+
+export interface EsitoCassa {
+  /** Compensazioni del mese, fornitore per fornitore. */
+  compensazioni: CompensazioneCassa[];
+  /** Il conto delle società con un accordo o una compensazione: per il
+   *  riquadro "Accordi e compensazioni" sotto il foglio. */
+  posizioni: PosizioneCassa[];
   /** Già pagate in banca, da chiudere su Aruba (Simone 12/11/2026): non
    *  stanno tra le uscite, altrimenti conterebbero due volte. */
   pagateInBanca: PagataInBanca[];
@@ -1400,6 +1438,18 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   //    `compensazioni`, per la riga informativa sotto il foglio;
   //  - lo stato `x` sulla chiave "comp|mese|fornitore" (la × di prima) la
   //    esclude: non si scala.
+  // IL CONTO SOCIETÀ PER SOCIETÀ (1.119.0): prima di toccare le righe si
+  // fotografa quanto ogni società deve al lordo; poi si segna quanto le si
+  // compensa e quanto entra con l'accordo. Esce in `posizioni`.
+  const lordi = new Map<string, { nome: string; fatture: number; documenti: number }>();
+  for (const r of righe) {
+    if (r.tipo !== "attiva" || !r.standbyIncasso || !r.chiaveControparte) continue;
+    const l = lordi.get(r.chiaveControparte) ?? { nome: r.controparte, fatture: 0, documenti: 0 };
+    l.fatture = r2(l.fatture + r.importo);
+    l.documenti += r.documenti;
+    lordi.set(r.chiaveControparte, l);
+  }
+  const scalatoPerChiave = new Map<string, number>();
   const compensazioni: CompensazioneCassa[] = [];
   for (const [kc, c] of gruppiComp) {
     const chiave = `comp|${meseCorr}|${kc}`;
@@ -1409,42 +1459,47 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     const kGruppo = grp ? `g:${chiaveCliente(grp.nome)}` : "";
     let daScalare = esclusa ? 0 : c.importo;
     let scalato = 0;
-    let cliente: string | undefined;
-    if (daScalare > 0.005) {
-      const attese = righe
-        .filter(
-          (r) =>
-            r.tipo === "attiva" &&
-            r.standbyIncasso &&
-            r.importo === r.importoOrigine &&
-            ((kGruppo !== "" && r.chiaveControparte === kGruppo) ||
-              (r.membriClienti ?? [r.controparte]).some((n) => nomeStretto(n) === stretto)),
-        )
-        .sort((a, b) => a.scadenza.localeCompare(b.scadenza) || a.chiave.localeCompare(b.chiave));
-      for (const r of attese) {
-        if (daScalare <= 0.005) break;
-        const tolto = r2(Math.min(r.importo, daScalare));
-        if (tolto <= 0.005) continue;
-        cliente = r.controparte;
-        daScalare = r2(daScalare - tolto);
-        scalato = r2(scalato + tolto);
-        if (tolto >= r.importo - 0.005) {
-          righe.splice(righe.indexOf(r), 1);
-          continue;
-        }
-        r.importo = r2(r.importo - tolto);
-        // Il netto è il nuovo importo "di partenza" della riga: non è una
-        // correzione a mano.
-        r.importoOrigine = r.importo;
-        r.compensato = r2((r.compensato ?? 0) + tolto);
+    // Le fatture attese della stessa società (o dello stesso gruppo): servono
+    // anche quando la compensazione è esclusa o non trova da scalarsi, per
+    // sapere di chi è e metterla nel suo conto.
+    const delCliente = righe.filter(
+      (r) =>
+        r.tipo === "attiva" &&
+        ((kGruppo !== "" && r.chiaveControparte === kGruppo) ||
+          (r.membriClienti ?? [r.controparte]).some((n) => nomeStretto(n) === stretto)),
+    );
+    const attese = delCliente
+      .filter((r) => r.standbyIncasso && r.importo === r.importoOrigine)
+      .sort((a, b) => a.scadenza.localeCompare(b.scadenza) || a.chiave.localeCompare(b.chiave));
+    const rif = attese[0] ?? delCliente.find((r) => r.standbyIncasso) ?? delCliente[0];
+    for (const r of attese) {
+      if (daScalare <= 0.005) break;
+      const tolto = r2(Math.min(r.importo, daScalare));
+      if (tolto <= 0.005) continue;
+      daScalare = r2(daScalare - tolto);
+      scalato = r2(scalato + tolto);
+      if (r.chiaveControparte)
+        scalatoPerChiave.set(
+          r.chiaveControparte,
+          r2((scalatoPerChiave.get(r.chiaveControparte) ?? 0) + tolto),
+        );
+      if (tolto >= r.importo - 0.005) {
+        righe.splice(righe.indexOf(r), 1);
+        continue;
       }
+      r.importo = r2(r.importo - tolto);
+      // Il netto è il nuovo importo "di partenza" della riga: non è una
+      // correzione a mano.
+      r.importoOrigine = r.importo;
+      r.compensato = r2((r.compensato ?? 0) + tolto);
     }
     compensazioni.push({
       chiave,
       fornitore: c.nome,
       importo: c.importo,
       scalato,
-      cliente,
+      cliente: rif?.controparte,
+      chiaveCliente: rif?.chiaveControparte,
       esclusa,
       documenti: c.n,
       numeri: elencoNumeri(c.numeri),
@@ -1466,6 +1521,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   // "Standby" (lo incasseremo più avanti). Le distingue `daAccordo`.
   const soldi = (n: number) =>
     n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const esitiAccordo = new Map<string, { entra: number; resta: number }>();
   for (const [k, valore] of Object.entries(db.accordi ?? {})) {
     const concordato = r2(Math.max(0, Number(valore) || 0));
     const attese = righe
@@ -1474,6 +1530,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     if (!attese.length) continue;
     const totale = r2(attese.reduce((s, r) => s + r.importo, 0));
     if (concordato >= totale - 0.005) continue;
+    esitiAccordo.set(k, { entra: concordato, resta: r2(totale - concordato) });
     let resto = concordato;
     for (const r of attese) {
       if (resto >= r.importo - 0.005) {
@@ -1500,7 +1557,11 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       controparte: attese[0].controparte,
       membriClienti: attese[0].membriClienti,
       chiaveControparte: k,
-      descrizione: `accordo: entrano ${soldi(concordato)} su ${soldi(totale)} · il resto in standby`,
+      // La catena del conto, da leggere col mouse sulla pillola "accordo".
+      descrizione:
+        (scalatoPerChiave.get(k) ?? 0) > 0.005
+          ? `accordo: fatture ${soldi(r2(totale + (scalatoPerChiave.get(k) ?? 0)))} − compensazione ${soldi(scalatoPerChiave.get(k) ?? 0)} = ${soldi(totale)} · entrano ${soldi(concordato)} · restano ${soldi(r2(totale - concordato))} in standby`
+          : `accordo: entrano ${soldi(concordato)} su ${soldi(totale)} · restano ${soldi(r2(totale - concordato))} in standby`,
       importo: concordato,
       importoOrigine: concordato,
       scadenza: st.d ?? fm,
@@ -1520,6 +1581,50 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       accordo: { totale },
     });
   }
+  // Il conto di ogni società con un accordo o una compensazione. Un accordo
+  // scritto per l'altra vista delle entrate (per gruppo quando si guarda per
+  // società, o il contrario) qui non lavora e non si elenca.
+  const compDi = new Map<string, CompensazioneCassa[]>();
+  for (const c of compensazioni) {
+    const k = c.chiaveCliente ?? `comp:${chiaveFornitore(c.fornitore)}`;
+    compDi.set(k, [...(compDi.get(k) ?? []), c]);
+  }
+  const haAccordo = (k: string) => Object.prototype.hasOwnProperty.call(db.accordi ?? {}, k);
+  const posizioni: PosizioneCassa[] = [];
+  for (const k of new Set([
+    ...Object.keys(db.accordi ?? {}),
+    ...compDi.keys(),
+    ...scalatoPerChiave.keys(),
+  ])) {
+    const l = lordi.get(k);
+    const comps = compDi.get(k) ?? [];
+    if (!l && !comps.length) {
+      // Accordo senza fatture attese: si elenca (per vederlo e toglierlo)
+      // solo se è della vista che si sta guardando.
+      const diGruppo = k.startsWith("g:");
+      if (diGruppo !== Boolean(input.unisciClienti)) continue;
+      if (!diGruppo && grpDi(k)) continue;
+    }
+    const fatture = l?.fatture ?? 0;
+    const compensazione = scalatoPerChiave.get(k) ?? 0;
+    const residuo = r2(fatture - compensazione);
+    const acc = esitiAccordo.get(k);
+    posizioni.push({
+      chiave: k,
+      nome:
+        l?.nome ?? comps[0]?.cliente ?? comps[0]?.fornitore ?? k.replace(/^g:/, "").toUpperCase(),
+      fatture,
+      documenti: l?.documenti ?? 0,
+      compensazione,
+      residuo,
+      accordo: haAccordo(k) ? r2(Math.max(0, Number(db.accordi?.[k]) || 0)) : undefined,
+      entra: acc ? acc.entra : residuo,
+      resta: acc ? acc.resta : 0,
+      daDare: r2(comps.reduce((s, c) => s + (c.esclusa ? 0 : c.importo - c.scalato), 0)),
+      compensazioni: comps,
+    });
+  }
+  posizioni.sort((a, b) => b.fatture - a.fatture || a.nome.localeCompare(b.nome, "it"));
   // Ordine del foglio: a sinistra gli incassi per data, poi gli attesi, in
   // fondo gli attesi parcheggiati; a destra per scadenza e nome, a
   // prescindere dalla colonna (così una riga spostata non cambia posto).
@@ -1610,7 +1715,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   pagateInBanca.sort(
     (a, b) => b.data.localeCompare(a.data) || a.fornitore.localeCompare(b.fornitore, "it"),
   );
-  return { righe, oltre, addebitate, pagateInBanca, compensazioni, totali };
+  return { righe, oltre, addebitate, pagateInBanca, compensazioni, posizioni, totali };
 }
 
 export function creaFotografia(

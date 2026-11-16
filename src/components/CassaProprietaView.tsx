@@ -84,6 +84,7 @@ import {
   tokenGruppi,
   type CassaDb,
   type FotografiaCassa,
+  type PosizioneCassa,
   type PrioritaCassa,
   type RigaCassa,
   type RigaManualeCassa,
@@ -834,6 +835,14 @@ export function CassaProprietaView({
     else accordi[c.chiaveControparte] = Math.round(Math.abs(importo) * 100) / 100;
     void salva({ ...db, accordi: Object.keys(accordi).length ? accordi : undefined });
   };
+  // Toglie un accordo dal riquadro "Accordi e compensazioni": serve per quelli
+  // rimasti senza fatture attese, che nel foglio non hanno più una casella.
+  const togliAccordo = (chiaveControparte: string) => {
+    if (!db?.accordi || !(chiaveControparte in db.accordi)) return;
+    const accordi = { ...db.accordi };
+    delete accordi[chiaveControparte];
+    void salva({ ...db, accordi: Object.keys(accordi).length ? accordi : undefined });
+  };
   // Acconti già incassati sugli entranti del mese (colonna Reale).
   const setAcconti = (importo: number) => {
     if (!db) return;
@@ -920,6 +929,10 @@ export function CassaProprietaView({
   const saldoVista = foto ? foto.saldo : saldo;
   const dataVista = foto ? foto.data : oggi;
   const calendario = foto ? [] : calendarioEntrate(esito.righe);
+  // Il conto delle società con un accordo o una compensazione (non nelle
+  // fotografie: lì ci sono solo le righe salvate).
+  const posizioni = foto ? [] : esito.posizioni;
+  const posizioniPerChiave = new Map(posizioni.map((p) => [p.chiave, p]));
   const agenda = foto ? [] : agendaCassa(esito.righe, db.agenda ?? []);
 
   const righeCsv = () => {
@@ -1261,6 +1274,7 @@ export function CassaProprietaView({
           onSollecita={sollecita}
           onAccordo={setAccordo}
           accordi={foto ? undefined : db.accordi}
+          posizioni={posizioniPerChiave}
           onRinomina={rinomina}
           onApriFornitore={onApriFornitore}
           onApriCliente={setClienteAperto}
@@ -1325,75 +1339,18 @@ export function CassaProprietaView({
             {esito.pagateInBanca.length > 10 ? ", …" : ""}) · {t("cpr.pagateBancaNota")}
           </div>
         )}
-        {/* Compensazioni (1.116.0): non sono più righe negative tra le
-            entrate. Quello che dobbiamo a un cliente si toglie dalle sue
-            fatture attese; qui si legge cosa è stato scalato e cosa è rimasto
-            fuori dal foglio. La × la esclude, la freccia la rimette. */}
-        {!foto && esito.compensazioni.length > 0 && (
-          <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
-            <span className={`mr-1 rounded px-1 text-[9px] font-bold uppercase ${PILL_COMP}`}>
-              {t("cpr.compensazione")}
-            </span>
-            {t("cpr.compRiga")}{" "}
-            {esito.compensazioni.map((c, i) => {
-              const fuori = Math.round((c.importo - c.scalato) * 100) / 100;
-              return (
-                <span
-                  key={c.chiave}
-                  className="whitespace-nowrap"
-                  title={`${c.documenti} ${t("cpr.fattureBreve")} ${c.numeri}`}
-                >
-                  {i > 0 && " · "}
-                  <span className={c.esclusa ? "line-through" : ""}>
-                    {onApriFornitore ? (
-                      <button
-                        type="button"
-                        onClick={() => onApriFornitore(c.fornitore)}
-                        className={LINK_CLS}
-                      >
-                        {c.fornitore}
-                      </button>
-                    ) : (
-                      c.fornitore
-                    )}{" "}
-                    <span className="font-semibold tabular-nums text-foreground">
-                      {fmt(c.importo)}
-                    </span>
-                  </span>{" "}
-                  {c.esclusa ? (
-                    t("cpr.compEsclusa")
-                  ) : (
-                    <>
-                      {c.scalato > 0.005 && (
-                        <span className="text-emerald-700 dark:text-emerald-400">
-                          {t("cpr.compScalata")}
-                          {fuori > 0.005 ? ` ${fmt(c.scalato)}` : ""}
-                        </span>
-                      )}
-                      {fuori > 0.005 && (
-                        <span>
-                          {c.scalato > 0.005 ? ", " : ""}
-                          {t("cpr.compFuori")}
-                          {c.scalato > 0.005 ? ` ${fmt(fuori)}` : ""}
-                        </span>
-                      )}
-                    </>
-                  )}
-                  {!soloLettura && (
-                    <button
-                      type="button"
-                      onClick={() => setStato(c.chiave, { x: c.esclusa ? undefined : true })}
-                      title={t(c.esclusa ? "cpr.compRimettiTip" : "cpr.compEscludiTip")}
-                      className="ml-0.5 rounded px-1 text-muted-foreground hover:bg-muted hover:text-rose-600"
-                    >
-                      {c.esclusa ? "↩" : "×"}
-                    </button>
-                  )}
-                </span>
-              );
-            })}
-            . {t("cpr.compNota")}
-          </div>
+        {/* Accordi e compensazioni (1.119.0): il conto società per società.
+            Prende il posto della riga di testo sulle compensazioni. */}
+        {posizioni.length > 0 && (
+          <PannelloPosizioni
+            posizioni={posizioni}
+            readOnly={soloLettura}
+            onEscludi={(chiave, escludi) => setStato(chiave, { x: escludi || undefined })}
+            onTogliAccordo={togliAccordo}
+            onApriCliente={setClienteAperto}
+            onApriFornitore={onApriFornitore}
+            t={t}
+          />
         )}
         {/* RID/RiBa già scaduti: la banca li ha già presi, fuori dal foglio */}
         {!foto && esito.addebitate.length > 0 && (
@@ -1890,6 +1847,7 @@ export function Foglio({
   onSollecita,
   onAccordo,
   accordi,
+  posizioni,
   onRinomina,
   onApriFornitore,
   onApriCliente,
@@ -1927,6 +1885,8 @@ export function Foglio({
   onAccordo: (c: Cella, importo: number | null) => void;
   /** Gli accordi salvati, per controparte. */
   accordi?: Readonly<Record<string, number>>;
+  /** Il conto delle società con accordo o compensazione, per controparte. */
+  posizioni?: ReadonlyMap<string, PosizioneCassa>;
   /** Nuovo nome per una riga scritta a mano. */
   onRinomina: (c: Cella, nome: string) => void;
   onApriFornitore?: (nome: string) => void;
@@ -2232,6 +2192,17 @@ export function Foglio({
               const e = slot?.kind === "riga" || slot?.kind === "padre" ? slot.c : undefined;
               const padre = slot?.kind === "padre" ? slot : undefined;
               const figlio = slot?.kind === "riga" && slot.figlio === true;
+              // Il conto della società di questa riga (se ha una compensazione
+              // o un accordo): per la pillola "al netto" con tutta la catena.
+              const posE =
+                e && e.tipo === "attiva" && e.attesa && e.chiaveControparte
+                  ? posizioni?.get(e.chiaveControparte)
+                  : undefined;
+              const compE = e
+                ? figlio
+                  ? (e.compensato ?? 0)
+                  : (posE?.compensazione ?? e.compensato ?? 0)
+                : 0;
               const slotU = slotsU[i];
               const testaU = slotU?.kind === "head" ? slotU : undefined;
               const totaliU = slotU?.kind === "totali" ? slotU : undefined;
@@ -2352,10 +2323,14 @@ export function Foglio({
                                 {t("cpr.compensazione")}
                               </span>
                             )}
-                            {!padre && (e.compensato ?? 0) > 0.005 && (
+                            {compE > 0.005 && (
                               <span
                                 className="inline-flex shrink-0 items-center rounded border border-rose-400 px-1 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-300"
-                                title={`${t("cpr.alNettoTip")} ${fmt(e.compensato ?? 0)} €`}
+                                title={
+                                  !figlio && posE
+                                    ? catenaPosizione(posE, t)
+                                    : `${t("cpr.alNettoTip")} ${fmt(compE)} €`
+                                }
                               >
                                 {t("cpr.alNetto")}
                               </span>
@@ -3722,6 +3697,242 @@ function AgendaBox({
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+/** La catena del conto di una società in una riga, per i suggerimenti. */
+const catenaPosizione = (p: PosizioneCassa, t: TFn) =>
+  `${t("cpr.posFatture")} ${fmt(p.fatture)} − ${t("cpr.compensazione")} ${fmt(p.compensazione)} = ${t("cpr.posResiduo")} ${fmt(p.residuo)} · ${t("cpr.colAccordo")} ${fmt(p.entra)}${p.resta > 0.005 ? ` · ${t("cpr.posResta")} ${fmt(p.resta)}` : ""}`;
+
+/** ACCORDI E COMPENSAZIONI (1.119.0, Simone 16/11/2026: "quando metto un
+ *  accordo deve ragionare sul movimento delle compensazioni e del debito
+ *  residuo"). Il conto società per società, per chi ha un accordo o una
+ *  compensazione: fatture attese − compensazione = debito residuo; di
+ *  quello, quanto entra ora e quanto resta da incassare più avanti. Prende
+ *  il posto della riga di testo: le fatture coperte da una compensazione
+ *  uscivano dal foglio senza che si leggesse il perché. */
+export function PannelloPosizioni({
+  posizioni,
+  readOnly,
+  onEscludi,
+  onTogliAccordo,
+  onApriCliente,
+  onApriFornitore,
+  t,
+}: {
+  posizioni: readonly PosizioneCassa[];
+  readOnly: boolean;
+  /** La × su una compensazione: true la esclude dal conto, false la rimette. */
+  onEscludi: (chiave: string, escludi: boolean) => void;
+  /** Toglie un accordo rimasto senza fatture attese. */
+  onTogliAccordo: (chiaveControparte: string) => void;
+  onApriCliente: (nome: string) => void;
+  onApriFornitore?: (nome: string) => void;
+  t: TFn;
+}) {
+  const [aperto, setAperto] = useState(true);
+  const somma = (f: (p: PosizioneCassa) => number) =>
+    Math.round(posizioni.reduce((s, p) => s + f(p), 0) * 100) / 100;
+  const tot = {
+    fatture: somma((p) => p.fatture),
+    compensazione: somma((p) => p.compensazione),
+    residuo: somma((p) => p.residuo),
+    entra: somma((p) => p.entra),
+    resta: somma((p) => p.resta),
+    daDare: somma((p) => p.daDare),
+  };
+  const thBase =
+    "px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wide whitespace-nowrap";
+  const th = `${thBase} text-right`;
+  const td = "px-3 py-1.5 text-right tabular-nums whitespace-nowrap";
+  const vuoto = <span className="text-muted-foreground/50">—</span>;
+  const bottoncino =
+    "rounded px-1 text-muted-foreground hover:bg-muted hover:text-rose-600 focus:outline-none focus:ring-1 focus:ring-primary/40";
+  return (
+    <div className="border-t border-border">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-sky-50 px-3 py-2 text-sky-950 dark:bg-sky-950/40 dark:text-sky-100">
+        <PiuMeno aperto={aperto} onClick={() => setAperto((v) => !v)} t={t} />
+        <span className="text-[12px] font-semibold uppercase tracking-wide">
+          {t("cpr.posTitolo")}
+        </span>
+        <span className="text-[11px] opacity-75">
+          {posizioni.length} {t("cpr.posSocieta")} · {t("cpr.posDesc")}
+        </span>
+        {!aperto && (
+          <span className="ml-auto text-[12px] tabular-nums">
+            {t("cpr.colAccordo")} <b>{fmt(tot.entra)}</b> · {t("cpr.posResta")}{" "}
+            <b>{fmt(tot.resta)}</b>
+          </span>
+        )}
+      </div>
+      {aperto && (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[12.5px]">
+            <thead>
+              <tr className="border-b border-border bg-muted/50 text-muted-foreground">
+                <th className={`${thBase} text-left`}>{t("cpr.posColSocieta")}</th>
+                <th className={th}>{t("cpr.posFatture")}</th>
+                <th className={`${th} text-rose-700 dark:text-rose-300`}>− {t("cpr.posComp")}</th>
+                <th className={`${th} text-foreground`}>= {t("cpr.posResiduo")}</th>
+                <th className={`${th} text-sky-700 dark:text-sky-300`}>{t("cpr.colAccordo")}</th>
+                <th className={`${th} text-slate-600 dark:text-slate-300`}>{t("cpr.posResta")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {posizioni.map((p) => {
+                const soloComp = p.chiave.startsWith("comp:");
+                const haFatture = p.fatture > 0.005;
+                const senzaNulla = !haFatture && !p.compensazioni.length;
+                return (
+                  <tr key={p.chiave} className="border-b border-border/50 hover:bg-primary/5">
+                    <td className="px-3 py-1.5">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            soloComp ? onApriFornitore?.(p.nome) : onApriCliente(p.nome)
+                          }
+                          title={t(soloComp ? "cpr.apriFornitore" : "cpr.apriCliente")}
+                          className={`max-w-[280px] truncate font-medium ${LINK_CLS}`}
+                        >
+                          {p.nome}
+                        </button>
+                        {p.accordo != null && (
+                          <span className="rounded bg-sky-600 px-1 text-[9px] font-bold uppercase text-white">
+                            {t("cpr.accordo")}
+                          </span>
+                        )}
+                        {p.documenti > 0 && (
+                          <span className="text-[10.5px] text-muted-foreground">
+                            {p.documenti} {t("cpr.fattureBreve")}
+                          </span>
+                        )}
+                        {senzaNulla && (
+                          <span className="text-[10.5px] italic text-muted-foreground">
+                            {t("cpr.posSenzaFatture")}
+                          </span>
+                        )}
+                        {senzaNulla && p.accordo != null && !readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => onTogliAccordo(p.chiave)}
+                            title={t("cpr.posTogliAccordo")}
+                            className={bottoncino}
+                          >
+                            ×
+                          </button>
+                        )}
+                        {p.daDare > 0.005 && (
+                          <span
+                            className="rounded border border-amber-500 bg-amber-50 px-1.5 text-[10.5px] font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                            title={t("cpr.posDaDareTip")}
+                          >
+                            {t("cpr.posDaDare")} {fmt(p.daDare)}
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                    <td className={td}>{haFatture ? fmt(p.fatture) : vuoto}</td>
+                    <td className={`${td} text-rose-700 dark:text-rose-300`}>
+                      <span className="inline-flex items-center justify-end gap-1">
+                        {p.compensazione > 0.005
+                          ? `− ${fmt(p.compensazione)}`
+                          : p.compensazioni.some((c) => c.esclusa)
+                            ? null
+                            : vuoto}
+                        {p.compensazioni.map((c) => (
+                          <span
+                            key={c.chiave}
+                            className="inline-flex items-center gap-1"
+                            title={`${c.fornitore} · ${c.documenti} ${t("cpr.fattureBreve")} ${c.numeri}`}
+                          >
+                            {c.esclusa && (
+                              <span className="text-muted-foreground">
+                                <span className="line-through">{fmt(c.importo)}</span>{" "}
+                                <span className="text-[10px]">{t("cpr.compEsclusa")}</span>
+                              </span>
+                            )}
+                            {!readOnly && (
+                              <button
+                                type="button"
+                                onClick={() => onEscludi(c.chiave, !c.esclusa)}
+                                title={t(c.esclusa ? "cpr.compRimettiTip" : "cpr.compEscludiTip")}
+                                className={bottoncino}
+                              >
+                                {c.esclusa ? "↩" : "×"}
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                      </span>
+                    </td>
+                    <td className={`${td} font-semibold text-foreground`}>
+                      {haFatture ? fmt(p.residuo) : vuoto}
+                    </td>
+                    <td
+                      className={`${td} ${p.accordo != null ? "font-semibold text-sky-700 dark:text-sky-300" : "text-foreground"}`}
+                    >
+                      {haFatture && p.accordo == null && p.entra <= 0.005 ? (
+                        // tutto compensato e nessun accordo: non entra nulla
+                        vuoto
+                      ) : haFatture ? (
+                        <>
+                          {fmt(p.entra)}
+                          {p.accordo == null && (
+                            <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                              {t("cpr.accordoTutto")}
+                            </span>
+                          )}
+                          {p.accordo != null && p.accordo > p.entra + 0.005 && (
+                            <span
+                              className="ml-1 text-[10px] font-normal text-muted-foreground"
+                              title={t("cpr.posAccordoAltoTip")}
+                            >
+                              ({t("cpr.accordo")} {fmt(p.accordo)})
+                            </span>
+                          )}
+                        </>
+                      ) : p.accordo != null ? (
+                        <span className="font-normal text-muted-foreground">{fmt(p.accordo)}</span>
+                      ) : (
+                        vuoto
+                      )}
+                    </td>
+                    <td className={`${td} text-slate-700 dark:text-slate-200`}>
+                      {p.resta > 0.005 ? fmt(p.resta) : vuoto}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-border bg-muted/40 font-semibold">
+                <td className="px-3 py-2">
+                  <span className="text-[11px] uppercase tracking-wide">{t("cpr.posTotale")}</span>
+                  {tot.daDare > 0.005 && (
+                    <span className="ml-2 text-[11px] font-normal text-amber-800 dark:text-amber-200">
+                      {t("cpr.posDaDare")} {fmt(tot.daDare)}
+                    </span>
+                  )}
+                </td>
+                <td className={td}>{fmt(tot.fatture)}</td>
+                <td className={`${td} text-rose-700 dark:text-rose-300`}>
+                  {tot.compensazione > 0.005 ? `− ${fmt(tot.compensazione)}` : vuoto}
+                </td>
+                <td className={`${td} text-[13.5px] text-foreground`}>{fmt(tot.residuo)}</td>
+                <td className={`${td} text-[13.5px] text-sky-700 dark:text-sky-300`}>
+                  {fmt(tot.entra)}
+                </td>
+                <td className={`${td} text-[13.5px] text-slate-700 dark:text-slate-200`}>
+                  {fmt(tot.resta)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+          <p className="px-3 py-1.5 text-[11px] text-muted-foreground">{t("cpr.posNota")}</p>
+        </div>
       )}
     </div>
   );

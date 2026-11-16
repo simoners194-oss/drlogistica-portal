@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.119.0",
+    date: "2026-11-16",
+    entries: [
+      {
+        title: "Cassa proprietà: accordi e compensazioni, il conto società per società",
+        description:
+          'Sotto il foglio c\'è il riquadro "Accordi e compensazioni". Per ogni società con un accordo o una compensazione si legge il conto in fila: fatture attese, meno compensazione, uguale debito residuo; poi quanto entra ora e quanto resta da incassare. Le fatture coperte da una compensazione non spariscono più senza spiegazione. La × toglie una compensazione dal conto. Un accordo rimasto senza fatture si vede e si può togliere.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Resoconto: l'accordo e il residuo di ogni società",
+        description:
+          "Nella tabella \"Saldo per controparte\" compaiono due colonne: l'accordo scritto nella Cassa (quanto entra ora) e il residuo dopo l'accordo. Così per ogni società si vede il quadro intero: quanto ci deve, quanto le dobbiamo, quanto paga adesso e quanto resta.",
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.118.0",
     date: "2026-11-13",
     entries: [

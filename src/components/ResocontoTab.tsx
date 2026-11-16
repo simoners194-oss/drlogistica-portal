@@ -21,6 +21,8 @@ import {
   type TerminePagamento,
 } from "@/lib/fatture-logic";
 import { clienteGroupKey } from "@/lib/finanza-logic";
+import { chiaveCliente, gruppoDiCliente, tokenGruppi, type CassaDb } from "@/lib/cassa-logic";
+import { spCassaGet } from "@/lib/cassa.functions";
 import { esportaCsvFile } from "@/lib/csv";
 import {
   spGetFatture,
@@ -130,6 +132,11 @@ export function ResocontoTab() {
   // spento e il resoconto resta canonico finché non lo si accende.
   const [flussi, setFlussi] = useState<FlussoCassaRiga[] | null>(null);
   const [applicaEscl, setApplicaEscl] = useState(false);
+  // ACCORDI SUGLI ENTRANTI scritti nella Cassa proprietà (colonna "Entra
+  // ora"): si leggono qui per avere il quadro di ogni società — Simone
+  // 16/11/2026. La Cassa è riservata alla direzione: chi non la può leggere
+  // resta senza le due colonne, senza errori.
+  const [cassaDb, setCassaDb] = useState<CassaDb | null>(null);
 
   useEffect(() => {
     spGetFatture({ data: { direzione: "Emessa" } })
@@ -158,6 +165,9 @@ export function ResocontoTab() {
     spGetFlussiCassa()
       .then((l) => setFlussi(l as FlussoCassaRiga[]))
       .catch(() => setFlussi([]));
+    spCassaGet()
+      .then((d) => setCassaDb(d as CassaDb))
+      .catch(() => setCassaDb(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -492,8 +502,25 @@ export function ResocontoTab() {
     pasPag: number;
     pasAp: number;
     saldo: number;
+    /** Le chiavi con cui la Cassa salva l'accordo di questa società (il
+     *  cliente, o "g:gruppo" quando le entrate sono unite per gruppo). */
+    chiaviCassa: string[];
+    /** Accordo scritto nella Cassa ("Entra ora"); assente = nessun accordo. */
+    accordo?: number;
+    /** Quanto entra ora: l'accordo, mai più del saldo. */
+    entra?: number;
+    /** Residuo dopo l'accordo = saldo − quello che entra ora. */
+    residuo?: number;
   };
   const saldiControparte = useMemo((): RigaSaldo[] => {
+    // La stessa chiave della Cassa: per società, oppure per gruppo quando lì
+    // le entrate sono unite per gruppo.
+    const accordi = cassaDb?.accordi ?? {};
+    const gruppiCassa = cassaDb?.unisciClienti ? tokenGruppi(gruppi ?? []) : [];
+    const chiaveCassa = (nome: string) => {
+      const grp = gruppoDiCliente(nome, gruppiCassa);
+      return grp ? `g:${chiaveCliente(grp.nome)}` : chiaveCliente(nome);
+    };
     const cliNessuno = clientiSel.includes(NESSUNO);
     const forNessuno = fornitoriSel.includes(NESSUNO);
     const cliSel = espandiGruppi(
@@ -520,6 +547,7 @@ export function ResocontoTab() {
         pasPag: 0,
         pasAp: 0,
         saldo: 0,
+        chiaviCassa: [],
       };
       righe.set(k, r);
       return r;
@@ -528,6 +556,8 @@ export function ResocontoTab() {
       for (const x of attive) {
         if (!inSelezione(x.f.cliente, cliSel) || x.s.aruba === "Stornata") continue;
         const r = riga(x.f.cliente);
+        const kc = chiaveCassa(x.f.cliente);
+        if (!r.chiaviCassa.includes(kc)) r.chiaviCassa.push(kc);
         if (x.s.stato === "NC") r.attNc += Math.abs(x.f.totale);
         else {
           r.attFt += Math.abs(x.f.totale);
@@ -547,23 +577,87 @@ export function ResocontoTab() {
         }
       }
     return [...righe.values()]
-      .map((r) => ({
-        ...r,
-        attFt: r2(r.attFt),
-        attNc: r2(r.attNc),
-        attInc: r2(r.attInc),
-        attAp: r2(r.attAp),
-        pasFt: r2(r.pasFt),
-        pasNc: r2(r.pasNc),
-        pasPag: r2(r.pasPag),
-        pasAp: r2(r.pasAp),
-        saldo: r2(r.attAp - r.pasAp),
-      }))
+      .map((r) => {
+        const saldo = r2(r.attAp - r.pasAp);
+        // L'accordo della società (quelli di gruppo hanno la loro riga).
+        const scritti = r.chiaviCassa.filter((k) => !k.startsWith("g:") && k in accordi);
+        const accordo = scritti.length
+          ? r2(scritti.reduce((tot, k) => tot + Math.max(0, Number(accordi[k]) || 0), 0))
+          : undefined;
+        const entra = accordo != null ? Math.min(accordo, Math.max(0, saldo)) : undefined;
+        return {
+          ...r,
+          attFt: r2(r.attFt),
+          attNc: r2(r.attNc),
+          attInc: r2(r.attInc),
+          attAp: r2(r.attAp),
+          pasFt: r2(r.pasFt),
+          pasNc: r2(r.pasNc),
+          pasPag: r2(r.pasPag),
+          pasAp: r2(r.pasAp),
+          saldo,
+          accordo,
+          entra,
+          residuo: entra != null ? r2(saldo - entra) : undefined,
+        };
+      })
       .sort(
         (a, b) => Math.abs(b.saldo) - Math.abs(a.saldo) || b.attFt + b.pasFt - (a.attFt + a.pasFt),
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attive, passive, clientiSel, fornitoriSel, opzioniClienti, opzioniFornitori, gruppi]);
+  }, [
+    attive,
+    passive,
+    clientiSel,
+    fornitoriSel,
+    opzioniClienti,
+    opzioniFornitori,
+    gruppi,
+    cassaDb,
+  ]);
+  // Accordi scritti PER GRUPPO (Cassa con "Entrate per gruppo"): una riga in
+  // più col conto del gruppo intero, perché l'accordo vale per tutte le sue
+  // società insieme.
+  const accordiGruppo = useMemo(() => {
+    const accordi = cassaDb?.accordi ?? {};
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const per = new Map<
+      string,
+      { chiave: string; nome: string; membri: string[]; attAp: number; pasAp: number }
+    >();
+    for (const r of saldiControparte)
+      for (const k of r.chiaviCassa) {
+        if (!k.startsWith("g:") || !(k in accordi)) continue;
+        const g = per.get(k) ?? {
+          chiave: k,
+          nome:
+            (gruppi ?? []).find((x) => chiaveCliente(x.nome) === k.slice(2))?.nome ??
+            k.slice(2).toUpperCase(),
+          membri: [],
+          attAp: 0,
+          pasAp: 0,
+        };
+        g.membri.push(r.nome);
+        g.attAp += r.attAp;
+        g.pasAp += r.pasAp;
+        per.set(k, g);
+      }
+    return [...per.values()].map((g) => {
+      const saldo = r2(g.attAp - g.pasAp);
+      const accordo = r2(Math.max(0, Number(accordi[g.chiave]) || 0));
+      const entra = Math.min(accordo, Math.max(0, saldo));
+      return {
+        ...g,
+        attAp: r2(g.attAp),
+        pasAp: r2(g.pasAp),
+        saldo,
+        accordo,
+        entra,
+        residuo: r2(saldo - entra),
+      };
+    });
+  }, [saldiControparte, cassaDb, gruppi]);
+  const tdNum = "py-1 px-2 text-right tabular-nums whitespace-nowrap";
   const totaliSaldi = useMemo(() => {
     const t0 = {
       attFt: 0,
@@ -575,8 +669,19 @@ export function ResocontoTab() {
       pasPag: 0,
       pasAp: 0,
       saldo: 0,
+      // Quanto entra ora con gli accordi, e quanti sono.
+      entra: 0,
+      nAccordi: 0,
     };
+    for (const g of accordiGruppo) {
+      t0.entra += g.entra;
+      t0.nAccordi++;
+    }
     for (const r of saldiControparte) {
+      if (r.entra != null) {
+        t0.entra += r.entra;
+        t0.nAccordi++;
+      }
       t0.attFt += r.attFt;
       t0.attNc += r.attNc;
       t0.attInc += r.attInc;
@@ -588,8 +693,32 @@ export function ResocontoTab() {
       t0.saldo += r.saldo;
     }
     return t0;
-  }, [saldiControparte]);
-  const tdNum = "py-1 px-2 text-right tabular-nums whitespace-nowrap";
+  }, [saldiControparte, accordiGruppo]);
+  const haAccordi = totaliSaldi.nAccordi > 0;
+  const cellaAccordo = (accordo?: number, entra?: number) => (
+    <td
+      className={`${tdNum} pl-3 font-semibold text-sky-700 dark:text-sky-300`}
+      title={
+        accordo != null && entra != null && entra < accordo - 0.005
+          ? `${t("rt.saldoAccordoAlto")} ${fmtImporto(entra)} €`
+          : undefined
+      }
+    >
+      {accordo != null ? `${fmtImporto(accordo)} €` : <span className="font-normal">—</span>}
+      {accordo != null && entra != null && entra < accordo - 0.005 && (
+        <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+          {t("rt.saldoEntra")} {fmtImporto(entra)}
+        </span>
+      )}
+    </td>
+  );
+  const cellaResiduo = (residuo?: number) => (
+    <td
+      className={`${tdNum} pl-3 font-semibold ${residuo == null ? "text-muted-foreground" : residuo >= 0 ? "text-status-present" : "text-status-absent"}`}
+    >
+      {residuo != null ? `${fmtImporto(residuo)} €` : "—"}
+    </td>
+  );
   const cellaSaldo = (v: number, cls = "") => (
     <td className={`${tdNum} ${cls}`}>{Math.abs(v) > 0.005 ? fmtImporto(v) : "—"}</td>
   );
@@ -1378,6 +1507,24 @@ export function ResocontoTab() {
                       <th rowSpan={2} className="py-1 pl-3 text-right align-bottom">
                         {t("rt.saldoNetto")}
                       </th>
+                      {haAccordi && (
+                        <>
+                          <th
+                            rowSpan={2}
+                            className="py-1 pl-3 text-right align-bottom text-sky-700 dark:text-sky-300"
+                            title={t("rt.saldoAccordoTip")}
+                          >
+                            {t("rt.saldoAccordo")}
+                          </th>
+                          <th
+                            rowSpan={2}
+                            className="py-1 pl-3 text-right align-bottom"
+                            title={t("rt.saldoAccordoTip")}
+                          >
+                            {t("rt.saldoResiduo")}
+                          </th>
+                        </>
+                      )}
                     </tr>
                     <tr className="border-b border-border text-[10px] uppercase text-muted-foreground">
                       {[
@@ -1397,28 +1544,57 @@ export function ResocontoTab() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(mostraTuttiSaldi ? saldiControparte : saldiControparte.slice(0, 25)).map(
-                      (r) => (
-                        <tr key={r.chiave} className="border-b border-border/40">
-                          <td className="max-w-56 truncate py-1 pr-3 font-medium" title={r.nome}>
-                            {r.nome}
-                          </td>
-                          {cellaSaldo(r.attFt)}
-                          {cellaSaldo(r.attNc, "text-muted-foreground")}
-                          {cellaSaldo(r.attInc)}
-                          {cellaSaldo(r.attAp, r.attAp > 0.005 ? "font-medium" : "")}
-                          {cellaSaldo(r.pasFt)}
-                          {cellaSaldo(r.pasNc, "text-muted-foreground")}
-                          {cellaSaldo(r.pasPag)}
-                          {cellaSaldo(r.pasAp, r.pasAp > 0.005 ? "font-medium" : "")}
-                          <td
-                            className={`py-1 pl-3 text-right tabular-nums font-semibold whitespace-nowrap ${r.saldo >= 0 ? "text-status-present" : "text-status-absent"}`}
-                          >
-                            {fmtImporto(r.saldo)} €
-                          </td>
-                        </tr>
-                      ),
-                    )}
+                    {(mostraTuttiSaldi
+                      ? saldiControparte
+                      : // le prime 25, più chi ha un accordo (non deve restare nascosto)
+                        saldiControparte.filter((r, i) => i < 25 || r.accordo != null)
+                    ).map((r) => (
+                      <tr key={r.chiave} className="border-b border-border/40">
+                        <td className="max-w-56 truncate py-1 pr-3 font-medium" title={r.nome}>
+                          {r.nome}
+                        </td>
+                        {cellaSaldo(r.attFt)}
+                        {cellaSaldo(r.attNc, "text-muted-foreground")}
+                        {cellaSaldo(r.attInc)}
+                        {cellaSaldo(r.attAp, r.attAp > 0.005 ? "font-medium" : "")}
+                        {cellaSaldo(r.pasFt)}
+                        {cellaSaldo(r.pasNc, "text-muted-foreground")}
+                        {cellaSaldo(r.pasPag)}
+                        {cellaSaldo(r.pasAp, r.pasAp > 0.005 ? "font-medium" : "")}
+                        <td
+                          className={`py-1 pl-3 text-right tabular-nums font-semibold whitespace-nowrap ${r.saldo >= 0 ? "text-status-present" : "text-status-absent"}`}
+                        >
+                          {fmtImporto(r.saldo)} €
+                        </td>
+                        {haAccordi && cellaAccordo(r.accordo, r.entra)}
+                        {haAccordi && cellaResiduo(r.residuo)}
+                      </tr>
+                    ))}
+                    {/* Accordi scritti per gruppo: il conto del gruppo intero */}
+                    {accordiGruppo.map((g) => (
+                      <tr
+                        key={g.chiave}
+                        className="border-b border-border/40 bg-sky-50/70 dark:bg-sky-950/20"
+                      >
+                        <td className="py-1 pr-3 font-medium" title={g.membri.join(" · ")}>
+                          {g.nome}{" "}
+                          <span className="rounded bg-sky-600 px-1 text-[9px] font-bold uppercase text-white">
+                            {t("rt.saldoAccordoGruppo")}
+                          </span>
+                        </td>
+                        <td colSpan={3} />
+                        {cellaSaldo(g.attAp, "font-medium")}
+                        <td colSpan={3} />
+                        {cellaSaldo(g.pasAp, "font-medium")}
+                        <td
+                          className={`py-1 pl-3 text-right tabular-nums font-semibold whitespace-nowrap ${g.saldo >= 0 ? "text-status-present" : "text-status-absent"}`}
+                        >
+                          {fmtImporto(g.saldo)} €
+                        </td>
+                        {cellaAccordo(g.accordo, g.entra)}
+                        {cellaResiduo(g.residuo)}
+                      </tr>
+                    ))}
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-border font-semibold">
@@ -1438,10 +1614,30 @@ export function ResocontoTab() {
                       >
                         {fmtImporto(totaliSaldi.saldo)} €
                       </td>
+                      {haAccordi && (
+                        <>
+                          <td className={`${tdNum} pl-3 text-sky-700 dark:text-sky-300`}>
+                            {fmtImporto(totaliSaldi.entra)} €
+                          </td>
+                          <td
+                            className={`${tdNum} pl-3 ${totaliSaldi.saldo - totaliSaldi.entra >= 0 ? "text-status-present" : "text-status-absent"}`}
+                          >
+                            {fmtImporto(totaliSaldi.saldo - totaliSaldi.entra)} €
+                          </td>
+                        </>
+                      )}
                     </tr>
                   </tfoot>
                 </table>
               </div>
+              {haAccordi && (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  <span className="mr-1 rounded bg-sky-600 px-1 text-[9px] font-bold uppercase text-white">
+                    {t("rt.saldoAccordoPill")}
+                  </span>
+                  {t("rt.saldoAccordoNota")}
+                </p>
+              )}
               {saldiControparte.length > 25 && (
                 <button
                   type="button"

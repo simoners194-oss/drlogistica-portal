@@ -1127,6 +1127,26 @@ const en = {
   "cpr.compRimettiTip": "Deduct it from the customer's invoices again",
   "cpr.compNota":
     "Off the sheet = the customer has no expected invoices to deduct it from (or their amount was corrected by hand, or they are in Standby 2)",
+  "cpr.posTitolo": "Agreements and offsets",
+  "cpr.posSocieta": "companies",
+  "cpr.posDesc":
+    "the account company by company: what it owes us, what is offset, what comes in now and what is left",
+  "cpr.posColSocieta": "Company",
+  "cpr.posFatture": "Expected invoices",
+  "cpr.posComp": "Offset",
+  "cpr.posResiduo": "Remaining debt",
+  "cpr.posResta": "Left to collect",
+  "cpr.posTotale": "Total",
+  "cpr.posDaDare": "we still owe it",
+  "cpr.posDaDareTip":
+    "What we owe this company is more than its expected invoices (or its invoices are in Standby 2, or have a hand-corrected amount): this part has nothing to be deducted from and stays off the sheet. It is not among the outflows.",
+  "cpr.posSenzaFatture": "no expected invoices",
+  "cpr.posTogliAccordo":
+    "Remove the agreement: it would apply again by itself when new invoices arrive",
+  "cpr.posAccordoAltoTip":
+    "The agreement is higher than the remaining debt: the remaining debt comes in, no more",
+  "cpr.posNota":
+    "Invoices due by the date of the next days count. Invoices put by hand in Standby 2 stay out of the account. The agreement is written in the «Coming in» column of the sheet. The × takes an offset out of the account, the arrow puts it back.",
   "cpr.aParte": "separate, not added to anything",
   "cpr.eStandby": "Standby · to collect later",
   "cpr.eStandby2": "Standby 2 · will not be collected",
@@ -1196,7 +1216,7 @@ const en = {
   "cpr.diCuiScaduto": "of which overdue",
   "cpr.compensazione": "compensation",
   "cpr.legendaCompensazione":
-    "invoices of those who pay by compensation: out of the outflows and deducted from the same customer's expected invoices (see the line below the sheet)",
+    "invoices of those who pay by compensation: out of the outflows and deducted from the same customer's expected invoices (see the «Agreements and offsets» box below the sheet)",
   "cpr.diCuiComp": "of which compensations",
   "cpr.apriFiscale": "Open the due items inside this row",
   "cpr.schedaFiscale": "Due items",
@@ -1543,6 +1563,16 @@ const en = {
   "rt.saldoTutte": "Show all",
   "rt.saldoMeno": "Show the first 25",
   "rt.saldoTotale": "Selection total",
+  "rt.saldoAccordo": "Agreement · coming in",
+  "rt.saldoResiduo": "Left after the agreement",
+  "rt.saldoAccordoTip":
+    "The agreement is the amount written in the Owner cash view, «Coming in» column. Left = balance − what comes in now.",
+  "rt.saldoAccordoAlto": "The agreement is higher than the balance: the balance comes in, that is",
+  "rt.saldoAccordoGruppo": "group agreement",
+  "rt.saldoEntra": "coming in",
+  "rt.saldoAccordoPill": "agreement",
+  "rt.saldoAccordoNota":
+    "Agreement = what the company pays now, written in the Owner cash view («Coming in» column; 0.00 = nothing comes in for now). Left = balance − what comes in now: what remains to collect after the agreement, already net of what we owe it. All open invoices count here, including those not yet due: so this can be higher than the Standby of the cash view, which only looks at due dates up to the next days.",
   "rt.q4Titolo": "The counterparty's four numbers",
   "rt.q4Desc":
     "Bank and invoices of the selection (every counterparty when there is no filter). Balance = receivables − collected − (payables − paid).",
@@ -3446,6 +3476,26 @@ const it: Record<DictKey, string> = {
   "cpr.compRimettiTip": "Torna a scalarla dalle fatture del cliente",
   "cpr.compNota":
     "Fuori dal foglio = il cliente non ha fatture attese da cui scalarla (oppure hanno l'importo corretto a mano, o sono nello Standby 2)",
+  "cpr.posTitolo": "Accordi e compensazioni",
+  "cpr.posSocieta": "società",
+  "cpr.posDesc":
+    "il conto società per società: quanto ci deve, quanto si compensa, quanto entra ora e quanto resta",
+  "cpr.posColSocieta": "Società",
+  "cpr.posFatture": "Fatture attese",
+  "cpr.posComp": "Compensazione",
+  "cpr.posResiduo": "Debito residuo",
+  "cpr.posResta": "Resta da incassare",
+  "cpr.posTotale": "Totale",
+  "cpr.posDaDare": "le dobbiamo ancora",
+  "cpr.posDaDareTip":
+    "Quello che dobbiamo a questa società è più delle sue fatture attese (oppure le sue fatture sono nello Standby 2, o hanno l'importo corretto a mano): questa parte non trova da cosa scalarsi e resta fuori dal foglio. Non è tra le uscite.",
+  "cpr.posSenzaFatture": "nessuna fattura attesa",
+  "cpr.posTogliAccordo":
+    "Togli l'accordo: tornerebbe a valere da solo quando arrivano fatture nuove",
+  "cpr.posAccordoAltoTip":
+    "L'accordo scritto è più alto del debito residuo: entra il debito residuo, non di più",
+  "cpr.posNota":
+    "Contano le fatture con scadenza entro la data dei prossimi giorni. Le fatture messe a mano nello Standby 2 restano fuori dal conto. L'accordo si scrive nella colonna «Entra ora» del foglio. La × toglie una compensazione dal conto, la freccia la rimette.",
   "cpr.aParte": "a parte, non sommato",
   "cpr.eStandby": "Standby · da incassare più avanti",
   "cpr.eStandby2": "Standby 2 · non li incasseremo",
@@ -3516,7 +3566,7 @@ const it: Record<DictKey, string> = {
   "cpr.diCuiScaduto": "di cui scaduto",
   "cpr.compensazione": "compensazione",
   "cpr.legendaCompensazione":
-    "fatture di chi paga in compensazione: tolte dalle uscite e scalate dalle fatture attese dello stesso cliente (vedi la riga sotto il foglio)",
+    "fatture di chi paga in compensazione: tolte dalle uscite e scalate dalle fatture attese dello stesso cliente (vedi il riquadro «Accordi e compensazioni» sotto il foglio)",
   "cpr.diCuiComp": "di cui compensazioni",
   "cpr.apriFiscale": "Apri le scadenze dentro la riga",
   "cpr.schedaFiscale": "Scadenze",
@@ -3864,6 +3914,16 @@ const it: Record<DictKey, string> = {
   "rt.saldoTutte": "Mostra tutte",
   "rt.saldoMeno": "Mostra le prime 25",
   "rt.saldoTotale": "Totale selezione",
+  "rt.saldoAccordo": "Accordo · entra ora",
+  "rt.saldoResiduo": "Residuo dopo l'accordo",
+  "rt.saldoAccordoTip":
+    "L'accordo è l'importo scritto nella Cassa proprietà, colonna «Entra ora». Residuo = saldo − quello che entra ora.",
+  "rt.saldoAccordoAlto": "L'accordo è più alto del saldo: entra il saldo, cioè",
+  "rt.saldoAccordoGruppo": "accordo di gruppo",
+  "rt.saldoEntra": "entra",
+  "rt.saldoAccordoPill": "accordo",
+  "rt.saldoAccordoNota":
+    "Accordo = quanto la società paga adesso, scritto nella Cassa proprietà (colonna «Entra ora»; 0,00 = per ora non entra nulla). Residuo = saldo − quello che entra ora: è quello che resta da incassare dopo l'accordo, già tolto quello che le dobbiamo noi. Qui contano tutte le fatture aperte, anche quelle non ancora scadute: per questo il residuo può essere più alto dello Standby della Cassa, che guarda solo le scadenze fino ai prossimi giorni.",
   "rt.q4Titolo": "I quattro numeri della controparte",
   "rt.q4Desc":
     "Banca e fatture della selezione (tutte le controparti se non c'è filtro). Saldo = fatturato attivo − incassato − (fatturato passivo − pagato).",
