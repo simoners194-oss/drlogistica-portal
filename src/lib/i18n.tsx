@@ -1327,6 +1327,16 @@ const en = {
   "fc.fiscaleDaRat": "known amounts still to be scheduled (no date, NOT in the cash flow):",
   "fc.fiscaleConferma": "Import schedule",
   "fc.fiscaleOk": "Tax schedule imported",
+  "fc.fiscaleAuto": "Tax schedule updated from the shared folder",
+  "fc.fiscaleAutoErr": "Tax schedule: the file in the shared folder could not be read",
+  "fc.fiscaleAutoUguale": "The file in the folder is the one already loaded",
+  "fc.fiscaleAutoNota":
+    'The portal reads the file from the shared folder "Fiscale" by itself, every time it is saved.',
+  "fc.fiscaleRileggi": "Read from the folder now",
+  "fc.fiscaleSalvato": "saved on",
+  "fc.fiscaleLetto": "read on",
+  "fc.fiscaleCambiate": "deadlines changed",
+  "cpr.fiscaleFonte": "From the tax schedule:",
   "fc.notaFiscale":
     "Tax rows without a manual value = exact amounts from the schedule (≈ only marks the automatic source):",
   "fc.autoTipFiscale":
@@ -3679,6 +3689,16 @@ const it: Record<DictKey, string> = {
   "fc.fiscaleDaRat": "importi noti ancora da rateizzare (senza data, NON nel cash flow):",
   "fc.fiscaleConferma": "Importa scadenziario",
   "fc.fiscaleOk": "Scadenziario fiscale importato",
+  "fc.fiscaleAuto": "Scadenziario fiscale aggiornato dal file della cartella",
+  "fc.fiscaleAutoErr": "Scadenziario fiscale: il file della cartella non si è potuto leggere",
+  "fc.fiscaleAutoUguale": "Il file della cartella è quello già letto",
+  "fc.fiscaleAutoNota":
+    'Il portale legge da solo il file dalla cartella condivisa "Fiscale", ogni volta che viene salvato.',
+  "fc.fiscaleRileggi": "Rileggi adesso dalla cartella",
+  "fc.fiscaleSalvato": "salvato il",
+  "fc.fiscaleLetto": "letto il",
+  "fc.fiscaleCambiate": "scadenze cambiate",
+  "cpr.fiscaleFonte": "Dallo scadenzario:",
   "fc.notaFiscale":
     "Voci fiscali senza valore manuale = importi esatti dallo scadenziario (il ≈ segnala solo la fonte automatica):",
   "fc.autoTipFiscale":

@@ -180,11 +180,14 @@ export function SchedaFiscaleCassa({
   nome,
   voci,
   importo,
+  fonte,
   onChiudi,
 }: {
   nome: string;
   voci: readonly VoceDettaglioCassa[];
   importo: number;
+  /** Da quale file viene lo scadenzario (1.120.0). */
+  fonte?: string;
   onChiudi: () => void;
 }) {
   const { t } = useLang();
@@ -232,6 +235,11 @@ export function SchedaFiscaleCassa({
           </tr>
         </tfoot>
       </table>
+      {fonte && (
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          {t("cpr.fiscaleFonte")} {fonte}
+        </p>
+      )}
     </Finestra>
   );
 }

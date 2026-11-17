@@ -509,6 +509,8 @@ Dalla 1.98.0 (richieste di Simone del 04/11/2026) i nomi del foglio sono link, c
 
 UN "+" PER CLIENTE (1.104.0, Simone 10/11/2026: "unire i clienti, ad esempio mettendo un + per cliente"). Tra gli entranti ogni cliente con più fatture attese sta su una riga sola: totale, "dal" prima scadenza, numero di fatture, e il "+" davanti al nome che apre le singole fatture (una per scadenza, con importo, data attesa, standby e × come prima); il "−" le richiude. Le decisioni (standby, nota, data) si prendono sulle singole fatture; la riga del cliente è solo la somma. L'apertura non si salva: al ricaricamento tutto richiuso.
 
+IL FISCALE SI AGGIORNA DA SOLO (1.120.0). Le righe Fiscale, IVA e Banca vengono dallo scadenzario di Sabrina, che ora il portale legge da solo dalla cartella condivisa "Fiscale" ogni volta che il file viene salvato: una scadenza segnata pagata nel file esce dalle uscite alla prima apertura della Cassa. Un clic sulla riga mostra in fondo da quale file vengono le scadenze e quando è stato letto. Vedi la voce "Lo scadenzario si aggiorna da solo dal file della cartella".
+
 I TOTALI SEMPRE IN VISTA (1.119.1, Simone 17/11/2026: "falli scorrere insieme all'intestazione così rimangono sempre visibili anche scendendo con le varie entrate/uscite"). Sotto le intestazioni delle colonne c'è una riga con i totali che resta ferma mentre il foglio scorre. A sinistra, per le entrate, un riquadro per ogni blocco che ha voci: Già entrate, Entranti, Da sollecitare, Standby, Standby 2. A destra, per le uscite, il totale di ognuna delle quattro colonne: Uscite, 1-5 del mese dopo, Standby, Standby 2. Sono gli stessi numeri delle testate dei blocchi dentro il foglio, che restano al loro posto. Con un filtro acceso i totali sono quelli delle voci filtrate. Il pulsante + e − che richiude tutte le uscite ora sta in questa riga, accanto a "Totali uscite". La riga dei totali che prima era la prima delle uscite non c'è più: scorrendo spariva. Nel file esportato i totali restano come prima.
 
 ACCORDI E COMPENSAZIONI, IL CONTO SOCIETÀ PER SOCIETÀ (1.119.0, Simone 16/11/2026: "quando metto un accordo deve ragionare sul movimento delle compensazioni e del debito residuo"). Sotto il foglio c'è il riquadro "Accordi e compensazioni": una riga per ogni società che ha un accordo scritto in "Entra ora" oppure una compensazione. Le colonne si leggono in fila, come un conto: FATTURE ATTESE (quelle con scadenza entro la data dei prossimi giorni, al lordo), meno COMPENSAZIONE (quello che le dobbiamo noi, tolto dalle sue fatture), uguale DEBITO RESIDUO; poi ENTRA ORA (l'accordo; senza accordo entra tutto il residuo) e RESTA DA INCASSARE (quello che va nello Standby delle entrate). Esempio del 16/11/2026: Postadoc ha fatture attese per 289.023,73, le dobbiamo 203.326,85, il debito residuo è 85.696,88; con l'accordo a 0,00 non entra nulla e restano 85.696,88 nello Standby. Univex Freight: 195.212,67 meno 173,85 fa 195.038,82; entrano 74.853,00, restano 120.185,82. L'ultima riga dà i totali: la colonna "Resta da incassare" è lo stesso numero del blocco Standby delle entrate. Prima le fatture coperte per intero da una compensazione uscivano dal foglio e si leggeva solo una riga di testo in fondo: adesso si vede da dove viene ogni numero. La × accanto alla compensazione la toglie dal conto (le fatture tornano al lordo), la freccia la rimette. L'etichetta gialla "le dobbiamo ancora" compare quando quello che dobbiamo alla società è più delle sue fatture attese: quella parte non trova da cosa scalarsi, resta fuori dal foglio e non è tra le uscite. Se l'accordo scritto è più alto del debito residuo entra il debito residuo, non di più, e accanto si legge l'accordo scritto. Un accordo rimasto senza fatture attese compare con "nessuna fattura attesa" e la × per toglierlo: altrimenti tornerebbe a valere da solo all'arrivo di fatture nuove. Nel foglio la pillola "al netto" ora compare anche sulla riga del cliente (non solo sulle singole fatture): passandoci sopra si legge tutta la catena. L'accordo si scrive sempre nella colonna "Entra ora" del foglio; il riquadro lo spiega soltanto. Lo stesso accordo compare nel Resoconto, tabella "Saldo per controparte".
@@ -762,6 +764,26 @@ Se vedi troppa gente in "Altri", la cura è compilare il campo Appalto in anagra
 
 Ormai la fonte è il portale: le scadenze si inseriscono, si modificano e si spuntano qui, e ogni tabella si esporta in CSV.`,
     chiavi: "fiscale scadenzario scadenze pivot piani rate da registrare sabrina",
+  },
+  {
+    id: "fis-cartella",
+    sezione: "Fiscale",
+    titolo: "Lo scadenzario si aggiorna da solo dal file della cartella",
+    testo: `Dalla 1.120.0 (Simone 17/11/2026: "sì, fallo automatico") il portale legge da solo lo scadenzario fiscale dalla cartella condivisa "Fiscale" (Documenti Condivisi), il file "SCADENZARIO FISCALE__aggiornato.xlsx" che tiene Sabrina. Non serve più caricarlo a mano.
+
+QUANDO LO LEGGE. Ogni volta che si aprono i Flussi, la Cassa proprietà o la scheda Fiscale il portale guarda la data in cui il file è stato salvato. Se è la stessa dell'ultima lettura non fa nulla. Se il file è stato salvato dopo, lo scarica e lo legge con le stesse regole del caricamento a mano. Quando cambia qualcosa compare un avviso in basso: nome del file, quando è stato salvato e quante scadenze sono cambiate. La Cassa proprietà si ricalcola subito. Dallo stesso computer il controllo si fa al più una volta ogni tre minuti.
+
+IL PULSANTE. Nei Flussi (vista classica), pulsante "Scadenziario fiscale": la riga in alto dice quando è stato salvato il file letto, e "Rileggi adesso dalla cartella" lo rilegge subito senza aspettare.
+
+NELLA CASSA PROPRIETÀ. Un clic su Fiscale, IVA o Banca apre l'elenco delle scadenze dentro la riga: in fondo si legge da quale file vengono, quando è stato salvato e quando il portale lo ha letto.
+
+PERCHÉ. Prima lo scadenzario entrava solo quando qualcuno caricava il file. Dopo ogni scadenza pagata (il 16 del mese) la Cassa continuava a tenerla tra le uscite da pagare, mentre il saldo della banca era già sceso: l'importo contava due volte. Caso del 17/11/2026: 96.110,32 di F24 del 16/11 già addebitati e ancora tra le uscite.
+
+COSA NON CAMBIA. Vale quello che Sabrina scrive nel file: una scadenza esce dalla Cassa quando nel file è segnata pagata. Un F24 che passa in banca non segna pagata la scadenza da solo. Le scadenze create o corrette a mano nel portale non vengono toccate dal file: vince il portale. Una scadenza eliminata dal portale non torna.
+
+SE QUALCOSA NON VA. Se il file non si riesce a leggere, o ha molte meno righe dell'archivio (foglio rovinato o tabella spostata), il portale non sostituisce nulla e avvisa: resta lo scadenzario di prima. Il caricamento a mano dai Flussi resta come ripiego.`,
+    chiavi:
+      "fiscale scadenzario automatico cartella sabrina file excel aggiornato rileggi f24 pagato cassa proprietà due volte si aggiorna da solo",
   },
   {
     id: "fis-rate",

@@ -50,8 +50,29 @@ export interface FiscaleDb {
    *  poi il re-import del file NON tocca più quell'elenco. */
   daRateizzarePortale?: boolean;
   fonteFile?: string;
+  /** Data di modifica (ISO) del file della cartella Fiscale letto per ultimo:
+   *  finché non cambia, il portale non lo riscarica. */
+  fonteModificato?: string;
+  /** Com'è andata l'ultima lettura automatica dalla cartella. */
+  ultimaLettura?: LetturaFiscale;
   aggiornatoIl?: string;
   aggiornatoDa?: string;
+}
+
+/** Esito di una lettura dello scadenzario dalla cartella condivisa "Fiscale"
+ *  (1.120.0). "letto" = il file era nuovo o cambiato ed è entrato; "uguale" =
+ *  il file è quello già letto; "assente" = nella cartella non c'è; "errore" =
+ *  non si è potuto leggere e l'archivio resta com'era. */
+export interface LetturaFiscale {
+  il: string;
+  da: string;
+  file?: string;
+  /** Quando il file è stato salvato l'ultima volta sulla cartella (ISO). */
+  modificato?: string;
+  esito: "letto" | "uguale" | "assente" | "errore";
+  messaggio?: string;
+  /** Scadenze cambiate rispetto a prima (nuove, tolte, pagate o riaperte). */
+  cambiate?: number;
 }
 
 export function emptyFiscaleDb(): FiscaleDb {
@@ -252,6 +273,108 @@ export function parseScadenzario(
     return true;
   });
   return migliore;
+}
+
+// --- Lettura automatica dalla cartella (1.120.0) -----------------------------
+// Simone 17/11/2026: "sì, fallo automatico". Fino alla 1.119 lo scadenzario
+// entrava solo caricando il file a mano dai Flussi: dopo ogni scadenza pagata
+// la Cassa la teneva tra le uscite finché qualcuno non lo ricaricava. Ora il
+// portale guarda da solo la cartella condivisa "Fiscale".
+
+/** Vero se il nome è quello di uno scadenzario fiscale di Excel (non i file
+ *  temporanei "~$…" che Excel crea mentre il file è aperto). */
+export function fileScadenzarioFiscale(nome: string): boolean {
+  const n = (nome ?? "").trim();
+  return !n.startsWith("~$") && /scadenzario\s+fiscale/i.test(n) && /\.xlsx?$/i.test(n);
+}
+
+/** Tra i file della cartella sceglie lo scadenzario buono: quello col nome
+ *  "…aggiornato", altrimenti il salvato più di recente. */
+export function scegliFileScadenzario<T extends { name: string; lastModifiedDateTime?: string }>(
+  file: readonly T[],
+): T | undefined {
+  const buoni = file.filter((f) => fileScadenzarioFiscale(f.name));
+  const perData = (a: T, b: T) =>
+    (b.lastModifiedDateTime ?? "").localeCompare(a.lastModifiedDateTime ?? "");
+  const aggiornati = buoni.filter((f) => /aggiornato/i.test(f.name)).sort(perData);
+  return aggiornati[0] ?? [...buoni].sort(perData)[0];
+}
+
+/** Unisce le scadenze lette da un file a quelle dell'archivio: sostituisce le
+ *  righe DA FILE, conserva quelle create o modificate sul portale (origine
+ *  "portale"). La chiaveFile evita i doppioni: una riga del file già
+ *  modificata sul portale NON viene reimportata (vince la versione portale),
+ *  una eliminata dal portale NON risorge (tombstone). Gli id delle righe da
+ *  file restano STABILI tra un import e l'altro (match per chiaveFile).
+ *  LIMITE NOTO: se la STESSA riga viene cambiata sia sul portale sia
+ *  nell'Excel, la chiave diverge e compaiono entrambe: da sanare a mano.
+ *  `cambiate` = quante scadenze sono diverse da prima (nuove, tolte, oppure
+ *  passate da pagare a pagate o il contrario). */
+export function unisciImportFiscale(
+  db: FiscaleDb,
+  scadenze: readonly ScadenzaFiscale[],
+  daRateizzare: readonly DaRateizzareFiscale[],
+  fonte: string,
+): { db: FiscaleDb; cambiate: number } {
+  const portale = db.scadenze.filter((s) => s.origine === "portale");
+  const chiaviPortale = new Set(portale.map((s) => s.chiaveFile).filter(Boolean));
+  const tombstones = new Set(db.tombstones ?? []);
+  const idVecchi = new Map(
+    db.scadenze
+      .filter((s) => s.origine !== "portale")
+      .map((s) => [s.chiaveFile ?? chiaveScadenzaFile(s), s.id] as const),
+  );
+  const nuove: ScadenzaFiscale[] = [];
+  for (const letta of scadenze) {
+    const s: ScadenzaFiscale = { ...letta, origine: "file" };
+    s.chiaveFile = chiaveScadenzaFile(s);
+    if (chiaviPortale.has(s.chiaveFile)) continue;
+    if (tombstones.has(s.chiaveFile)) continue;
+    s.id = idVecchi.get(s.chiaveFile);
+    nuove.push(s);
+  }
+  // Quante cambiano: si contano le chiavi (voce, anno, periodo, data, importo)
+  // con lo stato pagato; la stessa chiave può stare su più righe.
+  const conta = (lista: readonly ScadenzaFiscale[]) => {
+    const m = new Map<string, number>();
+    for (const s of lista) {
+      const k = `${s.chiaveFile ?? chiaveScadenzaFile(s)}|${s.pagato ? 1 : 0}`;
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  };
+  const prima = conta(db.scadenze.filter((s) => s.origine !== "portale"));
+  const dopo = conta(nuove);
+  let tolte = 0;
+  let aggiunte = 0;
+  for (const [k, n] of prima) tolte += Math.max(0, n - (dopo.get(k) ?? 0));
+  for (const [k, n] of dopo) aggiunte += Math.max(0, n - (prima.get(k) ?? 0));
+  return {
+    db: {
+      ...db,
+      scadenze: [...nuove, ...portale],
+      // Appena il "da registrare" viene gestito dal portale, l'Excel non lo
+      // comanda più: niente righe risorte né aggiunte manuali cancellate.
+      daRateizzare: db.daRateizzarePortale ? db.daRateizzare : [...daRateizzare],
+      fonteFile: fonte,
+    },
+    // Una riga che passa da "da pagare" a "pagata" esce da una parte ed entra
+    // dall'altra: conta una volta.
+    cambiate: Math.max(tolte, aggiunte),
+  };
+}
+
+/** Prudenza della lettura AUTOMATICA: se il file ha molte meno scadenze
+ *  dell'archivio (foglio rovinato, tabella spostata) non lo si sostituisce da
+ *  soli. Restituisce il motivo, o null se si può procedere. */
+export function importFiscaleSospetto(
+  db: FiscaleDb,
+  scadenze: readonly ScadenzaFiscale[],
+): string | null {
+  const daFile = db.scadenze.filter((s) => s.origine !== "portale").length;
+  if (daFile >= 20 && scadenze.length < daFile * 0.6)
+    return `il file ha ${scadenze.length} scadenze, l'archivio ne ha ${daFile}: troppo poche per sostituirlo da solo (se il file è giusto, caricalo a mano)`;
+  return null;
 }
 
 export interface TotaliFiscaliMese {

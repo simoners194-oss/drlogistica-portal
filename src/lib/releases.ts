@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.120.0",
+    date: "2026-11-17",
+    entries: [
+      {
+        title: "Fiscale: lo scadenzario si aggiorna da solo",
+        description:
+          'Il portale legge da solo lo scadenzario fiscale dalla cartella condivisa "Fiscale": ogni volta che il file viene salvato, alla prima apertura dei Flussi, della Cassa proprietà o della scheda Fiscale. Non serve più caricarlo a mano. Le scadenze segnate pagate nel file escono subito dalle uscite della Cassa, così non contano due volte insieme al saldo della banca. Un avviso dice quante scadenze sono cambiate.',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.119.1",
     date: "2026-11-17",
     entries: [

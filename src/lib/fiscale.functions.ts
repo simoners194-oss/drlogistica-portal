@@ -7,6 +7,7 @@ import { readSessionUser, type ServerSessionUser } from "./auth.server";
 import { haVistaDirezione } from "./richieste-logic";
 import {
   eliminaScadenzaFiscale,
+  leggiFiscaleDaCartella,
   loadFiscaleDb,
   replaceFiscale,
   setDaRateizzareFiscale,
@@ -54,6 +55,16 @@ export const spFiscaleSalva = createServerFn({ method: "POST" })
       data.fonte,
       me.codice || me.id,
     );
+  });
+
+/** Guarda la cartella condivisa "Fiscale": se lo scadenzario è stato salvato
+ *  dopo l'ultima lettura lo rilegge. `forza` lo rilegge comunque. Non fallisce
+ *  mai per colpa del file: l'esito sta in `ultimaLettura`. */
+export const spFiscaleLeggiCartella = createServerFn({ method: "POST" })
+  .inputValidator((input: { forza?: boolean } | undefined) => ({ forza: input?.forza === true }))
+  .handler(async ({ data }): Promise<FiscaleDb> => {
+    const me = await utenteFiscale();
+    return leggiFiscaleDaCartella(me.codice || me.id, data.forza);
   });
 
 /** Crea/modifica una scadenza direttamente dal portale (tab Fiscale). */

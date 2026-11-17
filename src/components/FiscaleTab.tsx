@@ -18,6 +18,7 @@ import {
   spFiscaleUpsertScadenza,
 } from "@/lib/fiscale.functions";
 import type { DaRateizzareFiscale, FiscaleDb, ScadenzaFiscale } from "@/lib/fiscale-logic";
+import { controllaFiscaleCartella, quandoBreve } from "@/lib/fiscale-cartella";
 
 const inputCls =
   "rounded-lg border border-border bg-background px-2 py-1 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
@@ -117,8 +118,28 @@ export function FiscaleTab() {
 
   useEffect(() => {
     spFiscaleGet()
-      .then((res) => setDb(res))
+      .then((res) =>
+        setDb((prima) => (prima && (prima.versione ?? 0) > (res.versione ?? 0) ? prima : res)),
+      )
       .catch((err) => setErrore(err instanceof Error ? err.message : String(err)));
+    // Lo scadenzario si aggiorna da solo dal file della cartella (1.120.0).
+    controllaFiscaleCartella()
+      .then((res) => {
+        const l = res?.ultimaLettura;
+        if (!res || l?.esito !== "letto") {
+          if (l?.esito === "errore" || l?.esito === "assente")
+            toast.warning(t("fc.fiscaleAutoErr"), { description: l.messaggio });
+          return;
+        }
+        setDb((prima) => (prima && (prima.versione ?? 0) > (res.versione ?? 0) ? prima : res));
+        if ((l.cambiate ?? 0) > 0)
+          toast.success(t("fc.fiscaleAuto"), {
+            description: `${l.file ?? ""} · ${t("fc.fiscaleSalvato")} ${quandoBreve(l.modificato)} · ${l.cambiate} ${t("fc.fiscaleCambiate")}`,
+          });
+      })
+      .catch(() => undefined);
+    // Una volta sola, all'apertura.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const oggiISO = new Date().toISOString().slice(0, 10);

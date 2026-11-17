@@ -488,6 +488,7 @@ export function CassaProprietaView({
   esclusioni,
   infoFornitori,
   fiscale,
+  fiscaleFonte,
   fissi,
   altreSpese,
   movimenti,
@@ -504,6 +505,9 @@ export function CassaProprietaView({
   esclusioni: readonly { nome: string; mese?: string; meseFine?: string }[];
   infoFornitori: ReadonlyMap<string, FornitoreInfo>;
   fiscale: readonly ScadenzaFiscale[];
+  /** Da quale file viene lo scadenzario (nome, salvato il, letto il): si
+   *  legge in fondo al popup delle righe Fiscale / IVA / Banca. */
+  fiscaleFonte?: string;
   fissi: readonly CostoFisso[];
   /** "Altre spese" stimate della vista classica (facoltative). */
   altreSpese?: AltreSpeseCassa;
@@ -1306,6 +1310,7 @@ export function CassaProprietaView({
             nome={fiscaleAperto.nome}
             voci={fiscaleAperto.voci ?? []}
             importo={fiscaleAperto.importo}
+            fonte={fiscaleFonte}
             onChiudi={() => setFiscaleAperto(null)}
           />
         )}

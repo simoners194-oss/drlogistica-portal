@@ -74,6 +74,7 @@ import {
   type ScadenzaFiscale,
 } from "@/lib/fiscale-logic";
 import { spFiscaleGet, spFiscaleSalva } from "@/lib/fiscale.functions";
+import { controllaFiscaleCartella, fonteFiscaleBreve, quandoBreve } from "@/lib/fiscale-cartella";
 import type {
   SpFattura,
   SpMovimento,
@@ -192,6 +193,8 @@ export function FlussiCassaTab() {
   // "Costo fiscale corrente" per i mesi senza valore manuale.
   const [fiscale, setFiscale] = useState<FiscaleDb | null>(null);
   const [showFisc, setShowFisc] = useState(false);
+  // Lettura automatica dalla cartella Fiscale (1.120.0).
+  const [rileggendoFisc, setRileggendoFisc] = useState(false);
   const [parsingF, setParsingF] = useState(false);
   const [previewFisc, setPreviewFisc] = useState<{
     fileName: string;
@@ -276,7 +279,15 @@ export function FlussiCassaTab() {
           }),
       ],
       // Scadenziario fiscale per le due voci "Costo fiscale".
-      ["fiscale", () => spFiscaleGet().then((f) => setFiscale(f))],
+      // Se nel frattempo è arrivata la lettura dalla cartella (più nuova),
+      // questa risposta non la deve rimpiazzare.
+      [
+        "fiscale",
+        () =>
+          spFiscaleGet().then((f) =>
+            setFiscale((prima) => (prima && (prima.versione ?? 0) > (f.versione ?? 0) ? prima : f)),
+          ),
+      ],
       [
         "attive",
         () =>
@@ -331,6 +342,45 @@ export function FlussiCassaTab() {
     void leggiDati();
     void ricaricaFlussi();
     // Una volta sola, all'apertura.
+  }, []);
+  // LO SCADENZARIO FISCALE SI AGGIORNA DA SOLO (1.120.0, Simone 17/11/2026):
+  // all'apertura si guarda la cartella condivisa "Fiscale"; se il file è
+  // stato salvato dopo l'ultima lettura entra da solo, e la Cassa si ricalcola.
+  const guardaCartellaFiscale = (forza: boolean) => {
+    if (forza) setRileggendoFisc(true);
+    return controllaFiscaleCartella(forza)
+      .then((db) => {
+        if (!db) return;
+        const l = db.ultimaLettura;
+        if (l?.esito === "letto") {
+          setFiscale((prima) => (prima && (prima.versione ?? 0) > (db.versione ?? 0) ? prima : db));
+          if ((l.cambiate ?? 0) > 0 || forza)
+            toast.success(t("fc.fiscaleAuto"), {
+              description: `${l.file ?? ""} · ${t("fc.fiscaleSalvato")} ${quandoBreve(l.modificato)} · ${l.cambiate ?? 0} ${t("fc.fiscaleCambiate")}`,
+            });
+        } else if (l?.esito === "errore" || l?.esito === "assente") {
+          toast.warning(t("fc.fiscaleAutoErr"), { description: l.messaggio });
+        } else if (forza) {
+          toast.success(t("fc.fiscaleAutoUguale"), {
+            description: `${l?.file ?? ""} · ${t("fc.fiscaleSalvato")} ${quandoBreve(l?.modificato)}`,
+          });
+        }
+      })
+      .catch((err) => {
+        // Il controllo automatico non disturba; quello chiesto col pulsante sì.
+        if (forza)
+          toast.error(t("common.error"), {
+            description: err instanceof Error ? err.message : String(err),
+          });
+      })
+      .finally(() => {
+        if (forza) setRileggendoFisc(false);
+      });
+  };
+  useEffect(() => {
+    void guardaCartellaFiscale(false);
+    // Una volta sola, all'apertura.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Se qualcosa non è arrivato si riprova da soli due volte (dopo 30 secondi
   // e poi dopo un minuto), senza insistere: con Microsoft 365 che frena,
@@ -2115,6 +2165,10 @@ export function FlussiCassaTab() {
           esclusioni={esclusioni}
           infoFornitori={infoFornitori}
           fiscale={fiscale?.scadenze ?? []}
+          fiscaleFonte={fonteFiscaleBreve(fiscale, {
+            salvato: t("fc.fiscaleSalvato"),
+            letto: t("fc.fiscaleLetto"),
+          })}
           fissi={costiFissi}
           altreSpese={altreSpeseCassa}
           movimenti={movimenti ?? []}
@@ -2235,6 +2289,23 @@ export function FlussiCassaTab() {
         {showFisc && (
           <div className="mb-4 rounded-xl border border-border p-3">
             <p className="mb-2 text-xs text-muted-foreground">{t("fc.fiscaleDesc")}</p>
+            <p className="mb-2 flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5 text-xs text-foreground">
+              <span>{t("fc.fiscaleAutoNota")}</span>
+              {fiscale?.fonteModificato && (
+                <span className="text-muted-foreground">
+                  {t("fc.fiscaleSalvato")} {quandoBreve(fiscale.fonteModificato)}
+                </span>
+              )}
+              <button
+                type="button"
+                disabled={rileggendoFisc}
+                onClick={() => void guardaCartellaFiscale(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 font-medium hover:bg-muted disabled:opacity-50"
+              >
+                {rileggendoFisc && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {t("fc.fiscaleRileggi")}
+              </button>
+            </p>
             {fiscale && fiscale.scadenze.length > 0 && (
               <p className="mb-2 text-xs text-muted-foreground">
                 {t("fc.fiscaleAgg")} <span className="font-medium">{fiscale.fonteFile}</span>

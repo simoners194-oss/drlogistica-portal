@@ -3,19 +3,25 @@
 // stesso pattern di stipendi.json: il file di Sabrina è un database
 // cumulativo, quindi ogni import SOSTITUISCE tutto.
 
+import * as XLSX from "xlsx";
 import {
   discoverSharePoint,
   gatewayJson,
   withDiscoveryRetry,
   logSp,
   SpHttpError,
+  TARGET_HOST,
 } from "./sharepoint.server";
 import {
-  chiaveScadenzaFile,
   classificaScadenza,
   emptyFiscaleDb,
+  importFiscaleSospetto,
+  parseScadenzario,
+  scegliFileScadenzario,
+  unisciImportFiscale,
   type DaRateizzareFiscale,
   type FiscaleDb,
+  type LetturaFiscale,
   type ScadenzaFiscale,
 } from "./fiscale-logic";
 
@@ -89,14 +95,8 @@ async function salvaFiscaleDb(db: FiscaleDb, utente: string): Promise<FiscaleDb>
   return db;
 }
 
-/** Import del file: sostituisce le righe DA FILE, conserva quelle create o
- *  modificate sul portale (origine "portale") — l'Excel è in dismissione.
- *  La chiaveFile evita i doppioni: una riga del file già modificata sul
- *  portale NON viene reimportata (vince la versione portale), una eliminata
- *  dal portale NON risorge (tombstone). Gli id delle righe da file restano
- *  STABILI tra un import e l'altro (match per chiaveFile). LIMITE NOTO: se
- *  la STESSA riga viene cambiata sia sul portale sia nell'Excel, la chiave
- *  diverge e compaiono entrambe — da sanare a mano (transizione breve). */
+/** Import del file caricato a mano: sostituisce le righe DA FILE, conserva
+ *  quelle create o modificate sul portale (vedi `unisciImportFiscale`). */
 export async function replaceFiscale(
   scadenze: ScadenzaFiscale[],
   daRateizzare: DaRateizzareFiscale[],
@@ -104,29 +104,120 @@ export async function replaceFiscale(
   utente: string,
 ): Promise<FiscaleDb> {
   const db = await loadFiscaleDb();
-  const portale = db.scadenze.filter((s) => s.origine === "portale");
-  const chiaviPortale = new Set(portale.map((s) => s.chiaveFile).filter(Boolean));
-  const tombstones = new Set(db.tombstones ?? []);
-  const idVecchi = new Map(
-    db.scadenze
-      .filter((s) => s.origine !== "portale")
-      .map((s) => [s.chiaveFile ?? chiaveScadenzaFile(s), s.id] as const),
-  );
-  const nuove: ScadenzaFiscale[] = [];
-  for (const s of scadenze) {
-    s.origine = "file";
-    s.chiaveFile = chiaveScadenzaFile(s);
-    if (chiaviPortale.has(s.chiaveFile)) continue;
-    if (tombstones.has(s.chiaveFile)) continue;
-    s.id = idVecchi.get(s.chiaveFile);
-    nuove.push(s);
+  return salvaFiscaleDb(unisciImportFiscale(db, scadenze, daRateizzare, fonte).db, utente);
+}
+
+// ---------------------------------------------------------------------------
+// LETTURA AUTOMATICA DALLA CARTELLA (1.120.0, Simone 17/11/2026: "sì, fallo
+// automatico"). Lo scadenzario di Sabrina sta sul sito SharePoint
+// "DocumentiCondivisi", cartella "Fiscale" (lo stesso sito delle paghe e dei
+// costi appalti). Il portale guarda la data di modifica del file: se è quella
+// dell'ultima lettura non fa nulla; se è cambiata lo scarica e lo passa allo
+// stesso lettore del caricamento a mano. Una lettura che non riesce non tocca
+// l'archivio: restituisce l'archivio di prima con il motivo in `ultimaLettura`.
+// ---------------------------------------------------------------------------
+const SITO_DOCUMENTI = "DocumentiCondivisi";
+export const CARTELLA_FISCALE = "Fiscale";
+
+interface FiglioCartella {
+  id: string;
+  name: string;
+  file?: unknown;
+  lastModifiedDateTime?: string;
+  ["@microsoft.graph.downloadUrl"]?: string;
+}
+
+export async function leggiFiscaleDaCartella(utente: string, forza = false): Promise<FiscaleDb> {
+  const il = new Date().toISOString();
+  const db = await loadFiscaleDb();
+  // Senza scrivere: l'esito di questa lettura viaggia con la risposta.
+  const comEra = (l: Omit<LetturaFiscale, "il" | "da">): FiscaleDb => ({
+    ...db,
+    ultimaLettura: { il, da: utente, ...l },
+  });
+  let scelto: FiglioCartella | undefined;
+  try {
+    const sito = await withDiscoveryRetry(() =>
+      gatewayJson<{ id: string }>(`/sites/${TARGET_HOST}:/sites/${SITO_DOCUMENTI}`),
+    );
+    const figli = await withDiscoveryRetry(() =>
+      gatewayJson<{ value: FiglioCartella[] }>(
+        `/sites/${sito.id}/drive/root:/${encodeURIComponent(CARTELLA_FISCALE)}:/children?$select=id,name,file,lastModifiedDateTime&$top=200`,
+      ),
+    );
+    scelto = scegliFileScadenzario((figli.value ?? []).filter((f) => f.file));
+    if (!scelto)
+      return comEra({
+        esito: "assente",
+        messaggio: `nella cartella ${CARTELLA_FISCALE} non c'è un file "SCADENZARIO FISCALE"`,
+      });
+    const modificato = scelto.lastModifiedDateTime ?? "";
+    if (!forza && modificato && db.fonteModificato === modificato && db.fonteFile === scelto.name)
+      return comEra({ esito: "uguale", file: scelto.name, modificato });
+    const pieno = await withDiscoveryRetry(() =>
+      gatewayJson<FiglioCartella>(`/sites/${sito.id}/drive/items/${scelto!.id}`),
+    );
+    const url = pieno["@microsoft.graph.downloadUrl"];
+    if (!url) throw new Error("downloadUrl non disponibile da Graph");
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`download fallito (${res.status})`);
+    const wb = XLSX.read(await res.arrayBuffer(), { cellDates: false });
+    const letto = parseScadenzario(
+      wb.SheetNames.map((nome) => ({
+        nome,
+        matrix: XLSX.utils.sheet_to_json(wb.Sheets[nome], {
+          header: 1,
+          raw: true,
+          defval: null,
+        }) as unknown[][],
+      })),
+    );
+    if (!letto || !letto.scadenze.length)
+      throw new Error("nessun foglio con la tabella delle scadenze");
+    const sospetto = importFiscaleSospetto(db, letto.scadenze);
+    if (sospetto) throw new Error(sospetto);
+    const { db: unito, cambiate } = unisciImportFiscale(
+      db,
+      letto.scadenze,
+      letto.daRateizzare,
+      scelto.name,
+    );
+    const salvato = await salvaFiscaleDb(
+      {
+        ...unito,
+        fonteModificato: modificato,
+        ultimaLettura: {
+          il,
+          da: utente,
+          esito: "letto",
+          file: scelto.name,
+          modificato,
+          cambiate,
+          messaggio: `foglio ${letto.foglio}`,
+        },
+      },
+      utente,
+    );
+    logSp(
+      "info",
+      "fiscale.cartella",
+      `Scadenziario letto dalla cartella ${CARTELLA_FISCALE}: ${scelto.name} (${letto.scadenze.length} scadenze, ${cambiate} cambiate)`,
+    );
+    return salvato;
+  } catch (e) {
+    const messaggio = e instanceof Error ? e.message : String(e);
+    logSp(
+      "warn",
+      "fiscale.cartella",
+      `Lettura dalla cartella ${CARTELLA_FISCALE} fallita: ${messaggio}`,
+    );
+    return comEra({
+      esito: "errore",
+      file: scelto?.name,
+      modificato: scelto?.lastModifiedDateTime,
+      messaggio,
+    });
   }
-  db.scadenze = [...nuove, ...portale];
-  // Appena il "da registrare" viene gestito dal portale, l'Excel non lo
-  // comanda più: niente righe risorte né aggiunte manuali cancellate.
-  if (!db.daRateizzarePortale) db.daRateizzare = daRateizzare;
-  db.fonteFile = fonte;
-  return salvaFiscaleDb(db, utente);
 }
 
 /** Crea o aggiorna una scadenza dal portale; la categoria si ricalcola. */
