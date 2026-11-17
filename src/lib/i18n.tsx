@@ -1258,6 +1258,7 @@ const en = {
   "cpr.ordineTip":
     "By due date: a single list, as always; moving an item to another column keeps the row in place. By column: imminent payments first, then those of the 1st-5th of next month, then standby and standby 2.",
   "cpr.ordineFoglioNota": "in due date order",
+  "cpr.totaliUscite": "Payment totals",
   "cpr.perFornitore": "supplier",
   "cpr.perTipologia": "type",
   "cpr.perCliente": "customer",
@@ -3608,6 +3609,7 @@ const it: Record<DictKey, string> = {
   "cpr.ordineTip":
     "Per scadenza: una lista sola, come sempre; spostando una voce in un'altra colonna la riga resta al suo posto. Per colonna: prima le uscite imminenti, poi quelle dell'1-5 del mese dopo, poi standby e standby 2.",
   "cpr.ordineFoglioNota": "in ordine di scadenza",
+  "cpr.totaliUscite": "Totali uscite",
   "cpr.perFornitore": "fornitore",
   "cpr.perTipologia": "tipologia",
   "cpr.perCliente": "cliente",

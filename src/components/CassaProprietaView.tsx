@@ -411,6 +411,9 @@ function slotsUscite(
   chiusi: ReadonlySet<string> = new Set(),
   espansi: ReadonlySet<string> = new Set(),
   ordine: OrdineUscite = "foglio",
+  /** La riga coi totali delle quattro colonne in testa alla lista. Nel foglio
+   *  a schermo no: lì i totali stanno nella testata fissa (1.119.1). */
+  rigaTotali = true,
 ): SlotU[] {
   const righeDi = (celle: readonly Cella[]): SlotU[] =>
     celle.flatMap((c): SlotU[] => {
@@ -427,7 +430,7 @@ function slotsUscite(
       COLONNE_USCITE.map((col) => [col, sommaCelle(uscite.filter((u) => u.secchio === col))]),
     ) as Record<SecchioCassa, number>;
     return [
-      { kind: "totali", valori, n: uscite.length, chiuso },
+      ...(rigaTotali ? [{ kind: "totali", valori, n: uscite.length, chiuso } as const] : []),
       ...(chiuso ? [] : righeDi(uscite)),
     ];
   }
@@ -1819,6 +1822,9 @@ const eManuale = (c: Cella) => c.tipo === "manuale" || c.tipo === "amex";
  *  Standby 2 (messe da parte a mano, non le incasseremo). */
 const tintaEntrata = (e?: Cella) =>
   !e?.parcheggiata ? TINTA.entrate.col : e.daAccordo ? TINTA.standby.col : TINTA.standby2.col;
+/** Riga dei totali nella testata fissa: il filo sotto è un'ombra interna,
+ *  perché i bordi di una tabella non seguono la testata che resta ferma. */
+const BORDO_TOTALI = "shadow-[inset_0_-2px_0_0_rgb(100_116_139/0.55)]";
 const cel = "border-b border-r border-border/60 px-3 py-1.5 align-middle last:border-r-0";
 const celN = `${cel} text-right tabular-nums whitespace-nowrap text-[13.5px]`;
 const celH = "px-3 py-2 text-left text-[12px] font-semibold uppercase tracking-wide";
@@ -1954,14 +1960,18 @@ export function Foglio({
   // cerca non deve restare nascosto dentro un blocco richiuso.
   const VUOTO: ReadonlySet<string> = new Set();
   const slotsE = slotsEntrate(entrate, t, espansi, filtroEntrateAttivo(filtri) ? VUOTO : chiusi);
-  const slotsU = slotsUscite(
-    uscite,
-    t,
-    limite,
-    filtroUsciteAttivo(filtri) ? VUOTO : chiusi,
-    espansi,
-    ordineUscite,
-  );
+  const chiusiU = filtroUsciteAttivo(filtri) ? VUOTO : chiusi;
+  const slotsU = slotsUscite(uscite, t, limite, chiusiU, espansi, ordineUscite, false);
+  // I TOTALI NELLA TESTATA FISSA (Simone 17/11/2026: "falli scorrere insieme
+  // all'intestazione così rimangono sempre visibili anche scendendo con le
+  // varie entrate/uscite"). Entrate: il totale di ogni blocco che ha voci;
+  // uscite: le quattro colonne. Sono gli stessi numeri delle testate dei
+  // blocchi, che restano al loro posto dentro il foglio.
+  const testeE = slotsE.filter((s): s is Extract<SlotE, { kind: "head" }> => s.kind === "head");
+  const totaliUscite = Object.fromEntries(
+    COLONNE_USCITE.map((col) => [col, sommaCelle(uscite.filter((u) => u.secchio === col))]),
+  ) as Record<SecchioCassa, number>;
+  const foglioChiuso = chiusiU.has("u:foglio");
   const n = Math.max(slotsE.length, slotsU.length);
   const righe = Array.from({ length: n }, (_, i) => i);
   const breve = etichettaProssimiBreve(limite);
@@ -2185,6 +2195,59 @@ export function Foglio({
               </th>
               <th className={`${celH} bg-muted/60 text-foreground`}>{t("cpr.colNote2")}</th>
             </tr>
+            {/* I totali: fermi sotto le intestazioni mentre il foglio scorre */}
+            {(testeE.length > 0 || uscite.length > 0) && (
+              <tr>
+                <th
+                  colSpan={3}
+                  className={`${TINTA.entrate.col} ${BORDO_TOTALI} border-r border-border/60 px-2 py-1 text-left font-normal`}
+                >
+                  <span className="flex flex-wrap items-stretch gap-1.5">
+                    {testeE.map((h) => (
+                      <span
+                        key={h.id}
+                        title={`${h.label}: ${h.n} ${t("cpr.fVoci")}`}
+                        className={`flex flex-col rounded px-2 py-0.5 leading-tight ${TESTA_ENTRATE[h.id]}`}
+                      >
+                        <span className="text-[9.5px] font-semibold uppercase tracking-wider opacity-80">
+                          {h.label.split(" · ")[0]}
+                        </span>
+                        <span className="text-[13.5px] font-bold tabular-nums">{fmt(h.value)}</span>
+                      </span>
+                    ))}
+                  </span>
+                </th>
+                {COLONNE_USCITE.map((col) => (
+                  <th
+                    key={col}
+                    className={`${TESTA_USCITE[col]} ${BORDO_TOTALI} whitespace-nowrap border-r border-border/60 px-3 py-1.5 text-right text-[13.5px] font-bold tabular-nums`}
+                  >
+                    {Math.abs(totaliUscite[col]) > 0.005 ? fmt(totaliUscite[col]) : ""}
+                  </th>
+                ))}
+                <th
+                  colSpan={2}
+                  className={`${BORDO_TOTALI} bg-muted px-3 py-1.5 text-left font-normal text-foreground`}
+                >
+                  <span className="flex items-center gap-2">
+                    {ordineUscite === "foglio" && uscite.length > 0 && (
+                      <PiuMeno
+                        aperto={!foglioChiuso}
+                        onClick={() => toggleBlocco("u:foglio")}
+                        t={t}
+                      />
+                    )}
+                    <span className="text-[11px] font-semibold uppercase tracking-wider">
+                      {t("cpr.totaliUscite")}
+                    </span>
+                    <span className="text-[10.5px] font-normal opacity-70">
+                      {uscite.length} {t("cpr.fVoci")}
+                      {ordineUscite === "foglio" ? ` · ${t("cpr.ordineFoglioNota")}` : ""}
+                    </span>
+                  </span>
+                </th>
+              </tr>
+            )}
           </thead>
           <tbody>
             {righe.map((i) => {
@@ -2205,7 +2268,6 @@ export function Foglio({
                 : 0;
               const slotU = slotsU[i];
               const testaU = slotU?.kind === "head" ? slotU : undefined;
-              const totaliU = slotU?.kind === "totali" ? slotU : undefined;
               const u = slotU?.kind === "riga" ? slotU.c : undefined;
               const voceU = slotU?.kind === "voce" ? slotU : undefined;
               const uAperta = slotU?.kind === "riga" && slotU.aperta === true;
@@ -2375,35 +2437,7 @@ export function Foglio({
                       </td>
                     </>
                   )}
-                  {totaliU ? (
-                    <>
-                      {/* Ordine del foglio: i totali delle quattro colonne in
-                          una riga, poi le uscite tutte di seguito */}
-                      {COLONNE_USCITE.map((col) => (
-                        <td
-                          key={col}
-                          className={`${celN} ${TESTA_USCITE[col]} text-[13.5px] font-bold`}
-                        >
-                          {Math.abs(totaliU.valori[col]) > 0.005 ? fmt(totaliU.valori[col]) : ""}
-                        </td>
-                      ))}
-                      <td colSpan={2} className={`${cel} bg-muted/70 text-foreground`}>
-                        <span className="flex items-center gap-2">
-                          <PiuMeno
-                            aperto={!totaliU.chiuso}
-                            onClick={() => toggleBlocco("u:foglio")}
-                            t={t}
-                          />
-                          <span className="text-[11px] font-semibold uppercase tracking-wider">
-                            {t("cpr.colUscite")}
-                          </span>
-                          <span className="text-[10.5px] font-normal opacity-70">
-                            {totaliU.n} {t("cpr.fVoci")} · {t("cpr.ordineFoglioNota")}
-                          </span>
-                        </span>
-                      </td>
-                    </>
-                  ) : testaU ? (
+                  {testaU ? (
                     <>
                       {COLONNE_USCITE.map((col) => (
                         <td

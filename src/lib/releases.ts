@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.119.1",
+    date: "2026-11-17",
+    entries: [
+      {
+        title: "Cassa proprietà: i totali restano sempre in vista",
+        description:
+          "Sotto le intestazioni del foglio c'è una riga con i totali che resta ferma mentre si scorre: a sinistra Entranti, Standby e gli altri blocchi delle entrate, a destra le quattro colonne delle uscite. Scendendo tra le voci i totali non spariscono più.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.119.0",
     date: "2026-11-16",
     entries: [
