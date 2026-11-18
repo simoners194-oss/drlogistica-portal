@@ -1617,6 +1617,10 @@ const en = {
   "rt.differenza": "Difference",
   "rt.netto": "Net invoices",
   "rt.sottotitoloAruba": "Aruba update check",
+  "rt.nonLettiNota":
+    "Invoices dated before 2025 that Aruba shows as settled are counted in full: the portal reads payment instalments only from 2025 on. Added",
+  "rt.nonLettiLetti": "read",
+  "rt.nonLettiAggiunti": "added",
   "rt.nessunoOpz": "None",
   "rt.estrattoAuto": "Follows Client/Supplier",
   "rt.gruppiBtn": "Saved views",
@@ -3994,6 +3998,10 @@ const it: Record<DictKey, string> = {
   "rt.differenza": "Differenza",
   "rt.netto": "Netto fatture",
   "rt.sottotitoloAruba": "Controllo aggiornamento Aruba",
+  "rt.nonLettiNota":
+    "Le fatture di prima del 2025 che Aruba dà per saldate sono contate per intero: il portale legge le rate dei pagamenti solo dal 2025. Aggiunti",
+  "rt.nonLettiLetti": "letti",
+  "rt.nonLettiAggiunti": "aggiunti",
   "rt.nessunoOpz": "Nessuno",
   "rt.estrattoAuto": "Segue Cliente/Fornitore",
   "rt.gruppiBtn": "Viste salvate",

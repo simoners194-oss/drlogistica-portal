@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.121.1",
+    date: "2026-11-18",
+    entries: [
+      {
+        title: "Resoconto: le fatture di prima del 2025 non danno più una differenza finta",
+        description:
+          "Nel confronto tra fatture ed estratto conto una fattura di prima del 2025 che Aruba dà per saldata ora è contata per intero. Il portale legge le rate dei pagamenti solo dal 2025: se di una fattura vecchia ne vedeva una sola, contava pagata solo quella e mostrava una differenza che non esiste. Una riga sotto i numeri dice quali fatture sono state contate per intero.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.121.0",
     date: "2026-11-18",
     entries: [

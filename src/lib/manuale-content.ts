@@ -371,6 +371,24 @@ ACCORDO E RESIDUO (1.119.0, Simone 16/11/2026: "l'accordo deve comparire anche n
       "resoconto saldo controparte attive passive affiancate compensazione univex nolvex postadoc passive totali quanto ci deve accordo entra ora residuo dopo l'accordo quadro generale società",
   },
   {
+    id: "res-pagamenti-prima-2025",
+    sezione: "Resoconto",
+    titolo: "Fatture di prima del 2025: perché sono contate per intero",
+    testo: `Dalla 1.121.1 (Simone 18/11/2026, caso MS Logistic: "perché non mi trovo la situazione a 0?").
+
+IL CASO. I quattro numeri di MS Logistic davano saldo zero: fatturato passivo 125.268,00, pagato in banca 129.768,00, rientrati 4.500,00. Ma il riquadro "Situazione fatture vs Estratto conto" segnava una differenza di 38.500,00: pagate 86.768,00 su 125.268,00, con niente da pagare.
+
+LA CAUSA. Il portale legge da Aruba due cose: lo stato della fattura (pagata o no) e le rate dei pagamenti, cioè quanto è stato pagato e quando. Le rate le legge solo dal 2025 in poi. La fattura FPR 84/24 del 09/09/2024 è stata pagata nel 2024, tranne una rata da 6.457,00 registrata su Aruba con la data 24/09/2026. Il portale vedeva quella rata sola e contava pagati 6.457,00 invece dell'intera fattura. La fattura era chiusa (Aruba la dà per saldata), quindi non compariva nemmeno tra quelle da pagare: i 38.500,00 non stavano da nessuna parte.
+
+COSA FA ORA. Nel Resoconto una fattura di prima del 2025 che Aruba dà per saldata è contata per intero, anche se il portale ha letto solo una parte delle rate. Vale per il riquadro del confronto con la banca e per la tabella "Saldo per controparte". Sotto i numeri una riga dice quanto è stato aggiunto e per quali fatture: controparte, numero, quanto era stato letto e quanto è stato aggiunto.
+
+COSA NON CAMBIA. Le fatture dal 2025 in poi: lì le rate sono lette tutte e una differenza è una differenza vera. Le fatture non saldate su Aruba: restano da pagare o da incassare. La ritenuta d'acconto: il dovuto è il netto. Le altre pagine (Fatture, Flussi, Cassa) non cambiano.
+
+DA CONTROLLARE SU ARUBA. La data 24/09/2026 su una fattura del 09/09/2024 è con ogni probabilità un anno sbagliato (2024): conviene correggerla.`,
+    chiavi:
+      "resoconto situazione estratto conto differenza non torna a zero ms logistic fatture 2024 prima del 2025 rate pagamenti non letti saldata aruba contata per intero",
+  },
+  {
     id: "res-estratto-gruppo",
     sezione: "Resoconto e incassi",
     titolo: "L'estratto conto di gruppo (Univex e simili)",

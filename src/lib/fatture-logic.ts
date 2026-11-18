@@ -1925,6 +1925,36 @@ export function incassatoRegistrato(x: FatturaConStato): number {
           : 0));
 }
 
+/** Il giro Aruba legge la prima nota (le rate di incasso e di pagamento)
+ *  solo dal 2025: le rate registrate su Aruba con una data precedente il
+ *  portale non le conosce. */
+export const PRIMA_NOTA_DAL = "2025-01-01";
+
+/** PAGAMENTI CHE IL PORTALE NON LEGGE (Simone 18/11/2026, caso MS Logistic:
+ *  "perché non mi trovo la situazione a 0?"). Una fattura di prima del 2025
+ *  che Aruba dà per saldata, ma di cui il portale ha letto solo una parte
+ *  delle rate: le altre stanno nella prima nota del 2024, che il giro non
+ *  scarica. Esempio vero: FPR 84/24 di MS Logistic, 44.957,00, pagata nel
+ *  2024 tranne una rata da 6.457,00 registrata con data 24/09/2026; il
+ *  portale leggeva pagati 6.457,00 e il confronto con la banca dava un buco
+ *  di 38.500,00. Restituisce quanto manca rispetto al dovuto (0 se la fattura
+ *  non è di quelle). Non cambia `incassatoRegistrato`: lo usa chi confronta
+ *  la fatturazione con la banca (Resoconto). */
+export function pagamentiNonLetti(x: FatturaConStato): number {
+  if (isNotaCredito(x.f.tipoDocumento)) return 0;
+  if (x.s.statoFatturazione !== "Pagata") return 0;
+  if (!x.f.dataDocumento || x.f.dataDocumento >= PRIMA_NOTA_DAL) return 0;
+  // Nessuna rata letta: vale già l'importo intero (lo stato di Aruba).
+  if (x.s.incassatoIncassi == null) return 0;
+  // Ritenuta d'acconto: il dovuto è il netto, e le rate arrivano a quello.
+  const dovuto =
+    x.f.direzione === "Ricevuta" && x.f.netto > 0 && x.f.netto < x.f.totale - 0.01
+      ? x.f.netto
+      : x.f.totale;
+  const manca = Math.round((dovuto - x.s.notaCredito - x.s.incassatoIncassi) * 100) / 100;
+  return manca > 1 ? manca : 0;
+}
+
 /** RESIDUO ancora da incassare/pagare (richiesta direzione 12/08): non la
  *  lettura combinata, ma DOVUTO − NC − INCASSATO, con tutte le regole
  *  maturate nei casi reali (commenti nel corpo). */

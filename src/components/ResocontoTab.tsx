@@ -16,7 +16,9 @@ import {
   isNotaCredito,
   parseIncassoAruba,
   incassatoRegistrato,
+  pagamentiNonLetti,
   residuoAperto,
+  type FatturaConStato,
   type FatturaRaw,
   type TerminePagamento,
 } from "@/lib/fatture-logic";
@@ -305,7 +307,11 @@ export function ResocontoTab() {
   // Incassato e residuo: semantica CONDIVISA con la tab Flussi di cassa —
   // vive in fatture-logic (incassatoRegistrato/residuoAperto) perche' le due
   // viste non possano divergere. Qui restano gli alias storici.
-  const incassatoDi = incassatoRegistrato;
+  // Nel Resoconto l'incassato conta per intero le fatture di prima del 2025
+  // che Aruba dà per saldate ma di cui il portale ha letto solo una parte
+  // delle rate (la prima nota del 2024 non viene scaricata): altrimenti il
+  // confronto con la banca mostrava un buco che non esiste (1.121.1).
+  const incassatoDi = (x: FatturaConStato) => incassatoRegistrato(x) + pagamentiNonLetti(x);
   const residuoDi = residuoAperto;
 
   const inSelezione = (nome: string, sel: string[]) =>
@@ -456,7 +462,20 @@ export function ResocontoTab() {
     const ritAtt = attSel.reduce((s, x) => s + (x.s.inRitardo ? Math.max(0, residuoDi(x)) : 0), 0);
     const resPas = pasSel.reduce((s, x) => s + Math.max(0, residuoDi(x)), 0);
     const differenza = Math.round((estratto - incassatoAtt + pagatoPas) * 100) / 100;
+    // Le fatture contate per intero anche se il portale ne ha letto solo una
+    // parte dei pagamenti: si elencano, così il numero si spiega da solo.
+    const nonLettiElenco = [...attSel, ...pasSel]
+      .map((x) => ({
+        numero: x.f.numero,
+        cliente: x.f.cliente,
+        letto: incassatoRegistrato(x),
+        manca: pagamentiNonLetti(x),
+      }))
+      .filter((r) => r.manca > 0)
+      .sort((a, b) => b.manca - a.manca);
     return {
+      nonLettiElenco,
+      nonLetti: Math.round(nonLettiElenco.reduce((s, r) => s + r.manca, 0) * 100) / 100,
       estratto: Math.round(estratto * 100) / 100,
       incassatoAtt: Math.round(incassatoAtt * 100) / 100,
       pagatoPas: Math.round(pagatoPas * 100) / 100,
@@ -1421,6 +1440,23 @@ export function ResocontoTab() {
                 <b className="tabular-nums text-foreground">{fmtImporto(quadro.pagatoPas)} €</b>
               </div>
             </div>
+            {/* Fatture di prima del 2025 saldate su Aruba di cui il portale ha
+                letto solo una parte dei pagamenti: contate per intero. */}
+            {quadro.nonLettiElenco.length > 0 && (
+              <p className="mt-2 rounded-lg bg-muted/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+                {t("rt.nonLettiNota")}{" "}
+                <b className="tabular-nums text-foreground">{fmtImporto(quadro.nonLetti)} €</b>
+                {": "}
+                {quadro.nonLettiElenco
+                  .slice(0, 6)
+                  .map(
+                    (r) =>
+                      `${r.cliente} ${r.numero} (${t("rt.nonLettiLetti")} ${fmtImporto(r.letto)}, ${t("rt.nonLettiAggiunti")} ${fmtImporto(r.manca)})`,
+                  )
+                  .join(" · ")}
+                {quadro.nonLettiElenco.length > 6 ? " · …" : ""}
+              </p>
+            )}
             {/* Riga chiesta dalla direzione: totale delle attive con lo
                 spaccato incassate/da incassare (e il ritardo), e a destra i
                 residui delle due direzioni con la differenza. */}
