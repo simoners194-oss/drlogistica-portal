@@ -33,7 +33,7 @@ import {
   SchedaFiscaleCassa,
   SchedaGruppoCassa,
 } from "@/components/CassaSchede";
-import type { FatturaConStato } from "@/lib/fatture-logic";
+import type { FatturaConStato, TerminePagamento } from "@/lib/fatture-logic";
 import type {
   CostoFisso,
   FornitoreInfo,
@@ -492,6 +492,7 @@ export function CassaProprietaView({
   fissi,
   altreSpese,
   movimenti,
+  termini,
   onApriFornitore,
   mezzi,
   gruppi,
@@ -512,6 +513,9 @@ export function CassaProprietaView({
   /** "Altre spese" stimate della vista classica (facoltative). */
   altreSpese?: AltreSpeseCassa;
   movimenti: readonly SpMovimento[];
+  /** Termini di pagamento: per il mese di competenza delle fatture quando
+   *  il bonifico dice "competenza agosto" (incassi riconosciuti dalla banca). */
+  termini?: readonly TerminePagamento[];
   /** Clic sul nome di un fornitore: apre la scheda come nei Flussi. */
   onApriFornitore?: (nome: string) => void;
   /** Parco mezzi per la ripartizione automatica dei fornitori (facoltativo). */
@@ -679,6 +683,7 @@ export function CassaProprietaView({
       })),
       stipendi,
       mezzi,
+      termini,
       gruppiClienti: tokenGruppi(gruppi ?? []),
       unisciClienti: Boolean(db.unisciClienti),
       db,
@@ -698,6 +703,7 @@ export function CassaProprietaView({
     movimenti,
     stipendi,
     mezzi,
+    termini,
     gruppi,
   ]);
 
@@ -838,9 +844,22 @@ export function CassaProprietaView({
   const setAccordo = (c: Cella, importo: number | null) => {
     if (!db || !c.chiaveControparte) return;
     const accordi = { ...(db.accordi ?? {}) };
-    if (importo == null) delete accordi[c.chiaveControparte];
-    else accordi[c.chiaveControparte] = Math.round(Math.abs(importo) * 100) / 100;
-    void salva({ ...db, accordi: Object.keys(accordi).length ? accordi : undefined });
+    // Il giorno in cui l'accordo viene scritto (1.121.0): gli accrediti di
+    // quella società arrivati in banca da oggi in poi lo scalano. Riscriverlo
+    // lo fa ripartire da oggi.
+    const accordiDal = { ...(db.accordiDal ?? {}) };
+    if (importo == null) {
+      delete accordi[c.chiaveControparte];
+      delete accordiDal[c.chiaveControparte];
+    } else {
+      accordi[c.chiaveControparte] = Math.round(Math.abs(importo) * 100) / 100;
+      accordiDal[c.chiaveControparte] = oggi;
+    }
+    void salva({
+      ...db,
+      accordi: Object.keys(accordi).length ? accordi : undefined,
+      accordiDal: Object.keys(accordiDal).length ? accordiDal : undefined,
+    });
   };
   // Toglie un accordo dal riquadro "Accordi e compensazioni": serve per quelli
   // rimasti senza fatture attese, che nel foglio non hanno più una casella.
@@ -848,7 +867,13 @@ export function CassaProprietaView({
     if (!db?.accordi || !(chiaveControparte in db.accordi)) return;
     const accordi = { ...db.accordi };
     delete accordi[chiaveControparte];
-    void salva({ ...db, accordi: Object.keys(accordi).length ? accordi : undefined });
+    const accordiDal = { ...(db.accordiDal ?? {}) };
+    delete accordiDal[chiaveControparte];
+    void salva({
+      ...db,
+      accordi: Object.keys(accordi).length ? accordi : undefined,
+      accordiDal: Object.keys(accordiDal).length ? accordiDal : undefined,
+    });
   };
   // Acconti già incassati sugli entranti del mese (colonna Reale).
   const setAcconti = (importo: number) => {
@@ -1345,6 +1370,49 @@ export function CassaProprietaView({
               </span>
             ))}
             {esito.pagateInBanca.length > 10 ? ", …" : ""}) · {t("cpr.pagateBancaNota")}
+          </div>
+        )}
+        {/* Già incassate in banca ma non ancora registrate su Aruba (1.121.0):
+            l'accredito è nel saldo, quindi si scala dalle fatture attese di
+            quel cliente. La × dice "non era un incasso di queste fatture" e le
+            rimette tra le entrate attese. */}
+        {!foto && esito.incassateInBanca.length > 0 && (
+          <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
+            <span className="mr-1 font-bold text-emerald-700 dark:text-emerald-400">✓</span>
+            {t("cpr.incBanca")}{" "}
+            <span className="font-semibold text-foreground">
+              {esito.incassateInBanca.length} · {fmt(totali.entrateInBanca ?? 0)} €
+            </span>{" "}
+            (
+            {esito.incassateInBanca.slice(0, 12).map((r, i) => (
+              <span
+                key={r.chiave}
+                className="whitespace-nowrap"
+                title={`${t(CRITERIO_INCASSO[r.criterio])} · ${r.descrizione}`}
+              >
+                {i > 0 && ", "}
+                <span className="text-foreground">{r.cliente}</span>{" "}
+                <span className="tabular-nums">
+                  {fmt(r.scalato)} · {ddmm(r.data)}
+                </span>{" "}
+                {r.fatture
+                  .slice(0, 4)
+                  .map((f) => f.numero.replace(/^FPR\s+/i, ""))
+                  .join(" + ")}
+                {r.fatture.length > 4 ? " + …" : ""}
+                {!soloLettura && (
+                  <button
+                    type="button"
+                    onClick={() => setStato(`incb|${r.chiave}`, { x: true })}
+                    title={t("cpr.incBancaNoTip")}
+                    className="ml-0.5 rounded px-1 text-muted-foreground hover:bg-muted hover:text-rose-600"
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            ))}
+            {esito.incassateInBanca.length > 12 ? ", …" : ""}) · {t("cpr.incBancaNota")}
           </div>
         )}
         {/* Accordi e compensazioni (1.119.0): il conto società per società.
@@ -3741,6 +3809,14 @@ function AgendaBox({
   );
 }
 
+/** Come sono state scelte le fatture di un incasso riconosciuto dalla banca. */
+const CRITERIO_INCASSO = {
+  importo: "cpr.incPerImporto",
+  numero: "cpr.incPerNumero",
+  competenza: "cpr.incPerCompetenza",
+  vecchie: "cpr.incPerVecchie",
+} as const;
+
 /** La catena del conto di una società in una riga, per i suggerimenti. */
 const catenaPosizione = (p: PosizioneCassa, t: TFn) =>
   `${t("cpr.posFatture")} ${fmt(p.fatture)} − ${t("cpr.compensazione")} ${fmt(p.compensazione)} = ${t("cpr.posResiduo")} ${fmt(p.residuo)} · ${t("cpr.colAccordo")} ${fmt(p.entra)}${p.resta > 0.005 ? ` · ${t("cpr.posResta")} ${fmt(p.resta)}` : ""}`;
@@ -3871,6 +3947,14 @@ export function PannelloPosizioni({
                             {t("cpr.posDaDare")} {fmt(p.daDare)}
                           </span>
                         )}
+                        {p.giaInBanca > 0.005 && (
+                          <span
+                            className="rounded border border-emerald-500 bg-emerald-50 px-1.5 text-[10.5px] font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+                            title={t("cpr.posInBancaTip")}
+                          >
+                            {t("cpr.posInBanca")} {fmt(p.giaInBanca)}
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td className={td}>{haFatture ? fmt(p.fatture) : vuoto}</td>
@@ -3927,9 +4011,17 @@ export function PannelloPosizioni({
                           {p.accordo != null && p.accordo > p.entra + 0.005 && (
                             <span
                               className="ml-1 text-[10px] font-normal text-muted-foreground"
-                              title={t("cpr.posAccordoAltoTip")}
+                              title={t(
+                                p.accordoArrivato > 0.005
+                                  ? "cpr.posArrivatiTip"
+                                  : "cpr.posAccordoAltoTip",
+                              )}
                             >
-                              ({t("cpr.accordo")} {fmt(p.accordo)})
+                              ({t("cpr.accordo")} {fmt(p.accordo)}
+                              {p.accordoArrivato > 0.005
+                                ? ` − ${t("cpr.posArrivati")} ${fmt(p.accordoArrivato)}`
+                                : ""}
+                              )
                             </span>
                           )}
                         </>

@@ -25,7 +25,14 @@
 // fiscali non "previsionali", costi fissi) più le righe manuali della
 // proprietà (divisione utili, compensazioni) e le spese passate da altri
 // conti (carta Amex = "CDC" nel suo foglio).
-import { isNotaCredito, residuoAperto, type FatturaConStato } from "./fatture-logic";
+import {
+  isNotaCredito,
+  residuoAperto,
+  terminePerCliente,
+  type FatturaConStato,
+  type TerminePagamento,
+} from "./fatture-logic";
+import { competenzaDi } from "./estratto-logic";
 import {
   chiaveFornitore,
   esclusaDaFlussi,
@@ -39,7 +46,7 @@ import {
   type QuotaAppalto,
 } from "./flussi-logic";
 import type { ScadenzaFiscale } from "./fiscale-logic";
-import { agganciaPagamenti } from "./pagamenti-banca";
+import { agganciaPagamenti, incassiInBanca, type IncassoInBanca } from "./pagamenti-banca";
 import { chiaveNome, type StipendiDb } from "./stipendi-logic";
 
 /** Colonne delle uscite: da pagare ora, primi giorni del mese dopo, standby,
@@ -200,6 +207,10 @@ export interface TotaliCassa {
    *  uscite (il saldo le ha già dentro), solo informative. */
   usciteGiaPagate: number;
   nGiaPagate: number;
+  /** Entrate attese tolte dal foglio perché già arrivate in banca e non
+   *  ancora registrate su Aruba (1.121.0). Nelle fotografie più vecchie manca. */
+  entrateInBanca?: number;
+  nEntrateInBanca?: number;
   /** Righe fuori orizzonte (scadenza oltre il limite), solo informative. */
   nOltre: number;
   usciteOltre: number;
@@ -243,6 +254,10 @@ export interface CassaDb {
    *  attese va in standby da solo. 0 = non entra nulla, tutto in standby.
    *  Vale ogni mese, finché non si toglie. */
   accordi?: Record<string, number>;
+  /** Da quando vale ogni accordo (YYYY-MM-DD: il giorno in cui è stato
+   *  scritto). Gli accrediti di quella controparte arrivati in banca da quel
+   *  giorno lo scalano (1.121.0). Un accordo senza data non si scala. */
+  accordiDal?: Record<string, string>;
   aggiornatoIl?: string;
   aggiornatoDa?: string;
 }
@@ -602,6 +617,9 @@ export interface InputCassa {
     dataContabile: string;
   }[];
   stipendi: readonly StipendiCassaRiga[];
+  /** Termini di pagamento (facoltativi): servono solo a sapere il mese di
+   *  competenza di una fattura quando il bonifico dice "competenza agosto". */
+  termini?: readonly TerminePagamento[];
   db: CassaDb;
 }
 
@@ -659,6 +677,12 @@ export interface PosizioneCassa {
   residuo: number;
   /** L'importo scritto in "Entra ora" (assente = nessun accordo: entra tutto). */
   accordo?: number;
+  /** Quanto di quell'accordo è già arrivato in banca da quando è stato
+   *  scritto: si toglie da quello che deve ancora entrare (1.121.0). */
+  accordoArrivato: number;
+  /** Tolto dalle fatture attese perché già arrivato in banca e non ancora
+   *  registrato su Aruba (1.121.0). `fatture` è già al netto di questo. */
+  giaInBanca: number;
   /** Quanto entra nel conto del mese. */
   entra: number;
   /** Quanto resta da incassare più avanti (blocco "Standby" delle entrate). */
@@ -679,6 +703,9 @@ export interface EsitoCassa {
   /** Già pagate in banca, da chiudere su Aruba (Simone 12/11/2026): non
    *  stanno tra le uscite, altrimenti conterebbero due volte. */
   pagateInBanca: PagataInBanca[];
+  /** Accrediti arrivati in banca che Aruba non conosce ancora, con le fatture
+   *  attese da cui sono stati scalati (1.121.0). */
+  incassateInBanca: IncassoInBanca[];
   righe: RigaCassa[];
   /** Fuori orizzonte: scadenza oltre il limite e nessuna scelta a mano. */
   oltre: RigaCassa[];
@@ -950,6 +977,29 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       editabile: false,
     });
   }
+  // GIÀ INCASSATE IN BANCA (1.121.0, Simone 17-18/11/2026: "occhio che
+  // Number 1 è entrato", "prova a vedere se lo riconosce dai movimenti di
+  // banca"). Tra il bonifico del cliente e la registrazione su Aruba la
+  // fattura restava tra gli entranti e il saldo era già salito: contava due
+  // volte. Ora gli accrediti degli ultimi 45 giorni che Aruba non conosce si
+  // scalano dalle fatture attese di quel cliente (vedi `incassiInBanca`).
+  // Lo stato `x` sulla chiave "incb|accredito" rifiuta l'aggancio.
+  const rifiutati = new Set(
+    Object.entries(db.stati)
+      .filter(([k, v]) => k.startsWith("incb|") && v.x)
+      .map(([k]) => k.slice(5)),
+  );
+  const inBanca = incassiInBanca(input.attive, input.movimenti, oggi, {
+    rifiutati,
+    competenza: (x) =>
+      competenzaDi(
+        x.f,
+        Boolean(
+          terminePerCliente(x.f.cliente, input.termini ?? [], "Emessa")?.competenzaPrecedente,
+        ),
+      ),
+  });
+  const inBancaPerChiave = new Map<string, number>();
   // ENTRATE attese: fatture attive aperte con scadenza entro il limite,
   // una riga per cliente (l'importo si corregge a mano con quello che il
   // cliente annuncia). Esclusioni dei Flussi rispettate.
@@ -971,13 +1021,18 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     }
   >();
   for (const x of input.attive) {
-    const res = residuoAperto(x);
-    if (res <= 1 || !x.s.scadenza) continue;
+    const lordo = residuoAperto(x);
+    if (lordo <= 1 || !x.s.scadenza) continue;
     const scad = scadenzaEffettiva(x.s.scadenza);
     if (scad > limite) continue;
     if (esclusaDaFlussi(input.esclusioni, x.f.cliente, scad.slice(0, 7))) continue;
     const grp = grpDi(x.f.cliente);
     const k = grp ? `g:${chiaveCliente(grp.nome)}` : chiaveCliente(x.f.cliente);
+    // Quello che è già arrivato in banca non è più da incassare.
+    const arrivato = r2(Math.min(lordo, inBanca.perFattura.get(x.f.nomeFile) ?? 0));
+    if (arrivato > 0.005) inBancaPerChiave.set(k, r2((inBancaPerChiave.get(k) ?? 0) + arrivato));
+    const res = r2(lordo - arrivato);
+    if (res <= 1) continue;
     const kd = `${k}|${scad}`;
     const g = gruppiAtt.get(kd) ?? {
       nome: grp?.nome ?? x.f.cliente,
@@ -1522,8 +1577,30 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   const soldi = (n: number) =>
     n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const esitiAccordo = new Map<string, { entra: number; resta: number }>();
+  // L'ACCORDO GIÀ ARRIVATO (1.121.0). Un accordo è "da questa società entrano
+  // X": quello che la società ha mandato in banca dal giorno in cui l'accordo
+  // è stato scritto lo consuma. Si riparte dal primo di ogni mese, perché
+  // l'accordo vale ogni mese. Conta l'accredito in banca, che Aruba lo
+  // conosca o no: così il numero non cambia quando l'incasso viene registrato.
+  // Solo gli accrediti il cui nome combacia per intero con la controparte.
+  // Gli accordi scritti prima della 1.121.0 non hanno la data: non si scalano.
+  const arrivatoAccordo = new Map<string, number>();
   for (const [k, valore] of Object.entries(db.accordi ?? {})) {
-    const concordato = r2(Math.max(0, Number(valore) || 0));
+    const giorno = db.accordiDal?.[k] ?? "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(giorno)) continue;
+    const da = giorno > inizioMese ? giorno : inizioMese;
+    const scritto = Math.max(0, Number(valore) || 0);
+    let arrivati = 0;
+    for (const a of inBanca.accrediti) {
+      if (a.data < da || !a.nomeCerto) continue;
+      const grp = grpDi(a.cliente);
+      const ka = grp ? `g:${chiaveCliente(grp.nome)}` : chiaveCliente(a.cliente);
+      if (ka === k) arrivati += a.importo;
+    }
+    if (arrivati > 0.005) arrivatoAccordo.set(k, r2(Math.min(scritto, arrivati)));
+  }
+  for (const [k, valore] of Object.entries(db.accordi ?? {})) {
+    const concordato = r2(Math.max(0, (Number(valore) || 0) - (arrivatoAccordo.get(k) ?? 0)));
     const attese = righe
       .filter((r) => r.tipo === "attiva" && r.standbyIncasso && r.chiaveControparte === k)
       .sort((a, b) => a.scadenza.localeCompare(b.scadenza) || a.chiave.localeCompare(b.chiave));
@@ -1559,9 +1636,12 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       chiaveControparte: k,
       // La catena del conto, da leggere col mouse sulla pillola "accordo".
       descrizione:
-        (scalatoPerChiave.get(k) ?? 0) > 0.005
+        ((scalatoPerChiave.get(k) ?? 0) > 0.005
           ? `accordo: fatture ${soldi(r2(totale + (scalatoPerChiave.get(k) ?? 0)))} − compensazione ${soldi(scalatoPerChiave.get(k) ?? 0)} = ${soldi(totale)} · entrano ${soldi(concordato)} · restano ${soldi(r2(totale - concordato))} in standby`
-          : `accordo: entrano ${soldi(concordato)} su ${soldi(totale)} · restano ${soldi(r2(totale - concordato))} in standby`,
+          : `accordo: entrano ${soldi(concordato)} su ${soldi(totale)} · restano ${soldi(r2(totale - concordato))} in standby`) +
+        ((arrivatoAccordo.get(k) ?? 0) > 0.005
+          ? ` · accordo scritto ${soldi(r2(Math.max(0, Number(valore) || 0)))}, già arrivati in banca ${soldi(arrivatoAccordo.get(k) ?? 0)}`
+          : ""),
       importo: concordato,
       importoOrigine: concordato,
       scadenza: st.d ?? fm,
@@ -1618,6 +1698,8 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       compensazione,
       residuo,
       accordo: haAccordo(k) ? r2(Math.max(0, Number(db.accordi?.[k]) || 0)) : undefined,
+      accordoArrivato: arrivatoAccordo.get(k) ?? 0,
+      giaInBanca: inBancaPerChiave.get(k) ?? 0,
       entra: acc ? acc.entra : residuo,
       resta: acc ? acc.resta : 0,
       daDare: r2(comps.reduce((s, c) => s + (c.esclusa ? 0 : c.importo - c.scalato), 0)),
@@ -1709,13 +1791,24 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     nAddebitate: addebitate.length,
     usciteGiaPagate: r2(pagateInBanca.reduce((s, p) => s + p.importo, 0)),
     nGiaPagate: pagateInBanca.length,
+    entrateInBanca: r2(inBanca.incassi.reduce((t, i) => t + i.scalato, 0)),
+    nEntrateInBanca: inBanca.incassi.length,
     nOltre: oltre.length,
     usciteOltre: somma(oltre.filter((r) => !r.entrata)),
   };
   pagateInBanca.sort(
     (a, b) => b.data.localeCompare(a.data) || a.fornitore.localeCompare(b.fornitore, "it"),
   );
-  return { righe, oltre, addebitate, pagateInBanca, compensazioni, posizioni, totali };
+  return {
+    righe,
+    oltre,
+    addebitate,
+    pagateInBanca,
+    incassateInBanca: inBanca.incassi,
+    compensazioni,
+    posizioni,
+    totali,
+  };
 }
 
 export function creaFotografia(

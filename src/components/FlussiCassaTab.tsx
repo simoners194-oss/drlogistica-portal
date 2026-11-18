@@ -2172,6 +2172,7 @@ export function FlussiCassaTab() {
           fissi={costiFissi}
           altreSpese={altreSpeseCassa}
           movimenti={movimenti ?? []}
+          termini={termini ?? undefined}
           mezzi={mezziDb ?? undefined}
           gruppi={gruppiCtrl}
           onApriFornitore={(nome) => setFornitoreAperto(chiaveFornitore(nome))}

@@ -1141,6 +1141,21 @@ const en = {
   "cpr.posDaDareTip":
     "What we owe this company is more than its expected invoices (or its invoices are in Standby 2, or have a hand-corrected amount): this part has nothing to be deducted from and stays off the sheet. It is not among the outflows.",
   "cpr.posSenzaFatture": "no expected invoices",
+  "cpr.posInBanca": "already in the bank",
+  "cpr.posInBancaTip":
+    "Money that has already arrived in the bank from this company and is not yet recorded on Aruba: it is in the balance, so it has been deducted from its expected invoices.",
+  "cpr.posArrivati": "arrived",
+  "cpr.posArrivatiTip":
+    "Part of the agreement has already arrived in the bank since the day it was written: what still has to come in is the agreement minus what has arrived.",
+  "cpr.incBanca": "Already collected in the bank, deducted from the expected income:",
+  "cpr.incBancaNoTip":
+    "This credit did not pay these invoices: put them back among the expected income",
+  "cpr.incBancaNota":
+    "on Aruba they are still to be collected: once recorded there, they leave this list",
+  "cpr.incPerImporto": "same amount as the invoices",
+  "cpr.incPerNumero": "invoice number quoted in the transfer",
+  "cpr.incPerCompetenza": "month quoted in the transfer",
+  "cpr.incPerVecchie": "deducted from the oldest invoices",
   "cpr.posTogliAccordo":
     "Remove the agreement: it would apply again by itself when new invoices arrive",
   "cpr.posAccordoAltoTip":
@@ -3501,6 +3516,21 @@ const it: Record<DictKey, string> = {
   "cpr.posDaDareTip":
     "Quello che dobbiamo a questa società è più delle sue fatture attese (oppure le sue fatture sono nello Standby 2, o hanno l'importo corretto a mano): questa parte non trova da cosa scalarsi e resta fuori dal foglio. Non è tra le uscite.",
   "cpr.posSenzaFatture": "nessuna fattura attesa",
+  "cpr.posInBanca": "già in banca",
+  "cpr.posInBancaTip":
+    "Soldi già arrivati in banca da questa società e non ancora registrati su Aruba: sono già nel saldo, quindi sono stati tolti dalle sue fatture attese.",
+  "cpr.posArrivati": "arrivati",
+  "cpr.posArrivatiTip":
+    "Una parte dell'accordo è già arrivata in banca dal giorno in cui è stato scritto: deve ancora entrare l'accordo meno quello che è arrivato.",
+  "cpr.incBanca": "Già incassate in banca, tolte dalle entrate attese:",
+  "cpr.incBancaNoTip":
+    "Questo accredito non pagava queste fatture: rimettile tra le entrate attese",
+  "cpr.incBancaNota":
+    "su Aruba sono ancora da incassare: quando vengono registrate escono da questo elenco",
+  "cpr.incPerImporto": "stesso importo delle fatture",
+  "cpr.incPerNumero": "numero della fattura citato nel bonifico",
+  "cpr.incPerCompetenza": "mese citato nel bonifico",
+  "cpr.incPerVecchie": "scalato dalle fatture più vecchie",
   "cpr.posTogliAccordo":
     "Togli l'accordo: tornerebbe a valere da solo quando arrivano fatture nuove",
   "cpr.posAccordoAltoTip":

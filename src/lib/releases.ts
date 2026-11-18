@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.121.0",
+    date: "2026-11-18",
+    entries: [
+      {
+        title: "Cassa proprietà: gli incassi già arrivati in banca non contano due volte",
+        description:
+          'Quando un cliente paga, il foglio lo riconosce dai movimenti di banca anche se l\'incasso non è ancora registrato su Aruba, e toglie l\'importo dalle sue fatture attese. Sceglie le fatture dall\'importo, dal numero citato nel bonifico o dal mese ("competenza agosto"). Sotto il foglio la riga "Già incassate in banca" elenca cosa è stato tolto; la × rimette a posto un aggancio sbagliato.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: un accordo già incassato si scala da solo",
+        description:
+          "Un accordo scritto in \"Entra ora\" ricorda il giorno in cui è stato scritto: i bonifici di quella società arrivati da quel giorno lo scalano. Se l'accordo è 12.000 e ne arrivano 12.000, non entra più nulla. Dal mese dopo riparte intero. Per gli accordi già scritti basta riscrivere l'importo.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.120.0",
     date: "2026-11-17",
     entries: [

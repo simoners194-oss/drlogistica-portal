@@ -128,6 +128,16 @@ function validaDb(input: unknown): CassaDb {
       }
       return Object.keys(out).length ? out : undefined;
     })(),
+    // Da quando vale ogni accordo (1.121.0): senza, il validatore scarterebbe
+    // la data e l'accordo non si scalerebbe mai con gli incassi.
+    accordiDal: (() => {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(o.accordiDal ?? {}).slice(0, 300)) {
+        const d = testo(v, 10);
+        if (k && k.length <= 200 && /^\d{4}-\d{2}-\d{2}$/.test(d)) out[k] = d;
+      }
+      return Object.keys(out).length ? out : undefined;
+    })(),
     saldoManuale:
       o.saldoManuale && Number.isFinite(Number(o.saldoManuale.importo))
         ? { importo: numero(o.saldoManuale.importo), data: dataIso(o.saldoManuale.data) }
