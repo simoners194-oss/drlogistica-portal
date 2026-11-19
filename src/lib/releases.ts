@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.124.1",
+    date: "2026-11-19",
+    entries: [
+      {
+        title: "Cassa proprietà: dallo Standby si torna tra le entranti con un clic",
+        description:
+          'Sulle righe mandate in Standby fattura per fattura ora c\'è il pulsante "↩ Entranti", accanto a quello per lo Standby 2. Prima per riportarle tra le entranti bisognava riaprire la scheda del cliente.',
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.124.0",
     date: "2026-11-19",
     entries: [

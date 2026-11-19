@@ -2729,6 +2729,19 @@ export function Foglio({
                                 {ddmm(e.data)}
                               </span>
                             )}
+                            {/* Riga mandata in Standby fattura per fattura: oltre al
+                                pulsante per lo Standby 2 serve quello per
+                                riportarla tra le entranti (1.124.1). */}
+                            {!padre && e.sceltaFattura === "standby" && !readOnly && (
+                              <button
+                                type="button"
+                                onClick={() => onParcheggia(e, false)}
+                                title={t("cpr.riattivaEntrata")}
+                                className="shrink-0 rounded border border-emerald-500 bg-emerald-500/10 px-1.5 text-[9px] font-bold uppercase text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                              >
+                                ↩ {t("cpr.entranti")}
+                              </button>
+                            )}
                             {!padre && e.attesa && !e.accordo && !readOnly && (
                               <ToggleStandby c={e} onParcheggia={onParcheggia} t={t} />
                             )}
