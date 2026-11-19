@@ -19,6 +19,7 @@ import {
   Lock,
   Minimize2,
   Pencil,
+  ListChecks,
   Plus,
   Printer,
   Search,
@@ -75,11 +76,13 @@ import type { StipendiDb } from "@/lib/stipendi-logic";
 import {
   agendaCassa,
   calendarioEntrate,
+  chiaveSceltaFattura,
   costruisciCassa,
   creaFotografia,
   etichettaProssimi,
   etichettaProssimiBreve,
   limiteDefault,
+  sceltaFatturaDi,
   stipendiDaPagare,
   tokenGruppi,
   type CassaDb,
@@ -88,6 +91,7 @@ import {
   type PrioritaCassa,
   type RigaCassa,
   type RigaManualeCassa,
+  type SceltaFattura,
   type SecchioCassa,
   type StatoRigaCassa,
   type TipoRigaCassa,
@@ -162,6 +166,10 @@ interface Cella {
   accordo?: { totale: number };
   /** In standby per via dell'accordo, col residuo non coperto. */
   daAccordo?: boolean;
+  /** In standby perché scelta fattura per fattura nella scheda del cliente. */
+  sceltaFattura?: SceltaFattura;
+  /** Le fatture dentro la riga (nomeFile). */
+  fatture?: string[];
   /** Quanto è stato tolto per compensazione: la riga mostra già il netto. */
   compensato?: number;
 }
@@ -263,6 +271,8 @@ const daRiga = (r: RigaCassa): Cella => ({
   chiaveControparte: r.chiaveControparte,
   accordo: r.accordo,
   daAccordo: r.daAccordo,
+  sceltaFattura: r.sceltaFattura,
+  fatture: r.fatture,
   compensato: r.compensato,
 });
 
@@ -836,7 +846,61 @@ export function CassaProprietaView({
   };
   // Entrata attesa in standby / di nuovo tra le entranti (flag `s`, vale
   // anche per le righe manuali: lo stato è per chiave).
-  const parcheggia = (c: Cella, on: boolean) => setStato(c.chiave, { s: on || undefined });
+  const parcheggia = (c: Cella, on: boolean) => {
+    // Una riga nata dalla scelta fattura per fattura si sposta spostando le
+    // sue fatture: nello Standby 2, oppure di nuovo tra le entranti.
+    if (c.sceltaFattura && c.fatture?.length) scegliFatture(c.fatture, on ? "standby2" : "");
+    else setStato(c.chiave, { s: on || undefined });
+  };
+  // STANDBY FATTURA PER FATTURA (1.122.0, Simone 19/11/2026: "devo poter
+  // selezionare per cliente quali fatture mettere in stand by e quali lasciare
+  // come entranti … solo alcune fatture per cliente"). La scelta sta negli
+  // stati, una chiave per fattura. Se una delle fatture toccate sta su una
+  // riga messa in standby TUTTA INSIEME (il ⏸ della riga, o quello ereditato
+  // dal cliente), quello standby si scioglie nelle singole fatture: quelle non
+  // toccate restano nello Standby 2, una per una, e nel foglio non cambia nulla.
+  const scegliFatture = (file: readonly string[], dove: SceltaFattura | "") => {
+    if (!db || !file.length) return;
+    const stati = { ...db.stati };
+    const imposta = (f: string, v: SceltaFattura | "") => {
+      const k = chiaveSceltaFattura(f);
+      const resto = { ...(stati[k] ?? {}) };
+      delete resto.b;
+      if (v) resto.b = v;
+      if (Object.keys(resto).length) stati[k] = resto;
+      else delete stati[k];
+    };
+    const togliStandbyRiga = (k: string) => {
+      const resto = { ...(stati[k] ?? {}) };
+      delete resto.s;
+      if (Object.keys(resto).length) stati[k] = resto;
+      else delete stati[k];
+    };
+    const scelte = new Set(file);
+    const mese = oggi.slice(0, 7);
+    const attese = (esito?.righe ?? []).filter(
+      (r) => r.tipo === "attiva" && r.fatture?.length && !r.sceltaFattura && !r.accordo,
+    );
+    for (const r of attese) {
+      if (!r.parcheggiata || r.daAccordo) continue;
+      if (!r.fatture!.some((f) => scelte.has(f))) continue;
+      if (stati[r.chiave]?.s) {
+        togliStandbyRiga(r.chiave);
+        for (const f of r.fatture!) if (!scelte.has(f)) imposta(f, "standby2");
+        continue;
+      }
+      // Standby ereditato dalla chiave del cliente: vale per tutte le sue righe.
+      const kCliente = r.chiaveControparte ? `attc|${mese}|${r.chiaveControparte}` : "";
+      if (!kCliente || !stati[kCliente]?.s) continue;
+      togliStandbyRiga(kCliente);
+      for (const altra of attese) {
+        if (altra.chiaveControparte !== r.chiaveControparte || stati[altra.chiave]) continue;
+        for (const f of altra.fatture!) if (!scelte.has(f)) imposta(f, "standby2");
+      }
+    }
+    for (const f of file) imposta(f, dove);
+    void salva({ ...db, stati });
+  };
   // Da sollecitare (Simone 10/11/2026): resta tra le entranti, blocco a parte.
   const sollecita = (c: Cella, on: boolean) => setStato(c.chiave, { r: on || undefined });
   // Accordo sugli entranti (Simone 12/11/2026): quanto entra di quel cliente;
@@ -965,6 +1029,15 @@ export function CassaProprietaView({
   // fotografie: lì ci sono solo le righe salvate).
   const posizioni = foto ? [] : esito.posizioni;
   const posizioniPerChiave = new Map(posizioni.map((p) => [p.chiave, p]));
+  // Dove sta ogni fattura attesa nel foglio (per la scheda del cliente): lo
+  // standby scelto fattura per fattura, o lo Standby 2 di tutta la riga.
+  const doveFatture = new Map<string, SceltaFattura>();
+  if (!foto)
+    for (const r of esito.righe) {
+      if (r.tipo !== "attiva" || !r.fatture || !r.parcheggiata) continue;
+      if (!r.sceltaFattura && r.daAccordo) continue;
+      for (const f of r.fatture) doveFatture.set(f, r.sceltaFattura ?? "standby2");
+    }
   const agenda = foto ? [] : agendaCassa(esito.righe, db.agenda ?? []);
 
   const righeCsv = () => {
@@ -1320,6 +1393,21 @@ export function CassaProprietaView({
             nomi={esito?.righe.find((r) => r.controparte === clienteAperto)?.membriClienti}
             attive={attive}
             oggi={oggi}
+            limite={limiteVista}
+            // Dove sta ogni fattura: come la mostra il foglio (lo standby della
+            // riga compreso), altrimenti la scelta salvata.
+            dove={
+              foto || !db
+                ? undefined
+                : (file) => doveFatture.get(file) ?? sceltaFatturaDi(db.stati, file) ?? ""
+            }
+            onScelta={soloLettura ? undefined : scegliFatture}
+            accordo={(() => {
+              const k = esito?.righe.find(
+                (r) => r.controparte === clienteAperto && r.chiaveControparte,
+              )?.chiaveControparte;
+              return k && db?.accordi && k in db.accordi ? db.accordi[k] : undefined;
+            })()}
             onChiudi={() => setClienteAperto(null)}
           />
         )}
@@ -2390,6 +2478,7 @@ export function Foglio({
                           !figlio &&
                           e.tipo === "attiva" &&
                           e.chiaveControparte &&
+                          !e.sceltaFattura &&
                           (e.accordo || e.daAccordo || (e.attesa && !e.parcheggiata)) && (
                             <CampoAccordo
                               c={e}
@@ -2470,7 +2559,15 @@ export function Foglio({
                                 {t("cpr.alNetto")}
                               </span>
                             )}
-                            {(e.accordo || e.daAccordo) && (
+                            {e.sceltaFattura && (
+                              <span
+                                className="inline-flex shrink-0 items-center rounded border border-slate-500 px-1 text-[9px] font-bold uppercase text-slate-700 dark:text-slate-200"
+                                title={t("cpr.sceltaFatturaTip")}
+                              >
+                                {t("cpr.sceltaFattura")}
+                              </span>
+                            )}
+                            {(e.accordo || (e.daAccordo && !e.sceltaFattura)) && (
                               <span
                                 className={`inline-flex shrink-0 items-center rounded px-1 text-[9px] font-bold uppercase ${e.accordo ? "bg-sky-600 text-white" : "border border-sky-500 text-sky-700 dark:text-sky-300"}`}
                                 title={
@@ -2483,6 +2580,16 @@ export function Foglio({
                               >
                                 {t("cpr.accordo")}
                               </span>
+                            )}
+                            {e.tipo === "attiva" && e.attesa && !e.accordo && !readOnly && (
+                              <button
+                                type="button"
+                                onClick={() => onApriCliente(e.nome)}
+                                title={t("cpr.scegliFattureTip")}
+                                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                              >
+                                <ListChecks className="h-3 w-3" />
+                              </button>
                             )}
                             {padre ? (
                               <span className="shrink-0 text-[10.5px] text-muted-foreground">

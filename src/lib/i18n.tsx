@@ -1141,6 +1141,24 @@ const en = {
   "cpr.posDaDareTip":
     "What we owe this company is more than its expected invoices (or its invoices are in Standby 2, or have a hand-corrected amount): this part has nothing to be deducted from and stays off the sheet. It is not among the outflows.",
   "cpr.posSenzaFatture": "no expected invoices",
+  "cpr.sceltaFattura": "chosen",
+  "cpr.sceltaFatturaTip":
+    "Put on standby invoice by invoice, from the customer card. It stays out of agreements and offsets.",
+  "cpr.scegliFattureTip":
+    "Choose invoice by invoice: which ones come in and which ones go on standby",
+  "cpr.sceltaGuida":
+    "For each invoice choose where it goes: Incoming, Standby (to collect later) or Standby 2 (will not be collected). One at a time with the three buttons on the row, or tick several and move them together.",
+  "cpr.sceltaSelezionate": "selected",
+  "cpr.sceltaNessuna": "Tick the invoices to move them together:",
+  "cpr.sceltaTutte": "Select all",
+  "cpr.sceltaDove": "Where it goes",
+  "cpr.sceltaData": "Invoice date",
+  "cpr.sceltaSu": "of",
+  "cpr.sceltaFuori": "not on the sheet yet",
+  "cpr.sceltaFuoriTip":
+    "It falls due after the date the sheet looks at: the choice will apply when it comes in.",
+  "cpr.sceltaAccordo": 'This customer has an agreement in "Comes in now" of',
+  "cpr.sceltaAccordoNota": "it applies only to the invoices left among the incoming ones.",
   "cpr.posInBanca": "already in the bank",
   "cpr.posInBancaTip":
     "Money that has already arrived in the bank from this company and is not yet recorded on Aruba: it is in the balance, so it has been deducted from its expected invoices.",
@@ -3520,6 +3538,23 @@ const it: Record<DictKey, string> = {
   "cpr.posDaDareTip":
     "Quello che dobbiamo a questa società è più delle sue fatture attese (oppure le sue fatture sono nello Standby 2, o hanno l'importo corretto a mano): questa parte non trova da cosa scalarsi e resta fuori dal foglio. Non è tra le uscite.",
   "cpr.posSenzaFatture": "nessuna fattura attesa",
+  "cpr.sceltaFattura": "scelta",
+  "cpr.sceltaFatturaTip":
+    "Messa in standby fattura per fattura, dalla scheda del cliente. Resta fuori da accordi e compensazioni.",
+  "cpr.scegliFattureTip": "Scegli fattura per fattura: quali entrano e quali vanno in standby",
+  "cpr.sceltaGuida":
+    "Per ogni fattura scegli dove va: Entranti, Standby (da incassare più avanti) o Standby 2 (non le incasseremo). Una alla volta coi tre pulsanti della riga, oppure spunta più fatture e spostale insieme.",
+  "cpr.sceltaSelezionate": "selezionate",
+  "cpr.sceltaNessuna": "Spunta le fatture per spostarle insieme:",
+  "cpr.sceltaTutte": "Seleziona tutte",
+  "cpr.sceltaDove": "Dove va",
+  "cpr.sceltaData": "Data fattura",
+  "cpr.sceltaSu": "su",
+  "cpr.sceltaFuori": "non ancora nel foglio",
+  "cpr.sceltaFuoriTip":
+    "Scade dopo la data fino a cui guarda il foglio: la scelta varrà quando ci entra.",
+  "cpr.sceltaAccordo": 'Questo cliente ha un accordo in "Entra ora" di',
+  "cpr.sceltaAccordoNota": "vale solo sulle fatture lasciate tra le entranti.",
   "cpr.posInBanca": "già in banca",
   "cpr.posInBancaTip":
     "Soldi già arrivati in banca da questa società e non ancora registrati su Aruba: sono già nel saldo, quindi sono stati tolti dalle sue fatture attese.",

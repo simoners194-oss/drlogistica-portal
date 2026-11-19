@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.122.0",
+    date: "2026-11-19",
+    entries: [
+      {
+        title: "Cassa proprietà: lo standby si sceglie fattura per fattura",
+        description:
+          'Un clic sul nome del cliente apre le sue fatture aperte: per ognuna scegli se va tra le Entranti, nello Standby (da incassare più avanti) o nello Standby 2 (non le incasseremo). Puoi spostarne una alla volta oppure spuntarne più insieme. Nel foglio le fatture scelte stanno nel loro blocco con l\'etichetta "scelta", le altre dello stesso cliente restano entranti.',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.121.1",
     date: "2026-11-18",
     entries: [

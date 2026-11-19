@@ -262,6 +262,23 @@ export interface CassaDb {
   aggiornatoDa?: string;
 }
 
+/** STANDBY FATTURA PER FATTURA (1.122.0, Simone 19/11/2026: "devo poter
+ *  selezionare per cliente quali fatture mettere in stand by e quali lasciare
+ *  come entranti … solo alcune fatture per cliente"). La scelta sta negli
+ *  stati, su una chiave per fattura ("attf|" + nomeFile), nel campo `b`:
+ *  "standby" (da incassare più avanti) o "standby2" (non la incasseremo).
+ *  Senza scelta la fattura resta dov'è: tra le entranti, o dove la porta lo
+ *  standby della sua riga. */
+export type SceltaFattura = "standby" | "standby2";
+export const chiaveSceltaFattura = (nomeFile: string) => `attf|${nomeFile}`;
+export function sceltaFatturaDi(
+  stati: Readonly<Record<string, StatoRigaCassa>>,
+  nomeFile: string,
+): SceltaFattura | undefined {
+  const b = stati[chiaveSceltaFattura(nomeFile)]?.b;
+  return b === "standby" || b === "standby2" ? b : undefined;
+}
+
 export function emptyCassaDb(): CassaDb {
   return { versione: 0, giornoLimite: 5, stati: {}, manuali: [], fotografie: [] };
 }
@@ -334,6 +351,14 @@ export interface RigaCassa {
    *  che l'accordo non copre: è quello che incasseremo più avanti, e sta nel
    *  blocco "Standby" delle entrate, separato dallo "Standby 2". */
   daAccordo?: boolean;
+  /** Riga fatta dalle fatture che l'utente ha mandato in standby UNA PER UNA
+   *  dalla scheda del cliente (1.122.0): "standby" = da incassare più avanti,
+   *  "standby2" = non le incasseremo. Stanno fuori da accordi e compensazioni,
+   *  come le attese messe in standby a mano. */
+  sceltaFattura?: SceltaFattura;
+  /** Le fatture attive dentro la riga (nomeFile): servono a riportarle tra le
+   *  entranti con un clic. */
+  fatture?: string[];
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -1018,6 +1043,9 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       numeri: string[];
       membri: Set<string>;
       unito: boolean;
+      /** Standby scelto fattura per fattura (1.122.0); vuoto = nessuna scelta. */
+      dove?: SceltaFattura;
+      file: string[];
     }
   >();
   for (const x of input.attive) {
@@ -1033,7 +1061,10 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     if (arrivato > 0.005) inBancaPerChiave.set(k, r2((inBancaPerChiave.get(k) ?? 0) + arrivato));
     const res = r2(lordo - arrivato);
     if (res <= 1) continue;
-    const kd = `${k}|${scad}`;
+    // Le fatture mandate in standby una per una stanno su una riga loro
+    // (stesso cliente e scadenza, ma nel blocco scelto).
+    const dove = sceltaFatturaDi(db.stati, x.f.nomeFile);
+    const kd = `${k}|${scad}${dove ? `|${dove}` : ""}`;
     const g = gruppiAtt.get(kd) ?? {
       nome: grp?.nome ?? x.f.cliente,
       k,
@@ -1043,19 +1074,24 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       numeri: [],
       membri: new Set<string>(),
       unito: Boolean(grp),
+      dove,
+      file: [],
     };
     g.importo = r2(g.importo + res);
     g.n++;
     g.numeri.push(x.f.numero);
     g.membri.add(x.f.cliente);
+    g.file.push(x.f.nomeFile);
     gruppiAtt.set(kd, g);
   }
   for (const g of gruppiAtt.values())
     grezze.push({
-      chiave: `attc|${meseCorr}|${g.k}|${g.scad}`,
+      chiave: `attc|${meseCorr}|${g.k}|${g.scad}${g.dove === "standby" ? "|s1" : g.dove === "standby2" ? "|s2" : ""}`,
       // Fino alla 1.97.x la riga era una per cliente: le decisioni prese
       // allora (standby, nota, data) si ereditano se la riga nuova non ne ha.
       chiaveVecchia: g.unito ? undefined : `attc|${meseCorr}|${g.k}`,
+      sceltaFattura: g.dove,
+      fatture: g.file,
       tipo: "attiva",
       controparte: g.nome,
       membriClienti: g.unito ? [...g.membri] : undefined,
@@ -1457,7 +1493,8 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     const dataScelta = Boolean(g.entrata && g.tipo !== "incasso" && st.d);
     const attesa = g.entrata && g.tipo !== "incasso";
     // Entrata attesa in STANDBY (flag `s`): resta nel foglio ma non conta.
-    const parcheggiata = attesa && Boolean(st.s);
+    // Lo stesso per le fatture mandate in standby una per una (1.122.0).
+    const parcheggiata = attesa && (Boolean(st.s) || Boolean(g.sceltaFattura));
     const riga: RigaCassa = {
       ...g,
       importoOrigine: g.importo,
@@ -1473,6 +1510,10 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       priorita: st.p ?? manuale?.p,
       dataScelta,
     };
+    // Scelta "standby" = blocco Standby (da incassare più avanti), lo stesso
+    // del resto degli accordi; "standby2", o lo standby a mano della riga,
+    // = blocco Standby 2.
+    if (attesa && g.sceltaFattura === "standby" && !st.s) riga.daAccordo = true;
     if (auto === "oltre" && !st.b && !manuale) oltre.push(riga);
     else righe.push(riga);
   }
