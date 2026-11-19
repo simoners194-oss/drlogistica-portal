@@ -83,7 +83,6 @@ export interface EtichetteStampa {
   colTipologia: string;
   colCliente: string;
   colPriorita: string;
-  colSollecitare: string;
   colNota: string;
   totale: string;
   voci: string;
@@ -99,7 +98,6 @@ const eur = (n: number) =>
 const dataIt = (iso: string) =>
   /^\d{4}-\d{2}-\d{2}/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "";
 const csvNum = (n: number) => (Math.round(n * 100) / 100).toFixed(2).replace(".", ",");
-const daSollecitare = (v: VoceStampa) => v.attesa && !v.parcheggiata && v.daSollecitare;
 
 /** Testata e righe del CSV: una riga per voce, poi il totale di ogni sezione. */
 export function csvSezioni(
@@ -115,7 +113,6 @@ export function csvSezioni(
     e.colTipologia,
     e.colCliente,
     e.colPriorita,
-    e.colSollecitare,
     e.colNota,
   ];
   const righe: (string | number)[][] = [];
@@ -131,7 +128,6 @@ export function csvSezioni(
         v.tipologia?.trim() ?? "",
         v.cliente?.trim() ?? "",
         v.priorita ? e.priorita[v.priorita] : "",
-        daSollecitare(v) ? e.si : "",
         v.nota,
       ]);
     righe.push([
@@ -180,9 +176,7 @@ export function htmlStampaSezioni(sezioni: readonly SezioneCassa[], e: Etichette
               const nota = [v.priorita ? `[${e.priorita[v.priorita]}]` : "", v.nota]
                 .filter(Boolean)
                 .join(" ");
-              return `<tr><td class="v">${esc(v.nome)}${
-                daSollecitare(v) ? ` <span class="tag">${esc(e.colSollecitare)}</span>` : ""
-              }</td><td class="d">${esc(v.dettaglio)}</td><td class="c">${esc(dataIt(v.data))}</td><td class="n${
+              return `<tr><td class="v">${esc(v.nome)}</td><td class="d">${esc(v.dettaglio)}</td><td class="c">${esc(dataIt(v.data))}</td><td class="n${
                 v.importo < 0 ? " neg" : ""
               }">${esc(eur(v.importo))}</td><td class="d">${esc(nota)}</td></tr>`;
             })

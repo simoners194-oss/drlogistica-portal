@@ -1504,7 +1504,10 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       secchioAuto: auto,
       standbyIncasso: attesa && !parcheggiata,
       parcheggiata,
-      daSollecitare: attesa && !parcheggiata && Boolean(st.r),
+      // "Da sollecitare" TOLTO (1.123.0, Simone 19/11/2026: "non l'ho mai
+      // chiesto"): il segno `r` salvato negli stati non conta più, la riga
+      // resta una entrante come le altre.
+      daSollecitare: false,
       nota: st.n ?? manuale?.nota ?? "",
       contestata: Boolean(st.c),
       priorita: st.p ?? manuale?.p,
@@ -1694,7 +1697,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       secchioAuto: "ora",
       standbyIncasso: true,
       parcheggiata: false,
-      daSollecitare: Boolean(st.r),
+      daSollecitare: false,
       nota: st.n ?? "",
       contestata: false,
       priorita: st.p,

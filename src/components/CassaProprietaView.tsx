@@ -81,12 +81,14 @@ import {
   creaFotografia,
   etichettaProssimi,
   etichettaProssimiBreve,
+  gruppoDiCliente,
   limiteDefault,
   sceltaFatturaDi,
   stipendiDaPagare,
   tokenGruppi,
   type CassaDb,
   type FotografiaCassa,
+  type GruppoClientiCassa,
   type PosizioneCassa,
   type PrioritaCassa,
   type RigaCassa,
@@ -280,6 +282,16 @@ const daRiga = (r: RigaCassa): Cella => ({
  *  banca, dentro il saldo), "Entranti" (attese = standby incasso, al netto
  *  degli acconti) e "Standby" (attese parcheggiate, non contano) — Simone
  *  19/10 e 02/11/2026. */
+/** CLIENTI SOTTO UN TOTALE SOLO (Simone 19/11/2026: "Univex uniscilo tutto
+ *  sotto un unico Cliente Univex totale, si apre poi con il + e si vedono i
+ *  clienti come ora. Univex srl, Univex Freight, Univex Healthcare e Nolvex").
+ *  È solo il modo di mostrarli: nel foglio le società restano distinte, con i
+ *  loro accordi, le loro compensazioni e le loro fatture. Una società sta nel
+ *  gruppo se il suo nome contiene una di queste parole. */
+const GRUPPI_ENTRATE: readonly GruppoClientiCassa[] = [
+  { nome: "Univex", token: ["univex", "nolvex"] },
+];
+
 type SlotE =
   /** Testata di un blocco: somma delle voci che ha sotto, quante sono, e se
    *  è richiuso (Simone 11/11/2026: "chiudere anche entrate, entranti e
@@ -292,16 +304,29 @@ type SlotE =
       n: number;
       chiuso: boolean;
     }
-  | { kind: "riga"; c: Cella; figlio?: boolean }
+  /** `rientro` = 1 per le righe dentro un gruppo aperto. */
+  | { kind: "riga"; c: Cella; figlio?: boolean; rientro?: number }
   /** Cliente con più fatture attese: una riga sola col totale e il "+" che
-   *  apre le singole fatture (Simone 10/11/2026, "un + per cliente"). */
-  | { kind: "padre"; c: Cella; figli: Cella[]; aperto: boolean };
+   *  apre le singole fatture (Simone 10/11/2026, "un + per cliente").
+   *  Con `gruppo` (quante società ha dentro) è il totale di un gruppo di
+   *  clienti: il "+" apre le società, ognuna come sempre. */
+  | {
+      kind: "padre";
+      c: Cella;
+      figli: Cella[];
+      aperto: boolean;
+      rientro?: number;
+      gruppo?: number;
+    };
 function slotsEntrate(
   entrate: readonly Cella[],
   t: TFn,
   espansi: ReadonlySet<string> = new Set(),
   /** Blocchi richiusi ("e:gia", "e:entranti"…): resta solo la testata. */
   chiusi: ReadonlySet<string> = new Set(),
+  /** Gruppi di clienti tutti aperti (con un filtro acceso: quello che si
+   *  cerca non deve restare nascosto sotto un totale richiuso). */
+  gruppiAperti = false,
 ): SlotE[] {
   // Per cliente: le fatture dello stesso cliente (o gruppo) stanno sotto una
   // riga padre col totale; il "+" le apre una per scadenza. Vale per gli
@@ -313,12 +338,9 @@ function slotsEntrate(
       l.push(c);
       perCliente.set(c.nome, l);
     }
-    const out: SlotE[] = [];
-    for (const [nome, figli] of perCliente) {
-      if (figli.length === 1) {
-        out.push({ kind: "riga", c: figli[0] });
-        continue;
-      }
+    // Un cliente: la sua riga sola, oppure il padre con le sue fatture.
+    const diCliente = (nome: string, figli: Cella[], rientro: number): SlotE[] => {
+      if (figli.length === 1) return [{ kind: "riga", c: figli[0], rientro }];
       // La riga del cliente prende l'aspetto di una sua fattura, non della
       // compensazione: così resta la casella "Entra ora" anche nello Standby.
       const primo = figli.find((c) => c.tipo !== "compensazione") ?? figli[0];
@@ -337,8 +359,58 @@ function slotsEntrate(
         priorita: undefined,
       };
       const aperto = espansi.has("*") || espansi.has(`${prefisso}|${nome}`);
-      out.push({ kind: "padre", c: padre, figli, aperto });
-      if (aperto) for (const c of figli) out.push({ kind: "riga", c, figlio: true });
+      const righe: SlotE[] = [{ kind: "padre", c: padre, figli, aperto, rientro }];
+      if (aperto) for (const c of figli) righe.push({ kind: "riga", c, figlio: true, rientro });
+      return righe;
+    };
+    // I clienti di un gruppo (Univex): un totale solo, che col "+" si apre
+    // nelle società. Serve che nel blocco ce ne siano almeno due.
+    const gruppoDi = (nome: string, celle: Cella[]) =>
+      celle.some((c) => c.tipo === "attiva") ? gruppoDiCliente(nome, GRUPPI_ENTRATE) : undefined;
+    const membriDi = new Map<string, { nome: string; celle: Cella[] }[]>();
+    for (const [nome, figli] of perCliente) {
+      const g = gruppoDi(nome, figli);
+      if (g) membriDi.set(g.nome, [...(membriDi.get(g.nome) ?? []), { nome, celle: figli }]);
+    }
+    const out: SlotE[] = [];
+    const fatti = new Set<string>();
+    for (const [nome, figli] of perCliente) {
+      const g = gruppoDi(nome, figli);
+      const membri = g ? (membriDi.get(g.nome) ?? []) : [];
+      if (!g || membri.length < 2) {
+        out.push(...diCliente(nome, figli, 0));
+        continue;
+      }
+      if (fatti.has(g.nome)) continue;
+      fatti.add(g.nome);
+      const tutte = membri.flatMap((m) => m.celle);
+      const primo = tutte.find((c) => c.tipo !== "compensazione") ?? tutte[0];
+      const importo = sommaCelle(tutte);
+      const chiave = `${prefisso}|grp|${g.nome}`;
+      const padre: Cella = {
+        ...primo,
+        chiave,
+        nome: `${g.nome} ${t("cpr.gruppoTotale")}`,
+        importo,
+        importoOrigine: importo,
+        data: tutte.reduce((m, c) => (c.data < m ? c.data : m), primo.data),
+        documenti: tutte.reduce((s, c) => s + c.documenti, 0),
+        dettaglio: membri.map((m) => `${m.nome} ${fmt(sommaCelle(m.celle))}`).join(" · "),
+        nota: "",
+        editabile: false,
+        dataScelta: false,
+        priorita: undefined,
+        // È un totale: niente accordo, compensazione o scelta suoi.
+        chiaveControparte: undefined,
+        accordo: undefined,
+        compensato: undefined,
+        sceltaFattura: undefined,
+        fatture: undefined,
+        membriClienti: membri.map((m) => m.nome),
+      };
+      const aperto = gruppiAperti || espansi.has("*") || espansi.has(chiave);
+      out.push({ kind: "padre", c: padre, figli: tutte, aperto, gruppo: membri.length });
+      if (aperto) for (const m of membri) out.push(...diCliente(m.nome, m.celle, 1));
     }
     return out;
   };
@@ -481,7 +553,7 @@ function daFoto(r: FotografiaCassa["righe"][number]): Cella {
     attesa: Boolean(r.si) || Boolean(r.sp),
     parcheggiata: Boolean(r.sp),
     daAccordo: r.sa ? true : undefined,
-    daSollecitare: Boolean(r.sr),
+    daSollecitare: false,
     nota: r.n ?? "",
     data: r.s,
     certa: false,
@@ -901,8 +973,6 @@ export function CassaProprietaView({
     for (const f of file) imposta(f, dove);
     void salva({ ...db, stati });
   };
-  // Da sollecitare (Simone 10/11/2026): resta tra le entranti, blocco a parte.
-  const sollecita = (c: Cella, on: boolean) => setStato(c.chiave, { r: on || undefined });
   // Accordo sugli entranti (Simone 12/11/2026): quanto entra di quel cliente;
   // null = nessun accordo (entra tutto), 0 = non entra nulla (tutto in standby).
   const setAccordo = (c: Cella, importo: number | null) => {
@@ -1376,7 +1446,6 @@ export function CassaProprietaView({
           onPriorita={setPriorita}
           onData={setData}
           onParcheggia={parcheggia}
-          onSollecita={sollecita}
           onAccordo={setAccordo}
           accordi={foto ? undefined : db.accordi}
           posizioni={posizioniPerChiave}
@@ -2018,7 +2087,6 @@ export function Foglio({
   onPriorita,
   onData,
   onParcheggia,
-  onSollecita,
   onAccordo,
   accordi,
   posizioni,
@@ -2053,8 +2121,6 @@ export function Foglio({
   onData: (c: Cella, d: string) => void;
   /** Entrata attesa in standby (true) o di nuovo tra le entranti (false). */
   onParcheggia: (c: Cella, on: boolean) => void;
-  /** Entrata attesa da sollecitare (true) o di nuovo tra le entranti (false). */
-  onSollecita: (c: Cella, on: boolean) => void;
   /** Accordo sugli entranti: quanto entra di quel cliente (null = lo toglie). */
   onAccordo: (c: Cella, importo: number | null) => void;
   /** Gli accordi salvati, per controparte. */
@@ -2127,7 +2193,13 @@ export function Foglio({
   // Con un filtro acceso i blocchi di quel lato si aprono: quello che si
   // cerca non deve restare nascosto dentro un blocco richiuso.
   const VUOTO: ReadonlySet<string> = new Set();
-  const slotsE = slotsEntrate(entrate, t, espansi, filtroEntrateAttivo(filtri) ? VUOTO : chiusi);
+  const slotsE = slotsEntrate(
+    entrate,
+    t,
+    espansi,
+    filtroEntrateAttivo(filtri) ? VUOTO : chiusi,
+    filtroEntrateAttivo(filtri),
+  );
   const chiusiU = filtroUsciteAttivo(filtri) ? VUOTO : chiusi;
   const slotsU = slotsUscite(uscite, t, limite, chiusiU, espansi, ordineUscite, false);
   // I TOTALI NELLA TESTATA FISSA (Simone 17/11/2026: "falli scorrere insieme
@@ -2427,6 +2499,12 @@ export function Foglio({
               const e = slot?.kind === "riga" || slot?.kind === "padre" ? slot.c : undefined;
               const padre = slot?.kind === "padre" ? slot : undefined;
               const figlio = slot?.kind === "riga" && slot.figlio === true;
+              // Totale di un gruppo di clienti (Univex): quante società ha dentro.
+              const gruppoE = padre?.gruppo;
+              // Rientro del nome: dentro un gruppo aperto, e sotto il suo cliente.
+              const rientroE =
+                (slot?.kind === "riga" || slot?.kind === "padre" ? (slot.rientro ?? 0) : 0) +
+                (figlio ? 1 : 0);
               // Il conto della società di questa riga (se ha una compensazione
               // o un accordo): per la pillola "al netto" con tutta la catena.
               const posE =
@@ -2504,7 +2582,9 @@ export function Foglio({
                         className={`${cel} ${tintaEntrata(e)} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
                       >
                         {e && (
-                          <span className={`flex items-center gap-1.5 ${figlio ? "pl-5" : ""}`}>
+                          <span
+                            className={`flex items-center gap-1.5 ${rientroE >= 2 ? "pl-10" : rientroE === 1 ? "pl-5" : ""}`}
+                          >
                             {padre && (
                               <button
                                 type="button"
@@ -2515,7 +2595,14 @@ export function Foglio({
                                 {padre.aperto ? "−" : "+"}
                               </button>
                             )}
-                            {e.tipo === "attiva" || e.tipo === "incasso" ? (
+                            {gruppoE ? (
+                              <span
+                                className="max-w-[200px] truncate font-semibold text-foreground"
+                                title={e.dettaglio}
+                              >
+                                {e.nome}
+                              </span>
+                            ) : e.tipo === "attiva" || e.tipo === "incasso" ? (
                               <button
                                 type="button"
                                 onClick={() => onApriCliente(e.nome)}
@@ -2578,7 +2665,7 @@ export function Foglio({
                                 {t("cpr.sceltaFattura")}
                               </span>
                             )}
-                            {(e.accordo || (e.daAccordo && !e.sceltaFattura)) && (
+                            {!gruppoE && (e.accordo || (e.daAccordo && !e.sceltaFattura)) && (
                               <span
                                 className={`inline-flex shrink-0 items-center rounded px-1 text-[9px] font-bold uppercase ${e.accordo ? "bg-sky-600 text-white" : "border border-sky-500 text-sky-700 dark:text-sky-300"}`}
                                 title={
@@ -2592,20 +2679,25 @@ export function Foglio({
                                 {t("cpr.accordo")}
                               </span>
                             )}
-                            {e.tipo === "attiva" && e.attesa && !e.accordo && !readOnly && (
-                              <button
-                                type="button"
-                                onClick={() => onApriCliente(e.nome)}
-                                title={t("cpr.scegliFattureTip")}
-                                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-                              >
-                                <ListChecks className="h-3 w-3" />
-                              </button>
-                            )}
+                            {e.tipo === "attiva" &&
+                              e.attesa &&
+                              !e.accordo &&
+                              !readOnly &&
+                              !gruppoE && (
+                                <button
+                                  type="button"
+                                  onClick={() => onApriCliente(e.nome)}
+                                  title={t("cpr.scegliFattureTip")}
+                                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                                >
+                                  <ListChecks className="h-3 w-3" />
+                                </button>
+                              )}
                             {padre ? (
                               <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                                {gruppoE ? `${gruppoE} ${t("cpr.gruppoSocieta")} · ` : ""}
                                 {t("cpr.dal")} {ddmmyy(e.data)} · {padre.figli.length}{" "}
-                                {t("cpr.fattureBreve")}
+                                {t(gruppoE ? "cpr.gruppoRighe" : "cpr.fattureBreve")}
                               </span>
                             ) : e.attesa ? (
                               <DataAttesa c={e} readOnly={readOnly} onData={onData} t={t} />
@@ -2613,9 +2705,6 @@ export function Foglio({
                               <span className="shrink-0 text-[10.5px] text-muted-foreground">
                                 {ddmm(e.data)}
                               </span>
-                            )}
-                            {!padre && e.attesa && !e.parcheggiata && !readOnly && (
-                              <ToggleSollecito c={e} onSollecita={onSollecita} t={t} />
                             )}
                             {!padre && e.attesa && !e.accordo && !readOnly && (
                               <ToggleStandby c={e} onParcheggia={onParcheggia} t={t} />
@@ -3043,7 +3132,6 @@ function BarraFiltri({
             <option value="">{t("cpr.fBlocchiTutti")}</option>
             <option value="gia">{t("cpr.giaEntrate")}</option>
             <option value="entranti">{t("cpr.entranti")}</option>
-            <option value="sollecitare">{t("cpr.daSollecitare")}</option>
             <option value="standby">{t("cpr.colStandby")}</option>
             <option value="standby2">{t("cpr.colStandby2")}</option>
           </select>
@@ -3259,7 +3347,6 @@ function MenuVoci({
     colTipologia: t("cpr.vColTipologia"),
     colCliente: t("cpr.vColCliente"),
     colPriorita: t("cpr.fPriorita"),
-    colSollecitare: t("cpr.daSollecitare"),
     colNota: t("cpr.vColNota"),
     totale: t("cpr.vTotale"),
     voci: t("cpr.fVoci"),
@@ -3708,29 +3795,6 @@ function CampoAccordo({
       title={t("cpr.accordoTip")}
       className={`h-8 w-full min-w-[124px] rounded-md border bg-background px-2 text-right text-[14px] tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40 ${valore != null ? "border-sky-500 font-semibold text-sky-700 dark:text-sky-300" : "border-border/70 text-foreground placeholder:text-muted-foreground/50"}`}
     />
-  );
-}
-
-/** Entrata attesa: da sollecitare (conta, ma sta nel suo blocco) o di nuovo
- *  tra le entranti normali. */
-function ToggleSollecito({
-  c,
-  onSollecita,
-  t,
-}: {
-  c: Cella;
-  onSollecita: (c: Cella, on: boolean) => void;
-  t: TFn;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSollecita(c, !c.daSollecitare)}
-      title={c.daSollecitare ? t("cpr.tornaEntranti") : t("cpr.sollecitaTip")}
-      className={`shrink-0 rounded border px-1.5 text-[9px] font-bold uppercase ${c.daSollecitare ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300" : "border-amber-500 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"}`}
-    >
-      {c.daSollecitare ? `↩ ${t("cpr.entranti")}` : `📣 ${t("cpr.sollecita")}`}
-    </button>
   );
 }
 

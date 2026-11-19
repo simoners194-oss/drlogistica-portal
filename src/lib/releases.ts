@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.123.0",
+    date: "2026-11-19",
+    entries: [
+      {
+        title: "Cassa proprietà: Univex sotto un totale solo",
+        description:
+          'Tra le entrate attese Univex Srl, Univex Freight, Univex Healthcare e Nolvex stanno sotto una riga sola, "Univex totale". Il + la apre e si vedono le quattro società come prima, ognuna con le sue fatture, il suo accordo e i suoi pulsanti.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: 'Cassa proprietà: tolto il "Da sollecitare"',
+        description:
+          'Il pulsante "Sollecita" e il blocco "Da sollecitare" non ci sono più. Le fatture che erano state segnate sono di nuovo tra le entranti, dove già contavano: i totali non cambiano.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.122.1",
     date: "2026-11-19",
     entries: [

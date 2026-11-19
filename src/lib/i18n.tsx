@@ -1142,6 +1142,9 @@ const en = {
     "What we owe this company is more than its expected invoices (or its invoices are in Standby 2, or have a hand-corrected amount): this part has nothing to be deducted from and stays off the sheet. It is not among the outflows.",
   "cpr.posSenzaFatture": "no expected invoices",
   "cpr.sceltaFattura": "chosen",
+  "cpr.gruppoTotale": "total",
+  "cpr.gruppoSocieta": "companies",
+  "cpr.gruppoRighe": "rows",
   "cpr.sceltaFatturaTip":
     "Put on standby invoice by invoice, from the customer card. It stays out of agreements and offsets.",
   "cpr.scegliFattureTip":
@@ -3539,6 +3542,9 @@ const it: Record<DictKey, string> = {
     "Quello che dobbiamo a questa società è più delle sue fatture attese (oppure le sue fatture sono nello Standby 2, o hanno l'importo corretto a mano): questa parte non trova da cosa scalarsi e resta fuori dal foglio. Non è tra le uscite.",
   "cpr.posSenzaFatture": "nessuna fattura attesa",
   "cpr.sceltaFattura": "scelta",
+  "cpr.gruppoTotale": "totale",
+  "cpr.gruppoSocieta": "società",
+  "cpr.gruppoRighe": "righe",
   "cpr.sceltaFatturaTip":
     "Messa in standby fattura per fattura, dalla scheda del cliente. Resta fuori da accordi e compensazioni.",
   "cpr.scegliFattureTip": "Scegli fattura per fattura: quali entrano e quali vanno in standby",
