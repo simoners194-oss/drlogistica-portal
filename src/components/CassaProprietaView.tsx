@@ -1110,12 +1110,24 @@ export function CassaProprietaView({
   // Dove sta ogni fattura attesa nel foglio (per la scheda del cliente): lo
   // standby scelto fattura per fattura, o lo Standby 2 di tutta la riga.
   const doveFatture = new Map<string, SceltaFattura>();
+  // Le fatture che stanno nello Standby perché la società ha un acconto (sono
+  // il resto che l'acconto non copre): la scheda lo deve dire, altrimenti
+  // sembrano "entranti" che non si spostano (Simone 19/11/2026).
+  const fatturePerAcconto = new Set<string>();
   if (!foto)
     for (const r of esito.righe) {
       if (r.tipo !== "attiva" || !r.fatture || !r.parcheggiata) continue;
-      if (!r.sceltaFattura && r.daAccordo) continue;
+      if (!r.sceltaFattura && r.daAccordo) {
+        for (const f of r.fatture) fatturePerAcconto.add(f);
+        continue;
+      }
       for (const f of r.fatture) doveFatture.set(f, r.sceltaFattura ?? "standby2");
     }
+  // La chiave con cui la Cassa tiene l'acconto del cliente aperto nella scheda.
+  const kClienteAperto = clienteAperto
+    ? esito.righe.find((r) => r.controparte === clienteAperto && r.chiaveControparte)
+        ?.chiaveControparte
+    : undefined;
   const agenda = foto ? [] : agendaCassa(esito.righe, db.agenda ?? []);
 
   const righeCsv = () => {
@@ -1480,12 +1492,15 @@ export function CassaProprietaView({
                 : (file) => doveFatture.get(file) ?? sceltaFatturaDi(db.stati, file) ?? ""
             }
             onScelta={soloLettura ? undefined : scegliFatture}
-            accordo={(() => {
-              const k = esito?.righe.find(
-                (r) => r.controparte === clienteAperto && r.chiaveControparte,
-              )?.chiaveControparte;
-              return k && db?.accordi && k in db.accordi ? db.accordi[k] : undefined;
-            })()}
+            accordo={
+              kClienteAperto && db?.accordi && kClienteAperto in db.accordi
+                ? db.accordi[kClienteAperto]
+                : undefined
+            }
+            perAcconto={foto ? undefined : (file) => fatturePerAcconto.has(file)}
+            onTogliAcconto={
+              soloLettura || !kClienteAperto ? undefined : () => togliAccordo(kClienteAperto)
+            }
             onChiudi={() => setClienteAperto(null)}
           />
         )}

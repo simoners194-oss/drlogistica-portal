@@ -107,6 +107,8 @@ export function SchedaClienteCassa({
   dove,
   onScelta,
   accordo,
+  perAcconto,
+  onTogliAcconto,
   onChiudi,
 }: {
   nome: string;
@@ -120,8 +122,13 @@ export function SchedaClienteCassa({
   dove?: (nomeFile: string) => DoveFattura;
   /** Sposta una o più fatture; assente = sola lettura. */
   onScelta?: (file: string[], dove: DoveFattura) => void;
-  /** L'accordo scritto in "Entra ora" per questo cliente, se c'è. */
+  /** L'acconto scritto in "Entra ora" per questo cliente, se c'è. */
   accordo?: number;
+  /** Vero per le fatture che nel foglio stanno nello Standby perché la
+   *  società ha un acconto: sono il resto che l'acconto non copre. */
+  perAcconto?: (nomeFile: string) => boolean;
+  /** Toglie l'acconto della società (assente = sola lettura). */
+  onTogliAcconto?: () => void;
   onChiudi: () => void;
 }) {
   const { t } = useLang();
@@ -147,7 +154,12 @@ export function SchedaClienteCassa({
     Math.round(
       (new Date(`${oggi}T00:00:00`).getTime() - new Date(`${scad}T00:00:00`).getTime()) / 86400000,
     );
-  const doveDi = (file: string): DoveFattura => dove?.(file) ?? "";
+  // Dove sta la fattura NEL FOGLIO: la sua scelta, oppure lo Standby quando
+  // è il resto dell'acconto della società (1.124.2, Simone 19/11/2026: "sono
+  // in stand by ma sono segnati come entranti, ma non si spostano").
+  const daAcconto = (file: string) => Boolean(perAcconto?.(file)) && !dove?.(file);
+  const doveDi = (file: string): DoveFattura =>
+    daAcconto(file) ? "standby" : (dove?.(file) ?? "");
   const fuoriFoglio = (scad: string) => Boolean(limite && scad && scad > limite);
   // Quanto c'è in ogni blocco (solo le fatture che il foglio guarda).
   const perBlocco = (v: DoveFattura) =>
@@ -181,6 +193,27 @@ export function SchedaClienteCassa({
         <p className="text-sm text-muted-foreground">{t("cpr.schedaClienteVuota")}</p>
       ) : (
         <>
+          {/* L'acconto della società comanda sulle scelte: va detto in cima,
+              col pulsante per toglierlo. */}
+          {scelta && accordo != null && (
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border-2 border-amber-400 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-100">
+              <span className="min-w-0 flex-1">
+                <b>
+                  {t("cpr.sceltaAccontoTitolo")} {fmt(accordo)}.
+                </b>{" "}
+                {t("cpr.sceltaAccontoTesto")}
+              </span>
+              {onTogliAcconto && (
+                <button
+                  type="button"
+                  onClick={onTogliAcconto}
+                  className="shrink-0 rounded-lg border border-amber-500 bg-background px-3 py-1 text-[12.5px] font-semibold text-foreground hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                >
+                  {t("cpr.sceltaTogliAcconto")}
+                </button>
+              )}
+            </div>
+          )}
           {scelta && (
             <div className="mb-3 rounded-xl border border-border bg-muted/30 p-3">
               <div className="flex flex-wrap items-stretch gap-2">
@@ -255,6 +288,7 @@ export function SchedaClienteCassa({
                 const ritardo = r.scad && r.scad <= oggi ? giorni(r.scad) : 0;
                 const qui = doveDi(r.file);
                 const fuori = fuoriFoglio(r.scad);
+                const perAcc = daAcconto(r.file);
                 return (
                   <tr
                     key={r.file}
@@ -299,7 +333,12 @@ export function SchedaClienteCassa({
                             <button
                               key={d.v || "entranti"}
                               type="button"
-                              disabled={!onScelta}
+                              // Finché c'è l'acconto entra solo quello: una
+                              // sua fattura non si riporta tra le entranti da qui.
+                              disabled={!onScelta || (perAcc && d.v === "")}
+                              title={
+                                perAcc && d.v === "" ? t("cpr.sceltaPerAccontoTip") : undefined
+                              }
                               onClick={() => qui !== d.v && sposta([r.file], d.v)}
                               className={`rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase ${
                                 qui === d.v
@@ -310,6 +349,14 @@ export function SchedaClienteCassa({
                               {t(d.chiave)}
                             </button>
                           ))}
+                          {perAcc && (
+                            <span
+                              className="rounded border border-amber-400 px-1 text-[10px] font-semibold text-amber-800 dark:text-amber-200"
+                              title={t("cpr.sceltaPerAccontoTip")}
+                            >
+                              {t("cpr.sceltaPerAcconto")}
+                            </span>
+                          )}
                           {fuori && (
                             <span
                               className="text-[10.5px] italic text-muted-foreground"
@@ -341,13 +388,6 @@ export function SchedaClienteCassa({
             </tfoot>
           </table>
         </>
-      )}
-      {scelta && accordo != null && (
-        <p className="mt-3 rounded-lg bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-800 dark:text-sky-200">
-          {t("cpr.sceltaAccordo")} <b className="tabular-nums">{fmt(accordo)}</b>
-          {": "}
-          {t("cpr.sceltaAccordoNota")}
-        </p>
       )}
       <p className="mt-3 text-[11px] text-muted-foreground">{t("cpr.schedaClienteNota")}</p>
     </Finestra>

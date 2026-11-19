@@ -1142,6 +1142,13 @@ const en = {
     "What we owe this company is more than its expected invoices (or its invoices are in Standby 2, or have a hand-corrected amount): this part has nothing to be deducted from and stays off the sheet. It is not among the outflows.",
   "cpr.posSenzaFatture": "no expected invoices",
   "cpr.sceltaFattura": "chosen",
+  "cpr.sceltaAccontoTitolo": 'This company has an advance in "Comes in now" of',
+  "cpr.sceltaAccontoTesto":
+    "As long as it is there, only the advance counts among the incoming and all its other invoices stay in Standby, whatever you choose below.",
+  "cpr.sceltaTogliAcconto": "Remove the advance",
+  "cpr.sceltaPerAcconto": "because of the advance",
+  "cpr.sceltaPerAccontoTip":
+    "It is in Standby because the company has an advance: to bring it back among the incoming, remove the advance at the top.",
   "cpr.incassiPeriodo": "Collections",
   "cpr.diCuiPeriodo": "of which collections",
   "cpr.gruppoTotale": "total",
@@ -3544,6 +3551,13 @@ const it: Record<DictKey, string> = {
     "Quello che dobbiamo a questa società è più delle sue fatture attese (oppure le sue fatture sono nello Standby 2, o hanno l'importo corretto a mano): questa parte non trova da cosa scalarsi e resta fuori dal foglio. Non è tra le uscite.",
   "cpr.posSenzaFatture": "nessuna fattura attesa",
   "cpr.sceltaFattura": "scelta",
+  "cpr.sceltaAccontoTitolo": 'Questa società ha un acconto in "Entra ora" di',
+  "cpr.sceltaAccontoTesto":
+    "Finché c'è, tra le entrate conta solo l'acconto e tutte le altre sue fatture restano nello Standby, qualunque cosa scegli qui sotto.",
+  "cpr.sceltaTogliAcconto": "Togli l'acconto",
+  "cpr.sceltaPerAcconto": "per l'acconto",
+  "cpr.sceltaPerAccontoTip":
+    "È nello Standby perché la società ha un acconto: per riportarla tra le entranti togli l'acconto, qui in alto.",
   "cpr.incassiPeriodo": "Incassi",
   "cpr.diCuiPeriodo": "di cui incassi",
   "cpr.gruppoTotale": "totale",

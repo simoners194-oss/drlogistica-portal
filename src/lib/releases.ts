@@ -36,6 +36,20 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.124.2",
+    date: "2026-11-19",
+    entries: [
+      {
+        title:
+          "Cassa proprietà: la scheda del cliente dice quando è l'acconto a tenere le fatture in Standby",
+        description:
+          'Se la società ha un acconto, in cima alla scheda c\'è un riquadro giallo con l\'importo e il pulsante "Togli l\'acconto". Le fatture che l\'acconto tiene nello Standby sono segnate "per l\'acconto". Prima risultavano "Entranti" anche se nel foglio erano nello Standby, e non si riusciva a spostarle.',
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.124.1",
     date: "2026-11-19",
     entries: [
