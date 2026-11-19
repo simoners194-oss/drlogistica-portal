@@ -1498,16 +1498,32 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   for (const g of grezze) {
     // Riga senza decisioni proprie: valgono quelle della chiave vecchia,
     // tranne l'importo corretto a mano (era dell'intero cliente).
+    const delCliente =
+      !db.stati[g.chiave] && g.chiaveVecchia && db.stati[g.chiaveVecchia]
+        ? stato(g.chiaveVecchia)
+        : undefined;
     const st: StatoRigaCassa = db.stati[g.chiave]
       ? stato(g.chiave)
-      : g.chiaveVecchia && db.stati[g.chiaveVecchia]
+      : delCliente
         ? // Dalla chiave del cliente si ereditano standby, nota e data, NON
           // l'importo (era dell'intero cliente) e NON il "nascondi" (1.125.0):
           // una × messa sul cliente nascondeva anche le sue fatture nuove.
           // Caso vero: Number 1, FPR 319/26 da 27.249,46 in scadenza il
           // 15/12/2026, sparita dal foglio quando il periodo è passato da
           // 1-5 a 1-15 dicembre.
-          { ...stato(g.chiaveVecchia), i: undefined, x: undefined }
+          // LA DATA DEL CLIENTE NON ANTICIPA (1.126.1, Simone 20/11/2026: "il
+          // totale è 8776, le altre scadono dopo il 15/12"). "Ceva ci paga il
+          // 5/12" sposta al 5/12 le fatture già scadute o che scadono prima;
+          // quelle che scadono DOPO tengono la loro scadenza. Prima le tirava
+          // tutte al 5/12: la FPR 272/26 (scade il 18/12) e la FPR 320/26
+          // (scade il 09/01/2027) finivano negli incassi 1-15 dicembre, 449,30
+          // in più. La data scritta sulla singola riga resta com'è scritta.
+          {
+            ...delCliente,
+            i: undefined,
+            x: undefined,
+            d: delCliente.d && g.scadenza <= delCliente.d ? delCliente.d : undefined,
+          }
         : {};
     if (st.x) continue;
     const manuale = db.manuali.find((m) => `man|${m.id}` === g.chiave);

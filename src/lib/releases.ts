@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.126.1",
+    date: "2026-11-20",
+    entries: [
+      {
+        title: "Cassa proprietà: Ceva negli incassi 1-15 dicembre",
+        description:
+          "La data 5/12 scritta su Ceva tirava al 5/12 anche due fatture che scadono dopo il 15/12 (18/12 e 09/01): negli incassi 1-15 dicembre risultavano 9.225,67 invece di 8.776,37. Ora la data scritta sul cliente sposta solo le fatture già scadute o che scadono prima; le altre tengono la loro scadenza.",
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.126.0",
     date: "2026-11-20",
     entries: [
