@@ -174,6 +174,8 @@ interface Cella {
   fatture?: string[];
   /** Attesa con la data dopo la fine del mese: blocco "Incassi 1-N". */
   nelPeriodo?: boolean;
+  /** Fattura attesa con la data dopo il periodo: blocco delle fatture future. */
+  oltrePeriodo?: boolean;
   /** Quanto è stato tolto per compensazione: la riga mostra già il netto. */
   compensato?: number;
 }
@@ -278,6 +280,7 @@ const daRiga = (r: RigaCassa): Cella => ({
   sceltaFattura: r.sceltaFattura,
   fatture: r.fatture,
   nelPeriodo: r.nelPeriodo,
+  oltrePeriodo: r.oltrePeriodo,
   compensato: r.compensato,
 });
 
@@ -423,6 +426,11 @@ function slotsEntrate(
   const gia = blocco("gia");
   const ent = blocco("entranti");
   const per = blocco("periodo");
+  const fut = blocco("futuro");
+  // Il giorno dopo il limite: da lì cominciano le fatture future.
+  const dalGiorno = limite
+    ? ddmm(new Date(Date.parse(`${limite}T00:00:00Z`) + 86400000).toISOString().slice(0, 10))
+    : "";
   const stb = blocco("standby");
   const stb2 = blocco("standby2");
   const blocchi: { id: BloccoEntrate; label: string; celle: Cella[]; slots: () => SlotE[] }[] = [
@@ -450,6 +458,14 @@ function slotsEntrate(
       label: t("cpr.eStandby2"),
       celle: stb2,
       slots: () => conPadri(stb2, "stb2"),
+    },
+    // FATTURE FUTURE (1.125.0, Simone 19/11/2026): quelle che scadono dopo il
+    // periodo. In fondo alle entrate, fuori dal conto.
+    {
+      id: "futuro",
+      label: `${t("cpr.fattureFuture")} · ${t("cpr.fattureFutureDal")} ${dalGiorno} ${t("cpr.fattureFutureInPoi")}`,
+      celle: fut,
+      slots: () => conPadri(fut, "fut"),
     },
   ];
   // Ogni testata porta la somma delle SUE voci (così i numeri tornano a
@@ -1091,7 +1107,9 @@ export function CassaProprietaView({
   // mostrate, le uscite prima del raggruppamento per tipologia/cliente.
   const entrateTutte = foto
     ? foto.righe.filter((r) => r.e).map(daFoto)
-    : esito.righe.filter((r) => r.entrata).map(daRiga);
+    : // Le fatture future (dopo il periodo) stanno nel foglio, in fondo alle
+      // entrate, ma fuori dal conto: arrivano a parte da `esito.future`.
+      [...esito.righe.filter((r) => r.entrata), ...esito.future].map(daRiga);
   const usciteTutte = foto
     ? foto.righe.filter((r) => !r.e).map(daFoto)
     : esito.righe.filter((r) => !r.entrata).map(daRiga);
@@ -1212,6 +1230,7 @@ export function CassaProprietaView({
     riga(`= ${t("cpr.rCassa")}`, totali.cassaConStandby);
     riga(`${t("cpr.rFuori")}: ${t("cpr.vStandbyEntrate")}`, totali.entrateFuture);
     riga(`${t("cpr.rFuori")}: ${t("cpr.vStandby2Entrate")}`, totali.entrateParcheggiate);
+    riga(`${t("cpr.rFuori")}: ${t("cpr.fattureFuture")}`, totali.entrateOltre);
     riga(`${t("cpr.rFuori")}: ${t("cpr.vStandby2Uscite")}`, totali.usciteStandby2);
     return out;
   };
@@ -1969,6 +1988,7 @@ export function FuoriConti({ t, totali }: { t: TFn; totali: TotaliCassa }) {
   const voci: [string, number | undefined][] = [
     // Lo Standby delle entrate ha il suo totale a parte, nella banda.
     [t("cpr.vStandby2Entrate"), totali.entrateParcheggiate],
+    [t("cpr.fattureFuture"), totali.entrateOltre],
     [t("cpr.vStandby2Uscite"), totali.usciteStandby2],
     [t("cpr.rGiaEntrate"), totali.entrateRicevute],
   ];
@@ -2006,6 +2026,7 @@ const TESTA_ENTRATE: Record<BloccoEntrate, string> = {
   gia: "bg-emerald-200/70 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200",
   entranti: "bg-emerald-100/80 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
   periodo: "bg-amber-100/90 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  futuro: "bg-sky-100/90 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300",
   standby: "bg-slate-200/80 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200",
   standby2: "bg-slate-300/80 text-slate-800 dark:bg-slate-600/70 dark:text-slate-100",
 };
@@ -2020,6 +2041,7 @@ const TUTTI_I_BLOCCHI = [
   "e:gia",
   "e:entranti",
   "e:periodo",
+  "e:futuro",
   "e:standby",
   "e:standby2",
   "u:foglio",
@@ -2083,9 +2105,11 @@ const eManuale = (c: Cella) => c.tipo === "manuale" || c.tipo === "amex";
  *  Standby 2 (messe da parte a mano, non le incasseremo). */
 const tintaEntrata = (e?: Cella) =>
   !e?.parcheggiata
-    ? e?.nelPeriodo
-      ? TINTA.prossimi.col
-      : TINTA.entrate.col
+    ? e?.oltrePeriodo
+      ? "bg-sky-50/70 dark:bg-sky-950/25"
+      : e?.nelPeriodo
+        ? TINTA.prossimi.col
+        : TINTA.entrate.col
     : e.daAccordo
       ? TINTA.standby.col
       : TINTA.standby2.col;
@@ -2606,6 +2630,7 @@ export function Foglio({
                           e.tipo === "attiva" &&
                           e.chiaveControparte &&
                           !e.sceltaFattura &&
+                          !e.oltrePeriodo &&
                           (e.accordo || e.daAccordo || (e.attesa && !e.parcheggiata)) && (
                             <CampoAccordo
                               c={e}
@@ -3188,6 +3213,7 @@ function BarraFiltri({
             </option>
             <option value="standby">{t("cpr.colStandby")}</option>
             <option value="standby2">{t("cpr.colStandby2")}</option>
+            <option value="futuro">{t("cpr.fattureFuture")}</option>
           </select>
         </div>
         {/* Uscite */}
@@ -3349,6 +3375,7 @@ const PUNTO_SEZIONE: Record<SezioneCassaId, string> = {
   entrati: "bg-emerald-700",
   entranti: "bg-emerald-500",
   incassi_periodo: "bg-amber-400",
+  incassi_futuri: "bg-sky-500",
   standby_entrate: "bg-slate-400",
   standby2_entrate: "bg-slate-600",
   standby_uscite: "bg-slate-500",
@@ -3383,6 +3410,7 @@ function MenuVoci({
     entrati: t("cpr.vEntrati"),
     entranti: t("cpr.entranti"),
     incassi_periodo: `${t("cpr.incassiPeriodo")} ${etichettaProssimi(limite)}`,
+    incassi_futuri: t("cpr.fattureFuture"),
     standby_entrate: t("cpr.vStandbyEntrate"),
     standby2_entrate: t("cpr.vStandby2Entrate"),
     standby_uscite: t("cpr.vStandbyUscite"),

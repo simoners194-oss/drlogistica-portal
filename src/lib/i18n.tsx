@@ -1150,6 +1150,9 @@ const en = {
   "cpr.sceltaPerAccontoTip":
     "It is in Standby because the company has an advance: to bring it back among the incoming, remove the advance at the top.",
   "cpr.incassiPeriodo": "Collections",
+  "cpr.fattureFuture": "Future invoices",
+  "cpr.fattureFutureDal": "from",
+  "cpr.fattureFutureInPoi": "onwards, outside the account",
   "cpr.diCuiPeriodo": "of which collections",
   "cpr.gruppoTotale": "total",
   "cpr.gruppoSocieta": "companies",
@@ -1166,9 +1169,9 @@ const en = {
   "cpr.sceltaDove": "Where it goes",
   "cpr.sceltaData": "Invoice date",
   "cpr.sceltaSu": "of",
-  "cpr.sceltaFuori": "not on the sheet yet",
+  "cpr.sceltaFuori": "after the period",
   "cpr.sceltaFuoriTip":
-    "It falls due after the date the sheet looks at: the choice will apply when it comes in.",
+    "It falls due after the period: on the sheet it sits among the future invoices, outside the account.",
   "cpr.sceltaAccordo": 'This customer has an advance in "Comes in now" of',
   "cpr.sceltaAccordoNota": "it applies only to the invoices left among the incoming ones.",
   "cpr.posInBanca": "already in the bank",
@@ -3559,6 +3562,9 @@ const it: Record<DictKey, string> = {
   "cpr.sceltaPerAccontoTip":
     "È nello Standby perché la società ha un acconto: per riportarla tra le entranti togli l'acconto, qui in alto.",
   "cpr.incassiPeriodo": "Incassi",
+  "cpr.fattureFuture": "Fatture future",
+  "cpr.fattureFutureDal": "dal",
+  "cpr.fattureFutureInPoi": "in poi, fuori dal conto",
   "cpr.diCuiPeriodo": "di cui incassi",
   "cpr.gruppoTotale": "totale",
   "cpr.gruppoSocieta": "società",
@@ -3574,9 +3580,9 @@ const it: Record<DictKey, string> = {
   "cpr.sceltaDove": "Dove va",
   "cpr.sceltaData": "Data fattura",
   "cpr.sceltaSu": "su",
-  "cpr.sceltaFuori": "non ancora nel foglio",
+  "cpr.sceltaFuori": "oltre il periodo",
   "cpr.sceltaFuoriTip":
-    "Scade dopo la data fino a cui guarda il foglio: la scelta varrà quando ci entra.",
+    "Scade dopo il periodo: nel foglio sta tra le fatture future, fuori dal conto.",
   "cpr.sceltaAccordo": 'Questo cliente ha un acconto in "Entra ora" di',
   "cpr.sceltaAccordoNota": "vale solo sulle fatture lasciate tra le entranti.",
   "cpr.posInBanca": "già in banca",

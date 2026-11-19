@@ -21,6 +21,7 @@ export type SezioneCassaId =
   | "entrati"
   | "entranti"
   | "incassi_periodo"
+  | "incassi_futuri"
   | "standby_entrate"
   | "standby2_entrate"
   | "standby_uscite"
@@ -65,6 +66,7 @@ export function sezioniCassa<T extends VoceStampa>(
     sez("entrati", true, e(["gia"])),
     sez("entranti", true, e(["entranti"])),
     sez("incassi_periodo", true, e(["periodo"])),
+    sez("incassi_futuri", true, e(["futuro"])),
     sez("standby_entrate", true, e(["standby"])),
     sez("standby2_entrate", true, e(["standby2"])),
     sez("standby_uscite", false, u("standby")),
@@ -164,6 +166,7 @@ const COLORE: Record<SezioneCassaId, string> = {
   entrati: "#047857",
   entranti: "#059669",
   incassi_periodo: "#d97706",
+  incassi_futuri: "#0284c7",
   standby_entrate: "#64748b",
   standby2_entrate: "#334155",
   standby_uscite: "#64748b",

@@ -36,6 +36,26 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.125.0",
+    date: "2026-11-19",
+    entries: [
+      {
+        title: "Cassa proprietà: il riquadro delle fatture future",
+        description:
+          'In fondo alle entrate c\'è il blocco "Fatture future": le fatture aperte che scadono dopo il periodo (per esempio dal 16/12 in poi). Prima non si vedevano. Sono fuori dal conto: non entrano negli entranti né nella cassa, e non le toccano acconti e compensazioni. Scrivendo una data dentro il periodo la fattura rientra tra gli incassi.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: Number 1 torna tra gli incassi del 15/12",
+        description:
+          'La fattura di Number 1 in scadenza il 15/12 era sparita dal foglio: un "nascondi" messo sul cliente il 17/11 per due fatture già pagate ha coperto anche quella, quando il periodo è passato da 1-5 a 1-15 dicembre. Ora il nascondi vale solo per la riga su cui è messo.',
+        tag: "fix",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.124.2",
     date: "2026-11-19",
     entries: [

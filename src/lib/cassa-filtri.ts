@@ -12,11 +12,13 @@ import type { PrioritaCassa, SecchioCassa } from "./cassa-logic";
  *   - "entranti" = attese entro la fine del mese;
  *   - "periodo"  = INCASSI NEL PERIODO di riferimento, lo stesso della colonna
  *                  "1-N" delle uscite (dal 1° al giorno limite del mese dopo);
+ *   - "futuro"   = fatture che scadono DOPO il periodo: nel foglio, ma fuori
+ *                  dal conto (1.125.0);
  *   - "standby"  = IN ATTESA DI ACCORDO, per poterle recuperare (il resto
  *                  degli accordi e le fatture scelte una per una);
  *   - "standby2" = PERSE.
  *  Lo standby NON è "da incassare in futuro": quello è il blocco "periodo". */
-export type BloccoEntrate = "gia" | "entranti" | "periodo" | "standby" | "standby2";
+export type BloccoEntrate = "gia" | "entranti" | "periodo" | "futuro" | "standby" | "standby2";
 
 export interface FiltriFoglio {
   /** Entrate: testo cercato (cliente, fattura, importo, nota). */
@@ -64,6 +66,8 @@ export interface VoceFiltrabile {
   daAccordo?: boolean;
   /** Attesa con la data dopo la fine del mese (blocco "Incassi 1-N"). */
   nelPeriodo?: boolean;
+  /** Attesa con la data dopo il periodo (blocco delle fatture future). */
+  oltrePeriodo?: boolean;
   priorita?: PrioritaCassa;
   tipologia?: string;
   cliente?: string;
@@ -108,9 +112,11 @@ export function bloccoEntrata(c: {
   daSollecitare: boolean;
   daAccordo?: boolean;
   nelPeriodo?: boolean;
+  oltrePeriodo?: boolean;
 }): BloccoEntrate {
   if (!c.attesa) return "gia";
   if (c.parcheggiata) return c.daAccordo ? "standby" : "standby2";
+  if (c.oltrePeriodo) return "futuro";
   return c.nelPeriodo ? "periodo" : "entranti";
 }
 

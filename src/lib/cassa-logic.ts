@@ -217,6 +217,10 @@ export interface TotaliCassa {
    *  ancora registrate su Aruba (1.121.0). Nelle fotografie più vecchie manca. */
   entrateInBanca?: number;
   nEntrateInBanca?: number;
+  /** Fatture attese oltre il periodo (blocco "Fatture future"): fuori dal
+   *  conto. Nelle fotografie non c'è: fotografano il conto. */
+  entrateOltre?: number;
+  nEntrateOltre?: number;
   /** Righe fuori orizzonte (scadenza oltre il limite), solo informative. */
   nOltre: number;
   usciteOltre: number;
@@ -369,6 +373,9 @@ export interface RigaCassa {
    *  riferimento (dal 1° al giorno limite del mese dopo): lo stesso della
    *  colonna "1-N" delle uscite. Sta nel blocco "Incassi 1-N" (1.124.0). */
   nelPeriodo?: boolean;
+  /** Fattura attesa con la data DOPO il periodo di riferimento (oltre il
+   *  limite): sta nel blocco "Fatture future", fuori dal conto. */
+  oltrePeriodo?: boolean;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -741,6 +748,8 @@ export interface EsitoCassa {
   /** Accrediti arrivati in banca che Aruba non conosce ancora, con le fatture
    *  attese da cui sono stati scalati (1.121.0). */
   incassateInBanca: IncassoInBanca[];
+  /** Fatture attese con la data dopo il limite: nel foglio, fuori dal conto. */
+  future: RigaCassa[];
   righe: RigaCassa[];
   /** Fuori orizzonte: scadenza oltre il limite e nessuna scelta a mano. */
   oltre: RigaCassa[];
@@ -1062,7 +1071,8 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     const lordo = residuoAperto(x);
     if (lordo <= 1 || !x.s.scadenza) continue;
     const scad = scadenzaEffettiva(x.s.scadenza);
-    if (scad > limite) continue;
+    // Dalla 1.125.0 le fatture che scadono DOPO il limite non si saltano più:
+    // fanno le loro righe, che finiscono in `future` (fuori dal conto).
     if (esclusaDaFlussi(input.esclusioni, x.f.cliente, scad.slice(0, 7))) continue;
     const grp = grpDi(x.f.cliente);
     const k = grp ? `g:${chiaveCliente(grp.nome)}` : chiaveCliente(x.f.cliente);
@@ -1099,6 +1109,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       chiave: `attc|${meseCorr}|${g.k}|${g.scad}${g.dove === "standby" ? "|s1" : g.dove === "standby2" ? "|s2" : ""}`,
       // Fino alla 1.97.x la riga era una per cliente: le decisioni prese
       // allora (standby, nota, data) si ereditano se la riga nuova non ne ha.
+      // Il "nascondi" no (1.125.0): vedi dove si leggono gli stati.
       chiaveVecchia: g.unito ? undefined : `attc|${meseCorr}|${g.k}`,
       sceltaFattura: g.dove,
       fatture: g.file,
@@ -1483,13 +1494,20 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
 
   const righe: RigaCassa[] = [];
   const oltre: RigaCassa[] = [];
+  const future: RigaCassa[] = [];
   for (const g of grezze) {
     // Riga senza decisioni proprie: valgono quelle della chiave vecchia,
     // tranne l'importo corretto a mano (era dell'intero cliente).
     const st: StatoRigaCassa = db.stati[g.chiave]
       ? stato(g.chiave)
       : g.chiaveVecchia && db.stati[g.chiaveVecchia]
-        ? { ...stato(g.chiaveVecchia), i: undefined }
+        ? // Dalla chiave del cliente si ereditano standby, nota e data, NON
+          // l'importo (era dell'intero cliente) e NON il "nascondi" (1.125.0):
+          // una × messa sul cliente nascondeva anche le sue fatture nuove.
+          // Caso vero: Number 1, FPR 319/26 da 27.249,46 in scadenza il
+          // 15/12/2026, sparita dal foglio quando il periodo è passato da
+          // 1-5 a 1-15 dicembre.
+          { ...stato(g.chiaveVecchia), i: undefined, x: undefined }
         : {};
     if (st.x) continue;
     const manuale = db.manuali.find((m) => `man|${m.id}` === g.chiave);
@@ -1532,9 +1550,25 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     // dalle uscite, attualmente ho impostato ad esempio 1-15 dicembre"):
     // l'entrata attesa con la data dopo la fine del mese.
     if (attesa && !parcheggiata && riga.scadenza > fm) riga.nelPeriodo = true;
+    // FATTURE FUTURE (1.125.0, Simone 19/11/2026: "mi deve comparire un
+    // riquadro con le fatture future da incassare oltre data e oltre periodo
+    // aggiuntivo, quindi dal 15/12 in poi"). Una fattura attesa, non in
+    // standby, con la data dopo il limite: sta nel foglio in un blocco suo,
+    // ma fuori dal conto, dagli acconti e dalle compensazioni. Conta la data
+    // della riga: scrivendone una dentro il periodo la fattura ci rientra.
+    if (g.tipo === "attiva" && attesa && !parcheggiata && riga.scadenza > limite) {
+      riga.oltrePeriodo = true;
+      riga.nelPeriodo = undefined;
+      future.push(riga);
+      continue;
+    }
     if (auto === "oltre" && !st.b && !manuale) oltre.push(riga);
     else righe.push(riga);
   }
+  future.sort(
+    (a, b) =>
+      a.scadenza.localeCompare(b.scadenza) || a.controparte.localeCompare(b.controparte, "it"),
+  );
   // COMPENSAZIONI DENTRO LE FATTURE DEL CLIENTE (1.116.0, Simone 13/11/2026:
   // "le compensazioni devono sparire dalla parte degli incassi, non ci devono
   // essere numeri negativi"). Fino alla 1.115.0 ogni fornitore che paga in
@@ -1857,6 +1891,8 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     entrateInBanca: r2(inBanca.incassi.reduce((t, i) => t + i.scalato, 0)),
     nEntrateInBanca: inBanca.incassi.length,
     nOltre: oltre.length,
+    entrateOltre: somma(future),
+    nEntrateOltre: future.length,
     usciteOltre: somma(oltre.filter((r) => !r.entrata)),
   };
   pagateInBanca.sort(
@@ -1868,6 +1904,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     addebitate,
     pagateInBanca,
     incassateInBanca: inBanca.incassi,
+    future,
     compensazioni,
     posizioni,
     totali,
