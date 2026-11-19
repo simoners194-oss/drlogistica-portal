@@ -7,10 +7,16 @@
 // Logica pura (niente React): la vista la usa su entrate e uscite.
 import type { PrioritaCassa, SecchioCassa } from "./cassa-logic";
 
-/** I blocchi delle entrate. Dalla 1.115.0 (Simone 12/11/2026) gli standby
- *  sono due, come per le uscite: "standby" = lo incasseremo più avanti (il
- *  resto degli accordi), "standby2" = non lo incasseremo (messo a mano). */
-export type BloccoEntrate = "gia" | "entranti" | "sollecitare" | "standby" | "standby2";
+/** I BLOCCHI DELLE ENTRATE, col significato fissato da Simone il 19/11/2026:
+ *   - "gia"      = già in banca;
+ *   - "entranti" = attese entro la fine del mese;
+ *   - "periodo"  = INCASSI NEL PERIODO di riferimento, lo stesso della colonna
+ *                  "1-N" delle uscite (dal 1° al giorno limite del mese dopo);
+ *   - "standby"  = IN ATTESA DI ACCORDO, per poterle recuperare (il resto
+ *                  degli accordi e le fatture scelte una per una);
+ *   - "standby2" = PERSE.
+ *  Lo standby NON è "da incassare in futuro": quello è il blocco "periodo". */
+export type BloccoEntrate = "gia" | "entranti" | "periodo" | "standby" | "standby2";
 
 export interface FiltriFoglio {
   /** Entrate: testo cercato (cliente, fattura, importo, nota). */
@@ -54,8 +60,10 @@ export interface VoceFiltrabile {
   attesa: boolean;
   parcheggiata: boolean;
   daSollecitare: boolean;
-  /** In standby per l'accordo: la incasseremo più avanti (blocco "Standby"). */
+  /** In standby in attesa di accordo (blocco "Standby"). */
   daAccordo?: boolean;
+  /** Attesa con la data dopo la fine del mese (blocco "Incassi 1-N"). */
+  nelPeriodo?: boolean;
   priorita?: PrioritaCassa;
   tipologia?: string;
   cliente?: string;
@@ -99,10 +107,11 @@ export function bloccoEntrata(c: {
   parcheggiata: boolean;
   daSollecitare: boolean;
   daAccordo?: boolean;
+  nelPeriodo?: boolean;
 }): BloccoEntrate {
   if (!c.attesa) return "gia";
   if (c.parcheggiata) return c.daAccordo ? "standby" : "standby2";
-  return c.daSollecitare ? "sollecitare" : "entranti";
+  return c.nelPeriodo ? "periodo" : "entranti";
 }
 
 export const tipologiaDi = (u: { tipologia?: string }) => u.tipologia?.trim() || SENZA;

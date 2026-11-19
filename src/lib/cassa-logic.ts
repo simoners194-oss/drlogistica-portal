@@ -149,6 +149,8 @@ export interface RigaFotografia {
   sa?: boolean;
   /** Entrata attesa da sollecitare. */
   sr?: boolean;
+  /** Entrata attesa nel periodo dopo la fine del mese ("Incassi 1-N"). */
+  np?: boolean;
   /** Documenti raggruppati nella riga. */
   nd?: number;
   /** Priorità della nota. */
@@ -173,6 +175,10 @@ export interface TotaliCassa {
   entrateFuture: number;
   /** Entrate attese da sollecitare: dentro entrateStandby, mostrate a parte. */
   entrateDaSollecitare: number;
+  /** Entrate attese con la data nel periodo dopo la fine del mese (blocco
+   *  "Incassi 1-N"): sono dentro entrateStandby. Nelle fotografie più
+   *  vecchie manca. */
+  entratePeriodo?: number;
   /** Acconti già arrivati in banca sugli entranti del mese (scritti a mano
    *  nella colonna Reale): si tolgono dal totale entrante. */
   acconti: number;
@@ -359,6 +365,10 @@ export interface RigaCassa {
   /** Le fatture attive dentro la riga (nomeFile): servono a riportarle tra le
    *  entranti con un clic. */
   fatture?: string[];
+  /** Entrata attesa con la data DOPO la fine del mese, cioè nel periodo di
+   *  riferimento (dal 1° al giorno limite del mese dopo): lo stesso della
+   *  colonna "1-N" delle uscite. Sta nel blocco "Incassi 1-N" (1.124.0). */
+  nelPeriodo?: boolean;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -1517,6 +1527,11 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     // del resto degli accordi; "standby2", o lo standby a mano della riga,
     // = blocco Standby 2.
     if (attesa && g.sceltaFattura === "standby" && !st.s) riga.daAccordo = true;
+    // INCASSI NEL PERIODO (1.124.0, Simone 19/11/2026: "ci deve essere una
+    // voce con incassi nel periodo che viene preso come riferimento anche
+    // dalle uscite, attualmente ho impostato ad esempio 1-15 dicembre"):
+    // l'entrata attesa con la data dopo la fine del mese.
+    if (attesa && !parcheggiata && riga.scadenza > fm) riga.nelPeriodo = true;
     if (auto === "oltre" && !st.b && !manuale) oltre.push(riga);
     else righe.push(riga);
   }
@@ -1665,6 +1680,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       r.parcheggiata = true;
       r.daSollecitare = false;
       r.daAccordo = true;
+      r.nelPeriodo = undefined;
     }
     // "Entra ora" è già al netto delle compensazioni (Simone 12/11/2026): le
     // fatture attese arrivano qui già scalate (vedi sopra), quindi l'importo
@@ -1681,10 +1697,10 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       // La catena del conto, da leggere col mouse sulla pillola "accordo".
       descrizione:
         ((scalatoPerChiave.get(k) ?? 0) > 0.005
-          ? `accordo: fatture ${soldi(r2(totale + (scalatoPerChiave.get(k) ?? 0)))} − compensazione ${soldi(scalatoPerChiave.get(k) ?? 0)} = ${soldi(totale)} · entrano ${soldi(concordato)} · restano ${soldi(r2(totale - concordato))} in standby`
-          : `accordo: entrano ${soldi(concordato)} su ${soldi(totale)} · restano ${soldi(r2(totale - concordato))} in standby`) +
+          ? `acconto: fatture ${soldi(r2(totale + (scalatoPerChiave.get(k) ?? 0)))} − compensazione ${soldi(scalatoPerChiave.get(k) ?? 0)} = ${soldi(totale)} · entrano ${soldi(concordato)} · restano ${soldi(r2(totale - concordato))} in standby`
+          : `acconto: entrano ${soldi(concordato)} su ${soldi(totale)} · restano ${soldi(r2(totale - concordato))} in standby`) +
         ((arrivatoAccordo.get(k) ?? 0) > 0.005
-          ? ` · accordo scritto ${soldi(r2(Math.max(0, Number(valore) || 0)))}, già arrivati in banca ${soldi(arrivatoAccordo.get(k) ?? 0)}`
+          ? ` · acconto scritto ${soldi(r2(Math.max(0, Number(valore) || 0)))}, già arrivati in banca ${soldi(arrivatoAccordo.get(k) ?? 0)}`
           : ""),
       importo: concordato,
       importoOrigine: concordato,
@@ -1702,6 +1718,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
       contestata: false,
       priorita: st.p,
       dataScelta: Boolean(st.d),
+      nelPeriodo: (st.d ?? fm) > fm || undefined,
       accordo: { totale },
     });
   }
@@ -1800,6 +1817,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
   const entrateParcheggiate = somma(entrate.filter((r) => r.parcheggiata && !r.daAccordo));
   const entrateFuture = somma(entrate.filter((r) => r.parcheggiata && r.daAccordo));
   const entrateDaSollecitare = somma(entrate.filter((r) => r.daSollecitare));
+  const entratePeriodo = somma(entrate.filter((r) => r.standbyIncasso && r.nelPeriodo));
   const acconti = r2(Math.max(0, db.acconti?.[meseCorr] ?? 0));
   const entrantiNette = r2(entrateStandby - acconti);
   // Quanto è stato scalato dalle fatture attese (negativo, come prima: è già
@@ -1819,6 +1837,7 @@ export function costruisciCassa(input: InputCassa): EsitoCassa {
     entrateParcheggiate,
     entrateFuture,
     entrateDaSollecitare,
+    entratePeriodo,
     acconti,
     entrantiNette,
     compensazioni: compensazioniScalate,
@@ -1882,6 +1901,7 @@ export function creaFotografia(
       sp: r.parcheggiata || undefined,
       sa: (r.parcheggiata && r.daAccordo) || undefined,
       sr: r.daSollecitare || undefined,
+      np: r.nelPeriodo || undefined,
       nd: r.documenti > 1 ? r.documenti : undefined,
       p: r.priorita,
     })),

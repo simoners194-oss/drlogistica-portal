@@ -1109,14 +1109,14 @@ const en = {
   "cpr.vStampaTip": "Print or save as PDF",
   "cpr.apriVoci": "Open: what it is made of",
   "cpr.colAccordo": "Coming in",
-  "cpr.accordo": "agreement",
+  "cpr.accordo": "advance",
   "cpr.accordoTutto": "all",
   "cpr.accordoTip":
-    "Agreement with the customer: type what really comes in (a down payment, the monthly instalment). Only that counts among the incoming; the rest of their expected invoices goes by itself to Standby, that is what we will collect later (not to Standby 2). 0 = nothing for now. Empty = everything. It applies every month until removed.",
+    "Advance from the customer: write what really comes in now (an advance, the month's instalment). Only that counts among the incoming; the rest of its expected invoices goes into Standby by itself, that is awaiting an agreement to recover it (not into Standby 2, which holds the lost ones). 0 = nothing comes in for now. Empty = everything comes in. It applies every month, until you remove it.",
   "cpr.daAccordoTip":
-    "On Standby because of the agreement: the part that does not come in now and will be collected later",
+    "In Standby: the part the advance does not cover, awaiting an agreement to recover it",
   "cpr.compAccordoTip":
-    "Offset of a customer with an agreement: the amount typed in Coming in is already net, so it is not taken off the incoming a second time. It sits in Standby, with the rest still to collect.",
+    "Offset of a customer with an advance: the amount typed in Coming in is already net, so it is not taken off the incoming a second time. It sits in Standby, with the rest still to collect.",
   "cpr.alNetto": "net",
   "cpr.alNettoTip": "Amount net of the offset: taken off this row",
   "cpr.compRiga": "taken off the customer's expected invoices, never negative:",
@@ -1127,7 +1127,7 @@ const en = {
   "cpr.compRimettiTip": "Deduct it from the customer's invoices again",
   "cpr.compNota":
     "Off the sheet = the customer has no expected invoices to deduct it from (or their amount was corrected by hand, or they are in Standby 2)",
-  "cpr.posTitolo": "Agreements and offsets",
+  "cpr.posTitolo": "Advances and offsets",
   "cpr.posSocieta": "companies",
   "cpr.posDesc":
     "the account company by company: what it owes us, what is offset, what comes in now and what is left",
@@ -1135,22 +1135,24 @@ const en = {
   "cpr.posFatture": "Expected invoices",
   "cpr.posComp": "Offset",
   "cpr.posResiduo": "Remaining debt",
-  "cpr.posResta": "Left to collect",
+  "cpr.posResta": "Left on standby",
   "cpr.posTotale": "Total",
   "cpr.posDaDare": "we still owe it",
   "cpr.posDaDareTip":
     "What we owe this company is more than its expected invoices (or its invoices are in Standby 2, or have a hand-corrected amount): this part has nothing to be deducted from and stays off the sheet. It is not among the outflows.",
   "cpr.posSenzaFatture": "no expected invoices",
   "cpr.sceltaFattura": "chosen",
+  "cpr.incassiPeriodo": "Collections",
+  "cpr.diCuiPeriodo": "of which collections",
   "cpr.gruppoTotale": "total",
   "cpr.gruppoSocieta": "companies",
   "cpr.gruppoRighe": "rows",
   "cpr.sceltaFatturaTip":
-    "Put on standby invoice by invoice, from the customer card. It stays out of agreements and offsets.",
+    "Put on standby invoice by invoice, from the customer card. It stays out of advances and offsets.",
   "cpr.scegliFattureTip":
     "Choose invoice by invoice: which ones come in and which ones go on standby",
   "cpr.sceltaGuida":
-    "For each invoice choose where it goes: Incoming, Standby (to collect later) or Standby 2 (will not be collected). One at a time with the three buttons on the row, or tick several and move them together.",
+    "For each invoice choose where it goes: Incoming, Standby (awaiting an agreement, to be recovered) or Standby 2 (lost). One at a time with the three buttons on the row, or tick several and move them together.",
   "cpr.sceltaSelezionate": "selected",
   "cpr.sceltaNessuna": "Tick the invoices to move them together:",
   "cpr.sceltaTutte": "Select all",
@@ -1160,14 +1162,14 @@ const en = {
   "cpr.sceltaFuori": "not on the sheet yet",
   "cpr.sceltaFuoriTip":
     "It falls due after the date the sheet looks at: the choice will apply when it comes in.",
-  "cpr.sceltaAccordo": 'This customer has an agreement in "Comes in now" of',
+  "cpr.sceltaAccordo": 'This customer has an advance in "Comes in now" of',
   "cpr.sceltaAccordoNota": "it applies only to the invoices left among the incoming ones.",
   "cpr.posInBanca": "already in the bank",
   "cpr.posInBancaTip":
     "Money that has already arrived in the bank from this company and is not yet recorded on Aruba: it is in the balance, so it has been deducted from its expected invoices.",
   "cpr.posArrivati": "arrived",
   "cpr.posArrivatiTip":
-    "Part of the agreement has already arrived in the bank since the day it was written: what still has to come in is the agreement minus what has arrived.",
+    "Part of the advance has already arrived in the bank since the day it was written: what still has to come in is the advance minus what has arrived.",
   "cpr.incBanca": "Already collected in the bank, deducted from the expected income:",
   "cpr.incBancaNoTip":
     "This credit did not pay these invoices: put them back among the expected income",
@@ -1178,14 +1180,14 @@ const en = {
   "cpr.incPerCompetenza": "month quoted in the transfer",
   "cpr.incPerVecchie": "deducted from the oldest invoices",
   "cpr.posTogliAccordo":
-    "Remove the agreement: it would apply again by itself when new invoices arrive",
+    "Remove the advance: it would apply again by itself when new invoices arrive",
   "cpr.posAccordoAltoTip":
-    "The agreement is higher than the remaining debt: the remaining debt comes in, no more",
+    "The advance is higher than the remaining debt: the remaining debt comes in, no more",
   "cpr.posNota":
-    "Invoices due by the date of the next days count. Invoices put by hand in Standby 2 stay out of the account. The agreement is written in the «Coming in» column of the sheet. The × takes an offset out of the account, the arrow puts it back.",
+    "Invoices due by the date of the next days count. Invoices put by hand in Standby 2 stay out of the account. The advance is written in the «Coming in» column of the sheet. The × takes an offset out of the account, the arrow puts it back.",
   "cpr.aParte": "separate, not added to anything",
-  "cpr.eStandby": "Standby · to collect later",
-  "cpr.eStandby2": "Standby 2 · will not be collected",
+  "cpr.eStandby": "Standby · awaiting an agreement",
+  "cpr.eStandby2": "Standby 2 · lost",
   "cpr.vStandby2Entrate": "Standby 2 incoming",
   "cpr.errLetturaTitolo": "Cash sheet not loaded",
   "cpr.errLetturaTesto":
@@ -1252,7 +1254,7 @@ const en = {
   "cpr.diCuiScaduto": "of which overdue",
   "cpr.compensazione": "compensation",
   "cpr.legendaCompensazione":
-    "invoices of those who pay by compensation: out of the outflows and deducted from the same customer's expected invoices (see the «Agreements and offsets» box below the sheet)",
+    "invoices of those who pay by compensation: out of the outflows and deducted from the same customer's expected invoices (see the «Advances and offsets» box below the sheet)",
   "cpr.diCuiComp": "of which compensations",
   "cpr.apriFiscale": "Open the due items inside this row",
   "cpr.schedaFiscale": "Due items",
@@ -1274,14 +1276,14 @@ const en = {
   "cpr.errSalva": "Save failed",
   "cpr.colReale": "Real",
   "cpr.lblReale": "balance + this month's incoming (minus advances) − to pay − next days",
-  "cpr.acconti": "advances",
+  "cpr.acconti": "advances already in the bank",
   "cpr.accontiTip":
     "Advances already received on this month's incoming: deducted from the incoming total (they are already in the balance)",
   "cpr.colStandby2": "Standby 2",
   "cpr.lblStandby2": "extended standby",
   "cpr.lblEntrateStandby": "receipts on standby",
   "cpr.parcheggiaEntrata":
-    "Put on Standby 2 (will not be collected): stays on the sheet but does not count as incoming",
+    "Move to Standby 2 (lost): it stays on the sheet but does not count among the incoming",
   "cpr.riattivaEntrata": "Back among the incoming",
   "cpr.rinomina": "click the name to rename",
   "cpr.addebitati":
@@ -1610,16 +1612,16 @@ const en = {
   "rt.saldoTutte": "Show all",
   "rt.saldoMeno": "Show the first 25",
   "rt.saldoTotale": "Selection total",
-  "rt.saldoAccordo": "Agreement · coming in",
-  "rt.saldoResiduo": "Left after the agreement",
+  "rt.saldoAccordo": "Advance · coming in",
+  "rt.saldoResiduo": "Left after the advance",
   "rt.saldoAccordoTip":
-    "The agreement is the amount written in the Owner cash view, «Coming in» column. Left = balance − what comes in now.",
-  "rt.saldoAccordoAlto": "The agreement is higher than the balance: the balance comes in, that is",
-  "rt.saldoAccordoGruppo": "group agreement",
+    "The advance is the amount written in the Owner cash view, «Coming in» column. Left = balance − what comes in now.",
+  "rt.saldoAccordoAlto": "The advance is higher than the balance: the balance comes in, that is",
+  "rt.saldoAccordoGruppo": "group advance",
   "rt.saldoEntra": "coming in",
-  "rt.saldoAccordoPill": "agreement",
+  "rt.saldoAccordoPill": "advance",
   "rt.saldoAccordoNota":
-    "Agreement = what the company pays now, written in the Owner cash view («Coming in» column; 0.00 = nothing comes in for now). Left = balance − what comes in now: what remains to collect after the agreement, already net of what we owe it. All open invoices count here, including those not yet due: so this can be higher than the Standby of the cash view, which only looks at due dates up to the next days.",
+    "Advance = what the company pays now, written in the Owner cash view («Coming in» column; 0.00 = nothing comes in for now). Left = balance − what comes in now: what remains to collect after the advance, already net of what we owe it. All open invoices count here, including those not yet due: so this can be higher than the Standby of the cash view, which only looks at due dates up to the next days.",
   "rt.q4Titolo": "The counterparty's four numbers",
   "rt.q4Desc":
     "Bank and invoices of the selection (every counterparty when there is no filter). Balance = receivables − collected − (payables − paid).",
@@ -3509,14 +3511,14 @@ const it: Record<DictKey, string> = {
   "cpr.vStampaTip": "Stampa o salva in PDF",
   "cpr.apriVoci": "Apri: da cosa è composta",
   "cpr.colAccordo": "Entra ora",
-  "cpr.accordo": "accordo",
+  "cpr.accordo": "acconto",
   "cpr.accordoTutto": "tutto",
   "cpr.accordoTip":
-    "Accordo col cliente: scrivi quanto entra davvero (un acconto, la rata del mese). Tra gli entranti conta solo quello; il resto delle sue fatture attese va da solo nello Standby, cioè tra quello che incasseremo più avanti (non nello Standby 2). 0 = non entra nulla per ora. Vuoto = entra tutto. Vale ogni mese, finché non lo togli.",
+    "Acconto del cliente: scrivi quanto entra davvero adesso (un acconto, la rata del mese). Tra gli entranti conta solo quello; il resto delle sue fatture attese va da solo nello Standby, cioè in attesa di un accordo per poterlo recuperare (non nello Standby 2, dove stanno le perse). 0 = non entra nulla per ora. Vuoto = entra tutto. Vale ogni mese, finché non lo togli.",
   "cpr.daAccordoTip":
-    "In Standby per l'accordo: è la parte che non entra adesso e che incasseremo più avanti",
+    "In Standby: è la parte che l'acconto non copre, in attesa di un accordo per poterla recuperare",
   "cpr.compAccordoTip":
-    "Compensazione di un cliente con l'accordo: l'importo scritto in Entra ora è già al netto, quindi non si toglie un'altra volta dagli entranti. Sta nello Standby, col resto ancora da incassare.",
+    "Compensazione di un cliente con l'acconto: l'importo scritto in Entra ora è già al netto, quindi non si toglie un'altra volta dagli entranti. Sta nello Standby, col resto in attesa di accordo.",
   "cpr.alNetto": "al netto",
   "cpr.alNettoTip": "Importo al netto della compensazione: da questa riga sono stati tolti",
   "cpr.compRiga": "tolte dalle fatture attese del cliente, mai in negativo:",
@@ -3527,7 +3529,7 @@ const it: Record<DictKey, string> = {
   "cpr.compRimettiTip": "Torna a scalarla dalle fatture del cliente",
   "cpr.compNota":
     "Fuori dal foglio = il cliente non ha fatture attese da cui scalarla (oppure hanno l'importo corretto a mano, o sono nello Standby 2)",
-  "cpr.posTitolo": "Accordi e compensazioni",
+  "cpr.posTitolo": "Acconti e compensazioni",
   "cpr.posSocieta": "società",
   "cpr.posDesc":
     "il conto società per società: quanto ci deve, quanto si compensa, quanto entra ora e quanto resta",
@@ -3535,21 +3537,23 @@ const it: Record<DictKey, string> = {
   "cpr.posFatture": "Fatture attese",
   "cpr.posComp": "Compensazione",
   "cpr.posResiduo": "Debito residuo",
-  "cpr.posResta": "Resta da incassare",
+  "cpr.posResta": "Resta in standby",
   "cpr.posTotale": "Totale",
   "cpr.posDaDare": "le dobbiamo ancora",
   "cpr.posDaDareTip":
     "Quello che dobbiamo a questa società è più delle sue fatture attese (oppure le sue fatture sono nello Standby 2, o hanno l'importo corretto a mano): questa parte non trova da cosa scalarsi e resta fuori dal foglio. Non è tra le uscite.",
   "cpr.posSenzaFatture": "nessuna fattura attesa",
   "cpr.sceltaFattura": "scelta",
+  "cpr.incassiPeriodo": "Incassi",
+  "cpr.diCuiPeriodo": "di cui incassi",
   "cpr.gruppoTotale": "totale",
   "cpr.gruppoSocieta": "società",
   "cpr.gruppoRighe": "righe",
   "cpr.sceltaFatturaTip":
-    "Messa in standby fattura per fattura, dalla scheda del cliente. Resta fuori da accordi e compensazioni.",
+    "Messa in standby fattura per fattura, dalla scheda del cliente. Resta fuori da acconti e compensazioni.",
   "cpr.scegliFattureTip": "Scegli fattura per fattura: quali entrano e quali vanno in standby",
   "cpr.sceltaGuida":
-    "Per ogni fattura scegli dove va: Entranti, Standby (da incassare più avanti) o Standby 2 (non le incasseremo). Una alla volta coi tre pulsanti della riga, oppure spunta più fatture e spostale insieme.",
+    "Per ogni fattura scegli dove va: Entranti, Standby (in attesa di accordo, da recuperare) o Standby 2 (perse). Una alla volta coi tre pulsanti della riga, oppure spunta più fatture e spostale insieme.",
   "cpr.sceltaSelezionate": "selezionate",
   "cpr.sceltaNessuna": "Spunta le fatture per spostarle insieme:",
   "cpr.sceltaTutte": "Seleziona tutte",
@@ -3559,14 +3563,14 @@ const it: Record<DictKey, string> = {
   "cpr.sceltaFuori": "non ancora nel foglio",
   "cpr.sceltaFuoriTip":
     "Scade dopo la data fino a cui guarda il foglio: la scelta varrà quando ci entra.",
-  "cpr.sceltaAccordo": 'Questo cliente ha un accordo in "Entra ora" di',
+  "cpr.sceltaAccordo": 'Questo cliente ha un acconto in "Entra ora" di',
   "cpr.sceltaAccordoNota": "vale solo sulle fatture lasciate tra le entranti.",
   "cpr.posInBanca": "già in banca",
   "cpr.posInBancaTip":
     "Soldi già arrivati in banca da questa società e non ancora registrati su Aruba: sono già nel saldo, quindi sono stati tolti dalle sue fatture attese.",
   "cpr.posArrivati": "arrivati",
   "cpr.posArrivatiTip":
-    "Una parte dell'accordo è già arrivata in banca dal giorno in cui è stato scritto: deve ancora entrare l'accordo meno quello che è arrivato.",
+    "Una parte dell'acconto è già arrivata in banca dal giorno in cui è stato scritto: deve ancora entrare l'acconto meno quello che è arrivato.",
   "cpr.incBanca": "Già incassate in banca, tolte dalle entrate attese:",
   "cpr.incBancaNoTip":
     "Questo accredito non pagava queste fatture: rimettile tra le entrate attese",
@@ -3577,14 +3581,14 @@ const it: Record<DictKey, string> = {
   "cpr.incPerCompetenza": "mese citato nel bonifico",
   "cpr.incPerVecchie": "scalato dalle fatture più vecchie",
   "cpr.posTogliAccordo":
-    "Togli l'accordo: tornerebbe a valere da solo quando arrivano fatture nuove",
+    "Togli l'acconto: tornerebbe a valere da solo quando arrivano fatture nuove",
   "cpr.posAccordoAltoTip":
-    "L'accordo scritto è più alto del debito residuo: entra il debito residuo, non di più",
+    "L'acconto scritto è più alto del debito residuo: entra il debito residuo, non di più",
   "cpr.posNota":
-    "Contano le fatture con scadenza entro la data dei prossimi giorni. Le fatture messe a mano nello Standby 2 restano fuori dal conto. L'accordo si scrive nella colonna «Entra ora» del foglio. La × toglie una compensazione dal conto, la freccia la rimette.",
+    "Contano le fatture con scadenza entro la data dei prossimi giorni. Le fatture messe a mano nello Standby 2 restano fuori dal conto. L'acconto si scrive nella colonna «Entra ora» del foglio. La × toglie una compensazione dal conto, la freccia la rimette.",
   "cpr.aParte": "a parte, non sommato",
-  "cpr.eStandby": "Standby · da incassare più avanti",
-  "cpr.eStandby2": "Standby 2 · non li incasseremo",
+  "cpr.eStandby": "Standby · in attesa di accordo",
+  "cpr.eStandby2": "Standby 2 · perse",
   "cpr.vStandby2Entrate": "Standby 2 entrate",
   "cpr.errLetturaTitolo": "Foglio della cassa non caricato",
   "cpr.errLetturaTesto":
@@ -3617,7 +3621,7 @@ const it: Record<DictKey, string> = {
   "cpr.tvEsci": "Esci dalla TV",
   "cpr.tvModifica": "modifica",
   "cpr.tvModificaTip":
-    "Con la spunta si lavora come sempre (sposta, standby, sollecita, importi). Senza, la vista TV è in sola lettura: spariscono i pulsanti e il foglio è più pulito",
+    "Con la spunta si lavora come sempre (sposta, standby, importi). Senza, la vista TV è in sola lettura: spariscono i pulsanti e il foglio è più pulito",
   "cpr.bBlocchi": "Blocchi",
   "cpr.bApriTutti": "apri tutti",
   "cpr.bChiudiTutti": "chiudi tutti",
@@ -3652,7 +3656,7 @@ const it: Record<DictKey, string> = {
   "cpr.diCuiScaduto": "di cui scaduto",
   "cpr.compensazione": "compensazione",
   "cpr.legendaCompensazione":
-    "fatture di chi paga in compensazione: tolte dalle uscite e scalate dalle fatture attese dello stesso cliente (vedi il riquadro «Accordi e compensazioni» sotto il foglio)",
+    "fatture di chi paga in compensazione: tolte dalle uscite e scalate dalle fatture attese dello stesso cliente (vedi il riquadro «Acconti e compensazioni» sotto il foglio)",
   "cpr.diCuiComp": "di cui compensazioni",
   "cpr.apriFiscale": "Apri le scadenze dentro la riga",
   "cpr.schedaFiscale": "Scadenze",
@@ -3674,14 +3678,14 @@ const it: Record<DictKey, string> = {
   "cpr.errSalva": "Salvataggio non riuscito",
   "cpr.colReale": "Reale",
   "cpr.lblReale": "saldo + entranti del mese (meno gli acconti) − da pagare − prossimi giorni",
-  "cpr.acconti": "acconti",
+  "cpr.acconti": "acconti già in banca",
   "cpr.accontiTip":
     "Acconti già arrivati in banca sugli entranti del mese: si tolgono dal totale entrante (sono già nel saldo)",
   "cpr.colStandby2": "Standby 2",
   "cpr.lblStandby2": "standby prolungato",
   "cpr.lblEntrateStandby": "entrate in standby",
   "cpr.parcheggiaEntrata":
-    "Metti in Standby 2 (non lo incasseremo): resta nel foglio ma non conta tra le entranti",
+    "Metti in Standby 2 (persa): resta nel foglio ma non conta tra le entranti",
   "cpr.riattivaEntrata": "Rimetti tra le entranti",
   "cpr.rinomina": "clic sul nome per rinominare",
   "cpr.addebitati":
@@ -4011,16 +4015,16 @@ const it: Record<DictKey, string> = {
   "rt.saldoTutte": "Mostra tutte",
   "rt.saldoMeno": "Mostra le prime 25",
   "rt.saldoTotale": "Totale selezione",
-  "rt.saldoAccordo": "Accordo · entra ora",
-  "rt.saldoResiduo": "Residuo dopo l'accordo",
+  "rt.saldoAccordo": "Acconto · entra ora",
+  "rt.saldoResiduo": "Residuo dopo l'acconto",
   "rt.saldoAccordoTip":
-    "L'accordo è l'importo scritto nella Cassa proprietà, colonna «Entra ora». Residuo = saldo − quello che entra ora.",
-  "rt.saldoAccordoAlto": "L'accordo è più alto del saldo: entra il saldo, cioè",
-  "rt.saldoAccordoGruppo": "accordo di gruppo",
+    "L'acconto è l'importo scritto nella Cassa proprietà, colonna «Entra ora». Residuo = saldo − quello che entra ora.",
+  "rt.saldoAccordoAlto": "L'acconto è più alto del saldo: entra il saldo, cioè",
+  "rt.saldoAccordoGruppo": "acconto di gruppo",
   "rt.saldoEntra": "entra",
-  "rt.saldoAccordoPill": "accordo",
+  "rt.saldoAccordoPill": "acconto",
   "rt.saldoAccordoNota":
-    "Accordo = quanto la società paga adesso, scritto nella Cassa proprietà (colonna «Entra ora»; 0,00 = per ora non entra nulla). Residuo = saldo − quello che entra ora: è quello che resta da incassare dopo l'accordo, già tolto quello che le dobbiamo noi. Qui contano tutte le fatture aperte, anche quelle non ancora scadute: per questo il residuo può essere più alto dello Standby della Cassa, che guarda solo le scadenze fino ai prossimi giorni.",
+    "Acconto = quanto la società paga adesso, scritto nella Cassa proprietà (colonna «Entra ora»; 0,00 = per ora non entra nulla). Residuo = saldo − quello che entra ora: è quello che resta da incassare dopo l'acconto, già tolto quello che le dobbiamo noi. Qui contano tutte le fatture aperte, anche quelle non ancora scadute: per questo il residuo può essere più alto dello Standby della Cassa, che guarda solo le scadenze fino ai prossimi giorni.",
   "rt.q4Titolo": "I quattro numeri della controparte",
   "rt.q4Desc":
     "Banca e fatture della selezione (tutte le controparti se non c'è filtro). Saldo = fatturato attivo − incassato − (fatturato passivo − pagato).",

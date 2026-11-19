@@ -172,6 +172,8 @@ interface Cella {
   sceltaFattura?: SceltaFattura;
   /** Le fatture dentro la riga (nomeFile). */
   fatture?: string[];
+  /** Attesa con la data dopo la fine del mese: blocco "Incassi 1-N". */
+  nelPeriodo?: boolean;
   /** Quanto è stato tolto per compensazione: la riga mostra già il netto. */
   compensato?: number;
 }
@@ -275,6 +277,7 @@ const daRiga = (r: RigaCassa): Cella => ({
   daAccordo: r.daAccordo,
   sceltaFattura: r.sceltaFattura,
   fatture: r.fatture,
+  nelPeriodo: r.nelPeriodo,
   compensato: r.compensato,
 });
 
@@ -327,6 +330,8 @@ function slotsEntrate(
   /** Gruppi di clienti tutti aperti (con un filtro acceso: quello che si
    *  cerca non deve restare nascosto sotto un totale richiuso). */
   gruppiAperti = false,
+  /** Fin dove guarda il foglio: dà il nome al blocco "Incassi 1-N". */
+  limite = "",
 ): SlotE[] {
   // Per cliente: le fatture dello stesso cliente (o gruppo) stanno sotto una
   // riga padre col totale; il "+" le apre una per scadenza. Vale per gli
@@ -417,7 +422,7 @@ function slotsEntrate(
   const blocco = (id: BloccoEntrate) => entrate.filter((c) => bloccoEntrata(c) === id);
   const gia = blocco("gia");
   const ent = blocco("entranti");
-  const sol = blocco("sollecitare");
+  const per = blocco("periodo");
   const stb = blocco("standby");
   const stb2 = blocco("standby2");
   const blocchi: { id: BloccoEntrate; label: string; celle: Cella[]; slots: () => SlotE[] }[] = [
@@ -428,15 +433,17 @@ function slotsEntrate(
       slots: () => gia.map((c): SlotE => ({ kind: "riga", c })),
     },
     { id: "entranti", label: t("cpr.entranti"), celle: ent, slots: () => conPadri(ent, "cli") },
+    // INCASSI NEL PERIODO (1.124.0): le attese con la data dopo la fine del
+    // mese, nello stesso periodo della colonna "1-N" delle uscite.
     {
-      id: "sollecitare",
-      label: t("cpr.daSollecitare"),
-      celle: sol,
-      slots: () => conPadri(sol, "sol"),
+      id: "periodo",
+      label: `${t("cpr.incassiPeriodo")} ${limite ? etichettaProssimi(limite) : ""}`.trim(),
+      celle: per,
+      slots: () => conPadri(per, "per"),
     },
-    // Due standby, come per le uscite (Simone 12/11/2026): "Standby" è il
-    // resto degli accordi, quello che incasseremo più avanti; "Standby 2"
-    // sono le attese messe da parte a mano, quelle che non incasseremo.
+    // Due standby (Simone 19/11/2026): "Standby" = in attesa di accordo, per
+    // poterle recuperare (il resto degli accordi e le fatture scelte una per
+    // una); "Standby 2" = perse.
     { id: "standby", label: t("cpr.eStandby"), celle: stb, slots: () => conPadri(stb, "stb") },
     {
       id: "standby2",
@@ -553,6 +560,7 @@ function daFoto(r: FotografiaCassa["righe"][number]): Cella {
     attesa: Boolean(r.si) || Boolean(r.sp),
     parcheggiata: Boolean(r.sp),
     daAccordo: r.sa ? true : undefined,
+    nelPeriodo: r.np ? true : undefined,
     daSollecitare: false,
     nota: r.n ?? "",
     data: r.s,
@@ -1115,7 +1123,7 @@ export function CassaProprietaView({
     const num = (v: number | undefined) => (v ?? 0).toFixed(2).replace(".", ",");
     // L'export è sempre il foglio INTERO, con tutti i blocchi aperti: filtri
     // e blocchi richiusi sono solo vista.
-    const sl = slotsEntrate(entrateTutte, t, new Set(["*"]));
+    const sl = slotsEntrate(entrateTutte, t, new Set(["*"]), undefined, false, limiteVista);
     const su = slotsUscite(
       raggruppaUscite(usciteTutte, raggruppa, t),
       t,
@@ -1186,6 +1194,7 @@ export function CassaProprietaView({
       `+ ${t("cpr.entranti")} (${t("cpr.acconti")} ${num(totali.acconti)})`,
       totali.entrantiNette,
     );
+    riga(`  ${t("cpr.diCuiPeriodo")} ${breve}`, totali.entratePeriodo);
     riga(`= ${t("cpr.colReale")}`, totali.reale);
     riga(`- ${t("cpr.vStandbyUscite")}`, totali.usciteStandby);
     riga(`= ${t("cpr.rCassa")}`, totali.cassaConStandby);
@@ -1905,6 +1914,13 @@ export function RiepilogoCassa({
         forte
       >
         <Acconti importo={n(totali.acconti)} readOnly={readOnly} onAcconti={onAcconti} t={t} />
+        {/* La parte degli entranti che cade nel periodo delle uscite "1-N". */}
+        {n(totali.entratePeriodo) > 0.005 && (
+          <div className="mt-0.5 whitespace-nowrap text-[10.5px] text-muted-foreground">
+            {t("cpr.diCuiPeriodo")} {breve}{" "}
+            <b className="tabular-nums text-foreground">{fmt(n(totali.entratePeriodo))}</b>
+          </div>
+        )}
       </Passo>
       <Passo
         segno="−"
@@ -1916,8 +1932,8 @@ export function RiepilogoCassa({
         forte
       />
       {/* Totale a parte, non sommato a niente (Simone 13/11/2026): lo
-          Standby delle entrate, cioè quello che incasseremo più avanti. Sta
-          fuori dal conto, come lo Standby 2. */}
+          Standby delle entrate, cioè quello che è in attesa di accordo per
+          poterlo recuperare. Sta fuori dal conto, come lo Standby 2 (perse). */}
       {Math.abs(n(totali.entrateFuture)) > 0.005 && (
         <div className="rounded-lg border border-dashed border-slate-400 bg-slate-100/70 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800/50">
           <div className="max-w-[230px] text-[11px] uppercase tracking-wider text-slate-600 dark:text-slate-300">
@@ -1974,7 +1990,7 @@ function PiuMeno({ aperto, onClick, t }: { aperto: boolean; onClick: () => void;
 const TESTA_ENTRATE: Record<BloccoEntrate, string> = {
   gia: "bg-emerald-200/70 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200",
   entranti: "bg-emerald-100/80 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
-  sollecitare: "bg-amber-100/90 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  periodo: "bg-amber-100/90 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
   standby: "bg-slate-200/80 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200",
   standby2: "bg-slate-300/80 text-slate-800 dark:bg-slate-600/70 dark:text-slate-100",
 };
@@ -1988,7 +2004,7 @@ const TESTA_USCITE: Record<SecchioCassa, string> = {
 const TUTTI_I_BLOCCHI = [
   "e:gia",
   "e:entranti",
-  "e:sollecitare",
+  "e:periodo",
   "e:standby",
   "e:standby2",
   "u:foglio",
@@ -2051,7 +2067,13 @@ const eManuale = (c: Cella) => c.tipo === "manuale" || c.tipo === "amex";
  *  degli accordi, lo incasseremo più avanti); ardesia più scura per lo
  *  Standby 2 (messe da parte a mano, non le incasseremo). */
 const tintaEntrata = (e?: Cella) =>
-  !e?.parcheggiata ? TINTA.entrate.col : e.daAccordo ? TINTA.standby.col : TINTA.standby2.col;
+  !e?.parcheggiata
+    ? e?.nelPeriodo
+      ? TINTA.prossimi.col
+      : TINTA.entrate.col
+    : e.daAccordo
+      ? TINTA.standby.col
+      : TINTA.standby2.col;
 /** LA LINEA TRA ENTRATE E USCITE (Simone 19/11/2026: "fammi una bella linea
  *  tra entrate e uscite, deve essere evidente"). È una colonna sua, stretta e
  *  scura, presente in ogni riga del foglio e nelle intestazioni: così resta
@@ -2199,6 +2221,7 @@ export function Foglio({
     espansi,
     filtroEntrateAttivo(filtri) ? VUOTO : chiusi,
     filtroEntrateAttivo(filtri),
+    limite,
   );
   const chiusiU = filtroUsciteAttivo(filtri) ? VUOTO : chiusi;
   const slotsU = slotsUscite(uscite, t, limite, chiusiU, espansi, ordineUscite, false);
@@ -3132,6 +3155,9 @@ function BarraFiltri({
             <option value="">{t("cpr.fBlocchiTutti")}</option>
             <option value="gia">{t("cpr.giaEntrate")}</option>
             <option value="entranti">{t("cpr.entranti")}</option>
+            <option value="periodo">
+              {t("cpr.incassiPeriodo")} {etichettaProssimiBreve(limite)}
+            </option>
             <option value="standby">{t("cpr.colStandby")}</option>
             <option value="standby2">{t("cpr.colStandby2")}</option>
           </select>
@@ -3294,6 +3320,7 @@ const PUNTO_SEZIONE: Record<SezioneCassaId, string> = {
   uscite_prossimi: "bg-amber-500",
   entrati: "bg-emerald-700",
   entranti: "bg-emerald-500",
+  incassi_periodo: "bg-amber-400",
   standby_entrate: "bg-slate-400",
   standby2_entrate: "bg-slate-600",
   standby_uscite: "bg-slate-500",
@@ -3327,6 +3354,7 @@ function MenuVoci({
     uscite_prossimi: `${t("cpr.colUscite")} ${etichettaProssimi(limite)}`,
     entrati: t("cpr.vEntrati"),
     entranti: t("cpr.entranti"),
+    incassi_periodo: `${t("cpr.incassiPeriodo")} ${etichettaProssimi(limite)}`,
     standby_entrate: t("cpr.vStandbyEntrate"),
     standby2_entrate: t("cpr.vStandby2Entrate"),
     standby_uscite: t("cpr.vStandbyUscite"),

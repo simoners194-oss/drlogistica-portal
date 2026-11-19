@@ -36,6 +36,33 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.124.0",
+    date: "2026-11-19",
+    entries: [
+      {
+        title: "Cassa proprietà: gli incassi nel periodo delle uscite hanno il loro blocco",
+        description:
+          'Tra le entrate c\'è il blocco "Incassi 1-N" (per esempio "Incassi 1-15 dicembre"): le attese con la data dopo la fine del mese, nello stesso periodo della colonna "1-N" delle uscite e con lo stesso colore. Gli Entranti restano quelli attesi entro la fine del mese. Nel conto in alto una riga dice quanto degli entranti cade in quel periodo.',
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: 'Cassa proprietà: l\'importo in "Entra ora" si chiama acconto',
+        description:
+          'Quello che scrivi nella colonna "Entra ora" ora si chiama acconto, non più accordo: è quanto il cliente paga adesso. Cambiano solo le parole: la pillola sulla riga, il riquadro "Acconti e compensazioni" e le colonne del Resoconto. La parola accordo resta solo per lo Standby, che è in attesa di accordo.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: Standby = in attesa di accordo, Standby 2 = perse",
+        description:
+          'I due standby delle entrate ora dicono quello che sono. Standby: in attesa di accordo, per poterle recuperare. Standby 2: perse. Lo Standby non è più descritto come "da incassare più avanti": gli incassi futuri stanno nel loro blocco.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.123.0",
     date: "2026-11-19",
     entries: [
