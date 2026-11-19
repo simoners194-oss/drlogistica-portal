@@ -36,6 +36,33 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.126.0",
+    date: "2026-11-20",
+    entries: [
+      {
+        title: "Storico estratti: a quale movimento è abbinata una distinta",
+        description:
+          "La scritta verde di ogni distinta (\"agganciata al movimento del…\") si clicca: in cima alla finestra c'è l'elenco dei movimenti di banca abbinati, con data, importo, controparte, causale e conto, e come è stata abbinata. Se ci sono altre uscite con la stessa somma negli stessi giorni, sono segnalate in giallo. Quando le uscite uguali sono più di una si abbina la più vicina per data.",
+        tag: "feature",
+        audience: "direzione",
+      },
+      {
+        title: "Storico estratti: solo le distinte con più pagamenti",
+        description:
+          'Il report della banca porta anche i bonifici singoli, che finivano in elenco come "1 × importo". Ora in elenco ci sono solo le distinte con più pagamenti. I pagamenti singoli restano in archivio, ma non mettono più il badge sul movimento e nei Movimenti non lo sostituiscono.',
+        tag: "improvement",
+        audience: "direzione",
+      },
+      {
+        title: "Cassa proprietà: da incassare, compensazione e netto sempre in vista",
+        description:
+          'Sotto il nome di ogni cliente con una compensazione c\'è scritto il conto: "da incassare 97.696,88 − compensazione 12.000,00 = netto 85.696,88". Prima si leggeva solo passando il mouse sulla pillola "al netto".',
+        tag: "feature",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.125.0",
     date: "2026-11-19",
     entries: [

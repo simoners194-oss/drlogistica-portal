@@ -2578,6 +2578,10 @@ export function Foglio({
                   ? (e.compensato ?? 0)
                   : (posE?.compensazione ?? e.compensato ?? 0)
                 : 0;
+              // Il conto della societa' da scrivere sotto il nome: solo sulla
+              // riga del cliente (non sulle singole fatture aperte col "+").
+              const catenaE = !figlio && posE && posE.compensazione > 0.005 ? posE : undefined;
+              const rientroCls = rientroE >= 2 ? "pl-10" : rientroE === 1 ? "pl-5" : "";
               const slotU = slotsU[i];
               const testaU = slotU?.kind === "head" ? slotU : undefined;
               const u = slotU?.kind === "riga" ? slotU.c : undefined;
@@ -2645,150 +2649,183 @@ export function Foglio({
                         className={`${cel} ${tintaEntrata(e)} ${e && eManuale(e) ? TINTA_MAN : ""} ${e?.attesa ? "text-muted-foreground" : "text-foreground"}`}
                       >
                         {e && (
-                          <span
-                            className={`flex items-center gap-1.5 ${rientroE >= 2 ? "pl-10" : rientroE === 1 ? "pl-5" : ""}`}
-                          >
-                            {padre && (
-                              <button
-                                type="button"
-                                onClick={() => toggleCliente(e.chiave)}
-                                title={t(padre.aperto ? "cpr.chiudiCliente" : "cpr.espandiCliente")}
-                                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-[11px] leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
-                              >
-                                {padre.aperto ? "−" : "+"}
-                              </button>
-                            )}
-                            {gruppoE ? (
-                              <span
-                                className="max-w-[200px] truncate font-semibold text-foreground"
-                                title={e.dettaglio}
-                              >
-                                {e.nome}
-                              </span>
-                            ) : e.tipo === "attiva" || e.tipo === "incasso" ? (
-                              <button
-                                type="button"
-                                onClick={() => onApriCliente(e.nome)}
-                                title={t("cpr.apriCliente")}
-                                className={`max-w-[200px] truncate ${LINK_CLS}`}
-                              >
-                                {e.nome}
-                              </button>
-                            ) : e.tipo === "compensazione" && onApriFornitore ? (
-                              <button
-                                type="button"
-                                onClick={() => onApriFornitore(e.nome)}
-                                title={t("cpr.apriFornitore")}
-                                className={`max-w-[200px] truncate ${LINK_CLS}`}
-                              >
-                                {e.nome}
-                              </button>
-                            ) : (
-                              <NomeRiga
-                                c={e}
-                                readOnly={readOnly}
-                                onRinomina={onRinomina}
-                                t={t}
-                                className={`max-w-[200px] truncate ${eManuale(e) ? "italic" : ""}`}
-                              />
-                            )}
-                            {eManuale(e) && (
-                              <span
-                                className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
-                                title={t("cpr.legendaManuale")}
-                              >
-                                <Pencil className="h-2.5 w-2.5" /> {t("cpr.manuale")}
-                              </span>
-                            )}
-                            {e.tipo === "compensazione" && (
-                              <span
-                                className={`inline-flex shrink-0 items-center rounded px-1 text-[9px] font-bold uppercase ${PILL_COMP}`}
-                                title={e.dettaglio}
-                              >
-                                {t("cpr.compensazione")}
-                              </span>
-                            )}
-                            {compE > 0.005 && (
-                              <span
-                                className="inline-flex shrink-0 items-center rounded border border-rose-400 px-1 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-300"
-                                title={
-                                  !figlio && posE
-                                    ? catenaPosizione(posE, t)
-                                    : `${t("cpr.alNettoTip")} ${fmt(compE)} €`
-                                }
-                              >
-                                {t("cpr.alNetto")}
-                              </span>
-                            )}
-                            {e.sceltaFattura && (
-                              <span
-                                className="inline-flex shrink-0 items-center rounded border border-slate-500 px-1 text-[9px] font-bold uppercase text-slate-700 dark:text-slate-200"
-                                title={t("cpr.sceltaFatturaTip")}
-                              >
-                                {t("cpr.sceltaFattura")}
-                              </span>
-                            )}
-                            {!gruppoE && (e.accordo || (e.daAccordo && !e.sceltaFattura)) && (
-                              <span
-                                className={`inline-flex shrink-0 items-center rounded px-1 text-[9px] font-bold uppercase ${e.accordo ? "bg-sky-600 text-white" : "border border-sky-500 text-sky-700 dark:text-sky-300"}`}
-                                title={
-                                  e.accordo
-                                    ? e.dettaglio
-                                    : e.tipo === "compensazione"
-                                      ? t("cpr.compAccordoTip")
-                                      : t("cpr.daAccordoTip")
-                                }
-                              >
-                                {t("cpr.accordo")}
-                              </span>
-                            )}
-                            {e.tipo === "attiva" &&
-                              e.attesa &&
-                              !e.accordo &&
-                              !readOnly &&
-                              !gruppoE && (
+                          <>
+                            <span className={`flex items-center gap-1.5 ${rientroCls}`}>
+                              {padre && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleCliente(e.chiave)}
+                                  title={t(
+                                    padre.aperto ? "cpr.chiudiCliente" : "cpr.espandiCliente",
+                                  )}
+                                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-[11px] leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                                >
+                                  {padre.aperto ? "−" : "+"}
+                                </button>
+                              )}
+                              {gruppoE ? (
+                                <span
+                                  className="max-w-[200px] truncate font-semibold text-foreground"
+                                  title={e.dettaglio}
+                                >
+                                  {e.nome}
+                                </span>
+                              ) : e.tipo === "attiva" || e.tipo === "incasso" ? (
                                 <button
                                   type="button"
                                   onClick={() => onApriCliente(e.nome)}
-                                  title={t("cpr.scegliFattureTip")}
-                                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                                  title={t("cpr.apriCliente")}
+                                  className={`max-w-[200px] truncate ${LINK_CLS}`}
                                 >
-                                  <ListChecks className="h-3 w-3" />
+                                  {e.nome}
                                 </button>
+                              ) : e.tipo === "compensazione" && onApriFornitore ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onApriFornitore(e.nome)}
+                                  title={t("cpr.apriFornitore")}
+                                  className={`max-w-[200px] truncate ${LINK_CLS}`}
+                                >
+                                  {e.nome}
+                                </button>
+                              ) : (
+                                <NomeRiga
+                                  c={e}
+                                  readOnly={readOnly}
+                                  onRinomina={onRinomina}
+                                  t={t}
+                                  className={`max-w-[200px] truncate ${eManuale(e) ? "italic" : ""}`}
+                                />
                               )}
-                            {padre ? (
-                              <span className="shrink-0 text-[10.5px] text-muted-foreground">
-                                {gruppoE ? `${gruppoE} ${t("cpr.gruppoSocieta")} · ` : ""}
-                                {t("cpr.dal")} {ddmmyy(e.data)} · {padre.figli.length}{" "}
-                                {t(gruppoE ? "cpr.gruppoRighe" : "cpr.fattureBreve")}
-                              </span>
-                            ) : e.attesa ? (
-                              <DataAttesa c={e} readOnly={readOnly} onData={onData} t={t} />
-                            ) : (
-                              <span className="shrink-0 text-[10.5px] text-muted-foreground">
-                                {ddmm(e.data)}
-                              </span>
-                            )}
-                            {/* Riga mandata in Standby fattura per fattura: oltre al
+                              {eManuale(e) && (
+                                <span
+                                  className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-bold uppercase ${PILL_MAN}`}
+                                  title={t("cpr.legendaManuale")}
+                                >
+                                  <Pencil className="h-2.5 w-2.5" /> {t("cpr.manuale")}
+                                </span>
+                              )}
+                              {e.tipo === "compensazione" && (
+                                <span
+                                  className={`inline-flex shrink-0 items-center rounded px-1 text-[9px] font-bold uppercase ${PILL_COMP}`}
+                                  title={e.dettaglio}
+                                >
+                                  {t("cpr.compensazione")}
+                                </span>
+                              )}
+                              {compE > 0.005 && (
+                                <span
+                                  className="inline-flex shrink-0 items-center rounded border border-rose-400 px-1 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-300"
+                                  title={
+                                    !figlio && posE
+                                      ? catenaPosizione(posE, t)
+                                      : `${t("cpr.alNettoTip")} ${fmt(compE)} €`
+                                  }
+                                >
+                                  {t("cpr.alNetto")}
+                                  {/* Senza il conto sotto (singola fattura): quanto
+                                    e' stato tolto si legge nella pillola. */}
+                                  {!catenaE && ` ${t("cpr.alNettoDi")} ${fmt(compE)}`}
+                                </span>
+                              )}
+                              {e.sceltaFattura && (
+                                <span
+                                  className="inline-flex shrink-0 items-center rounded border border-slate-500 px-1 text-[9px] font-bold uppercase text-slate-700 dark:text-slate-200"
+                                  title={t("cpr.sceltaFatturaTip")}
+                                >
+                                  {t("cpr.sceltaFattura")}
+                                </span>
+                              )}
+                              {!gruppoE && (e.accordo || (e.daAccordo && !e.sceltaFattura)) && (
+                                <span
+                                  className={`inline-flex shrink-0 items-center rounded px-1 text-[9px] font-bold uppercase ${e.accordo ? "bg-sky-600 text-white" : "border border-sky-500 text-sky-700 dark:text-sky-300"}`}
+                                  title={
+                                    e.accordo
+                                      ? e.dettaglio
+                                      : e.tipo === "compensazione"
+                                        ? t("cpr.compAccordoTip")
+                                        : t("cpr.daAccordoTip")
+                                  }
+                                >
+                                  {t("cpr.accordo")}
+                                </span>
+                              )}
+                              {e.tipo === "attiva" &&
+                                e.attesa &&
+                                !e.accordo &&
+                                !readOnly &&
+                                !gruppoE && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onApriCliente(e.nome)}
+                                    title={t("cpr.scegliFattureTip")}
+                                    className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                                  >
+                                    <ListChecks className="h-3 w-3" />
+                                  </button>
+                                )}
+                              {padre ? (
+                                <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                                  {gruppoE ? `${gruppoE} ${t("cpr.gruppoSocieta")} · ` : ""}
+                                  {t("cpr.dal")} {ddmmyy(e.data)} · {padre.figli.length}{" "}
+                                  {t(gruppoE ? "cpr.gruppoRighe" : "cpr.fattureBreve")}
+                                </span>
+                              ) : e.attesa ? (
+                                <DataAttesa c={e} readOnly={readOnly} onData={onData} t={t} />
+                              ) : (
+                                <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                                  {ddmm(e.data)}
+                                </span>
+                              )}
+                              {/* Riga mandata in Standby fattura per fattura: oltre al
                                 pulsante per lo Standby 2 serve quello per
                                 riportarla tra le entranti (1.124.1). */}
-                            {!padre && e.sceltaFattura === "standby" && !readOnly && (
-                              <button
-                                type="button"
-                                onClick={() => onParcheggia(e, false)}
-                                title={t("cpr.riattivaEntrata")}
-                                className="shrink-0 rounded border border-emerald-500 bg-emerald-500/10 px-1.5 text-[9px] font-bold uppercase text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                              {!padre && e.sceltaFattura === "standby" && !readOnly && (
+                                <button
+                                  type="button"
+                                  onClick={() => onParcheggia(e, false)}
+                                  title={t("cpr.riattivaEntrata")}
+                                  className="shrink-0 rounded border border-emerald-500 bg-emerald-500/10 px-1.5 text-[9px] font-bold uppercase text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                                >
+                                  ↩ {t("cpr.entranti")}
+                                </button>
+                              )}
+                              {!padre && e.attesa && !e.accordo && !readOnly && (
+                                <ToggleStandby c={e} onParcheggia={onParcheggia} t={t} />
+                              )}
+                              {!padre && !e.accordo && !readOnly && (
+                                <Togli onClick={() => onTogli(e)} t={t} />
+                              )}
+                            </span>
+                            {/* DA INCASSARE, COMPENSAZIONE E NETTO, SEMPRE IN VISTA
+                              (1.126.0, Simone 20/11/2026: "la compensazione
+                              mettila vicino, in maniera tale che so sempre
+                              qual e' il totale da incassare reale e quello al
+                              netto della compensazione"). Il conto e' della
+                              societa' intera: lo stesso del riquadro "Acconti
+                              e compensazioni". */}
+                            {catenaE && (
+                              <span
+                                className={`mt-1 block text-[11px] leading-tight text-muted-foreground ${rientroCls} ${padre ? "ml-[22px]" : ""}`}
+                                title={catenaPosizione(catenaE, t)}
                               >
-                                ↩ {t("cpr.entranti")}
-                              </button>
+                                {t("cpr.nettoLordo")}{" "}
+                                <b className="text-[12.5px] font-semibold text-foreground tabular-nums">
+                                  {fmt(catenaE.fatture)}
+                                </b>
+                                {" − "}
+                                {t("cpr.compensazione")}{" "}
+                                <b className="text-[12.5px] font-semibold text-rose-700 tabular-nums dark:text-rose-300">
+                                  {fmt(catenaE.compensazione)}
+                                </b>
+                                {" = "}
+                                {t("cpr.nettoNetto")}{" "}
+                                <b className="text-[12.5px] font-semibold text-foreground tabular-nums">
+                                  {fmt(catenaE.residuo)}
+                                </b>
+                              </span>
                             )}
-                            {!padre && e.attesa && !e.accordo && !readOnly && (
-                              <ToggleStandby c={e} onParcheggia={onParcheggia} t={t} />
-                            )}
-                            {!padre && !e.accordo && !readOnly && (
-                              <Togli onClick={() => onTogli(e)} t={t} />
-                            )}
-                          </span>
+                          </>
                         )}
                       </td>
                     </>

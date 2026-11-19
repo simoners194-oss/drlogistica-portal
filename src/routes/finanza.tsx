@@ -49,6 +49,8 @@ import { FlussiCassaTab } from "@/components/FlussiCassaTab";
 import { ArubaAlertTab } from "@/components/ArubaAlertTab";
 import { CostiAppaltiTab } from "@/components/CostiAppaltiTab";
 import { StipendiTab } from "@/components/StipendiTab";
+import { DistintaMovimenti } from "@/components/DistintaMovimenti";
+import { movimentiAbbinati } from "@/lib/distinte-aggancio";
 import { FiscaleTab } from "@/components/FiscaleTab";
 import { useLang } from "@/lib/i18n";
 import { GIORNI_ARROTONDA } from "@/lib/fatture-logic";
@@ -870,7 +872,7 @@ function FinanzaPage() {
   // Le disposizioni raggruppate per giorno+tipo: il gruppo la cui somma
   // coincide con l'addebito cumulativo (al centesimo, data entro 6 giorni)
   // e' il dettaglio di quel movimento.
-  const distGruppi = useMemo(() => {
+  const distTutti = useMemo(() => {
     const map = new Map<
       string,
       {
@@ -900,17 +902,26 @@ function FinanzaPage() {
     }
     return [...map.values()].map((g) => ({ ...g, somma: Math.round(g.somma * 100) / 100 }));
   }, [distinte]);
-  const distintaDi = (m: SpMovimento) => {
-    if (!distGruppi.length) return null;
+  // SOLO LE DISTINTE CON PIU' PAGAMENTI (Simone 20/11/2026: "perche' mi mostra
+  // anche i bonifici, dovrebbe mostrare solo le distinte con pagamenti
+  // multipli"). Il report "Esiti pagamenti" porta TUTTE le disposizioni, anche
+  // i bonifici singoli: un gruppo con una disposizione sola non e' una
+  // distinta. Resta in archivio, ma non si elenca, non mette il badge sul
+  // movimento e non lo sostituisce nei Movimenti (il movimento di un bonifico
+  // singolo porta gia' il suo beneficiario).
+  const distGruppi = useMemo(() => distTutti.filter((g) => g.righe.length > 1), [distTutti]);
+  const distSingole = distTutti.length - distGruppi.length;
+  const distintaIn = (gruppi: typeof distGruppi, m: SpMovimento) => {
+    if (!gruppi.length) return null;
     // Aggancio MANUALE: vince su tutto (badge anche quando la somma non torna),
     // e una distinta puo' essere agganciata a PIU' movimenti (tranche).
-    const manuale = distGruppi.find((g) => g.movChiavi.includes(m.chiave));
+    const manuale = gruppi.find((g) => g.movChiavi.includes(m.chiave));
     if (manuale) return manuale;
     if (m.importo >= 0) return null;
     const target = Math.round(-m.importo * 100) / 100;
     let best: (typeof distGruppi)[number] | null = null;
     let bestDiff = 7;
-    for (const g of distGruppi) {
+    for (const g of gruppi) {
       if (Math.abs(g.somma - target) > 1) continue;
       const diff = Math.abs(
         (new Date(`${m.dataContabile}T00:00:00`).getTime() -
@@ -924,6 +935,10 @@ function FinanzaPage() {
     }
     return best;
   };
+  const distintaDi = (m: SpMovimento) => distintaIn(distGruppi, m);
+  // Il movimento e' gia' di un pagamento del report, distinta o bonifico
+  // singolo che sia: non e' libero per le tranche e non e' un "orfano".
+  const presoDaReport = (m: SpMovimento) => distintaIn(distTutti, m) != null;
 
   // TRANCHE: la banca puo' addebitare una distinta in piu' movimenti.
   // Per ogni distinta NON agganciata si cerca il sottoinsieme di uscite
@@ -951,7 +966,7 @@ function FinanzaPage() {
           86400000,
       );
     const cand = (movimenti ?? [])
-      .filter((m) => m.importo < 0 && distintaDi(m) == null && giorniDa(m) <= 10)
+      .filter((m) => m.importo < 0 && !presoDaReport(m) && giorniDa(m) <= 10)
       .sort((a2, b2) => {
         const ka = peso(a2);
         const kb = peso(b2);
@@ -1140,6 +1155,22 @@ function FinanzaPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [distModal, rosterDip, distinte]);
+
+  // I MOVIMENTI DI BANCA della distinta aperta (Simone 20/11/2026: "ho
+  // bisogno di vedere a quale movimento sono collegati"). Le chiavi si
+  // rileggono dall'archivio di adesso: la finestra puo' restare aperta mentre
+  // si aggancia o si sgancia.
+  const distAbbinati = useMemo(() => {
+    if (!distModal) return null;
+    const vivo = distTutti.find((x) => x.data === distModal.data && x.tipo === distModal.tipo);
+    const movChiavi = vivo
+      ? vivo.movChiavi
+      : [...new Set(distModal.righe.map((r) => r.movimentoChiave ?? "").filter(Boolean))];
+    return movimentiAbbinati(
+      { data: distModal.data, somma: distModal.somma, movChiavi },
+      movimenti ?? [],
+    );
+  }, [distModal, distTutti, movimenti]);
 
   // CSV dello spaccato distinta ("diviso -> riconducibile, esportabile"):
   // una riga per disposizione, con dipendente riconosciuto e appalto.
@@ -1346,20 +1377,11 @@ function FinanzaPage() {
                 .map((g) => {
                   // Copertura: somma dei movimenti agganciati (manuali) o
                   // il singolo movimento trovato in automatico.
-                  const collegati = (movimenti ?? []).filter((m) => g.movChiavi.includes(m.chiave));
-                  const autoMov =
-                    collegati.length === 0
-                      ? (movimenti ?? []).find(
-                          (m) =>
-                            m.importo < 0 &&
-                            Math.abs(Math.round(-m.importo * 100) / 100 - g.somma) <= 1 &&
-                            Math.abs(
-                              (new Date(`${m.dataContabile}T00:00:00`).getTime() -
-                                new Date(`${g.data}T00:00:00`).getTime()) /
-                                86400000,
-                            ) <= 6,
-                        )
-                      : undefined;
+                  const abb = movimentiAbbinati(g, movimenti ?? []);
+                  const collegati = abb.modo === "mano" ? abb.movimenti : [];
+                  // Da sola: l'uscita con la stessa somma PIU' VICINA per data
+                  // (gli stessi movimenti che elenca la finestra della distinta).
+                  const autoMov = abb.modo === "auto" ? abb.movimenti[0] : undefined;
                   const coperto =
                     Math.round(collegati.reduce((s2, m) => s2 - m.importo, 0) * 100) / 100;
                   const completo = collegati.length
@@ -1649,6 +1671,11 @@ function FinanzaPage() {
             </tbody>
           </table>
           <p className="mt-1 text-[10px] text-muted-foreground">{t("fin.distAggancioNota")}</p>
+          {distSingole > 0 && (
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              {distSingole} {t("fin.distSingoleNota")}
+            </p>
+          )}
           {(() => {
             // Vista speculare: le uscite che dalla descrizione sembrano
             // pagamenti cumulativi (beneficiari vari, distinte, stipendi)
@@ -1661,7 +1688,7 @@ function FinanzaPage() {
                   /beneficiari|distint|stipend|emolument|salari|disposizione/i.test(
                     `${m.descrizione} ${m.causale ?? ""}`,
                   ) &&
-                  distintaDi(m) == null,
+                  !presoDaReport(m),
               )
               .sort((a, b) => (a.dataContabile < b.dataContabile ? 1 : -1))
               .slice(0, 10);
@@ -3375,7 +3402,7 @@ function FinanzaPage() {
                 onClick={() => setDistModal(null)}
               >
                 <div
-                  className="max-h-[80vh] w-full max-w-lg overflow-auto rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-elegant)]"
+                  className="max-h-[85vh] w-full max-w-2xl overflow-auto rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-elegant)]"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="mb-1 text-[15px] font-semibold text-foreground">
@@ -3385,6 +3412,16 @@ function FinanzaPage() {
                     {fmtData(distModal.data)} · {distModal.tipo || "—"} · {distModal.righe.length}{" "}
                     {t("fin.distRighe")} · {t("fin.distTotale")} {fmtImporto(distModal.somma)} €
                   </p>
+                  {distAbbinati && (
+                    <DistintaMovimenti
+                      abbinati={distAbbinati}
+                      data={distModal.data}
+                      somma={distModal.somma}
+                    />
+                  )}
+                  <div className="mb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                    {t("fin.distDisposizioni")}
+                  </div>
                   <datalist id="appalti-distinta">
                     {[
                       ...new Set([
