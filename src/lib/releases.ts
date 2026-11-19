@@ -36,6 +36,19 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.122.1",
+    date: "2026-11-19",
+    entries: [
+      {
+        title: "Cassa proprietà: una linea netta tra entrate e uscite",
+        description:
+          "Tra le colonne delle entrate e quelle delle uscite c'è una fascia scura per tutta l'altezza del foglio, intestazioni comprese: si vede subito dove finiscono le une e cominciano le altre.",
+        tag: "improvement",
+        audience: "direzione",
+      },
+    ],
+  },
+  {
     version: "1.122.0",
     date: "2026-11-19",
     entries: [

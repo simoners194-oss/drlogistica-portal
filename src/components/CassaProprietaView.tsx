@@ -1983,6 +1983,13 @@ const eManuale = (c: Cella) => c.tipo === "manuale" || c.tipo === "amex";
  *  Standby 2 (messe da parte a mano, non le incasseremo). */
 const tintaEntrata = (e?: Cella) =>
   !e?.parcheggiata ? TINTA.entrate.col : e.daAccordo ? TINTA.standby.col : TINTA.standby2.col;
+/** LA LINEA TRA ENTRATE E USCITE (Simone 19/11/2026: "fammi una bella linea
+ *  tra entrate e uscite, deve essere evidente"). È una colonna sua, stretta e
+ *  scura, presente in ogni riga del foglio e nelle intestazioni: così resta
+ *  intera anche mentre si scorre (un bordo di tabella, con la testata fissa,
+ *  si spezzerebbe). */
+const LINEA_EU = "w-[7px] min-w-[7px] max-w-[7px] bg-slate-800 p-0 dark:bg-slate-300";
+
 /** Riga dei totali nella testata fissa: il filo sotto è un'ombra interna,
  *  perché i bordi di una tabella non seguono la testata che resta ferma. */
 const BORDO_TOTALI = "shadow-[inset_0_-2px_0_0_rgb(100_116_139/0.55)]";
@@ -2286,11 +2293,12 @@ export function Foglio({
         className={altezzaMax ? "overflow-auto" : "max-h-[78vh] overflow-auto"}
         style={altezzaMax ? { maxHeight: altezzaMax } : undefined}
       >
-        <table ref={tabellaRef} className="w-full min-w-[1332px] border-collapse text-[13px]">
+        <table ref={tabellaRef} className="w-full min-w-[1339px] border-collapse text-[13px]">
           <colgroup>
             <col className="w-[120px]" />
             <col className="w-[150px]" />
             <col className="w-[250px]" />
+            <col className="w-[7px]" />
             <col className="w-[120px]" />
             <col className="w-[120px]" />
             <col className="w-[120px]" />
@@ -2306,6 +2314,7 @@ export function Foglio({
               >
                 {t("cpr.colEntrate")}
               </th>
+              <th className={LINEA_EU} aria-hidden />
               <th
                 colSpan={6}
                 className={`${celH} bg-primary text-center text-[11px] text-primary-foreground`}
@@ -2330,6 +2339,7 @@ export function Foglio({
               >
                 {t("cpr.colNote")}
               </th>
+              <th className={LINEA_EU} aria-hidden />
               <th
                 className={`${celH} ${TINTA.ora.col} ${TINTA.ora.num} border-r border-border/60 text-right`}
               >
@@ -2378,6 +2388,7 @@ export function Foglio({
                     ))}
                   </span>
                 </th>
+                <th className={LINEA_EU} aria-hidden />
                 {COLONNE_USCITE.map((col) => (
                   <th
                     key={col}
@@ -2617,6 +2628,7 @@ export function Foglio({
                       </td>
                     </>
                   )}
+                  <td className={LINEA_EU} aria-hidden />
                   {testaU ? (
                     <>
                       {COLONNE_USCITE.map((col) => (
@@ -2845,6 +2857,7 @@ export function Foglio({
                     </td>
                   </>
                 )}
+                <td className={LINEA_EU} aria-hidden />
                 {nuova && !nuova.entrata ? (
                   <>
                     <td className={`${celN} p-1`} colSpan={4}>
